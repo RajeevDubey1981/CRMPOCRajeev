@@ -7,8 +7,6 @@ const publicApi = axios.create({
 
 export const partnerRegistrationPublicApi = {
   get: (token) => publicApi.get(`/api/partner-registrations/public/${token}`).then((r) => r.data),
-  validateGst: (gstin) =>
-    publicApi.get("/api/partner-registrations/public/gst/validate", { params: { gstin } }).then((r) => r.data),
   saveStep: (token, step, data) =>
     publicApi.put(`/api/partner-registrations/public/${token}/step`, { step, data }).then((r) => r.data),
   uploadDocument: (token, documentKey, file) => {

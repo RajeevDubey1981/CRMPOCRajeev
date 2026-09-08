@@ -16,6 +16,13 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
+    # Later revision ids exceed MySQL's default alembic_version VARCHAR(32).
+    op.alter_column(
+        "alembic_version",
+        "version_num",
+        existing_type=sa.String(length=255),
+        type_=sa.String(length=255),
+    )
     op.create_index(op.f("ix_orders_customer_contact"), "orders", ["customer_contact"], unique=False)
     op.create_index(op.f("ix_orders_customer_name"), "orders", ["customer_name"], unique=False)
     op.create_index(op.f("ix_orders_oem_bill_no"), "orders", ["oem_bill_no"], unique=False)

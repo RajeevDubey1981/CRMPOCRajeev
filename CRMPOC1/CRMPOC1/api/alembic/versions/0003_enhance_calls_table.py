@@ -18,7 +18,7 @@ depends_on = None
 def upgrade() -> None:
     op.add_column('calls', sa.Column('priority', sa.String(20), server_default='medium', nullable=False))
     op.add_column('calls', sa.Column('transferred_to', sa.Integer(), nullable=True))
-    op.add_column('calls', sa.Column('is_transferred', sa.Boolean(), server_default='false', nullable=False))
+    op.add_column('calls', sa.Column('is_transferred', sa.Boolean(), server_default=sa.false(), nullable=False))
     op.add_column('calls', sa.Column('follow_up_notes', sa.Text(), nullable=True))
     op.add_column('calls', sa.Column('follow_up_status', sa.String(30), nullable=True))
 

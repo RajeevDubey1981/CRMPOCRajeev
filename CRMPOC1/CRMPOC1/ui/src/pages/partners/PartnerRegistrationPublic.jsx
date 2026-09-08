@@ -11,7 +11,6 @@ import {
 const fieldClass =
   "w-full rounded-xl border border-slate-300 px-3 py-3 text-base sm:text-sm focus:border-sky-600 focus:outline-none focus:ring-1 focus:ring-sky-600";
 const labelClass = "mb-1 block text-sm font-medium text-slate-700";
-const GST_LOOKUP_ENABLED = String(import.meta.env.VITE_GST_LOOKUP_ENABLED || "false").toLowerCase() === "true";
 
 function toFileUrl(path) {
   if (!path) return "";
@@ -138,9 +137,6 @@ export default function PartnerRegistrationPublic() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [success, setSuccess] = useState("");
-  const [gstBusy, setGstBusy] = useState(false);
-  const [gstResult, setGstResult] = useState(null);
-
   const totalSteps = 9;
   const isSubmitted = context?.is_submitted;
 
@@ -164,41 +160,6 @@ export default function PartnerRegistrationPublic() {
 
   function setField(name, value) {
     setForm((current) => ({ ...current, [name]: value }));
-  }
-
-  function matchStateOption(name) {
-    if (!name) return null;
-    const normalize = (value) => value.toLowerCase().replace(/&/g, "and").replace(/[^a-z]/g, "");
-    const target = normalize(name);
-    return INDIAN_STATES.find((state) => normalize(state) === target) || null;
-  }
-
-  async function validateGst() {
-    setGstBusy(true);
-    setGstResult(null);
-    setErr("");
-    try {
-      const result = await partnerRegistrationPublicApi.validateGst(form.gst_no);
-      setGstResult(result);
-      if (result.valid) {
-        const state = matchStateOption(result.state);
-        setForm((current) => ({
-          ...current,
-          name: result.trade_name || result.legal_name || current.name,
-          firm_address: result.address || current.firm_address,
-          state: state || current.state,
-          pincode: result.pincode || current.pincode,
-          city: result.city || current.city,
-          district: result.district || current.district,
-          pan_no: result.pan || current.pan_no,
-          business_type: result.business_type_mapped || current.business_type,
-        }));
-      }
-    } catch (error) {
-      setGstResult({ valid: false, error: error.response?.data?.detail || "GST validation failed" });
-    } finally {
-      setGstBusy(false);
-    }
   }
 
   async function saveCurrentStep(nextStep) {
@@ -401,18 +362,7 @@ export default function PartnerRegistrationPublic() {
               <div className="space-y-4">
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <Field label="GSTIN" required>
-                    <div className="flex gap-2">
-                      <input value={form.gst_no} onChange={(e) => { setField("gst_no", e.target.value.toUpperCase()); setGstResult(null); }} className={fieldClass} />
-                      {GST_LOOKUP_ENABLED && <button
-                        type="button"
-                        disabled={gstBusy || !form.gst_no.trim()}
-                        onClick={validateGst}
-                        className="shrink-0 rounded-md bg-emerald-700 px-4 text-sm font-medium text-white disabled:opacity-50"
-                      >
-                        {gstBusy ? "Checking..." : "Validate"}
-                      </button>}
-                    </div>
-                    {!GST_LOOKUP_ENABLED && <p className="mt-1 text-xs text-slate-500">Live GST validation is currently unavailable. Enter your GSTIN manually.</p>}
+                    <input value={form.gst_no} onChange={(e) => setField("gst_no", e.target.value.toUpperCase())} className={fieldClass} />
                   </Field>
                   <Field label="PAN" required>
                     <input value={form.pan_no} onChange={(e) => setField("pan_no", e.target.value)} className={fieldClass} />
@@ -427,21 +377,6 @@ export default function PartnerRegistrationPublic() {
                     <input value={form.cin_no} onChange={(e) => setField("cin_no", e.target.value)} className={fieldClass} />
                   </Field>
                 </div>
-                {gstResult && (
-                  <div className={`rounded-xl px-4 py-3 text-sm ${gstResult.valid ? "border border-emerald-200 bg-emerald-50 text-emerald-800" : "border border-rose-200 bg-rose-50 text-rose-700"}`}>
-                    {gstResult.valid ? (
-                      <div>
-                        <div className="font-semibold">GST verified — {gstResult.trade_name || gstResult.legal_name}</div>
-                        <div className="mt-1">
-                          Status: {gstResult.status} | Business: {gstResult.business_type || "—"} | Dealer: {gstResult.dealer_type || "—"}
-                        </div>
-                        <div className="mt-1 text-xs text-emerald-700">Matching details have been applied to the applicable form fields.</div>
-                      </div>
-                    ) : (
-                      <span>{gstResult.error || "GSTIN is not valid"}</span>
-                    )}
-                  </div>
-                )}
               </div>
             )}
 

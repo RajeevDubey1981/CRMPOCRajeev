@@ -23,11 +23,10 @@ def upgrade() -> None:
     connection.execute(
         sa.text(
             """
-            UPDATE oi
-            SET item_code = im.item_code
-            FROM item_masters AS im
+            UPDATE order_items AS oi
+            JOIN item_masters AS im ON oi.item_id = im.id
+            SET oi.item_code = im.item_code
             WHERE oi.item_id IS NOT NULL
-              AND oi.item_id = im.id
               AND (oi.item_code IS NULL OR oi.item_code = '')
             """
         )

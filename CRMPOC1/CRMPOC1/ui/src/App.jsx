@@ -49,7 +49,9 @@ import ServiceRequestDetail from "./pages/services/ServiceRequestDetail.jsx";
 import EngineerAssignedUnits from "./pages/services/EngineerAssignedUnits.jsx";
 import ServiceDocumentUploadPublic from "./pages/services/ServiceDocumentUploadPublic.jsx";
 import PartnerRegistrationList from "./pages/partners/PartnerRegistrationList.jsx";
+import PartnerRegistrationReview from "./pages/partners/PartnerRegistrationReview.jsx";
 import PartnerRegistrationPublic from "./pages/partners/PartnerRegistrationPublic.jsx";
+import PartnerAgreementSign from "./pages/partners/PartnerAgreementSign.jsx";
 import { isOperationsAdminRole, isPartnerAdminRole, isSystemAdminRole } from "./utils/roles.js";
 
 function OperationsAdminRoute({ children }) {
@@ -97,6 +99,7 @@ export default function App() {
     <Routes>
       <Route path="/login" element={<Login />} />
       <Route path="/partner-registration/:token" element={<PartnerRegistrationPublic />} />
+      <Route path="/partner-agreement/:token" element={<PartnerAgreementSign />} />
       <Route path="/services/public-upload/:token" element={<ServiceDocumentUploadPublic />} />
       <Route
         element={
@@ -118,6 +121,7 @@ export default function App() {
         <Route path="/admin/permissions" element={<SystemAdminRoute><Permissions /></SystemAdminRoute>} />
         <Route path="/admin/payments" element={<SystemAdminRoute><PaymentHistory /></SystemAdminRoute>} />
         <Route path="/admin/partner-registrations" element={<PartnerAdminRoute><PartnerRegistrationList /></PartnerAdminRoute>} />
+        <Route path="/admin/partner-registrations/:id/review" element={<PartnerAdminRoute><PartnerRegistrationReview /></PartnerAdminRoute>} />
         <Route path="/complaints" element={<ComplaintList />} />
         <Route path="/complaints/new" element={<ComplaintCreate />} />
         <Route path="/complaints/:id" element={<ComplaintDetail />} />

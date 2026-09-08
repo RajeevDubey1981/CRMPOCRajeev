@@ -1,7 +1,8 @@
-"""GSTIN validation against the public GST portal search API."""
+"""GSTIN validation against a GST Suvidha Provider (GSP) search API."""
 from __future__ import annotations
 
 import re
+import threading
 import time
 import os
 
@@ -17,8 +18,18 @@ class GSTINValidator:
     # taxpayer payload (optionally wrapped in one or more `data` objects).
     PROVIDER_URL_ENV = "GST_PROVIDER_URL"
     PROVIDER_API_KEY_ENV = "GST_PROVIDER_API_KEY"
+    PROVIDER_API_SECRET_ENV = "GST_PROVIDER_API_SECRET"
     PROVIDER_AUTH_ENV = "GST_PROVIDER_AUTHORIZATION"
     LOOKUP_ENABLED_ENV = "GST_LOOKUP_ENABLED"
+
+    # sandbox.co.in issues short-lived bearer tokens from a separate
+    # authenticate endpoint keyed by api key + api secret; cache the token
+    # in-process until shortly before it expires instead of fetching one per
+    # lookup.
+    AUTHENTICATE_URL = "https://api.sandbox.co.in/authenticate"
+    _token_lock = threading.Lock()
+    _cached_token: str | None = None
+    _cached_token_expiry: float = 0.0
 
     HEADERS = {
         "Accept": "application/json, text/plain, */*",
@@ -84,6 +95,33 @@ class GSTINValidator:
             "entity_no": gstin[12],
         }
 
+    def _get_access_token(self, api_key: str, api_secret: str) -> str:
+        """Fetch (and cache) a bearer token from the GSP's authenticate endpoint."""
+        with self._token_lock:
+            if self._cached_token and time.time() < self._cached_token_expiry:
+                return self._cached_token
+
+            resp = requests.post(
+                self.AUTHENTICATE_URL,
+                headers={
+                    "x-api-key": api_key,
+                    "x-api-secret": api_secret,
+                    "x-api-version": "1.0",
+                },
+                timeout=15,
+            )
+            resp.raise_for_status()
+            body = resp.json()
+            token = body.get("access_token") or (body.get("data") or {}).get("access_token")
+            if not token:
+                raise ValueError("GST provider authenticate response had no access_token")
+
+            # Tokens are short-lived; refresh a little early rather than
+            # tracking the exact JWT expiry.
+            GSTINValidator._cached_token = token
+            GSTINValidator._cached_token_expiry = time.time() + 15 * 60
+            return token
+
     def lookup(self, gstin: str, retries: int = 2) -> dict:
         """Look up a GSTIN through a configured, authorised GST provider.
 
@@ -113,13 +151,32 @@ class GSTINValidator:
                 "error": "GST live lookup is not configured. Set GST_PROVIDER_URL and provider credentials.",
             }
 
-        headers = {"Accept": "application/json", "Content-Type": "application/json"}
         api_key = os.getenv(self.PROVIDER_API_KEY_ENV, "").strip()
+        api_secret = os.getenv(self.PROVIDER_API_SECRET_ENV, "").strip()
         authorization = os.getenv(self.PROVIDER_AUTH_ENV, "").strip()
+
+        headers = {"Accept": "application/json", "Content-Type": "application/json"}
         if api_key:
             headers["x-api-key"] = api_key
+        headers["x-api-version"] = "1.0"
+
         if authorization:
             headers["Authorization"] = authorization
+        elif api_key and api_secret:
+            try:
+                headers["Authorization"] = self._get_access_token(api_key, api_secret)
+            except (requests.exceptions.RequestException, ValueError) as exc:
+                return {
+                    "valid": False,
+                    "gstin": gstin,
+                    "error": f"GST provider authentication failed: {exc}",
+                }
+        else:
+            return {
+                "valid": False,
+                "gstin": gstin,
+                "error": "GST live lookup is not configured. Set GST_PROVIDER_API_KEY and GST_PROVIDER_API_SECRET.",
+            }
 
         for attempt in range(retries + 1):
             try:
@@ -135,6 +192,25 @@ class GSTINValidator:
                     time.sleep(2 ** attempt)
                     continue
 
+                if resp.status_code == 401:
+                    # Cached token may have expired early; drop it and retry once.
+                    GSTINValidator._cached_token = None
+                    if authorization or attempt == retries:
+                        return {
+                            "valid": False,
+                            "gstin": gstin,
+                            "error": "Access denied by GST provider (check configured credentials)",
+                        }
+                    try:
+                        headers["Authorization"] = self._get_access_token(api_key, api_secret)
+                    except (requests.exceptions.RequestException, ValueError) as exc:
+                        return {
+                            "valid": False,
+                            "gstin": gstin,
+                            "error": f"GST provider authentication failed: {exc}",
+                        }
+                    continue
+
                 if resp.status_code == 403:
                     return {
                         "valid": False,
@@ -142,7 +218,13 @@ class GSTINValidator:
                         "error": "Access denied by GST provider (check configured credentials)",
                     }
 
-                resp.raise_for_status()
+                if resp.status_code >= 400:
+                    return {
+                        "valid": False,
+                        "gstin": gstin,
+                        "error": f"GST provider returned {resp.status_code}: {resp.text[:500]}",
+                    }
+
                 data = resp.json()
 
                 # GSPs commonly envelope the GSTN result as {data: {data:

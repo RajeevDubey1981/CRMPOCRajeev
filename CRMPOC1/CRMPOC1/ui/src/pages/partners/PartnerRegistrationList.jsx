@@ -1,11 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 
-import { api } from "../../api/client.js";
 import { partnerRegistrationsApi } from "../../api/partnerRegistrations.js";
 import Modal from "../../components/Modal.jsx";
 import Pagination from "../../components/Pagination.jsx";
-import PartnerOnboardingStepper from "../../components/partners/PartnerOnboardingStepper.jsx";
-import { PARTNER_DOCUMENTS } from "./partnerFormConstants.js";
 
 const PARTNER_TYPE_COLORS = {
   "Gem Partner": "bg-blue-100 text-blue-800",
@@ -42,14 +40,6 @@ function fmtDateTime(value) {
   } catch {
     return value;
   }
-}
-
-function toDownloadUrl(path) {
-  if (!path) return "";
-  if (/^https?:\/\//i.test(path)) return path;
-  const base = (api.defaults.baseURL || "").replace(/\/$/, "");
-  const normalized = path.startsWith("/") ? path : `/${path}`;
-  return `${base}${normalized}`;
 }
 
 function TypeBadge({ value }) {
@@ -104,20 +94,6 @@ function DetailField({ label, value }) {
   );
 }
 
-function DocumentLink({ label, path }) {
-  if (!path) return null;
-  return (
-    <a
-      href={toDownloadUrl(path)}
-      target="_blank"
-      rel="noreferrer"
-      className="inline-flex items-center rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-sky-700 hover:bg-sky-50"
-    >
-      {label}
-    </a>
-  );
-}
-
 const EMPTY_INVITE = {
   partner_type: "Gem Partner",
   email: "",
@@ -127,6 +103,7 @@ const EMPTY_INVITE = {
 };
 
 export default function PartnerRegistrationList() {
+  const navigate = useNavigate();
   const [meta, setMeta] = useState({ partner_types: [], onboarding_statuses: [], form_statuses: [] });
   const [data, setData] = useState({ items: [], total: 0 });
   const [loading, setLoading] = useState(false);
@@ -137,8 +114,6 @@ export default function PartnerRegistrationList() {
 
   const [detail, setDetail] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
-  const [statusDraft, setStatusDraft] = useState("");
-  const [adminRemark, setAdminRemark] = useState("");
   const [saving, setSaving] = useState(false);
   const [actionBusy, setActionBusy] = useState(null);
   const [pendingResend, setPendingResend] = useState(null);
@@ -178,36 +153,19 @@ export default function PartnerRegistrationList() {
   }, [params]);
 
   async function openDetail(row) {
+    if (row.form_status === "Submitted") {
+      navigate(`/admin/partner-registrations/${row.id}/review`);
+      return;
+    }
     setDetailLoading(true);
     setErr("");
     try {
       const full = await partnerRegistrationsApi.get(row.id);
       setDetail(full);
-      setStatusDraft(full.onboarding_status);
-      setAdminRemark(full.admin_remark || "");
     } catch (error) {
       setErr(error.response?.data?.detail || "Failed to load partner details");
     } finally {
       setDetailLoading(false);
-    }
-  }
-
-  async function saveStatus() {
-    if (!detail) return;
-    setSaving(true);
-    setErr("");
-    try {
-      const updated = await partnerRegistrationsApi.update(detail.id, {
-        onboarding_status: statusDraft,
-        admin_remark: adminRemark || null,
-      });
-      setDetail(updated);
-      await load();
-      setDetail(null);
-    } catch (error) {
-      setErr(error.response?.data?.detail || "Failed to update status");
-    } finally {
-      setSaving(false);
     }
   }
 
@@ -580,20 +538,6 @@ export default function PartnerRegistrationList() {
                 </div>
               </div>
 
-              {detail.form_status === "Submitted" && (
-                <div className="mt-4">
-                  <div className="mb-2 text-xs uppercase tracking-wide text-slate-500">Submitted documents</div>
-                  <div className="flex flex-wrap gap-2">
-                    {PARTNER_DOCUMENTS.map((doc) => (
-                      <DocumentLink key={doc.key} label={doc.label} path={detail[`${doc.key}_path`]} />
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {detail.form_status === "Submitted" && (
-                <PartnerOnboardingStepper steps={detail.onboarding_steps} />
-              )}
             </div>
 
             {detail.registration_url && (
@@ -605,44 +549,10 @@ export default function PartnerRegistrationList() {
               </div>
             )}
 
-            {detail.form_status === "Submitted" && (
-              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-700">Update onboarding status</label>
-                  <select
-                    value={statusDraft}
-                    onChange={(e) => setStatusDraft(e.target.value)}
-                    className={fieldClass}
-                  >
-                    {meta.onboarding_statuses
-                      .filter((status) => !["Invite Sent", "In Progress"].includes(status))
-                      .map((status) => (
-                        <option key={status} value={status}>{status}</option>
-                      ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-700">Admin remark</label>
-                  <input
-                    type="text"
-                    value={adminRemark}
-                    onChange={(e) => setAdminRemark(e.target.value)}
-                    className={fieldClass}
-                    placeholder="Optional remark for this status change"
-                  />
-                </div>
-              </div>
-            )}
-
             <div className="flex justify-end gap-2">
               <button type="button" onClick={() => setDetail(null)} className="rounded-md border border-slate-300 px-4 py-2 text-sm text-slate-700">
                 Close
               </button>
-              {detail.form_status === "Submitted" && (
-                <button type="button" disabled={saving} onClick={saveStatus} className="rounded-md bg-sky-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">
-                  Update status
-                </button>
-              )}
             </div>
           </div>
         ) : null}

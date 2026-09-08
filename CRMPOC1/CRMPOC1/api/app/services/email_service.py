@@ -128,6 +128,157 @@ def send_partner_registration_invite_email(
     )
 
 
+def send_partner_agreement_invite_email(
+    to: str,
+    contact_person_name: str | None,
+    firm_name: str | None,
+    registration_no: str,
+    agreement_no: str,
+    agreement_url: str,
+) -> bool:
+    recipient_name = (firm_name or contact_person_name or "Partner").strip() or "Partner"
+    reference = (registration_no or "your registration").strip()
+    text_body = (
+        f"Dear {recipient_name},\n\n"
+        f"Congratulations - your partner onboarding application ({reference}) has been approved by "
+        "INDcool Electricals Pvt Ltd.\n\n"
+        "One final step remains. Please review and digitally sign the Authorised Service Partner "
+        "Agreement using the secure link below:\n\n"
+        f"Review & Sign Agreement: {agreement_url}\n\n"
+        "You will be asked to read the agreement in full and confirm a one-time password (OTP) sent "
+        "to this email address. Your acceptance is timestamped and legally valid under the "
+        "Information Technology Act, 2000.\n\n"
+        "Your partner account and vendor code will be issued once the agreement is signed.\n\n"
+        f"Agreement Reference: {agreement_no}\n\n"
+        "If you face any issues, feel free to reach out to us on +919213945441, 1800119515 "
+        "Email: corpdesk@indcool.in\n\n"
+        "Thanks & Regards,\n"
+        "INDcool Onboarding Team"
+    )
+    return send_template_email(
+        to=to,
+        template="partner_agreement_invite",
+        context={
+            "contact_person_name": recipient_name,
+            "firm_name": recipient_name,
+            "registration_no": reference,
+            "agreement_no": agreement_no,
+            "agreement_url": agreement_url,
+            "text_body": text_body,
+        },
+        subject=f"Sign your INDcool partner agreement — {agreement_no}",
+    )
+
+
+def send_partner_agreement_otp_email(
+    to: str,
+    otp: str,
+    agreement_no: str,
+    expiry_minutes: int,
+) -> bool:
+    text_body = (
+        "You requested to digitally sign the INDcool Authorised Service Partner Agreement.\n\n"
+        f"Your OTP is: {otp}\n"
+        f"Valid for {expiry_minutes} minutes.\n\n"
+        "Do not share this OTP with anyone.\n\n"
+        f"Agreement Reference: {agreement_no}\n\n"
+        "If you did not request this, ignore this email and no action will be taken."
+    )
+    return send_template_email(
+        to=to,
+        template="partner_agreement_otp",
+        context={
+            "otp": otp,
+            "agreement_no": agreement_no,
+            "expiry_minutes": expiry_minutes,
+            "text_body": text_body,
+        },
+        subject=f"Your OTP for signing the INDcool partner agreement — {agreement_no}",
+    )
+
+
+def send_partner_agreement_signed_email(
+    to: str,
+    partner_name: str,
+    agreement_no: str,
+    agreement_version: str,
+    signed_at: str,
+    ip_address: str | None,
+) -> bool:
+    recipient_name = (partner_name or "Partner").strip() or "Partner"
+    ip = (ip_address or "—").strip() or "—"
+    text_body = (
+        f"Dear {recipient_name},\n\n"
+        "Your INDcool Authorised Service Partner Agreement has been digitally signed and is now "
+        "legally binding. Keep this email as your digital signing certificate.\n\n"
+        f"Agreement No: {agreement_no}\n"
+        f"Version: {agreement_version}\n"
+        f"Signed Email: {to}\n"
+        f"Signed At: {signed_at}\n"
+        f"IP Address: {ip}\n"
+        "Verified Via: Email OTP\n"
+        "Legal Basis: IT Act 2000, India\n\n"
+        "Your partner account has been activated. A separate welcome email with your INDcool "
+        "vendor code follows shortly."
+    )
+    return send_template_email(
+        to=to,
+        template="partner_agreement_signed",
+        context={
+            "partner_name": recipient_name,
+            "agreement_no": agreement_no,
+            "agreement_version": agreement_version,
+            "email": to,
+            "signed_at": signed_at,
+            "ip_address": ip,
+            "text_body": text_body,
+        },
+        subject=f"Agreement signed — {agreement_no}",
+    )
+
+
+def send_partner_rejection_email(
+    to: str,
+    contact_person_name: str | None,
+    firm_name: str | None,
+    registration_no: str,
+    registration_url: str,
+    reason: str | None = None,
+) -> bool:
+    recipient_name = (firm_name or contact_person_name or "Partner").strip() or "Partner"
+    reference = (registration_no or "your registration").strip()
+    reason = (reason or "").strip()
+    reason_line = f"Reviewer note: {reason}" if reason else ""
+    subject = f"INDcool partner onboarding — action needed on {reference}"
+    text_body = (
+        f"Dear {recipient_name},\n\n"
+        f"Thank you for submitting your onboarding application ({reference}) with INDcool Electricals Pvt Ltd.\n\n"
+        "After review, we were unable to approve your application in its current form and need you to revisit "
+        "and resubmit it.\n\n"
+        f"{reason_line + chr(10) + chr(10) if reason_line else ''}"
+        "Please use the link below to review and correct your details, then resubmit:\n\n"
+        f"Continue Onboarding: {registration_url}\n\n"
+        "If you face any issues, feel free to reach out to us on +919213945441, 1800119515 "
+        "Email: corpdesk@indcool.in\n\n"
+        "Thanks & Regards,\n"
+        "INDcool Onboarding Team"
+    )
+    reason_block = f"<p><strong>Reviewer note:</strong> {reason}</p>" if reason else ""
+    return send_template_email(
+        to=to,
+        template="partner_registration_rejected",
+        context={
+            "contact_person_name": recipient_name,
+            "firm_name": recipient_name,
+            "registration_no": reference,
+            "registration_url": registration_url,
+            "reason_block": reason_block,
+            "text_body": text_body,
+        },
+        subject=subject,
+    )
+
+
 def send_partner_approval_email(
     to: str,
     partner_name: str,

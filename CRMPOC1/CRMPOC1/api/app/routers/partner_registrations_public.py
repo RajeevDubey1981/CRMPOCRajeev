@@ -13,7 +13,6 @@ from app.schemas.partner_registration import (
     PartnerPublicSubmit,
 )
 from app.services.file_service import save_upload
-from app.services.gst_service import validate_gstin
 from app.services.partner_registration import (
     DOCUMENT_KEYS,
     apply_step_fields,
@@ -24,15 +23,6 @@ from app.services.partner_registration import (
 )
 
 router = APIRouter(prefix="/api/partner-registrations/public", tags=["partner-registrations-public"])
-
-
-@router.get("/gst/validate")
-def public_validate_gstin(gstin: str):
-    """Validate a GSTIN on the GST portal and return taxpayer details for autofill."""
-    gstin = (gstin or "").upper().strip()
-    if not gstin:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "GSTIN is required")
-    return validate_gstin(gstin)
 
 
 def _get_row(db: Session, token: str):

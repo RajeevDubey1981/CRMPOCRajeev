@@ -6,7 +6,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.config import settings
 from app.services.input_security import sanitize_json
-from app.routers import auth, calls, claims, complaints, couriers, dashboard, installation_callcenter, installations, item_master, market, orders, partner_registrations, partner_registrations_public, pending_actions, projects, roles, serials, services, users
+from app.routers import auth, calls, claims, complaints, couriers, dashboard, installation_callcenter, installations, item_master, market, orders, partner_agreements_public, partner_registrations, partner_registrations_public, pending_actions, projects, roles, serials, services, users
 
 app = FastAPI(title="Indcool CRM API", version="0.1.0")
 settings.resolved_upload_dir.mkdir(parents=True, exist_ok=True)
@@ -54,6 +54,7 @@ app.include_router(services.router)
 app.include_router(pending_actions.router)
 app.include_router(partner_registrations.router)
 app.include_router(partner_registrations_public.router)
+app.include_router(partner_agreements_public.router)
 app.mount("/uploads", StaticFiles(directory=str(settings.resolved_upload_dir)), name="uploads")
 
 
