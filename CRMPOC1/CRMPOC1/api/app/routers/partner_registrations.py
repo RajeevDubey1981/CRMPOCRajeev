@@ -47,6 +47,21 @@ from app.services.vendor_accounts import ensure_partner_account
 router = APIRouter(prefix="/api/partner-registrations", tags=["partner-registrations"])
 
 
+def _normalize_mobile(value: str) -> str:
+    digits = "".join(character for character in (value or "") if character.isdigit())
+    return digits[-10:]
+
+
+def _mobile_exists(db: Session, mobile: str) -> bool:
+    normalized = _normalize_mobile(mobile)
+    if not normalized:
+        return False
+    existing_registrations = db.scalars(select(PartnerRegistration.mobile)).all()
+    existing_users = db.scalars(select(User.phone)).all()
+    existing_vendors = db.scalars(select(Vendor.contact_mobile)).all()
+    return any(_normalize_mobile(value) == normalized for value in [*existing_registrations, *existing_users, *existing_vendors])
+
+
 def _require_partner_admin(user: User) -> None:
     if not is_partner_admin(user.role):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Only Admin or Indcool can access partner registrations")
@@ -148,14 +163,40 @@ def invite_partner_registration(
 ):
     _require_partner_admin(user)
     now = datetime.now(timezone.utc)
+    email = str(body.email).strip().lower()
+    mobile = _normalize_mobile(body.mobile)
+
+    # Check historical rows too: soft-deleted users/vendors still occupy the
+    # database's unique email and vendor-code constraints.
+    email_in_registration = db.scalar(
+        select(PartnerRegistration.id).where(func.lower(PartnerRegistration.email) == email)
+    )
+    email_in_user = db.scalar(
+        select(User.id).where(func.lower(User.email) == email)
+    )
+    email_in_vendor = db.scalar(
+        select(Vendor.id).where(func.lower(Vendor.email) == email)
+    )
+    if email_in_registration or email_in_user or email_in_vendor:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "This email is already registered or has an existing user/vendor account.",
+        )
+
+    if _mobile_exists(db, mobile):
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "This mobile number is already registered or linked to an existing user/vendor account.",
+        )
+
     token = generate_access_token()
     row = PartnerRegistration(
         registration_no=generate_registration_no(db),
         access_token=token,
         partner_type=body.partner_type,
-        email=str(body.email).strip().lower(),
+        email=email,
         contact_person_name=body.contact_person_name.strip() if body.contact_person_name else None,
-        mobile=body.mobile.strip() if body.mobile else None,
+        mobile=mobile,
         name=body.name.strip() if body.name else None,
         form_status="Invite Sent",
         current_form_step=1,

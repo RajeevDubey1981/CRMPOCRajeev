@@ -15,6 +15,8 @@ class AgreementContext(BaseModel):
     partner_name: str | None = None
     # Masked for display; the OTP always goes to the registration email on file.
     email: str
+    otp_channel: str = "email"
+    otp_destination: str | None = None
     is_signed: bool
     signed_at: datetime | None = None
     resend_wait_seconds: int = 0
@@ -24,6 +26,32 @@ class AgreementSendOtpOut(BaseModel):
     success: bool = True
     message: str
     resend_wait_seconds: int
+    otp_channel: str = "email"
+
+
+class AgreementContextPublic(BaseModel):
+    """Public agreement context payload for OTP signing."""
+
+    agreement_no: str
+    agreement_version: str
+    agreement_title: str
+    agreement_effective: str
+    agreement_text: str
+    registration_no: str
+    partner_name: str | None = None
+    email: str
+    otp_channel: str = "email"
+    otp_destination: str | None = None
+    is_signed: bool
+    signed_at: datetime | None = None
+    resend_wait_seconds: int = 0
+
+
+class AgreementSendOtpPublicOut(BaseModel):
+    success: bool = True
+    message: str
+    resend_wait_seconds: int
+    otp_channel: str = "email"
 
 
 class AgreementVerifyOtpIn(BaseModel):

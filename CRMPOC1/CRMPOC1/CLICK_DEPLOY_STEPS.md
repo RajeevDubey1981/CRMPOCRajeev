@@ -9,6 +9,14 @@ These prepare deployable output for the UI and API on a Windows server.
 
 ## What each file does
 
+### `Deploy.cmd`
+
+- runs deployment preflight checks before any deployment starts
+- verifies the partner invite API rejects duplicate email addresses across registrations, users, and vendors
+- verifies the invite UI displays duplicate validation errors inside the modal
+- compiles the API source
+- then continues to the existing local or production deployment prompt
+
 ### `Deploy-UI.bat`
 
 - installs UI packages

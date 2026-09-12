@@ -14,6 +14,14 @@ function fmtDateTime(value) {
   }
 }
 
+function otpChannelLabel(channel) {
+  return channel === "whatsapp" ? "WhatsApp OTP" : "Email OTP";
+}
+
+function otpDestinationLabel(context) {
+  return context?.otp_destination || context?.email || "your registered contact";
+}
+
 function StepBar({ step }) {
   return (
     <div className="mx-auto mb-5 flex max-w-md items-start">
@@ -187,7 +195,7 @@ export default function PartnerAgreementSign() {
         <div className="mb-5 text-center">
           <div className="text-xs font-semibold uppercase tracking-widest text-sky-700">Indcool Partner Onboarding</div>
           <h1 className="mt-2 text-2xl font-bold text-slate-900">Digital Agreement Signing</h1>
-          <p className="mt-1 text-sm text-slate-600">Verified via email OTP</p>
+          <p className="mt-1 text-sm text-slate-600">Verified via {otpChannelLabel(context.otp_channel)}</p>
         </div>
 
         <StepBar step={step} />
@@ -241,7 +249,7 @@ export default function PartnerAgreementSign() {
               <div className="text-center">
                 <div className="text-lg font-bold text-slate-900">Verify your email</div>
                 <p className="mt-1 text-sm text-slate-600">
-                  We will send a 6-digit OTP to the email address on your partner registration.
+                  We will send a 6-digit OTP to {otpDestinationLabel(context)} via {otpChannelLabel(context.otp_channel)}.
                 </p>
               </div>
               <div className="mt-5">
@@ -263,7 +271,7 @@ export default function PartnerAgreementSign() {
               )}
               <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-xs leading-relaxed text-emerald-800">
                 <strong className="mb-1 block">What happens next:</strong>
-                1. You will receive a 6-digit OTP at this email address<br />
+                1. You will receive a 6-digit OTP at {otpDestinationLabel(context)}<br />
                 2. Enter the OTP to digitally sign this agreement<br />
                 3. Your partner account and vendor code are then issued
               </div>
@@ -281,7 +289,7 @@ export default function PartnerAgreementSign() {
                   onClick={sendOtp}
                   className="flex-[2] rounded-md bg-sky-700 px-4 py-2.5 text-sm font-medium text-white disabled:opacity-50"
                 >
-                  {busy ? "Sending..." : "Send OTP to my email"}
+                  {busy ? "Sending..." : `Send OTP via ${otpChannelLabel(context.otp_channel)}`}
                 </button>
               </div>
             </div>
@@ -295,10 +303,12 @@ export default function PartnerAgreementSign() {
                 <p className="mt-1 text-sm text-slate-600">
                   A 6-digit OTP was sent to
                   <br />
-                  <span className="font-semibold text-slate-900">{context.email}</span>
+                  <span className="font-semibold text-slate-900">{otpDestinationLabel(context)}</span>
                 </p>
                 <p className="mt-1 text-xs text-slate-500">
-                  Check your spam/junk folder if it does not arrive within 30 seconds.
+                  {context.otp_channel === "whatsapp"
+                    ? "Check WhatsApp messages if the OTP does not arrive within 30 seconds."
+                    : "Check your spam/junk folder if the OTP does not arrive within 30 seconds."}
                 </p>
               </div>
 
@@ -368,7 +378,7 @@ export default function PartnerAgreementSign() {
                   ["Signed Email", signed.email],
                   ["Signed At", fmtDateTime(signed.signed_at)],
                   ["IP Address", signed.ip_address || "—"],
-                  ["Verified Via", "Email OTP"],
+                  ["Verified Via", signed.method || otpChannelLabel(context.otp_channel)],
                   ["Legal Validity", "IT Act 2000, India"],
                 ].map(([label, value]) => (
                   <div key={label} className="flex justify-between border-b border-emerald-100 py-1.5 text-xs last:border-0">
@@ -395,7 +405,7 @@ export default function PartnerAgreementSign() {
         </div>
 
         <p className="mt-4 text-center text-[10px] text-slate-400">
-          Legally valid under IT Act 2000 · Email OTP verification
+          Legally valid under IT Act 2000 · {otpChannelLabel(context.otp_channel)} verification
         </p>
       </div>
     </div>

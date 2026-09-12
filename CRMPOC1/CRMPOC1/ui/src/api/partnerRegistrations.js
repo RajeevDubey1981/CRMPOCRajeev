@@ -40,7 +40,12 @@ export const partnerRegistrationsApi = {
     const cache = readGstCache();
     const cached = cache[key];
     if (cached && Date.now() - cached.cachedAt < GST_CACHE_TTL_MS) {
-      return cached.result;
+      const cachedError = String(cached.result?.error || "");
+      // Never reuse a cached "disabled"/config failure — those must re-hit the API
+      // after enabling GST settings so the UI does not stay stuck on the old message.
+      if (!cachedError.includes("disabled") && !cachedError.includes("not configured")) {
+        return cached.result;
+      }
     }
 
     const result = await api.get(`/api/partner-registrations/${id}/gst/validate`).then((r) => r.data);

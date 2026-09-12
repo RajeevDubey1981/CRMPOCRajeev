@@ -163,6 +163,10 @@ export default function PartnerRegistrationPublic() {
   }
 
   async function saveCurrentStep(nextStep) {
+    if (step === 5 && form.gst_no.trim() && form.gst_no.trim().length !== 15) {
+      setErr("GSTIN must contain exactly 15 characters.");
+      return;
+    }
     setBusy(true);
     setErr("");
     try {
@@ -186,7 +190,8 @@ export default function PartnerRegistrationPublic() {
     setErr("");
     try {
       const result = await partnerRegistrationPublicApi.uploadDocument(token, documentKey, file);
-      applyContext(result);
+      setContext(result);
+      setForm(mapApiToForm(result.data));
     } catch (error) {
       setErr(error.response?.data?.detail || "Document upload failed");
     } finally {
@@ -227,7 +232,22 @@ export default function PartnerRegistrationPublic() {
     );
   }
 
-  const progress = context?.completion_percent ?? 0;
+  // Progress follows wizard position (Step N of 9), not field-fill counts from the API.
+  const progress = isSubmitted || success
+    ? 100
+    : Math.round((step / totalSteps) * 100);
+
+  const STEP_CHIP_COLORS = {
+    1: { idle: "bg-violet-100 text-violet-800", active: "bg-violet-700 text-white", done: "bg-violet-200 text-violet-900" },
+    2: { idle: "bg-sky-100 text-sky-800", active: "bg-sky-700 text-white", done: "bg-sky-200 text-sky-900" },
+    3: { idle: "bg-teal-100 text-teal-800", active: "bg-teal-700 text-white", done: "bg-teal-200 text-teal-900" },
+    4: { idle: "bg-emerald-100 text-emerald-800", active: "bg-emerald-700 text-white", done: "bg-emerald-200 text-emerald-900" },
+    5: { idle: "bg-lime-100 text-lime-800", active: "bg-lime-700 text-white", done: "bg-lime-200 text-lime-900" },
+    6: { idle: "bg-amber-100 text-amber-800", active: "bg-amber-700 text-white", done: "bg-amber-200 text-amber-900" },
+    7: { idle: "bg-orange-100 text-orange-800", active: "bg-orange-700 text-white", done: "bg-orange-200 text-orange-900" },
+    8: { idle: "bg-rose-100 text-rose-800", active: "bg-rose-700 text-white", done: "bg-rose-200 text-rose-900" },
+    9: { idle: "bg-indigo-100 text-indigo-800", active: "bg-indigo-700 text-white", done: "bg-indigo-200 text-indigo-900" },
+  };
 
   return (
     <div className="min-h-screen bg-slate-100 py-6 sm:py-10">
@@ -248,20 +268,19 @@ export default function PartnerRegistrationPublic() {
             </div>
           </div>
           <div className="mt-4 flex flex-wrap gap-2">
-            {(context.form_steps || []).map((item) => (
-              <span
-                key={item.step}
-                className={`rounded-full px-2.5 py-0.5 text-xs ${
-                  item.step === step
-                    ? "bg-sky-700 text-white"
-                    : item.step < step
-                      ? "bg-sky-100 text-sky-800"
-                      : "bg-slate-100 text-slate-500"
-                }`}
-              >
-                {item.step}. {item.title}
-              </span>
-            ))}
+            {(context.form_steps || []).map((item) => {
+              const colors = STEP_CHIP_COLORS[item.step] || STEP_CHIP_COLORS[1];
+              const tone =
+                item.step === step ? colors.active : item.step < step ? colors.done : colors.idle;
+              return (
+                <span
+                  key={item.step}
+                  className={`rounded-full px-2.5 py-0.5 text-xs ${tone}`}
+                >
+                  {item.step}. {item.title}
+                </span>
+              );
+            })}
           </div>
         </div>
 
@@ -362,7 +381,12 @@ export default function PartnerRegistrationPublic() {
               <div className="space-y-4">
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <Field label="GSTIN" required>
-                    <input value={form.gst_no} onChange={(e) => setField("gst_no", e.target.value.toUpperCase())} className={fieldClass} />
+                      <input
+                        value={form.gst_no}
+                        maxLength={15}
+                        onChange={(e) => setField("gst_no", e.target.value.toUpperCase())}
+                        className={fieldClass}
+                      />
                   </Field>
                   <Field label="PAN" required>
                     <input value={form.pan_no} onChange={(e) => setField("pan_no", e.target.value)} className={fieldClass} />

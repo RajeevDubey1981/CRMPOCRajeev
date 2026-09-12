@@ -1,14 +1,18 @@
+import logging
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.config import settings
 from app.models.partner_agreement import PartnerAgreement
 from app.models.partner_registration import PartnerRegistration
 from app.schemas.partner_agreement import (
     AgreementContext,
+    AgreementContextPublic,
     AgreementSendOtpOut,
+    AgreementSendOtpPublicOut,
     AgreementSignedOut,
     AgreementVerifyOtpIn,
 )
@@ -31,8 +35,58 @@ from app.services.partner_agreement import (
     verify_otp,
 )
 from app.services.vendor_accounts import ensure_partner_account
+from app.services.whatsapp_service import send_partner_agreement_otp_whatsapp
 
 router = APIRouter(prefix="/api/partner-agreements/public", tags=["partner-agreements-public"])
+logger = logging.getLogger(__name__)
+
+
+def _otp_channel() -> str:
+    return settings.normalized_partner_agreement_otp_channel
+
+
+def _mask_email(value: str | None) -> str:
+    raw = (value or "").strip()
+    if "@" not in raw:
+        return raw
+    local, domain = raw.split("@", 1)
+    if len(local) <= 2:
+        masked_local = local[:1] + "*"
+    else:
+        masked_local = local[:2] + "*" * max(1, len(local) - 2)
+    return f"{masked_local}@{domain}"
+
+
+def _mask_mobile(value: str | None) -> str:
+    digits = "".join(ch for ch in (value or "") if ch.isdigit())
+    if len(digits) <= 4:
+        return digits
+    return f"{'*' * max(0, len(digits) - 4)}{digits[-4:]}"
+
+
+def _otp_destination_label(registration: PartnerRegistration, agreement: PartnerAgreement) -> str:
+    if _otp_channel() == "whatsapp":
+        return _mask_mobile(registration.mobile)
+    return _mask_email(agreement.email)
+
+
+def _otp_method_label() -> str:
+    return "WhatsApp OTP" if _otp_channel() == "whatsapp" else "Email OTP"
+
+
+def _deliver_otp(registration: PartnerRegistration, agreement: PartnerAgreement, otp: str, expiry_minutes: int) -> None:
+    if _otp_channel() == "whatsapp":
+        delivered = send_partner_agreement_otp_whatsapp(to_mobile=registration.mobile or "", otp=otp)
+        if delivered:
+            return
+        logger.error("WhatsApp OTP delivery failed; falling back to email for agreement %s", agreement.agreement_no)
+
+    send_partner_agreement_otp_email(
+        to=agreement.email,
+        otp=otp,
+        agreement_no=agreement.agreement_no,
+        expiry_minutes=expiry_minutes,
+    )
 
 
 def _client_ip(request: Request) -> str | None:
@@ -56,11 +110,11 @@ def _registration(db: Session, agreement: PartnerAgreement) -> PartnerRegistrati
     return row
 
 
-@router.get("/{token}", response_model=AgreementContext)
+@router.get("/{token}", response_model=AgreementContextPublic)
 def agreement_context(token: str, db: Session = Depends(get_db)):
     agreement = _get_agreement(db, token)
     registration = _registration(db, agreement)
-    return AgreementContext(
+    return AgreementContextPublic(
         agreement_no=agreement.agreement_no,
         agreement_version=agreement.agreement_version,
         agreement_title=AGREEMENT_TITLE,
@@ -68,22 +122,31 @@ def agreement_context(token: str, db: Session = Depends(get_db)):
         agreement_text=AGREEMENT_TEXT,
         registration_no=registration.registration_no,
         partner_name=registration.name or registration.contact_person_name,
-        email=agreement.email,
+        email=_mask_email(agreement.email),
+        otp_channel=_otp_channel(),
+        otp_destination=_otp_destination_label(registration, agreement),
         is_signed=agreement.signed_at is not None,
         signed_at=agreement.signed_at,
         resend_wait_seconds=resend_wait_seconds(agreement),
     )
 
 
-@router.post("/{token}/send-otp", response_model=AgreementSendOtpOut)
+@router.post("/{token}/send-otp", response_model=AgreementSendOtpPublicOut)
 def send_agreement_otp(
     token: str,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
 ):
     agreement = _get_agreement(db, token)
+    registration = _registration(db, agreement)
     if agreement.signed_at is not None:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "This agreement has already been signed")
+
+    if _otp_channel() == "whatsapp" and not (registration.mobile or "").strip():
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "WhatsApp OTP is enabled but no mobile number is available for this partner registration",
+        )
 
     wait = resend_wait_seconds(agreement)
     if wait > 0:
@@ -101,16 +164,26 @@ def send_agreement_otp(
     db.commit()
     db.refresh(agreement)
 
-    background_tasks.add_task(
-        send_partner_agreement_otp_email,
-        to=agreement.email,
-        otp=otp,
-        agreement_no=agreement.agreement_no,
-        expiry_minutes=expiry_minutes,
-    )
-    return AgreementSendOtpOut(
-        message=f"OTP sent to {agreement.email}",
+    if _otp_channel() == "whatsapp":
+        background_tasks.add_task(
+            _deliver_otp,
+            registration=registration,
+            agreement=agreement,
+            otp=otp,
+            expiry_minutes=expiry_minutes,
+        )
+    else:
+        background_tasks.add_task(
+            send_partner_agreement_otp_email,
+            to=agreement.email,
+            otp=otp,
+            agreement_no=agreement.agreement_no,
+            expiry_minutes=expiry_minutes,
+        )
+    return AgreementSendOtpPublicOut(
+        message=f"OTP sent via {_otp_method_label()} to {_otp_destination_label(registration, agreement)}",
         resend_wait_seconds=resend_wait_seconds(agreement),
+        otp_channel=_otp_channel(),
     )
 
 
@@ -173,4 +246,5 @@ def verify_agreement_otp(
         email=agreement.email,
         signed_at=agreement.signed_at,
         ip_address=agreement.ip_address,
+        method=_otp_method_label(),
     )

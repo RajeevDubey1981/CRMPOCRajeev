@@ -98,40 +98,40 @@ def _required_document_keys(row: PartnerRegistration) -> set[str]:
     return keys
 
 
+# Public wizard has 9 steps (8 data steps + declaration).
+TOTAL_FORM_STEPS = 9
+
+
 def compute_form_progress(row: PartnerRegistration) -> tuple[int, int]:
-    filled = 0
-    total = 0
     current_step = 1
 
     for definition in FORM_STEP_DEFINITIONS:
         step_filled = 0
-        step_total = len(definition["fields"])
         if definition["step"] == 8:
-            step_total = len(_required_document_keys(row))
-            for key in _required_document_keys(row):
-                path = getattr(row, f"{key}_path", None)
-                if _is_filled(path):
+            required_keys = _required_document_keys(row)
+            step_total = len(required_keys)
+            for key in required_keys:
+                if _is_filled(getattr(row, f"{key}_path", None)):
                     step_filled += 1
-                    filled += 1
-                total += 1
         else:
+            step_total = len(definition["fields"])
             for field in definition["fields"]:
                 if _is_filled(getattr(row, field, None)):
                     step_filled += 1
-                    filled += 1
-                total += 1
 
         if step_filled == step_total and step_total > 0:
-            current_step = min(definition["step"] + 1, len(FORM_STEP_DEFINITIONS))
+            # Advance past completed data steps; declaration is step 9.
+            current_step = min(definition["step"] + 1, TOTAL_FORM_STEPS)
         elif step_filled > 0:
             current_step = definition["step"]
             break
 
     if row.form_status == "Submitted":
-        current_step = len(FORM_STEP_DEFINITIONS)
+        current_step = TOTAL_FORM_STEPS
         percent = 100
     else:
-        percent = round((filled / total) * 100) if total else 0
+        # Align % with wizard step (e.g. step 3 of 9 → 33%), not raw field counts.
+        percent = round((current_step / TOTAL_FORM_STEPS) * 100)
 
     return percent, current_step
 
@@ -231,6 +231,10 @@ def apply_step_fields(row: PartnerRegistration, step: int, data: dict) -> None:
             continue
         if field == "email" and value is not None:
             value = str(value).strip().lower()
+        if field == "gst_no" and value is not None:
+            value = str(value).strip().upper()
+            if value and len(value) != 15:
+                raise ValueError("GSTIN must contain exactly 15 characters")
         if isinstance(value, str):
             value = value.strip() or None
         setattr(row, field, value)

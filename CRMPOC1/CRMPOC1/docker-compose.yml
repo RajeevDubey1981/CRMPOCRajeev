@@ -12,6 +12,7 @@ services:
       UPLOAD_DIR: ${UPLOAD_DIR:-/app/uploads}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173}
       APP_PUBLIC_URL: ${APP_PUBLIC_URL:-http://localhost:5173}
+      PARTNER_AGREEMENT_OTP_CHANNEL: ${PARTNER_AGREEMENT_OTP_CHANNEL:-email}
       EMAIL_ENABLED: ${EMAIL_ENABLED:-false}
       SMTP_HOST: ${SMTP_HOST:-smtp.gmail.com}
       SMTP_PORT: ${SMTP_PORT:-587}
@@ -21,13 +22,20 @@ services:
       SMTP_FROM_NAME: ${SMTP_FROM_NAME:-Indcool Service}
       SMTP_USE_TLS: ${SMTP_USE_TLS:-true}
       SMTP_USE_AUTH: ${SMTP_USE_AUTH:-true}
+      WHATSAPP_ENABLED: ${WHATSAPP_ENABLED:-false}
+      WA_PHONE_NUMBER_ID: ${WA_PHONE_NUMBER_ID:-}
+      WA_ACCESS_TOKEN: ${WA_ACCESS_TOKEN:-}
+      WA_VERIFY_TOKEN: ${WA_VERIFY_TOKEN:-}
+      WA_TEMPLATE_NAME: ${WA_TEMPLATE_NAME:-otp_verification}
+      WA_TEMPLATE_LANGUAGE: ${WA_TEMPLATE_LANGUAGE:-en_US}
       # Configure these with credentials from an authorised GST Suvidha
       # Provider. GST's public web search is CAPTCHA protected and is not a
       # server-to-server API.
       GST_PROVIDER_URL: ${GST_PROVIDER_URL:-}
       GST_PROVIDER_API_KEY: ${GST_PROVIDER_API_KEY:-}
+      GST_PROVIDER_API_SECRET: ${GST_PROVIDER_API_SECRET:-}
       GST_PROVIDER_AUTHORIZATION: ${GST_PROVIDER_AUTHORIZATION:-}
-      GST_LOOKUP_ENABLED: ${GST_LOOKUP_ENABLED:-false}
+      GST_LOOKUP_ENABLED: ${GST_LOOKUP_ENABLED:-true}
       SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL:-admin@indcool.com}
       SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-admin123}
       SEED_ADMIN_NAME: ${SEED_ADMIN_NAME:-Administrator}

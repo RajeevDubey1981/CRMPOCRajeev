@@ -4,9 +4,10 @@ from __future__ import annotations
 import re
 import threading
 import time
-import os
 
 import requests
+
+from app.config import settings
 
 
 class GSTINValidator:
@@ -16,11 +17,6 @@ class GSTINValidator:
     # lookup, configure a GST Suvidha Provider (GSP) endpoint instead.  The
     # endpoint must accept POST JSON: {"gstin": "..."} and return the GSTN
     # taxpayer payload (optionally wrapped in one or more `data` objects).
-    PROVIDER_URL_ENV = "GST_PROVIDER_URL"
-    PROVIDER_API_KEY_ENV = "GST_PROVIDER_API_KEY"
-    PROVIDER_API_SECRET_ENV = "GST_PROVIDER_API_SECRET"
-    PROVIDER_AUTH_ENV = "GST_PROVIDER_AUTHORIZATION"
-    LOOKUP_ENABLED_ENV = "GST_LOOKUP_ENABLED"
 
     # sandbox.co.in issues short-lived bearer tokens from a separate
     # authenticate endpoint keyed by api key + api secret; cache the token
@@ -135,15 +131,8 @@ class GSTINValidator:
             return fmt
 
         gstin = fmt["gstin"]
-        lookup_enabled = os.getenv(self.LOOKUP_ENABLED_ENV, "false").strip().lower()
-        if lookup_enabled not in {"1", "true", "yes", "on"}:
-            return {
-                "valid": False,
-                "gstin": gstin,
-                "error": "GST live validation is currently disabled.",
-            }
-
-        provider_url = os.getenv(self.PROVIDER_URL_ENV, "").strip()
+        # Live GST lookup is always attempted when provider credentials exist.
+        provider_url = (settings.gst_provider_url or "").strip()
         if not provider_url:
             return {
                 "valid": False,
@@ -151,9 +140,9 @@ class GSTINValidator:
                 "error": "GST live lookup is not configured. Set GST_PROVIDER_URL and provider credentials.",
             }
 
-        api_key = os.getenv(self.PROVIDER_API_KEY_ENV, "").strip()
-        api_secret = os.getenv(self.PROVIDER_API_SECRET_ENV, "").strip()
-        authorization = os.getenv(self.PROVIDER_AUTH_ENV, "").strip()
+        api_key = (settings.gst_provider_api_key or "").strip()
+        api_secret = (settings.gst_provider_api_secret or "").strip()
+        authorization = (settings.gst_provider_authorization or "").strip()
 
         headers = {"Accept": "application/json", "Content-Type": "application/json"}
         if api_key:

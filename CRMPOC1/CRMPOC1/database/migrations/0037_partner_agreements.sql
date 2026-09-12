@@ -6,8 +6,9 @@
 
 -- ========== CREATE TABLE ==========
 CREATE TABLE IF NOT EXISTS `partner_agreements` (
-  `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
-  `registration_id` INT UNSIGNED NOT NULL,
+  `id` INT NOT NULL AUTO_INCREMENT,
+  -- Must match partner_registrations.id (signed INT).
+  `registration_id` INT NOT NULL,
   `agreement_no` VARCHAR(50) NOT NULL,
   `agreement_version` VARCHAR(10) NOT NULL DEFAULT '1.0',
   `access_token` VARCHAR(64) NOT NULL,
@@ -50,65 +51,65 @@ ALTER TABLE `partner_agreements`
   COMMENT = 'Digital signing of service agreements via Email OTP. One row per registration, stores OTP state and signing timestamps.';
 
 ALTER TABLE `partner_agreements`
-  MODIFY COLUMN `id` INT UNSIGNED NOT NULL AUTO_INCREMENT
-  COMMENT = 'Primary key';
+  MODIFY COLUMN `id` INT NOT NULL AUTO_INCREMENT
+  COMMENT 'Primary key';
 
 ALTER TABLE `partner_agreements`
-  MODIFY COLUMN `registration_id` INT UNSIGNED NOT NULL
-  COMMENT = 'Foreign key to partner_registrations';
+  MODIFY COLUMN `registration_id` INT NOT NULL
+  COMMENT 'Foreign key to partner_registrations';
 
 ALTER TABLE `partner_agreements`
   MODIFY COLUMN `agreement_no` VARCHAR(50) NOT NULL
-  COMMENT = 'Unique agreement reference number (AGR-YYYY-XXXXX format)';
+  COMMENT 'Unique agreement reference number (AGR-YYYY-XXXXX format)';
 
 ALTER TABLE `partner_agreements`
   MODIFY COLUMN `agreement_version` VARCHAR(10) NOT NULL DEFAULT '1.0'
-  COMMENT = 'Agreement text version (1.0, etc.) for historical tracking';
+  COMMENT 'Agreement text version (1.0, etc.) for historical tracking';
 
 ALTER TABLE `partner_agreements`
   MODIFY COLUMN `access_token` VARCHAR(64) NOT NULL
-  COMMENT = 'URL-safe token for public access to signing page (urlsafe base64)';
+  COMMENT 'URL-safe token for public access to signing page (urlsafe base64)';
 
 ALTER TABLE `partner_agreements`
   MODIFY COLUMN `email` VARCHAR(255) NOT NULL
-  COMMENT = 'Email address from partner registration (where OTP is sent)';
+  COMMENT 'Email address from partner registration (where OTP is sent)';
 
 ALTER TABLE `partner_agreements`
   MODIFY COLUMN `signed_at` DATETIME(6) NULL
-  COMMENT = 'Timestamp when partner successfully signed agreement via OTP';
+  COMMENT 'Timestamp when partner successfully signed agreement via OTP';
 
 ALTER TABLE `partner_agreements`
   MODIFY COLUMN `ip_address` VARCHAR(45) NULL
-  COMMENT = 'IP address of client when signing (IPv4 or IPv6)';
+  COMMENT 'IP address of client when signing (IPv4 or IPv6)';
 
 ALTER TABLE `partner_agreements`
   MODIFY COLUMN `user_agent` LONGTEXT NULL
-  COMMENT = 'HTTP User-Agent header at signing time';
+  COMMENT 'HTTP User-Agent header at signing time';
 
 ALTER TABLE `partner_agreements`
   MODIFY COLUMN `otp_code` VARCHAR(10) NULL
-  COMMENT = 'Current 6-digit OTP (cleared after successful verification or expiry)';
+  COMMENT 'Current 6-digit OTP (cleared after successful verification or expiry)';
 
 ALTER TABLE `partner_agreements`
   MODIFY COLUMN `otp_expires_at` DATETIME(6) NULL
-  COMMENT = 'When the current OTP expires (10 minutes from issue)';
+  COMMENT 'When the current OTP expires (10 minutes from issue)';
 
 ALTER TABLE `partner_agreements`
   MODIFY COLUMN `otp_attempts` INT NOT NULL DEFAULT 0
-  COMMENT = 'Failed OTP entry attempts (max 3, then lockout)';
+  COMMENT 'Failed OTP entry attempts (max 3, then lockout)';
 
 ALTER TABLE `partner_agreements`
   MODIFY COLUMN `otp_sent_at` DATETIME(6) NULL
-  COMMENT = 'Timestamp of last OTP send (used for resend cooldown)';
+  COMMENT 'Timestamp of last OTP send (used for resend cooldown)';
 
 ALTER TABLE `partner_agreements`
   MODIFY COLUMN `otp_send_count` INT NOT NULL DEFAULT 0
-  COMMENT = 'Total number of OTP sends for this agreement (max 5)';
+  COMMENT 'Total number of OTP sends for this agreement (max 5)';
 
 ALTER TABLE `partner_agreements`
   MODIFY COLUMN `created_at` DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6)
-  COMMENT = 'Row creation timestamp (when admin approved the registration)';
+  COMMENT 'Row creation timestamp (when admin approved the registration)';
 
 ALTER TABLE `partner_agreements`
   MODIFY COLUMN `updated_at` DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6)
-  COMMENT = 'Last modification timestamp';
+  COMMENT 'Last modification timestamp';

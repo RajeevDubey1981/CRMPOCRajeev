@@ -60,6 +60,18 @@ const COMPARISON_ROWS = [
   { label: "Business Type", vendorField: "business_type", gstField: (g) => g.business_type_mapped },
 ];
 
+const REVIEW_STEPS = [
+  { title: "Partner Category", fields: [["Partner Type", "partner_type"], ["Business Type", "business_type"]] },
+  { title: "Firm Details", fields: [["Firm / Company Name", "name"], ["Year Established", "year_of_establishment"], ["Annual Turnover", "annual_turnover"], ["GeM Seller ID", "gem_seller_id"]] },
+  { title: "Contact Person", fields: [["Contact Person", "contact_person_name"], ["Designation", "contact_designation"], ["Mobile", "mobile"], ["Alternate Mobile", "alternate_mobile"], ["Email", "email"], ["Website", "website"]] },
+  { title: "Address", fields: [["Complete Address", "firm_address"], ["City", "city"], ["District", "district"], ["State", "state"], ["Pincode", "pincode"]] },
+  { title: "Tax Registration", fields: [["GSTIN", "gst_no"], ["PAN", "pan_no"], ["Aadhaar", "aadhaar_no"], ["Udyam / MSME No.", "udyam_no"], ["CIN", "cin_no"]] },
+  { title: "Bank Details", fields: [["Bank Name", "bank_name"], ["Branch", "bank_branch"], ["Account Holder", "account_holder_name"], ["Account Number", "account_number"], ["IFSC", "ifsc_code"]] },
+  { title: "Operations", fields: [["Operating States", "operating_states"], ["Product Categories", "product_categories"], ["Remarks", "remarks"]] },
+  { title: "Documents", fields: [] },
+  { title: "Declaration", fields: [["Declaration Accepted", "declaration_accepted"]] },
+];
+
 function normalize(value) {
   return String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
 }
@@ -80,6 +92,7 @@ export default function PartnerRegistrationReview() {
   const [saving, setSaving] = useState(null);
   const [confirmReject, setConfirmReject] = useState(false);
   const [agreement, setAgreement] = useState(null);
+  const [reviewStep, setReviewStep] = useState(0);
 
   async function load() {
     setLoading(true);
@@ -229,6 +242,72 @@ export default function PartnerRegistrationReview() {
         </div>
 
         <PartnerOnboardingStepper steps={detail.onboarding_steps} />
+      </div>
+
+      <div className="rounded-lg border border-slate-200 bg-white p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <div className="text-sm font-semibold text-slate-900">Form review</div>
+            <div className="text-xs text-slate-500">Review the submitted information in the same order as the partner onboarding form.</div>
+          </div>
+          <div className="text-sm font-medium text-slate-500">Step {reviewStep + 1} of {REVIEW_STEPS.length}</div>
+        </div>
+
+        <div className="mt-4 flex flex-wrap gap-2">
+          {REVIEW_STEPS.map((step, index) => (
+            <button
+              key={step.title}
+              type="button"
+              onClick={() => setReviewStep(index)}
+              className={`rounded-md px-3 py-2 text-xs font-medium ${reviewStep === index ? "bg-sky-700 text-white" : "border border-slate-200 text-slate-600 hover:bg-slate-50"}`}
+            >
+              {index + 1}. {step.title}
+            </button>
+          ))}
+        </div>
+
+        <div className="mt-4 rounded-md border border-slate-200 bg-slate-50 p-4">
+          <h2 className="text-base font-semibold text-slate-900">{REVIEW_STEPS[reviewStep].title}</h2>
+          {reviewStep === 7 ? (
+            <div className="mt-3 flex flex-wrap gap-2">
+              {PARTNER_DOCUMENTS.map((doc) => (
+                <DocumentLink key={doc.key} label={doc.label} path={detail[`${doc.key}_path`]} />
+              ))}
+              {!PARTNER_DOCUMENTS.some((doc) => detail[`${doc.key}_path`]) && (
+                <span className="text-sm text-slate-500">No documents uploaded.</span>
+              )}
+            </div>
+          ) : (
+            <div className="mt-3 grid grid-cols-1 gap-4 text-sm md:grid-cols-2">
+              {REVIEW_STEPS[reviewStep].fields.map(([label, key]) => (
+                <DetailField
+                  key={key}
+                  label={label}
+                  value={key === "declaration_accepted" ? (detail[key] ? "Accepted" : "Not accepted") : detail[key]}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="mt-4 flex justify-between gap-2">
+          <button
+            type="button"
+            disabled={reviewStep === 0}
+            onClick={() => setReviewStep((current) => current - 1)}
+            className="rounded-md border border-slate-300 px-4 py-2 text-sm disabled:opacity-50"
+          >
+            Previous step
+          </button>
+          <button
+            type="button"
+            disabled={reviewStep === REVIEW_STEPS.length - 1}
+            onClick={() => setReviewStep((current) => current + 1)}
+            className="rounded-md bg-sky-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+          >
+            Next step
+          </button>
+        </div>
       </div>
 
       <div className="rounded-lg border border-slate-200 bg-white p-4">

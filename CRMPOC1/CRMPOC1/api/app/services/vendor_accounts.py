@@ -11,7 +11,7 @@ from app.security import hash_password
 
 def _next_vendor_code(db: Session) -> str:
     rows = db.scalars(
-        select(Vendor.vendor_code).where(Vendor.deleted_at.is_(None)).order_by(Vendor.id.desc())
+        select(Vendor.vendor_code).order_by(Vendor.id.desc())
     ).all()
     max_num = 0
     for code in rows:
@@ -27,11 +27,11 @@ def ensure_vendor_for_user(db: Session, user: User) -> Vendor | None:
 
     vendor = db.scalar(
         select(Vendor).where(
-            Vendor.deleted_at.is_(None),
             Vendor.email == user.email,
         )
     )
     if vendor is not None:
+        vendor.deleted_at = None
         if not vendor.is_active:
             vendor.is_active = True
         if not vendor.contact_name:
@@ -53,7 +53,9 @@ def ensure_vendor_for_user(db: Session, user: User) -> Vendor | None:
 
 def ensure_partner_account(db: Session, registration: PartnerRegistration) -> Vendor:
     email = registration.email.strip().lower()
-    user = db.scalar(select(User).where(User.email == email, User.deleted_at.is_(None)))
+    # Email is globally unique, including for soft-deleted users. Reuse and
+    # reactivate an existing row instead of attempting a duplicate insert.
+    user = db.scalar(select(User).where(User.email == email))
     if user is None:
         user = User(
             name=registration.name or registration.contact_person_name or email,
@@ -69,6 +71,7 @@ def ensure_partner_account(db: Session, registration: PartnerRegistration) -> Ve
     elif user.role != "vendor":
         raise ValueError(f"A non-vendor user already exists for {email}")
     else:
+        user.deleted_at = None
         user.is_active = True
 
     vendor = ensure_vendor_for_user(db, user)

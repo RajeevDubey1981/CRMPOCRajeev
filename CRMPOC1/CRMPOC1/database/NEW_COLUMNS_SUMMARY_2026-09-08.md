@@ -25,7 +25,7 @@ One new table created today: `partner_agreements` for OTP-signed digital service
 #### Relationship Columns (1)
 | Column | Type | Nullable | Default | Index | Purpose |
 |--------|------|----------|---------|-------|---------|
-| `registration_id` | INT UNSIGNED | NO | — | YES | Foreign key → partner_registrations.id |
+| `registration_id` | INT | NO | — | YES | Foreign key → partner_registrations.id |
 
 #### Agreement Metadata Columns (3)
 | Column | Type | Nullable | Default | Index | Purpose |
@@ -125,7 +125,7 @@ partner_registrations.id
 | Column | Size | Notes |
 |--------|------|-------|
 | `id` | 4 bytes | AUTO_INCREMENT |
-| `registration_id` | 4 bytes | INT UNSIGNED |
+| `registration_id` | 4 bytes | INT |
 | `agreement_no` | ~30 bytes | AGR-2026-00001 (50 char max) |
 | `agreement_version` | ~3 bytes | '1.0' (10 char max) |
 | `access_token` | ~50 bytes | 64 char max |

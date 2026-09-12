@@ -62,7 +62,7 @@ class PartnerInviteCreate(BaseModel):
     partner_type: Literal["Gem Partner", "Partner", "Distributor", "Service Partner", "Retailer"]
     email: EmailStr
     contact_person_name: str | None = Field(default=None, max_length=255)
-    mobile: str | None = Field(default=None, max_length=20)
+    mobile: str = Field(min_length=10, max_length=20)
     name: str | None = Field(default=None, max_length=255)
 
 

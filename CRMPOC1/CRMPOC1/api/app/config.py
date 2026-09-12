@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     upload_dir: str = "/app/uploads"
     cors_origins: str = "http://localhost:5173"
     app_public_url: str = ""
+    partner_agreement_otp_channel: str = "email"
 
     email_enabled: bool = False
     smtp_host: str = "smtp.gmail.com"
@@ -31,9 +32,23 @@ class Settings(BaseSettings):
     smtp_use_tls: bool = True
     smtp_use_auth: bool = True
 
+    whatsapp_enabled: bool = False
+    wa_phone_number_id: str = ""
+    wa_access_token: str = ""
+    wa_verify_token: str = ""
+    wa_template_name: str = "otp_verification"
+    wa_template_language: str = "en_US"
+
     seed_admin_email: str = "admin@indcool.com"
     seed_admin_password: str = "admin123"
     seed_admin_name: str = "Administrator"
+
+    # GST Suvidha Provider (sandbox.co.in or similar). Always on by default.
+    gst_lookup_enabled: bool = True
+    gst_provider_url: str = "https://api.sandbox.co.in/gst/compliance/public/gstin/search"
+    gst_provider_api_key: str = ""
+    gst_provider_api_secret: str = ""
+    gst_provider_authorization: str = ""
 
     def _resolve_sqlserver_url(self) -> str:
         raw = (self.sqlserver_database_url or "").strip()
@@ -101,6 +116,11 @@ class Settings(BaseSettings):
     @property
     def cors_origin_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+
+    @property
+    def normalized_partner_agreement_otp_channel(self) -> str:
+        channel = (self.partner_agreement_otp_channel or "email").strip().lower()
+        return channel if channel in {"email", "whatsapp"} else "email"
 
 
 settings = Settings()

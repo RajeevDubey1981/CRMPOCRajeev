@@ -122,6 +122,7 @@ export default function PartnerRegistrationList() {
   const [inviteOpen, setInviteOpen] = useState(false);
   const [inviteForm, setInviteForm] = useState(EMPTY_INVITE);
   const [inviteResult, setInviteResult] = useState(null);
+  const [inviteError, setInviteError] = useState("");
 
   const params = useMemo(() => ({
     page,
@@ -173,6 +174,7 @@ export default function PartnerRegistrationList() {
     event.preventDefault();
     setSaving(true);
     setErr("");
+    setInviteError("");
     try {
       const result = await partnerRegistrationsApi.invite({
         partner_type: inviteForm.partner_type,
@@ -185,7 +187,8 @@ export default function PartnerRegistrationList() {
       setInviteForm(EMPTY_INVITE);
       await load();
     } catch (error) {
-      setErr(error.response?.data?.detail || "Failed to send invitation");
+      const detail = error.response?.data?.detail;
+      setInviteError(Array.isArray(detail) ? detail.map((item) => item.msg).join("; ") : detail || "Failed to send invitation");
     } finally {
       setSaving(false);
     }
@@ -247,7 +250,7 @@ export default function PartnerRegistrationList() {
         </div>
         <button
           type="button"
-          onClick={() => { setInviteOpen(true); setInviteResult(null); }}
+          onClick={() => { setInviteOpen(true); setInviteResult(null); setInviteError(""); }}
           className="rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700"
         >
           Send onboarding invite
@@ -424,6 +427,11 @@ export default function PartnerRegistrationList() {
           </div>
         ) : (
           <form className="space-y-3" onSubmit={sendInvite}>
+            {inviteError && (
+              <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+                {inviteError}
+              </div>
+            )}
             <div>
               <label className="mb-1 block text-sm font-medium text-slate-700">Partner type</label>
               <select
@@ -442,8 +450,8 @@ export default function PartnerRegistrationList() {
                 type="email"
                 required
                 value={inviteForm.email}
-                onChange={(e) => setInviteForm((f) => ({ ...f, email: e.target.value }))}
-                className={fieldClass}
+                onChange={(e) => { setInviteError(""); setInviteForm((f) => ({ ...f, email: e.target.value })); }}
+                className={`${fieldClass} ${inviteError.toLowerCase().includes("email") ? "border-rose-500" : ""}`}
               />
             </div>
             <div>
@@ -464,11 +472,15 @@ export default function PartnerRegistrationList() {
                 />
               </div>
               <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">Mobile (optional)</label>
+                <label className="mb-1 block text-sm font-medium text-slate-700">Mobile *</label>
                 <input
+                  type="tel"
+                  required
+                  minLength={10}
+                  maxLength={20}
                   value={inviteForm.mobile}
-                  onChange={(e) => setInviteForm((f) => ({ ...f, mobile: e.target.value }))}
-                  className={fieldClass}
+                  onChange={(e) => { setInviteError(""); setInviteForm((f) => ({ ...f, mobile: e.target.value })); }}
+                  className={`${fieldClass} ${inviteError.toLowerCase().includes("mobile") ? "border-rose-500" : ""}`}
                 />
               </div>
             </div>

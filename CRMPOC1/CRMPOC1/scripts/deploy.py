@@ -1,4 +1,4 @@
-"""Interactive deploy: UI build + API upload + DB migrations (local or production).
+"""Interactive deploy: native local startup or production UI/API deployment.
 
 Usage (from project root):
   py scripts/deploy.py
@@ -12,6 +12,8 @@ import os
 import shutil
 import subprocess
 import sys
+import time
+import urllib.request
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -19,6 +21,7 @@ UI_DIR = ROOT / "ui"
 UI_DIST = UI_DIR / "dist"
 API_DIR = ROOT / "api"
 CONFIG_FILE = Path(__file__).resolve().parent / "deploy.env"
+ROOT_ENV_FILE = ROOT / ".env"
 
 API_SKIP_DIRS = {"venv", "__pycache__", ".pytest_cache", ".mypy_cache", "uploads", ".git"}
 API_SKIP_FILES = {".env", ".env.local", "uvicorn.stdout.log"}
@@ -53,6 +56,88 @@ def run_local(cmd: list[str], *, cwd: Path | None = None, check: bool = True, en
     if env:
         run_env.update(env)
     return subprocess.run(cmd, cwd=cwd or ROOT, check=check, env=run_env)
+
+
+def stop_port_processes(ports: tuple[int, ...]) -> None:
+    """Stop processes holding local deployment ports before starting Docker."""
+    if sys.platform == "win32":
+        netstat = subprocess.run(
+            ["netstat", "-ano", "-p", "tcp"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        pids: set[str] = set()
+        for line in netstat.stdout.splitlines():
+            parts = line.split()
+            if len(parts) < 5 or parts[3] != "LISTENING":
+                continue
+            local_address = parts[1]
+            if any(local_address.endswith(f":{port}") for port in ports):
+                pids.add(parts[4])
+        for pid in sorted(pids):
+            print(f"Stopping process {pid} holding a local deployment port")
+            subprocess.run(["taskkill", "/PID", pid, "/T", "/F"], check=False, capture_output=True)
+        return
+
+    for port in ports:
+        if shutil.which("fuser"):
+            subprocess.run(["fuser", "-k", f"{port}/tcp"], check=False)
+        elif shutil.which("lsof"):
+            result = subprocess.run(
+                ["lsof", "-ti", f"tcp:{port}"],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            for pid in result.stdout.split():
+                subprocess.run(["kill", "-9", pid], check=False)
+
+
+def wait_for_http(url: str, timeout_seconds: int = 60) -> None:
+    deadline = time.monotonic() + timeout_seconds
+    last_error: Exception | None = None
+    while time.monotonic() < deadline:
+        try:
+            with urllib.request.urlopen(url, timeout=5) as response:
+                if response.status < 400:
+                    return
+        except Exception as exc:  # Service startup is expected to fail briefly.
+            last_error = exc
+        time.sleep(1)
+    raise SystemExit(f"Timed out waiting for {url}: {last_error}")
+
+
+def load_root_env() -> dict[str, str]:
+    env = os.environ.copy()
+    if not ROOT_ENV_FILE.is_file():
+        return env
+    for raw_line in ROOT_ENV_FILE.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        env[key.strip()] = value.strip()
+    if env.get("MYSQL_DATABASE_URL"):
+        env["MYSQL_DATABASE_URL"] = env["MYSQL_DATABASE_URL"].replace("host.docker.internal", "127.0.0.1")
+    env.update(
+        {
+            "API_PORT": "8010",
+            "UI_PORT": "5173",
+            "CORS_ORIGINS": "http://localhost:5173",
+            "APP_PUBLIC_URL": "http://localhost:5173",
+            "VITE_API_BASE_URL": "http://localhost:8010",
+        }
+    )
+    return env
+
+
+def start_local_process(cmd: list[str], cwd: Path, env: dict[str, str], label: str) -> None:
+    print(f"Starting {label}: {' '.join(cmd)}")
+    kwargs: dict[str, object] = {"cwd": cwd, "env": env}
+    if sys.platform == "win32":
+        kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+    subprocess.Popen(cmd, **kwargs)
 
 
 def npm_executable() -> str:
@@ -91,19 +176,41 @@ def build_ui(*, for_production: bool = False) -> None:
 
 
 def deploy_local() -> None:
-    print("\n=== Local deploy (Docker) ===")
-    if not shutil.which("docker"):
-        raise SystemExit("Docker not found. Install Docker Desktop or choose Production deploy.")
+    print("\n=== Local deploy (native: UI 5173 / API 8010) ===")
+    local_env = load_root_env()
 
-    build_ui()
-    run_local(["docker", "compose", "up", "--build", "-d"])
+    print("\n=== Stop existing local services ===")
+    stop_port_processes((5173, 8010))
+
+    api_python = API_DIR / ("venv\\Scripts\\python.exe" if sys.platform == "win32" else "venv/bin/python")
+    if not api_python.is_file():
+        raise SystemExit(f"API virtual environment not found: {api_python}")
+    if not (UI_DIR / "node_modules").is_dir():
+        run_local([npm_executable(), "install"], cwd=UI_DIR, env=local_env)
+
     print("\n=== Local database migrations ===")
-    run_local(["docker", "compose", "exec", "-T", "api", "alembic", "upgrade", "head"])
+    run_local([str(api_python), "-m", "alembic", "-c", "alembic.ini", "upgrade", "head"], cwd=API_DIR, env=local_env)
     print("\n=== Local seed (safe bootstrap) ===")
-    run_local(["docker", "compose", "exec", "-T", "api", "python", "-m", "app.seed"], check=False)
+    run_local([str(api_python), "-m", "app.seed"], cwd=API_DIR, env=local_env, check=False)
+
+    start_local_process(
+        [str(api_python), "-m", "uvicorn", "app.main:app", "--reload", "--host", "127.0.0.1", "--port", "8010"],
+        API_DIR,
+        local_env,
+        "API",
+    )
+    start_local_process(
+        [npm_executable(), "run", "dev", "--", "--host", "127.0.0.1", "--port", "5173"],
+        UI_DIR,
+        local_env,
+        "UI",
+    )
+    print("\n=== Verify local services ===")
+    wait_for_http("http://localhost:8010/health")
+    wait_for_http("http://localhost:5173")
     print("\nLocal deploy complete.")
     print("  UI:  http://localhost:5173")
-    print("  API: http://localhost:8000/docs")
+    print("  API: http://localhost:8010/docs")
 
 
 def iter_api_files() -> list[Path]:
@@ -248,7 +355,7 @@ def deploy_production(config: dict[str, str]) -> None:
 def prompt_target() -> str:
     print("\nIndcool CRM — Deploy")
     print("====================")
-    print("  1) Local   (Docker: UI build + API + DB migrations)")
+    print("  1) Local   (native API 8010 + UI 5173 + DB migrations)")
     print("  2) Production (UI build + API upload + DB migrations + restart)")
     print("  q) Quit")
     while True:
