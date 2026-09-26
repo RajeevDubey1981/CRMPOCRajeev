@@ -1987,8 +1987,10 @@ def cancel_service_completion(service_id: int, db: Session = Depends(get_db), us
         vendor = _active_vendor_for_user(db, user)
         if vendor is None or service.assigned_vendor_id != vendor.id:
             raise HTTPException(status.HTTP_403_FORBIDDEN, "This request is not assigned to your vendor")
-    if service.status != "Service Completed":
+    if service.status == "Service Completed":
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Cancel payment request before cancelling completion")
+    if service.status != "Completion Pending Approval":
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Only a pending or submitted completion can be cancelled")
 
     latest_completion = db.scalar(
         select(ServiceCompletion)

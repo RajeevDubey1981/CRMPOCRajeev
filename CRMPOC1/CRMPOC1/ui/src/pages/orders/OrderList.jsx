@@ -21,11 +21,25 @@ const STATUS_BADGE = {
 function StatusBadge({ value }) {
   const cls = STATUS_BADGE[value] || "bg-slate-100 text-slate-600";
   return (
-    <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${cls}`}>
+    <span className={`inline-block whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs font-semibold leading-snug ${cls}`}>
       {value}
     </span>
   );
 }
+
+const ORDER_TABLE_COL = {
+  id: "w-14 whitespace-nowrap px-3 py-2",
+  orderNo: "min-w-[12rem] whitespace-nowrap px-3 py-2",
+  date: "whitespace-nowrap px-3 py-2",
+  oem: "hidden max-w-[7rem] truncate px-3 py-2 lg:table-cell",
+  status: "min-w-[7.5rem] whitespace-nowrap px-3 py-2",
+  vendor: "max-w-[9rem] truncate px-3 py-2",
+  courier: "hidden max-w-[6rem] truncate px-3 py-2 xl:table-cell",
+  customer: "min-w-[8rem] max-w-[11rem] truncate px-3 py-2",
+  city: "hidden max-w-[6rem] truncate px-3 py-2 md:table-cell",
+  exp: "hidden whitespace-nowrap px-3 py-2 lg:table-cell",
+  actions: "min-w-[11.5rem] whitespace-nowrap px-3 py-2 text-right",
+};
 
 function fmtDate(s) {
   if (!s) return "-";
@@ -231,20 +245,20 @@ export default function OrderList() {
       )}
 
       <div className="overflow-x-auto rounded-lg bg-white shadow-sm">
-        <table className="min-w-full text-sm">
+        <table className="w-full min-w-[1040px] text-sm">
           <thead className="bg-slate-100 text-left text-slate-700">
             <tr>
-              <th className="px-3 py-2">ID</th>
-              <th className="px-3 py-2">Order No</th>
-              <th className="px-3 py-2">Date</th>
-              <th className="px-3 py-2">OEM Bill</th>
-              <th className="px-3 py-2">Status</th>
-              <th className="px-3 py-2">Vendor Name</th>
-              <th className="px-3 py-2">Courier</th>
-              <th className="px-3 py-2">Customer</th>
-              <th className="px-3 py-2">City</th>
-              <th className="px-3 py-2">Exp. Delivery</th>
-              <th className="px-3 py-2 text-right">Actions</th>
+              <th className={ORDER_TABLE_COL.id}>ID</th>
+              <th className={ORDER_TABLE_COL.orderNo}>Order No</th>
+              <th className={ORDER_TABLE_COL.date}>Date</th>
+              <th className={ORDER_TABLE_COL.oem}>OEM Bill</th>
+              <th className={ORDER_TABLE_COL.status}>Status</th>
+              <th className={ORDER_TABLE_COL.vendor}>Vendor Name</th>
+              <th className={ORDER_TABLE_COL.courier}>Courier</th>
+              <th className={ORDER_TABLE_COL.customer}>Customer</th>
+              <th className={ORDER_TABLE_COL.city}>City</th>
+              <th className={ORDER_TABLE_COL.exp}>Exp. Delivery</th>
+              <th className={ORDER_TABLE_COL.actions}>Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
@@ -266,20 +280,20 @@ export default function OrderList() {
                   const orderDocumentUrl = buildFileUrl(o.order_file_path);
                   return (
                     <>
-                <td className="px-3 py-2 font-medium text-slate-700">{o.id}</td>
-                <td className="px-3 py-2">
-                  <span className="font-mono font-bold text-xs text-slate-800">{o.order_no || "-"}</span>
+                <td className={`${ORDER_TABLE_COL.id} font-medium text-slate-700`}>{o.id}</td>
+                <td className={ORDER_TABLE_COL.orderNo}>
+                  <span className="font-mono text-xs font-bold text-slate-800">{o.order_no || "-"}</span>
                 </td>
-                <td className="px-3 py-2 whitespace-nowrap text-slate-600">{fmtDate(o.order_date)}</td>
-                <td className="px-3 py-2 text-slate-600">{o.oem_bill_no || "-"}</td>
-                <td className="px-3 py-2"><StatusBadge value={o.status} /></td>
-                <td className="px-3 py-2 text-slate-600">{o.vendor_name || "-"}</td>
-                <td className="px-3 py-2 text-slate-600">{o.courier_name || "-"}</td>
-                <td className="px-3 py-2 text-slate-600">{o.customer_name || "-"}</td>
-                <td className="px-3 py-2 text-slate-600">{o.customer_city || "-"}</td>
-                <td className="px-3 py-2 whitespace-nowrap text-slate-600">{fmtDate(o.expected_delivery_date)}</td>
-                <td className="px-3 py-2 text-right">
-                  <div className="flex justify-end gap-1">
+                <td className={`${ORDER_TABLE_COL.date} text-slate-600`}>{fmtDate(o.order_date)}</td>
+                <td className={`${ORDER_TABLE_COL.oem} text-slate-600`} title={o.oem_bill_no || ""}>{o.oem_bill_no || "-"}</td>
+                <td className={ORDER_TABLE_COL.status}><StatusBadge value={o.status} /></td>
+                <td className={`${ORDER_TABLE_COL.vendor} text-slate-600`} title={o.vendor_name || ""}>{o.vendor_name || "-"}</td>
+                <td className={`${ORDER_TABLE_COL.courier} text-slate-600`} title={o.courier_name || ""}>{o.courier_name || "-"}</td>
+                <td className={`${ORDER_TABLE_COL.customer} text-slate-600`} title={o.customer_name || ""}>{o.customer_name || "-"}</td>
+                <td className={`${ORDER_TABLE_COL.city} text-slate-600`} title={o.customer_city || ""}>{o.customer_city || "-"}</td>
+                <td className={`${ORDER_TABLE_COL.exp} text-slate-600`}>{fmtDate(o.expected_delivery_date)}</td>
+                <td className={ORDER_TABLE_COL.actions}>
+                  <div className="flex flex-nowrap items-center justify-end gap-1">
                     {orderDocumentUrl && (
                       <>
                         <a
@@ -287,7 +301,7 @@ export default function OrderList() {
                           href={orderDocumentUrl}
                           target="_blank"
                           rel="noreferrer"
-                          className="rounded p-1 text-sky-700 hover:bg-sky-50"
+                          className="whitespace-nowrap rounded px-1 py-0.5 text-xs text-sky-700 hover:bg-sky-50"
                         >
                           View Doc
                         </a>
@@ -295,7 +309,7 @@ export default function OrderList() {
                           title="Download document"
                           href={orderDocumentUrl}
                           download={fileNameFromPath(o.order_file_path)}
-                          className="rounded p-1 text-emerald-700 hover:bg-emerald-50"
+                          className="whitespace-nowrap rounded px-1 py-0.5 text-xs text-emerald-700 hover:bg-emerald-50"
                         >
                           Download
                         </a>

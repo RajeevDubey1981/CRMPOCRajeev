@@ -3,6 +3,9 @@ import { useAuth } from "../auth/AuthContext.jsx";
 import { NavLink } from "react-router-dom";
 import { isIndcoolServiceRole, isOperationsAdminRole, isPartnerAdminRole, isSystemAdminRole } from "../utils/roles.js";
 
+/** w-64 (16rem) reduced by 40% → 9.6rem */
+const SIDEBAR_WIDTH_CLASS = "w-[9.6rem] min-w-[9.6rem]";
+
 const NAV = [
   { to: "/dashboard", label: "Dashboard", module: "dashboard" },
   { to: "/vendor-dashboard", label: "Vendor Dashboard", vendorOnly: true },
@@ -44,7 +47,7 @@ const NAV = [
 function LeafLink({ to, label, disabled, onNavigate }) {
   if (disabled) {
     return (
-      <span className="block rounded-md px-3 py-2 text-sm text-slate-500 cursor-not-allowed select-none">
+      <span className="block rounded-md px-2 py-1.5 text-xs text-slate-500 cursor-not-allowed select-none leading-snug">
         {label}
       </span>
     );
@@ -54,7 +57,7 @@ function LeafLink({ to, label, disabled, onNavigate }) {
       to={to}
       onClick={onNavigate}
       className={({ isActive }) =>
-        `block rounded-md px-3 py-2 text-sm transition ${
+        `block rounded-md px-2 py-1.5 text-xs leading-snug transition ${
           isActive
             ? "bg-brand-600 text-white"
             : "text-slate-200 hover:bg-slate-700 hover:text-white"
@@ -73,15 +76,15 @@ function Group({ label, children, defaultOpen = false, onNavigate }) {
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="flex w-full items-center justify-between rounded-md px-3 py-2 text-sm font-medium text-slate-100 hover:bg-slate-700"
+        className="flex w-full items-center justify-between rounded-md px-2 py-1.5 text-xs font-medium leading-snug text-slate-100 hover:bg-slate-700"
       >
         <span>{label}</span>
         <span className="text-xs">{open ? "▾" : "▸"}</span>
       </button>
       {open && (
-        <div className="ml-3 mt-1 space-y-0.5 border-l border-slate-700 pl-3">
-          {children.map((c) => (
-            <LeafLink key={c.to} to={c.to} label={c.label} onNavigate={onNavigate} />
+        <div className="ml-2 space-y-1 border-l border-slate-600 pl-2">
+          {children.map((child) => (
+            <LeafLink key={child.label} to={child.to} label={child.label} onNavigate={onNavigate} />
           ))}
         </div>
       )}
@@ -93,7 +96,6 @@ export default function Sidebar({ collapsed, mobileOpen = false, onNavigate }) {
   const { user } = useAuth();
   const role = user?.role?.toLowerCase?.() || "";
 
-  // Role-based visibility: vendors and engineers each see a small, focused menu.
   const isVendor = role === "vendor";
   const isEngineer = role === "engineer";
   const isCallcenter = role === "callcenter";
@@ -136,17 +138,17 @@ export default function Sidebar({ collapsed, mobileOpen = false, onNavigate }) {
 
   return (
     <aside
-      className={`fixed inset-y-0 left-0 z-40 h-full w-72 max-w-[85vw] overflow-x-hidden overflow-y-auto bg-slate-800 shadow-xl transition-transform duration-200 md:relative md:z-auto md:max-w-none md:shrink-0 md:shadow-none md:transition-all ${
+      className={`fixed inset-y-0 left-0 z-40 h-full max-w-[85vw] overflow-x-hidden overflow-y-auto bg-slate-800 shadow-xl transition-transform duration-200 md:relative md:z-auto md:max-w-none md:shrink-0 md:shadow-none md:transition-[width,min-width] ${SIDEBAR_WIDTH_CLASS} ${
         mobileOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
       } ${
-        collapsed ? "md:w-0 md:min-w-0 md:-ml-1" : "md:w-64 md:min-w-64"
+        collapsed ? "md:w-0 md:min-w-0 md:max-w-0 md:overflow-hidden md:border-0" : ""
       }`}
     >
-      <div className="px-4 py-5">
-        <div className="text-lg font-bold tracking-wide text-white">Indcool CRM</div>
-        <div className="text-xs text-slate-400">Service & Operations</div>
+      <div className="px-2.5 py-4">
+        <div className="text-sm font-bold tracking-wide text-white leading-tight">Indcool CRM</div>
+        <div className="text-[10px] leading-snug text-slate-400">Service & Operations</div>
       </div>
-      <nav className="space-y-1 px-3 pb-6">
+      <nav className="space-y-0.5 px-2 pb-6">
         {filteredNav.map((item) =>
           item.children ? (
             <Group key={item.label} label={item.label} children={item.children} onNavigate={onNavigate} />

@@ -1719,6 +1719,18 @@ def submit_serials_for_assignment(
     serial_count = _resolve_serial_count(db, reference_item.item_id, reference_item.item_code)
     chunk_size = 2 if serial_count >= 2 else 1
 
+    if serial_count >= 2:
+        # Dual-serial line items are one physical unit; selecting one column submits both serials.
+        selection_keys = {(item_id, slot) for item_id, slot in parsed}
+        for item_id, slot in list(parsed):
+            item = items_by_id[item_id]
+            if not (item.serial_no and item.serial_no_2):
+                continue
+            other_slot = "serial2" if slot == "serial1" else "serial1"
+            if (item_id, other_slot) not in selection_keys:
+                selection_keys.add((item_id, other_slot))
+                parsed.append((item_id, other_slot))
+
     # Resolve to (item, slot, serial_value) in selection order, skipping already-locked rows.
     resolved: list[tuple[OrderItem, str, str]] = []
     skipped_already_submitted: list[str] = []
@@ -1765,12 +1777,23 @@ def submit_serials_for_assignment(
     # Leftover serials: the non-selected slot(s) on any touched row, in row-encounter order.
     leftover: list[tuple[OrderItem, str, str]] = []
     for item in touched_items.values():
+        selected_serial_values = {
+            _normalize_serial(item.serial_no if slot == "serial1" else item.serial_no_2)
+            for slot in ("serial1", "serial2")
+            if (item.id, slot) in selected_keys
+        }
         for slot in ("serial1", "serial2"):
+            if slot == "serial2" and serial_count < 2:
+                continue
             if (item.id, slot) in selected_keys:
                 continue
             serial_value = item.serial_no if slot == "serial1" else item.serial_no_2
-            if serial_value:
-                leftover.append((item, slot, serial_value))
+            if not serial_value:
+                continue
+            # Same serial copied into both columns is one physical unit; do not spawn a second open row.
+            if _normalize_serial(serial_value) in selected_serial_values:
+                continue
+            leftover.append((item, slot, serial_value))
 
     def _make_row(chunk: list[tuple[OrderItem, str, str]], locked: bool) -> OrderItem:
         source_item = chunk[0][0]

@@ -808,7 +808,12 @@ export default function OrderDetail() {
   const previewSerialColumns = serialColumnsForCount(importPreview?.serialColumnCount ?? 0);
   const previewHasIssues = previewRowsWithDuplicates.some((row) => row.duplicateReasons.length > 0);
   const previewHasRows = (importPreview?.rows?.length || 0) > 0;
-  const canSubmitInstallationRequest = Boolean(canUpdateOrder && order?.status === "Delivered" && (order?.oem_bill_no || "").trim());
+  // API allows vendors to submit serials on their own orders (_can_submit_serials) without orders.can_edit.
+  const canSubmitInstallationRequest = Boolean(
+    (canUpdateOrder || isVendor)
+    && order?.status === "Delivered"
+    && (order?.oem_bill_no || "").trim(),
+  );
   const selectedSubmitItemCodes = Array.from(selectedSerials).reduce((codes, key) => {
     const [itemIdStr] = key.split("-");
     const item = (order?.items || []).find((candidate) => String(candidate.id) === itemIdStr);
@@ -1232,7 +1237,11 @@ export default function OrderDetail() {
         )}
         {!canSubmitInstallationRequest && (
           <div className="mt-4 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800">
-            Installation request submission is enabled only after the order is Delivered and OEM Bill No is present.
+            {order.status !== "Delivered"
+              ? `Installation requests can be raised only when the order is Delivered (current status: ${order.status}).`
+              : !(order.oem_bill_no || "").trim()
+                ? "OEM Bill No must be entered on this order before installation requests can be raised (typically set by Indcool/admin)."
+                : "Installation request submission is not available for your role on this order."}
           </div>
         )}
       </section>

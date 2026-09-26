@@ -8,7 +8,17 @@ import CallcenterGuard from "./CallcenterGuard.jsx";
 import Sidebar from "./Sidebar.jsx";
 import Topbar from "./Topbar.jsx";
 
-let _collapsed = false;
+const SIDEBAR_COLLAPSED_KEY = "indcool_sidebar_collapsed";
+
+function readSidebarCollapsed() {
+  try {
+    return localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+let _collapsed = readSidebarCollapsed();
 
 export default function Layout() {
   const { user } = useAuth();
@@ -26,6 +36,11 @@ export default function Layout() {
     }
     _collapsed = !_collapsed;
     setCollapsed(_collapsed);
+    try {
+      localStorage.setItem(SIDEBAR_COLLAPSED_KEY, _collapsed ? "1" : "0");
+    } catch {
+      // ignore storage errors
+    }
   }
 
   const loadPendingActions = useCallback(async (autoOpen = false) => {
@@ -75,9 +90,10 @@ export default function Layout() {
         mobileOpen={mobileSidebarOpen}
         onNavigate={() => setMobileSidebarOpen(false)}
       />
-      <div className="flex flex-1 flex-col min-w-0">
+      <div className="flex min-w-0 flex-1 flex-col">
         <Topbar
           onToggle={toggle}
+          sidebarCollapsed={collapsed}
           pendingCount={pendingTotal}
           onOpenPending={() => {
             loadPendingActions(false);
@@ -85,7 +101,7 @@ export default function Layout() {
           }}
           pendingLoading={loadingPending}
         />
-        <main className="flex-1 min-w-0 overflow-x-hidden overflow-y-auto p-3 sm:p-4 lg:p-6">
+        <main className="min-w-0 flex-1 overflow-x-hidden overflow-y-auto p-3 sm:p-4 lg:p-6">
           <CallcenterGuard>
             <Outlet />
           </CallcenterGuard>

@@ -15,7 +15,7 @@ const PAYMENT_TYPES = ["Cash", "UPI"];
 const SERVICE_STATUSES = [
   "New", "Service Team Review", "Admin Review Document", "Assigned", "Engineer Visit", "Serial Verification Review",
   "Serial Verified", "Pending Service Approval", "Approved for Service", "Service In Progress",
-  "Service Completed", "Payment Requested", "Payment Completed", "Closed", "Rejected", "Cancelled",
+  "Completion Pending Approval", "Service Completed", "Payment Requested", "Payment Completed", "Closed", "Rejected", "Cancelled",
 ];
 
 function Field({ label, value }) {
@@ -438,8 +438,30 @@ export default function ServiceRequestDetail() {
   const canCancelApproval = Boolean(roleIsServiceTeam && approvalCompleted);
   const latestCompletion = service?.completions?.[0] || null;
   const canCompleteService = Boolean((roleIsEngineer || roleIsVendor) && ["Approved for Service", "Service In Progress"].includes(service?.status));
-  const completionSubmitted = ["Service Completed", "Payment Requested", "Payment Completed", "Closed"].includes(service?.status);
-  const canCancelCompletion = Boolean((roleIsEngineer || roleIsVendor || roleIsServiceTeam) && service?.status === "Service Completed");
+  const completionPendingApproval = service?.status === "Completion Pending Approval";
+  const completionSubmitted = ["Service Completed", "Payment Requested", "Payment Completed", "Closed"].includes(service?.status)
+    || completionPendingApproval;
+  const completionBlockedHint = useMemo(() => {
+    if (canCompleteService) return null;
+    if (completionPendingApproval && (roleIsEngineer || roleIsVendor)) {
+      return null;
+    }
+    if (completionSubmitted && !completionPendingApproval) return null;
+    if (service?.status === "Pending Service Approval") {
+      return "Waiting for Indcool/Admin service approval (Approval section above).";
+    }
+    if (["Approved for Service", "Service In Progress"].includes(service?.status) && roleIsServiceTeam && !roleIsEngineer && !roleIsVendor) {
+      return "Service is approved. The assigned engineer must mark completion here (happy code + proof). Admin cannot complete on behalf of engineer.";
+    }
+    if (completionPendingApproval && roleIsServiceTeam) {
+      return "Engineer submitted completion. Use the completion approval section above.";
+    }
+    return "Completion unlocks after service approval and engineer visit work.";
+  }, [canCompleteService, completionSubmitted, completionPendingApproval, service?.status, roleIsServiceTeam, roleIsEngineer, roleIsVendor]);
+  const canCancelCompletion = Boolean(
+    (roleIsEngineer || roleIsVendor || roleIsServiceTeam)
+    && ["Service Completed", "Completion Pending Approval"].includes(service?.status),
+  );
   const latestPaymentRequest = service?.payment_requests?.[0] || null;
   const canRaisePayment = Boolean((roleIsEngineer || roleIsVendor || roleIsServiceTeam) && service?.status === "Service Completed");
   const paymentSubmitted = service?.status === "Payment Requested";
@@ -958,14 +980,65 @@ export default function ServiceRequestDetail() {
         </section>
       )}
 
+      {isServiceTeam && !useUnitWorkflow && completionPendingApproval && (
+        <section className="rounded-lg border border-amber-200 bg-amber-50 p-6 shadow-sm">
+          <h2 className="mb-2 text-sm font-semibold text-amber-900">Completion approval</h2>
+          <p className="mb-4 text-sm text-amber-800">
+            The engineer submitted completion with proof. Approve to move to Service Completed (engineer can then raise payment), or reject to send back.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => {
+                const remarks = window.prompt("Approval remarks (optional):", "");
+                if (remarks === null) return;
+                run(
+                  () => servicesApi.reviewCompletion(service.id, { decision: "Approve", remarks }),
+                  { successMessage: "Completion approved. Engineer can raise payment request." },
+                );
+              }}
+              className="rounded-md bg-emerald-600 px-4 py-2 text-sm text-white disabled:opacity-50"
+            >
+              Approve completion
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => {
+                const remarks = window.prompt("Rejection remarks (optional):", "");
+                if (remarks === null) return;
+                run(
+                  () => servicesApi.reviewCompletion(service.id, { decision: "Reject", remarks }),
+                  { successMessage: "Completion rejected. Engineer can edit and resubmit." },
+                );
+              }}
+              className="rounded-md border border-rose-300 bg-white px-4 py-2 text-sm text-rose-700 disabled:opacity-50"
+            >
+              Reject completion
+            </button>
+          </div>
+        </section>
+      )}
+
       {(isEngineer || isVendor || isServiceTeam) && !useUnitWorkflow && (
         <section className="rounded-lg bg-white p-6 shadow-sm">
           <h2 className="mb-4 text-sm font-medium text-slate-700">Completion and payment</h2>
           <div className="grid gap-6 lg:grid-cols-2">
             <div className="space-y-3">
+              {completionPendingApproval && (isEngineer || isVendor) && (
+                <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                  <div className="font-medium">Waiting for Indcool/Admin completion approval</div>
+                  <p className="mt-1 text-amber-800">
+                    Your completion and proof are saved. An admin must approve before status becomes Service Completed and you can raise payment.
+                  </p>
+                </div>
+              )}
               {completionSubmitted && (
                 <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-                  Service completion submitted. Cancel completion if you need to edit it.
+                  {completionPendingApproval
+                    ? "Completion is pending admin approval."
+                    : "Service completion submitted. Cancel completion if you need to edit it."}
                   {isServiceTeam && latestCompletion?.engineer_completion_code && (
                     <div className="mt-1">
                       Happy code entered by engineer:{" "}
@@ -984,9 +1057,9 @@ export default function ServiceRequestDetail() {
                   )}
                 </div>
               )}
-              {!canCompleteService && !completionSubmitted && (
+              {completionBlockedHint && (
                 <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
-                  Completion unlocks after service approval.
+                  {completionBlockedHint}
                 </div>
               )}
               <input value={completion.work_performed} onChange={(e) => setCompletion((current) => ({ ...current, work_performed: e.target.value }))} disabled={!canCompleteService} placeholder="Work performed" className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-100 disabled:text-slate-500" />

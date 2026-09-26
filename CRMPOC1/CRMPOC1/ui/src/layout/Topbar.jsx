@@ -4,7 +4,7 @@ import { useAuth } from "../auth/AuthContext.jsx";
 import SerialSearch from "../components/SerialSearch.jsx";
 import { isOperationsAdminRole } from "../utils/roles.js";
 
-export default function Topbar({ onToggle, pendingCount = 0, onOpenPending, pendingLoading = false }) {
+export default function Topbar({ onToggle, pendingCount = 0, onOpenPending, pendingLoading = false, sidebarCollapsed = false }) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const canUseSerialHistory = isOperationsAdminRole(user?.role);
@@ -14,7 +14,8 @@ export default function Topbar({ onToggle, pendingCount = 0, onOpenPending, pend
     <header className="flex flex-wrap items-center gap-2 border-b bg-white px-3 py-2 shadow-sm sm:px-4 sm:py-3">
       <button
         type="button"
-        aria-label="Toggle sidebar"
+        aria-label={sidebarCollapsed ? "Open menu" : "Close menu"}
+        title={sidebarCollapsed ? "Open menu" : "Close menu"}
         onClick={onToggle}
         className="rounded p-2 text-slate-600 hover:bg-slate-100"
       >
