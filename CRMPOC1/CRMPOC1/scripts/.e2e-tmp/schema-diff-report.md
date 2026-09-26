@@ -1,17 +1,17 @@
 # DB Schema Comparison (Actionable)
 
-Generated: 2026-08-29T12:49:26.788807+00:00
+Generated: 2026-09-12T08:31:35.929828+00:00
 
 ## Summary
 
 | Check | Local | Production |
 |-------|-------|------------|
-| Alembic | `0023_service_unit_lifecycle` | `0023_service_unit_lifecycle` |
+| Alembic | `0037_partner_agreements` | `0037_partner_agreements` |
 | Tables missing on prod | 0 | |
 | Columns missing on prod | 0 | |
 | Actionable type issues | 0 | |
 | Review-only drift (defaults/nullable) | 26 | |
-| Cosmetic differences (ignored) | 80 | |
+| Cosmetic differences (ignored) | 86 | |
 | **Needs migration** | **NO** | |
 
 ## Result

@@ -19,6 +19,8 @@ class AgreementContext(BaseModel):
     otp_destination: str | None = None
     is_signed: bool
     signed_at: datetime | None = None
+    signed_method: str | None = None
+    signed_destination: str | None = None
     resend_wait_seconds: int = 0
 
 
@@ -44,6 +46,8 @@ class AgreementContextPublic(BaseModel):
     otp_destination: str | None = None
     is_signed: bool
     signed_at: datetime | None = None
+    signed_method: str | None = None
+    signed_destination: str | None = None
     resend_wait_seconds: int = 0
 
 
@@ -66,6 +70,7 @@ class AgreementSignedOut(BaseModel):
     signed_at: datetime
     ip_address: str | None = None
     method: str = "Email OTP"
+    signed_destination: str | None = None
 
 
 class PartnerAgreementAdminOut(BaseModel):
@@ -77,6 +82,8 @@ class PartnerAgreementAdminOut(BaseModel):
     is_signed: bool
     signed_at: datetime | None = None
     ip_address: str | None = None
+    signed_method: str | None = None
+    signed_destination: str | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}

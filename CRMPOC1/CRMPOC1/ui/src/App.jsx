@@ -78,6 +78,16 @@ function SystemAdminRoute({ children }) {
   return children;
 }
 
+function PermissionRoute({ module, action = "can_view", children }) {
+  const { user } = useAuth();
+  const permissions = Array.isArray(user?.permissions) ? user.permissions : [];
+  const allowed = permissions.some((permission) => permission.module === module && permission[action]);
+  if (!allowed) {
+    return <Navigate to="/dashboard" replace />;
+  }
+  return children;
+}
+
 function DefaultLanding() {
   const { user } = useAuth();
   if (user?.role === "vendor") {
@@ -111,39 +121,39 @@ export default function App() {
         <Route index element={<DefaultLanding />} />
         <Route path="/dashboard" element={<DashboardRoute />} />
         <Route path="/vendor-dashboard" element={<VendorDashboard />} />
-        <Route path="/calls" element={<CallList />} />
-        <Route path="/calls/new" element={<CallCreate />} />
-        <Route path="/calls/pending-follow-ups" element={<PendingFollowUps />} />
-        <Route path="/calls/calendar" element={<Calendar />} />
-        <Route path="/calls/:id" element={<CallDetail />} />
+        <Route path="/calls" element={<PermissionRoute module="calls"><CallList /></PermissionRoute>} />
+        <Route path="/calls/new" element={<PermissionRoute module="calls" action="can_create"><CallCreate /></PermissionRoute>} />
+        <Route path="/calls/pending-follow-ups" element={<PermissionRoute module="calls"><PendingFollowUps /></PermissionRoute>} />
+        <Route path="/calls/calendar" element={<PermissionRoute module="calls"><Calendar /></PermissionRoute>} />
+        <Route path="/calls/:id" element={<PermissionRoute module="calls"><CallDetail /></PermissionRoute>} />
         <Route path="/admin/users" element={<SystemAdminRoute><UserList /></SystemAdminRoute>} />
         <Route path="/admin/roles" element={<SystemAdminRoute><RoleList /></SystemAdminRoute>} />
         <Route path="/admin/permissions" element={<SystemAdminRoute><Permissions /></SystemAdminRoute>} />
         <Route path="/admin/payments" element={<SystemAdminRoute><PaymentHistory /></SystemAdminRoute>} />
         <Route path="/admin/partner-registrations" element={<PartnerAdminRoute><PartnerRegistrationList /></PartnerAdminRoute>} />
         <Route path="/admin/partner-registrations/:id/review" element={<PartnerAdminRoute><PartnerRegistrationReview /></PartnerAdminRoute>} />
-        <Route path="/complaints" element={<ComplaintList />} />
-        <Route path="/complaints/new" element={<ComplaintCreate />} />
-        <Route path="/complaints/:id" element={<ComplaintDetail />} />
-        <Route path="/services" element={<ServiceRequestList />} />
+        <Route path="/complaints" element={<PermissionRoute module="complaints"><ComplaintList /></PermissionRoute>} />
+        <Route path="/complaints/new" element={<PermissionRoute module="complaints" action="can_create"><ComplaintCreate /></PermissionRoute>} />
+        <Route path="/complaints/:id" element={<PermissionRoute module="complaints"><ComplaintDetail /></PermissionRoute>} />
+        <Route path="/services" element={<PermissionRoute module="services"><ServiceRequestList /></PermissionRoute>} />
         <Route path="/services/my-units" element={<EngineerAssignedUnits />} />
-        <Route path="/services/new" element={<ServiceRequestCreate />} />
-        <Route path="/services/:id" element={<ServiceRequestDetail />} />
-        <Route path="/items" element={<ItemMasterList />} />
-        <Route path="/items/new" element={<ItemMasterCreate />} />
-        <Route path="/items/:id" element={<ItemMasterDetail />} />
+        <Route path="/services/new" element={<PermissionRoute module="services" action="can_create"><ServiceRequestCreate /></PermissionRoute>} />
+        <Route path="/services/:id" element={<PermissionRoute module="services"><ServiceRequestDetail /></PermissionRoute>} />
+        <Route path="/items" element={<PermissionRoute module="items"><ItemMasterList /></PermissionRoute>} />
+        <Route path="/items/new" element={<PermissionRoute module="items" action="can_create"><ItemMasterCreate /></PermissionRoute>} />
+        <Route path="/items/:id" element={<PermissionRoute module="items"><ItemMasterDetail /></PermissionRoute>} />
         <Route path="/couriers" element={<OperationsAdminRoute><CourierList /></OperationsAdminRoute>} />
         <Route path="/couriers/new" element={<OperationsAdminRoute><CourierCreate /></OperationsAdminRoute>} />
         <Route path="/couriers/:id" element={<OperationsAdminRoute><CourierDetail /></OperationsAdminRoute>} />
-        <Route path="/orders" element={<OrderList />} />
-        <Route path="/orders/new" element={<OrderCreate />} />
-        <Route path="/orders/:id" element={<OrderDetail />} />
-        <Route path="/installations" element={<InstallationList />} />
-        <Route path="/installations/new" element={<InstallationCreate />} />
-        <Route path="/installations/:id" element={<InstallationDetail />} />
-        <Route path="/claims" element={<ClaimList />} />
-        <Route path="/claims/new" element={<ClaimCreate />} />
-        <Route path="/claims/:id" element={<ClaimDetail />} />
+        <Route path="/orders" element={<PermissionRoute module="orders"><OrderList /></PermissionRoute>} />
+        <Route path="/orders/new" element={<PermissionRoute module="orders" action="can_create"><OrderCreate /></PermissionRoute>} />
+        <Route path="/orders/:id" element={<PermissionRoute module="orders"><OrderDetail /></PermissionRoute>} />
+        <Route path="/installations" element={<PermissionRoute module="installations"><InstallationList /></PermissionRoute>} />
+        <Route path="/installations/new" element={<PermissionRoute module="installations" action="can_create"><InstallationCreate /></PermissionRoute>} />
+        <Route path="/installations/:id" element={<PermissionRoute module="installations"><InstallationDetail /></PermissionRoute>} />
+        <Route path="/claims" element={<PermissionRoute module="claims"><ClaimList /></PermissionRoute>} />
+        <Route path="/claims/new" element={<PermissionRoute module="claims" action="can_create"><ClaimCreate /></PermissionRoute>} />
+        <Route path="/claims/:id" element={<PermissionRoute module="claims"><ClaimDetail /></PermissionRoute>} />
         <Route path="/market-admin/dashboard" element={<MarketDashboard />} />
         <Route path="/market-admin/users" element={<MarketUsers />} />
         <Route path="/market-admin/items" element={<MarketItems />} />

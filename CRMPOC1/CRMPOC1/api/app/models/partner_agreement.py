@@ -29,6 +29,8 @@ class PartnerAgreement(Base, TimestampMixin):
     signed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     ip_address: Mapped[str | None] = mapped_column(String(45), nullable=True)
     user_agent: Mapped[str | None] = mapped_column(Text, nullable=True)
+    signed_method: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    signed_destination: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     # Current outstanding OTP. Cleared once consumed so a code can't be reused.
     otp_code: Mapped[str | None] = mapped_column(String(10), nullable=True)

@@ -38,6 +38,10 @@ SAMPLE_ENGINEERS = [
     ("Arjun Sharma", "arjun@indcool.com", "engineer123", "9810000003"),
 ]
 
+VENDOR_EMAIL_LINKS = {
+    "SAVITAR SERVICES PVT LTD": "vivek.s@pia-consultancy.com",
+}
+
 
 def ensure_service_payment_columns() -> None:
     inspector = inspect(engine)
@@ -81,6 +85,20 @@ def ensure_order_item_service_columns() -> None:
         if "wet_free_service_count" not in columns:
             conn.execute(text("ALTER TABLE order_items ADD COLUMN wet_free_service_count INT NOT NULL DEFAULT 0"))
             print("[seed] added order_items.wet_free_service_count")
+
+
+def ensure_vendor_type_column() -> None:
+    inspector = inspect(engine)
+    columns = {column["name"] for column in inspector.get_columns("vendors")}
+    if "vendor_type" not in columns:
+        add_column_sql = (
+            "ALTER TABLE vendors ADD vendor_type VARCHAR(100) NULL"
+            if settings.database_backend.strip().lower() == "sqlserver"
+            else "ALTER TABLE vendors ADD COLUMN vendor_type VARCHAR(100) NULL"
+        )
+        with engine.begin() as conn:
+            conn.execute(text(add_column_sql))
+        print("[seed] added vendors.vendor_type")
 
 
 def ensure_partner_registration_email_controls() -> None:
@@ -169,10 +187,10 @@ DEFAULT_ROLES = [
     # "Sales" query_type sub-module row below.
     {
         "name": "sales",
-        "description": "Sales — view & create only Sales-type complaints",
+        "description": "Sales — Sales-type complaints plus order list view",
         "perms": {
             "complaints": NONE,
-            "installations": NONE, "orders": NONE, "vendors": NONE, "items": NONE,
+            "installations": NONE, "orders": (True, False, False, False, False), "vendors": NONE, "items": NONE,
             "couriers": NONE, "calls": NONE, "claims": NONE, "users": NONE, "services": NONE,
             "roles": NONE, "dashboard": RO,
         },
@@ -279,12 +297,6 @@ def _ensure_perm(db, role_id: int, module: str, sub_module: str | None, flags: t
             role_id=role_id, module=module, sub_module=sub_module,
             can_view=v, can_create=c, can_edit=e, can_delete=d, can_export=ex,
         ))
-    else:
-        existing.can_view = v
-        existing.can_create = c
-        existing.can_edit = e
-        existing.can_delete = d
-        existing.can_export = ex
 
 
 def seed_roles(db) -> None:
@@ -336,6 +348,26 @@ def seed_sample_service_user(db) -> None:
     ))
     db.commit()
     print(f"[seed] sample service user created: {email} / service123")
+
+
+def ensure_vendor_email_links(db) -> None:
+    from app.models.vendor import Vendor
+
+    updated = 0
+    for firm_name, email in VENDOR_EMAIL_LINKS.items():
+        vendor = db.scalar(
+            select(Vendor).where(
+                Vendor.name_of_firm == firm_name,
+                Vendor.deleted_at.is_(None),
+            )
+        )
+        if vendor is None or vendor.email == email:
+            continue
+        vendor.email = email
+        updated += 1
+    if updated:
+        db.commit()
+    print(f"[seed] vendor email links ensured ({updated} updated)")
 
 
 def seed_sample_service_complaint(db) -> None:
@@ -749,19 +781,41 @@ def seed_sample_partner_registrations(db) -> None:
 
 
 def main() -> None:
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--minimal",
+        action="store_true",
+        help="Only seed roles/permissions and the admin user; skip sample/demo data.",
+    )
+    parser.add_argument(
+        "--master-data",
+        action="store_true",
+        help="Seed roles/admin and non-demo master data such as Product Details dropdown values.",
+    )
+    args = parser.parse_args()
+
     ensure_service_payment_columns()
     ensure_service_completion_code_column()
     ensure_engineer_completion_code_column()
     ensure_order_item_service_columns()
+    ensure_vendor_type_column()
     ensure_partner_registration_email_controls()
     with SessionLocal() as db:
         seed_roles(db)
         seed_admin(db)
+        if args.minimal:
+            return
+        if args.master_data:
+            seed_complaint_models(db)
+            return
         seed_items(db)
         seed_complaint_models(db)
         seed_engineers(db)
         seed_sample_sales_user(db)
         seed_sample_service_user(db)
+        ensure_vendor_email_links(db)
         seed_sample_service_complaint(db)
         seed_sample_installations(db)
         seed_sample_vendor(db)

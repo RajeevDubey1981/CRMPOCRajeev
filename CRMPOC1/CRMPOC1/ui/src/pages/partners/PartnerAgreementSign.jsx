@@ -123,6 +123,8 @@ export default function PartnerAgreementSign() {
             agreement_version: result.agreement_version,
             email: result.email,
             signed_at: result.signed_at,
+            method: result.signed_method,
+            signed_destination: result.signed_destination,
           });
           setStep(4);
         }
@@ -379,6 +381,7 @@ export default function PartnerAgreementSign() {
                   ["Signed At", fmtDateTime(signed.signed_at)],
                   ["IP Address", signed.ip_address || "—"],
                   ["Verified Via", signed.method || otpChannelLabel(context.otp_channel)],
+                  ["Verified Contact", signed.signed_destination || context.signed_destination || otpDestinationLabel(context)],
                   ["Legal Validity", "IT Act 2000, India"],
                 ].map(([label, value]) => (
                   <div key={label} className="flex justify-between border-b border-emerald-100 py-1.5 text-xs last:border-0">
@@ -393,13 +396,14 @@ export default function PartnerAgreementSign() {
                 vendor code.
               </div>
 
-              <button
-                type="button"
-                onClick={() => window.print?.()}
-                className="mt-4 rounded-md border border-slate-300 px-4 py-2 text-xs"
+              <a
+                href={partnerAgreementPublicApi.downloadUrl(token)}
+                target="_blank"
+                rel="noreferrer"
+                className="mt-4 inline-flex rounded-md bg-sky-700 px-4 py-2 text-xs font-semibold text-white"
               >
-                Print / download certificate
-              </button>
+                Download full signed agreement
+              </a>
             </div>
           )}
         </div>

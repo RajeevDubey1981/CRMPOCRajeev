@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from app.config import settings
+from app.release_build import RELEASE_BUILD
 from app.services.input_security import sanitize_json
 from app.routers import auth, calls, claims, complaints, couriers, dashboard, installation_callcenter, installations, item_master, market, orders, partner_agreements_public, partner_registrations, partner_registrations_public, pending_actions, projects, roles, serials, services, users
 
@@ -60,4 +61,4 @@ app.mount("/uploads", StaticFiles(directory=str(settings.resolved_upload_dir)), 
 
 @app.get("/health")
 def health():
-    return {"status": "ok"}
+    return {"status": "ok", "build": RELEASE_BUILD}

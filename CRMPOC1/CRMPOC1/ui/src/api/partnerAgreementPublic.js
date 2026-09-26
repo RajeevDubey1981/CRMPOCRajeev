@@ -5,8 +5,14 @@ const publicApi = axios.create({
   timeout: 60000,
 });
 
+function publicUrl(path) {
+  const base = (publicApi.defaults.baseURL || "").replace(/\/$/, "");
+  return `${base}${path}`;
+}
+
 export const partnerAgreementPublicApi = {
   get: (token) => publicApi.get(`/api/partner-agreements/public/${token}`).then((r) => r.data),
+  downloadUrl: (token) => publicUrl(`/api/partner-agreements/public/${encodeURIComponent(token)}/download`),
   sendOtp: (token) =>
     publicApi.post(`/api/partner-agreements/public/${token}/send-otp`).then((r) => r.data),
   verifyOtp: (token, otp) =>

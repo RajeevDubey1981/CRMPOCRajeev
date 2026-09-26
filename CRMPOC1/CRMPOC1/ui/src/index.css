@@ -9,3 +9,29 @@ html, body, #root {
 body {
   @apply bg-slate-50 text-slate-800 antialiased;
 }
+
+* {
+  box-sizing: border-box;
+}
+
+input,
+select,
+textarea,
+button {
+  max-width: 100%;
+}
+
+table {
+  width: 100%;
+}
+
+td,
+th {
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 640px) {
+  .overflow-x-auto {
+    -webkit-overflow-scrolling: touch;
+  }
+}

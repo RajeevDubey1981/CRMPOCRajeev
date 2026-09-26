@@ -1,10 +1,21 @@
-"""Service partner agreement text, sourced from the INDcool India Service &
-Customer Rate Card 2026.
+"""Partner agreement text selection.
 
-Bump AGREEMENT_VERSION whenever the wording changes: signed rows store the
-version they agreed to, so historical signatures stay attributable to the exact
-text that was presented.
+Bump the relevant agreement version whenever wording changes: signed rows
+store the version they agreed to.
 """
+from dataclasses import dataclass
+from functools import lru_cache
+from pathlib import Path
+from xml.etree import ElementTree
+from zipfile import ZipFile
+
+
+@dataclass(frozen=True)
+class AgreementDocument:
+    title: str
+    version: str
+    effective: str
+    text: str
 
 AGREEMENT_VERSION = "1.0"
 AGREEMENT_TITLE = "INDcool Authorised Service Partner Agreement"
@@ -289,3 +300,86 @@ digital acceptance is recorded with a timestamp and IP address and is legally
 valid as an electronic signature under the Information Technology Act, 2000
 (India).
 """
+
+GEM_AGREEMENT_VERSION = "1.0"
+GEM_AGREEMENT_TITLE = "INDcool GeM/Govt Partner Authorization Terms"
+GEM_AGREEMENT_EFFECTIVE = "Effective: 14 September 2026"
+GEM_AGREEMENT_DOCX = (
+    Path(__file__).resolve().parents[1]
+    / "resources"
+    / "agreements"
+    / "gem_partner_terms.docx"
+)
+
+GENERIC_AGREEMENT_TEXT = """INDCOOL ELECTRICALS PVT. LTD.
+PARTNER AUTHORISATION AGREEMENT
+
+This Agreement is entered into between INDcool Electricals Pvt. Ltd.
+("INDcool" / "Company") and the registered partner ("Partner") for the
+partner category selected during onboarding.
+
+The Partner agrees to comply with INDcool's commercial, operational,
+confidentiality, customer-handling, brand-use, billing, documentation and
+compliance requirements applicable to its partner category.
+
+INDcool may issue category-specific operating instructions, price lists,
+territory rules, order handling requirements, support obligations, reporting
+formats and conduct standards from time to time. The Partner agrees to follow
+the latest written instructions shared by INDcool.
+
+By entering the one-time password (OTP) sent to the registered contact, the
+Partner confirms that it is authorised to accept this Agreement and agrees to
+be bound by its terms. This digital acceptance is recorded with timestamp and
+IP address and is legally valid as an electronic signature under the
+Information Technology Act, 2000 (India).
+"""
+
+
+def _docx_text(path: Path) -> str:
+    with ZipFile(path) as archive:
+        document_xml = archive.read("word/document.xml")
+    root = ElementTree.fromstring(document_xml)
+    namespace = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
+    paragraphs: list[str] = []
+    for paragraph in root.findall(".//w:p", namespace):
+        text = "".join(node.text or "" for node in paragraph.findall(".//w:t", namespace)).strip()
+        if text:
+            paragraphs.append(text)
+    return "\n\n".join(paragraphs)
+
+
+@lru_cache(maxsize=1)
+def _gem_agreement_text() -> str:
+    if GEM_AGREEMENT_DOCX.exists():
+        text = _docx_text(GEM_AGREEMENT_DOCX)
+        if text:
+            return text
+    return GENERIC_AGREEMENT_TEXT
+
+
+def agreement_for_partner_type(partner_type: str | None) -> AgreementDocument:
+    normalized = (partner_type or "").strip().lower()
+    if normalized == "gem partner":
+        return AgreementDocument(
+            title=GEM_AGREEMENT_TITLE,
+            version=GEM_AGREEMENT_VERSION,
+            effective=GEM_AGREEMENT_EFFECTIVE,
+            text=_gem_agreement_text(),
+        )
+    if normalized == "service partner":
+        return AgreementDocument(
+            title=AGREEMENT_TITLE,
+            version=AGREEMENT_VERSION,
+            effective=AGREEMENT_EFFECTIVE,
+            text=AGREEMENT_TEXT,
+        )
+    display_type = (partner_type or "Partner").strip() or "Partner"
+    return AgreementDocument(
+        title=f"INDcool {display_type} Agreement",
+        version="1.0",
+        effective=GEM_AGREEMENT_EFFECTIVE,
+        text=GENERIC_AGREEMENT_TEXT.replace(
+            'the registered partner ("Partner")',
+            f'the registered {display_type} ("Partner")',
+        ),
+    )

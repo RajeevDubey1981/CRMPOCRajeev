@@ -22,7 +22,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.deps import get_current_user
-from app.data.complaint_models import COMPLAINT_MODEL_CATEGORY
+from app.data.complaint_models import COMPLAINT_MODEL_CATEGORY, COMPLAINT_MODEL_ITEMS
 from app.models.call import Call
 from app.models.complaint import Complaint, ComplaintStatusLog
 from app.models.installation import InstallationDocument, InstallationRequest
@@ -920,10 +920,16 @@ def list_complaint_model_options(
         )
         .order_by(ItemMaster.item_name)
     ).all()
-    return [
+    options = [
         ComplaintModelOption(id=row.id, item_code=row.item_code, item_name=row.item_name)
         for row in rows
     ]
+    if not options:
+        return [
+            ComplaintModelOption(id=-(index + 1), item_code=code, item_name=name)
+            for index, (code, name) in enumerate(COMPLAINT_MODEL_ITEMS)
+        ]
+    return options
 
 
 @router.get("/customers/search")

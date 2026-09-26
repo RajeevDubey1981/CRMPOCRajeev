@@ -1,5 +1,6 @@
 from datetime import date
 import json
+import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select, func, or_
@@ -18,6 +19,7 @@ from app.schemas.serial import SerialHistoryEventOut, SerialHistoryHeader, Seria
 from app.services.serial_history import backfill_serial_history_for_serial
 
 router = APIRouter(prefix="/api/serials", tags=["serials"])
+logger = logging.getLogger(__name__)
 
 
 from app.services.role_access import is_operations_admin
@@ -36,6 +38,44 @@ def _add_years(base_date: date | None, years: int | None) -> date | None:
     except ValueError:
         # Handle leap-day rollover consistently for non-leap target years.
         return base_date.replace(month=2, day=28, year=base_date.year + years)
+
+
+def _parse_legacy_date(value: object) -> date | None:
+    if not isinstance(value, str):
+        return None
+    try:
+        return date.fromisoformat(value[:10])
+    except ValueError:
+        return None
+
+
+def _whole_years_between(base_date: date | None, end_date: date | None) -> int | None:
+    if base_date is None or end_date is None:
+        return None
+    return end_date.year - base_date.year
+
+
+def _legacy_warranty_dates_from_events(rows: list[SerialHistoryEvent]) -> dict[str, date | None]:
+    dates: dict[str, date | None] = {
+        "pcb": None,
+        "component": None,
+        "machine": None,
+    }
+    for row in rows:
+        if row.event_type != "migration" or row.event_subtype != "legacy_serial_recovery":
+            continue
+        if not row.metadata_json:
+            continue
+        try:
+            metadata = json.loads(row.metadata_json)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(metadata, dict):
+            continue
+        dates["pcb"] = _parse_legacy_date(metadata.get("pcb_warrantyupto")) or dates["pcb"]
+        dates["component"] = _parse_legacy_date(metadata.get("comp_warrantyupto")) or dates["component"]
+        dates["machine"] = _parse_legacy_date(metadata.get("machin_warrantyupto")) or dates["machine"]
+    return dates
 
 
 class SerialSuggestion:
@@ -167,8 +207,12 @@ def get_serial_history(
     if item is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Serial number not found")
 
-    backfill_serial_history_for_serial(db, serial_no)
-    db.commit()
+    try:
+        backfill_serial_history_for_serial(db, serial_no)
+        db.commit()
+    except Exception:
+        db.rollback()
+        logger.exception("Failed to backfill serial history for serial %s", serial_no)
 
     item_master = db.get(ItemMaster, item.item_id) if item.item_id else None
     order = db.get(Order, item.order_id)
@@ -210,6 +254,26 @@ def get_serial_history(
             )
         )
 
+    legacy_warranty_dates = _legacy_warranty_dates_from_events(rows)
+    pcb_warranty_date = _add_years(warranty_base, item.pcb_warranty_years) or legacy_warranty_dates["pcb"]
+    component_warranty_date = (
+        _add_years(warranty_base, item.component_warranty_years)
+        or legacy_warranty_dates["component"]
+    )
+    machine_warranty_date = (
+        _add_years(warranty_base, item.machine_warranty_years)
+        or legacy_warranty_dates["machine"]
+    )
+    pcb_warranty_years = item.pcb_warranty_years
+    if pcb_warranty_years is None:
+        pcb_warranty_years = _whole_years_between(warranty_base, legacy_warranty_dates["pcb"])
+    component_warranty_years = item.component_warranty_years
+    if component_warranty_years is None:
+        component_warranty_years = _whole_years_between(warranty_base, legacy_warranty_dates["component"])
+    machine_warranty_years = item.machine_warranty_years
+    if machine_warranty_years is None:
+        machine_warranty_years = _whole_years_between(warranty_base, legacy_warranty_dates["machine"])
+
     header = SerialHistoryHeader(
         order_item_id=item.id,
         serial_no=item.serial_no or serial_no,
@@ -223,11 +287,11 @@ def get_serial_history(
         installation_status=item.installation_status,
         free_service_count=item.free_service_count,
         service_consume_count=item.service_consume_count,
-        pcb_warranty_years=item.pcb_warranty_years,
-        component_warranty_years=item.component_warranty_years,
-        machine_warranty_years=item.machine_warranty_years,
-        pcb_warranty_date=_add_years(warranty_base, item.pcb_warranty_years),
-        component_warranty_date=_add_years(warranty_base, item.component_warranty_years),
-        machine_warranty_date=_add_years(warranty_base, item.machine_warranty_years),
+        pcb_warranty_years=pcb_warranty_years,
+        component_warranty_years=component_warranty_years,
+        machine_warranty_years=machine_warranty_years,
+        pcb_warranty_date=pcb_warranty_date,
+        component_warranty_date=component_warranty_date,
+        machine_warranty_date=machine_warranty_date,
     )
     return SerialHistoryResponse(header=header, events=events)

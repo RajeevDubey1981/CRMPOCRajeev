@@ -57,17 +57,27 @@ def _resolve_vendor_name(db: Session, vendor_id: int | None) -> str | None:
     return v.name_of_firm if v else None
 
 
-def _vendor_for_user(db: Session, user: User) -> Vendor | None:
+def _vendors_for_user(db: Session, user: User) -> list[Vendor]:
     if user.role != "vendor":
-        return None
-    return db.scalar(select(Vendor).where(Vendor.email == user.email))
+        return []
+    return db.scalars(
+        select(Vendor).where(
+            func.lower(func.trim(Vendor.email)) == (user.email or "").strip().lower(),
+            Vendor.deleted_at.is_(None),
+            Vendor.is_active == True,
+        )
+    ).all()
 
 
-def _apply_order_visibility(stmt, user: User, vendor: Vendor | None):
+def _vendor_ids_for_user(db: Session, user: User) -> list[int]:
+    return [vendor.id for vendor in _vendors_for_user(db, user)]
+
+
+def _apply_order_visibility(stmt, user: User, vendor_ids: list[int]):
     if user.role == "vendor":
-        if vendor is None:
+        if not vendor_ids:
             return stmt.where(Order.id == -1)
-        return stmt.where(Order.vendor_id == vendor.id)
+        return stmt.where(Order.vendor_id.in_(vendor_ids))
     return stmt
 
 
@@ -315,8 +325,7 @@ def _load_order(db: Session, user: User, order_id: int) -> Order:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Order not found")
     # If user is a vendor, ensure they can only load their own orders.
     if user.role == "vendor":
-        v = db.scalar(select(Vendor).where(Vendor.email == user.email))
-        if v is None or order.vendor_id != v.id:
+        if order.vendor_id not in _vendor_ids_for_user(db, user):
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Order not found")
     return order
 
@@ -331,8 +340,7 @@ def _can_submit_serials(db: Session, user: User, order: Order) -> bool:
         return True
     if user.role != "vendor":
         return False
-    v = db.scalar(select(Vendor).where(Vendor.email == user.email))
-    return v is not None and order.vendor_id == v.id
+    return order.vendor_id in _vendor_ids_for_user(db, user)
 
 
 VENDOR_PENDING_ORDER_FIELDS = {
@@ -372,8 +380,7 @@ def _vendor_cannot_revert_to_pending(order: Order, new_status: str | None) -> bo
 def _vendor_owns_order(db: Session, user: User, order: Order) -> bool:
     if user.role != "vendor":
         return False
-    vendor = db.scalar(select(Vendor).where(Vendor.email == user.email))
-    return vendor is not None and order.vendor_id == vendor.id
+    return order.vendor_id in _vendor_ids_for_user(db, user)
 
 
 def _is_order_pre_shipment(order: Order) -> bool:
@@ -603,6 +610,7 @@ def lookup_vendors(
             "name": v.name_of_firm,
             "email": v.email,
             "vendor_code": v.vendor_code,
+            "vendor_type": v.vendor_type,
             "gst_no": v.gst_no,
             "name_of_firm": v.name_of_firm,
             "state": v.state,
@@ -659,7 +667,7 @@ def autocomplete_orders(
     if len(query) < 2:
         return []
 
-    vendor = _vendor_for_user(db, user)
+    vendor_ids = _vendor_ids_for_user(db, user)
     rank_expressions = _autocomplete_rank_expressions(query)
     stmt = (
         select(
@@ -677,7 +685,7 @@ def autocomplete_orders(
         .join(Vendor, Order.vendor_id == Vendor.id, isouter=True)
         .where(Order.deleted_at.is_(None))
     )
-    stmt = _apply_order_visibility(stmt, user, vendor)
+    stmt = _apply_order_visibility(stmt, user, vendor_ids)
     stmt = _apply_order_search_filter(stmt, query)
     stmt = stmt.order_by(
         *[expr for _, expr in rank_expressions],
@@ -719,18 +727,18 @@ def export_csv(
     if not can_act_on(db, user, "orders", "can_export", None):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Your role cannot export orders")
 
-    vendor = _vendor_for_user(db, user)
+    vendor_ids = _vendor_ids_for_user(db, user)
     stmt = (
         select(Order)
         .select_from(Order)
         .join(Vendor, Order.vendor_id == Vendor.id, isouter=True)
         .where(Order.deleted_at.is_(None))
     )
-    stmt = _apply_order_visibility(stmt, user, vendor)
+    stmt = _apply_order_visibility(stmt, user, vendor_ids)
     if status_filter:
         stmt = stmt.where(Order.status == status_filter)
     stmt = _apply_order_search_filter(stmt, search)
-    if user.role == "vendor" and vendor is None:
+    if user.role == "vendor" and not vendor_ids:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Orders not found")
     stmt = stmt.order_by(desc(Order.created_at))
 
@@ -780,15 +788,15 @@ def list_orders(
     if not can_act_on(db, user, "orders", "can_view", None):
         return OrderListResponse(items=[], total=0, page=page, per_page=per_page, total_item_quantity=0, item_quantity_summary=[])
 
-    vendor = _vendor_for_user(db, user)
+    vendor_ids = _vendor_ids_for_user(db, user)
     stmt = (
         select(Order)
         .select_from(Order)
         .join(Vendor, Order.vendor_id == Vendor.id, isouter=True)
         .where(Order.deleted_at.is_(None))
     )
-    stmt = _apply_order_visibility(stmt, user, vendor)
-    if user.role == "vendor" and vendor is None:
+    stmt = _apply_order_visibility(stmt, user, vendor_ids)
+    if user.role == "vendor" and not vendor_ids:
         return OrderListResponse(items=[], total=0, page=page, per_page=per_page, total_item_quantity=0, item_quantity_summary=[])
     if status_filter:
         stmt = stmt.where(Order.status == status_filter)
@@ -905,10 +913,13 @@ async def create_order(
             raise HTTPException(status.HTTP_403_FORBIDDEN, "Courier cannot be set during order creation")
         if body.lrn_no and body.lrn_no.strip():
             raise HTTPException(status.HTTP_403_FORBIDDEN, "LRN Number cannot be set during order creation")
-        vendor = db.scalar(select(Vendor).where(Vendor.email == user.email))
-        if vendor is None:
+        linked_vendor_ids = _vendor_ids_for_user(db, user)
+        if not linked_vendor_ids:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Vendor account is not linked to a vendor record")
-        vendor_id = vendor.id
+        if body.vendor_id is not None and body.vendor_id in linked_vendor_ids:
+            vendor_id = body.vendor_id
+        else:
+            vendor_id = linked_vendor_ids[0]
 
     # Check order_no uniqueness (only when provided, since it's optional)
     if body.order_no:

@@ -24,6 +24,7 @@ from app.schemas.partner_registration import (
 )
 from app.services.partner_registration import (
     build_public_registration_url,
+    can_invite_partner,
     generate_access_token,
     generate_registration_no,
     hydrate_partner,
@@ -42,14 +43,77 @@ from app.services.partner_agreement import (
     ensure_agreement,
     get_for_registration,
 )
+from app.routers.partner_agreements_public import _agreement_download_response
 from app.services.vendor_accounts import ensure_partner_account
 
 router = APIRouter(prefix="/api/partner-registrations", tags=["partner-registrations"])
+
+ADMIN_EDITABLE_REGISTRATION_FIELDS = {
+    "partner_type",
+    "business_type",
+    "name",
+    "mobile",
+    "alternate_mobile",
+    "email",
+    "website",
+    "contact_person_name",
+    "contact_designation",
+    "firm_address",
+    "city",
+    "district",
+    "state",
+    "pincode",
+    "gst_no",
+    "pan_no",
+    "udyam_no",
+    "cin_no",
+    "aadhaar_no",
+    "gem_seller_id",
+    "year_of_establishment",
+    "annual_turnover",
+    "operating_states",
+    "product_categories",
+    "bank_name",
+    "bank_branch",
+    "account_holder_name",
+    "account_number",
+    "ifsc_code",
+    "remarks",
+    "declaration_accepted",
+}
+
+OPTIONAL_TEXT_FIELDS = ADMIN_EDITABLE_REGISTRATION_FIELDS - {
+    "partner_type",
+    "email",
+    "year_of_establishment",
+    "annual_turnover",
+    "declaration_accepted",
+}
+
+UPPERCASE_TEXT_FIELDS = {"gst_no", "pan_no", "udyam_no", "cin_no", "ifsc_code"}
 
 
 def _normalize_mobile(value: str) -> str:
     digits = "".join(character for character in (value or "") if character.isdigit())
     return digits[-10:]
+
+
+def _normalize_admin_registration_update(data: dict) -> dict:
+    normalized = dict(data)
+    for field in OPTIONAL_TEXT_FIELDS:
+        if field in normalized and isinstance(normalized[field], str):
+            value = normalized[field].strip()
+            normalized[field] = value or None
+    for field in UPPERCASE_TEXT_FIELDS:
+        if normalized.get(field):
+            normalized[field] = str(normalized[field]).upper()
+    if "email" in normalized and normalized["email"] is not None:
+        normalized["email"] = str(normalized["email"]).strip().lower()
+    if "mobile" in normalized and normalized["mobile"] is not None:
+        normalized["mobile"] = _normalize_mobile(normalized["mobile"])
+    if "alternate_mobile" in normalized and normalized["alternate_mobile"] is not None:
+        normalized["alternate_mobile"] = _normalize_mobile(normalized["alternate_mobile"]) or None
+    return normalized
 
 
 def _mobile_exists(db: Session, mobile: str) -> bool:
@@ -62,9 +126,41 @@ def _mobile_exists(db: Session, mobile: str) -> bool:
     return any(_normalize_mobile(value) == normalized for value in [*existing_registrations, *existing_users, *existing_vendors])
 
 
+def _email_exists_for_other_record(db: Session, email: str, registration_id: int) -> bool:
+    normalized = (email or "").strip().lower()
+    if not normalized:
+        return False
+    email_in_registration = db.scalar(
+        select(PartnerRegistration.id).where(
+            func.lower(PartnerRegistration.email) == normalized,
+            PartnerRegistration.id != registration_id,
+        )
+    )
+    email_in_user = db.scalar(select(User.id).where(func.lower(User.email) == normalized))
+    email_in_vendor = db.scalar(select(Vendor.id).where(func.lower(Vendor.email) == normalized))
+    return bool(email_in_registration or email_in_user or email_in_vendor)
+
+
+def _mobile_exists_for_other_record(db: Session, mobile: str, registration_id: int) -> bool:
+    normalized = _normalize_mobile(mobile)
+    if not normalized:
+        return False
+    existing_registrations = db.scalars(
+        select(PartnerRegistration.mobile).where(PartnerRegistration.id != registration_id)
+    ).all()
+    existing_users = db.scalars(select(User.phone)).all()
+    existing_vendors = db.scalars(select(Vendor.contact_mobile)).all()
+    return any(_normalize_mobile(value) == normalized for value in [*existing_registrations, *existing_users, *existing_vendors])
+
+
 def _require_partner_admin(user: User) -> None:
     if not is_partner_admin(user.role):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Only Admin or Indcool can access partner registrations")
+
+
+def _require_partner_inviter(user: User) -> None:
+    if not can_invite_partner(user.role):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only Admin, Indcool, or Sales can send partner onboarding invites")
 
 
 def _list_item(row: PartnerRegistration) -> PartnerRegistrationListItem:
@@ -145,7 +241,7 @@ def list_partner_registrations(
 
 @router.get("/meta")
 def partner_registration_meta(user: User = Depends(get_current_user)):
-    _require_partner_admin(user)
+    _require_partner_inviter(user)
     return {
         "partner_types": list(PARTNER_TYPES),
         "business_types": list(BUSINESS_TYPES),
@@ -268,8 +364,26 @@ def get_partner_agreement(
         is_signed=agreement.signed_at is not None,
         signed_at=agreement.signed_at,
         ip_address=agreement.ip_address,
+        signed_method=agreement.signed_method,
+        signed_destination=agreement.signed_destination,
         created_at=agreement.created_at,
     )
+
+
+@router.get("/{registration_id}/agreement/download")
+def download_partner_agreement(
+    registration_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_partner_inviter(user)
+    row = db.get(PartnerRegistration, registration_id)
+    if row is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Partner registration not found")
+    agreement = get_for_registration(db, registration_id)
+    if agreement is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Agreement not found")
+    return _agreement_download_response(row, agreement)
 
 
 @router.get("/{registration_id}/gst/validate")
@@ -397,10 +511,26 @@ def update_partner_registration(
     row = db.get(PartnerRegistration, registration_id)
     if row is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Partner registration not found")
-    if row.form_status != "Submitted" and body.onboarding_status != "Cancelled":
+
+    data = _normalize_admin_registration_update(body.model_dump(exclude_unset=True))
+    status_change_requested = "onboarding_status" in data
+    if row.form_status != "Submitted" and status_change_requested and data.get("onboarding_status") != "Cancelled":
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Partner must submit the form before onboarding status can be updated")
 
-    data = body.model_dump(exclude_unset=True)
+    if "email" in data and data["email"] and data["email"] != row.email.strip().lower():
+        if _email_exists_for_other_record(db, data["email"], row.id):
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                "This email is already registered or has an existing user/vendor account.",
+            )
+    if "mobile" in data and data["mobile"] and data["mobile"] != _normalize_mobile(row.mobile):
+        if _mobile_exists_for_other_record(db, data["mobile"], row.id):
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                "This mobile number is already registered or linked to an existing user/vendor account.",
+            )
+
+    registration_fields_changed = any(field in ADMIN_EDITABLE_REGISTRATION_FIELDS for field in data)
     # Approval no longer creates the partner account. It issues the service
     # agreement and emails a signing link; the vendor account and welcome email
     # are created only once the partner signs (see partner_agreements_public).
@@ -412,11 +542,17 @@ def update_partner_registration(
         row.status_updated_at = datetime.now(timezone.utc)
     for field, value in data.items():
         setattr(row, field, value)
+    if registration_fields_changed:
+        refresh_form_progress(row)
     if row.onboarding_status == "Cancelled":
         row.form_status = "Cancelled"
         _deactivate_partner_account(db, row)
 
     agreement = ensure_agreement(db, row) if approval_transition else None
+    if "email" in data and not approval_transition:
+        pending_agreement = get_for_registration(db, row.id)
+        if pending_agreement is not None and pending_agreement.signed_at is None:
+            pending_agreement.email = row.email
     db.commit()
     db.refresh(row)
     if agreement is not None and agreement.signed_at is None:

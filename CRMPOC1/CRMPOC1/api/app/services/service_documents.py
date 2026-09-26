@@ -5,7 +5,19 @@ from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.models.service import ServiceDocument, ServiceDocumentRule, ServiceRequest
+from app.models.service import (
+    ServiceAssignment,
+    ServiceApproval,
+    ServiceCompletion,
+    ServiceDocument,
+    ServiceDocumentRule,
+    ServiceObservation,
+    ServicePaymentRequest,
+    ServiceRequest,
+    ServiceRequestItem,
+    ServiceRequestUnit,
+    ServiceUnitAssignment,
+)
 
 CUSTOMER_DOCUMENT_APPROVED_STATUSES = {"Reviewed", "Approved"}
 
@@ -85,6 +97,137 @@ def latest_customer_documents_by_type(db: Session, service_id: int) -> dict[str,
     return latest
 
 
+def mark_latest_customer_documents_for_resubmission(
+    db: Session,
+    service: ServiceRequest,
+    *,
+    remarks: str | None = None,
+) -> None:
+    """Keep existing files, but make the current customer document set require a fresh upload."""
+    now = datetime.now(timezone.utc)
+    for row in latest_customer_documents_by_type(db, service.id).values():
+        row.status = "Rejected"
+        row.reviewed_at = now
+        row.review_remarks = remarks or "Sent back for a new document upload."
+        db.add(row)
+
+
+SERVICE_WORKFLOW_RANK = {
+    "New": 0,
+    "Admin Review Document": 10,
+    "Service Team Review": 20,
+    "Assigned": 30,
+    "Engineer Visit": 40,
+    "Serial Verification Review": 45,
+    "Serial Verified": 50,
+    "Pending Service Approval": 60,
+    "Approved for Service": 70,
+    "Service In Progress": 80,
+    "Service Completed": 90,
+    "Completion Pending Approval": 92,
+    "Payment Requested": 95,
+    "Payment Completed": 98,
+    "Closed": 100,
+    "Rejected": 5,
+    "Cancelled": 5,
+}
+
+
+def service_workflow_rank(status: str | None) -> int:
+    return SERVICE_WORKFLOW_RANK.get((status or "").strip(), 999)
+
+
+def service_workflow_is_revert(old_status: str, new_status: str) -> bool:
+    return service_workflow_rank(new_status) < service_workflow_rank(old_status)
+
+
+def _delete_engineer_workflow_records(db: Session, service_id: int) -> None:
+    for model in (ServiceObservation, ServiceApproval, ServiceCompletion, ServicePaymentRequest):
+        for row in db.scalars(select(model).where(model.service_request_id == service_id)):
+            db.delete(row)
+
+
+def _clear_serial_verification_state(db: Session, service: ServiceRequest) -> None:
+    """Undo engineer serial verification so Assigned / Engineer Visit can run again."""
+    service.serial_no = None
+    service.order_item_id = None
+    service.warranty_status = None
+    db.add(service)
+    for unit in db.scalars(select(ServiceRequestUnit).where(ServiceRequestUnit.service_request_id == service.id)):
+        unit.serial_verified_at = None
+        unit.warranty_status = None
+        unit.service_type = None
+        db.add(unit)
+
+
+def reset_service_downstream_workflow_for_documents(db: Session, service: ServiceRequest) -> None:
+    """Reset order verification and engineer assignment; keep uploaded customer documents."""
+    now = datetime.now(timezone.utc)
+    for assignment in db.scalars(
+        select(ServiceAssignment).where(ServiceAssignment.service_request_id == service.id)
+    ):
+        assignment.is_active = False
+        db.add(assignment)
+
+    _delete_engineer_workflow_records(db, service.id)
+
+    for unit_assignment in db.scalars(select(ServiceUnitAssignment).where(ServiceUnitAssignment.service_request_id == service.id)):
+        db.delete(unit_assignment)
+    for unit in db.scalars(select(ServiceRequestUnit).where(ServiceRequestUnit.service_request_id == service.id)):
+        db.delete(unit)
+    for item in db.scalars(select(ServiceRequestItem).where(ServiceRequestItem.service_request_id == service.id)):
+        db.delete(item)
+
+    _clear_serial_verification_state(db, service)
+
+    service.order_id = None
+    service.order_item_id = None
+    service.assigned_engineer_id = None
+    service.assigned_vendor_id = None
+    service.approved_at = None
+    service.completed_at = None
+    service.closed_at = None
+    service.completion_code = None
+    service.customer_identified_at = None
+    service.status_date = now
+    db.add(service)
+
+
+def on_enter_service_team_review(db: Session, service: ServiceRequest) -> None:
+    """Entering Service Team Review: keep customer documents, clear order/assignment/engineer steps."""
+    reset_service_downstream_workflow_for_documents(db, service)
+
+
+def reset_service_workflow_from_status(db: Session, service: ServiceRequest, target_status: str) -> None:
+    """Admin revert: keep customer documents, clear steps after the selected workflow step."""
+    target_rank = service_workflow_rank(target_status)
+    team_review_rank = service_workflow_rank("Service Team Review")
+    serial_verified_rank = service_workflow_rank("Serial Verified")
+    service_completed_rank = service_workflow_rank("Service Completed")
+
+    if target_rank <= team_review_rank:
+        reset_service_downstream_workflow_for_documents(db, service)
+        return
+
+    _delete_engineer_workflow_records(db, service.id)
+
+    if target_rank < serial_verified_rank:
+        _clear_serial_verification_state(db, service)
+
+    if target_rank < service_completed_rank:
+        service.completed_at = None
+        service.completion_code = None
+
+    if target_rank < service_workflow_rank("Approved for Service"):
+        service.approved_at = None
+
+    if target_rank < service_workflow_rank("Closed"):
+        service.closed_at = None
+
+    service.status_date = datetime.now(timezone.utc)
+    db.add(service)
+
+
 def document_workflow_active(service: ServiceRequest) -> bool:
     return bool(
         service.ask_for_documents
@@ -124,6 +267,7 @@ def sync_document_workflow_status(db: Session, service: ServiceRequest) -> bool:
     changed = False
     if customer_documents_approved(db, service):
         if service.status == "Admin Review Document":
+            on_enter_service_team_review(db, service)
             service.status = "Service Team Review"
             service.status_date = datetime.now(timezone.utc)
             changed = True

@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import logging
+import secrets
+from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import BackgroundTasks
@@ -16,7 +18,19 @@ from app.models.service import ServiceRequest, ServiceRequestUnit
 from app.models.user import User
 from app.models.vendor import Vendor
 from sqlalchemy import select
-from app.services.email_service import HELPDESK_EMAIL, TOLL_FREE_NUMBER, send_service_happy_code_email, send_template_email
+from app.services.email_service import (
+    HELPDESK_EMAIL,
+    TOLL_FREE_NUMBER,
+    send_service_happy_code_email,
+    send_service_rejection_document_request_email,
+    send_template_email,
+)
+from app.services.service_documents import (
+    build_public_upload_url,
+    customer_document_types,
+    mark_latest_customer_documents_for_resubmission,
+    reset_service_downstream_workflow_for_documents,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -503,4 +517,38 @@ def after_service_approval(
             service=service,
             decision=decision,
             remarks=remarks,
+        )
+    if decision != "Reject":
+        return
+
+    mark_latest_customer_documents_for_resubmission(db, service, remarks=remarks)
+    reset_service_downstream_workflow_for_documents(db, service)
+    service.document_access_token = secrets.token_urlsafe(24)
+    service.ask_for_documents = True
+    service.document_request_sent_at = service.status_date or datetime.now(timezone.utc)
+    service.status = "Admin Review Document"
+    service.status_date = service.document_request_sent_at
+    db.commit()
+    db.refresh(service)
+
+    upload_url = build_public_upload_url(service.document_access_token)
+    required_documents = customer_document_types(db, service)
+    if background_tasks is not None:
+        background_tasks.add_task(
+            send_service_rejection_document_request_email,
+            to=service.customer_email or "",
+            customer_name=service.customer_name,
+            ticket_id=service.request_no,
+            upload_url=upload_url,
+            reason=remarks,
+            required_documents=required_documents,
+        )
+    else:
+        send_service_rejection_document_request_email(
+            to=service.customer_email or "",
+            customer_name=service.customer_name,
+            ticket_id=service.request_no,
+            upload_url=upload_url,
+            reason=remarks,
+            required_documents=required_documents,
         )

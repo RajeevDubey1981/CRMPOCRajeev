@@ -29,9 +29,12 @@ const ACTION_STYLE = {
 };
 
 // Default action button shown when no prior action recorded, keyed by query_type
+// Default action button shown when no prior action recorded, keyed by query_type.
+// Business decision: for all complaint types (including legacy imports),
+// show "Ask for Invoice" as the default starting action.
 const DEFAULT_ACTION = {
-  Installation: "Request Sent",
-  Service:      "Documents Received",
+  Installation: "Ask for Invoice",
+  Service:      "Ask for Invoice",
   Sales:        "Ask for Invoice",
   Others:       "Ask for Invoice",
 };
@@ -80,10 +83,27 @@ function FilterField({ label, value, onChange, placeholder, type = "text" }) {
 export default function ComplaintList() {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const role = user?.role?.toLowerCase?.() || "";
+  const rawRole = user?.role || "";
+  const role = rawRole.toString().trim().toLowerCase();
   const isCallcenter = role === "callcenter";
   const isAdminLike = isOperationsAdminRole(role);
-  const canEditComplaints = isCallcenter || isAdminLike;
+  const isSales =
+    role === "sales" ||
+    role === "sale" ||
+    role === "sales_team" ||
+    role === "sales team";
+
+  // Prefer explicit permission flags from backend over hard-coded role checks.
+  // This ensures roles like SALES, which have "Edit" enabled for complaints in
+  // the role matrix, can actually see the Edit button in the grid.
+  const permissions = Array.isArray(user?.permissions) ? user.permissions : [];
+  const hasComplaintEditPermission = permissions.includes("complaints.can_edit");
+
+  const canEditComplaints =
+    hasComplaintEditPermission ||
+    isCallcenter ||
+    isAdminLike ||
+    isSales;
 
   const [summary, setSummary]           = useState(null);
   const [data, setData]                 = useState({ items: [], total: 0 });
@@ -328,14 +348,15 @@ export default function ComplaintList() {
 
       {/* ── Table ── */}
       <div className="overflow-x-auto rounded bg-white shadow-sm">
-        <table className="min-w-full text-xs">
+        <table className="w-full min-w-[1280px] text-xs">
           <thead className="border-b-2 border-slate-200 bg-slate-50 text-left">
-            <tr>
+          <tr>
               {[
                 "Id", "Ref No", "Customer Name", "Status", "Query Type",
                 "Linked Request", "Remark", "Assigned Engineer", "Mobile", "Model Details",
+                "Action", // move action column next to model details
                 "Problem Description", "Status Date", "Email",
-                "Customer Address", "Created By", "Created At", "Action",
+                "Customer Address", "Created By", "Created At",
               ].map((h) => (
                 <th key={h} className="whitespace-nowrap px-3 py-2.5 font-semibold text-slate-600">
                   {h}
@@ -355,7 +376,10 @@ export default function ComplaintList() {
               </tr>
             )}
             {!loading && data.items.map((c) => {
-              const lastAction = c.last_action_taken;
+              // For legacy-imported rows where last_action_taken was stored as
+              // "Legacy import", treat that as "no previous action" so that
+              // the button shows the normal default (Ask for Invoice).
+              const lastAction = c.last_action_taken === "Legacy import" ? null : c.last_action_taken;
               const defaultAct = DEFAULT_ACTION[c.query_type] || "Ask for Invoice";
               const shownAction = lastAction || defaultAct;
 
@@ -374,7 +398,7 @@ export default function ComplaintList() {
                   <td className="max-w-[110px] truncate px-3 py-2" title={c.customer_name}>
                     {c.customer_name || "—"}
                   </td>
-                  <td className="px-3 py-2">
+                  <td className="min-w-[11rem] whitespace-nowrap px-3 py-2 align-middle">
                     <StatusBadge value={getComplaintWorkflowStatus(c) || c.status} />
                   </td>
                   <td className="px-3 py-2">{c.query_type || "—"}</td>
@@ -389,20 +413,9 @@ export default function ComplaintList() {
                   <td className="max-w-[110px] truncate px-3 py-2" title={c.model_details || ""}>
                     {trunc(c.model_details, 22)}
                   </td>
-                  <td className="max-w-[120px] truncate px-3 py-2" title={c.problem_description || ""}>
-                    {trunc(c.problem_description)}
-                  </td>
-                  <td className="whitespace-nowrap px-3 py-2">{fmtDate(c.status_date)}</td>
-                  <td className="max-w-[120px] truncate px-3 py-2" title={c.customer_email || ""}>
-                    {c.customer_email || "—"}
-                  </td>
-                  <td className="max-w-[120px] truncate px-3 py-2" title={c.customer_address || ""}>
-                    {trunc(c.customer_address)}
-                  </td>
-                  <td className="px-3 py-2">{c.created_by_name || "—"}</td>
-                  <td className="whitespace-nowrap px-3 py-2">{fmtDate(c.created_at)}</td>
-                  <td className="px-3 py-2">
-                    <div className="flex items-center gap-1 whitespace-nowrap">
+                  {/* Action column moved to immediately follow Model Details */}
+                  <td className="min-w-[12rem] whitespace-nowrap px-3 py-2 align-middle">
+                    <div className="flex flex-nowrap items-center gap-1">
                       <button
                         title="View"
                         onClick={() => setViewTarget(c)}
@@ -428,12 +441,24 @@ export default function ComplaintList() {
                       </button>
                       <button
                         onClick={() => { setActionTarget(c); setActionType(shownAction); }}
-                        className={`rounded border px-2 py-0.5 text-xs font-medium transition-opacity hover:opacity-80 ${ACTION_STYLE[shownAction] || "bg-slate-100 text-slate-600 border-slate-200"}`}
+                        className={`inline-block whitespace-nowrap rounded border px-2.5 py-1 text-xs font-medium leading-snug transition-opacity hover:opacity-80 ${ACTION_STYLE[shownAction] || "bg-slate-100 text-slate-600 border-slate-200"}`}
                       >
                         {shownAction}
                       </button>
                     </div>
                   </td>
+                  <td className="max-w-[120px] truncate px-3 py-2" title={c.problem_description || ""}>
+                    {trunc(c.problem_description)}
+                  </td>
+                  <td className="whitespace-nowrap px-3 py-2">{fmtDate(c.status_date)}</td>
+                  <td className="max-w-[120px] truncate px-3 py-2" title={c.customer_email || ""}>
+                    {c.customer_email || "—"}
+                  </td>
+                  <td className="max-w-[120px] truncate px-3 py-2" title={c.customer_address || ""}>
+                    {trunc(c.customer_address)}
+                  </td>
+                  <td className="px-3 py-2">{c.created_by_name || "—"}</td>
+                  <td className="whitespace-nowrap px-3 py-2">{fmtDate(c.created_at)}</td>
                 </tr>
               );
             })}

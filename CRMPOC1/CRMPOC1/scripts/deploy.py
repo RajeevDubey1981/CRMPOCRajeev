@@ -10,6 +10,7 @@ from __future__ import annotations
 import getpass
 import os
 import shutil
+import socket
 import subprocess
 import sys
 import time
@@ -56,6 +57,25 @@ def run_local(cmd: list[str], *, cwd: Path | None = None, check: bool = True, en
     if env:
         run_env.update(env)
     return subprocess.run(cmd, cwd=cwd or ROOT, check=check, env=run_env)
+
+
+def run_alembic_upgrade(api_python: Path, *, cwd: Path, env: dict[str, str] | None = None) -> None:
+    """Run alembic upgrade head, auto-recovering if the DB schema already exists but is unstamped."""
+    cmd = [str(api_python), "-m", "alembic", "-c", "alembic.ini", "upgrade", "head"]
+    print(f"\n> {' '.join(cmd)}")
+    run_env = os.environ.copy()
+    if env:
+        run_env.update(env)
+    result = subprocess.run(cmd, cwd=cwd, env=run_env, capture_output=True, text=True)
+    print(result.stdout, end="")
+    print(result.stderr, end="")
+    if result.returncode == 0:
+        return
+    if "already exists" not in result.stderr:
+        raise subprocess.CalledProcessError(result.returncode, cmd, output=result.stdout, stderr=result.stderr)
+    print("\nSchema already present but unstamped; running 'alembic stamp head' and retrying...")
+    run_local([str(api_python), "-m", "alembic", "-c", "alembic.ini", "stamp", "head"], cwd=cwd, env=env)
+    run_local(cmd, cwd=cwd, env=env)
 
 
 def stop_port_processes(ports: tuple[int, ...]) -> None:
@@ -150,7 +170,22 @@ def npm_executable() -> str:
 
 
 def python_executable() -> str:
+    configured_python = os.environ.get("PYTHON_EXE")
+    if configured_python and Path(configured_python).is_file():
+        return configured_python
+    if sys.executable:
+        return sys.executable
     if sys.platform == "win32":
+        bundled_candidates = (
+            ROOT.parent / "python311-embed" / "python.exe",
+            ROOT.parent / ".venv" / "Scripts" / "python.exe",
+            Path("C:/crmpoc/CRMPOC1/python311-embed/python.exe"),
+            Path("C:/crmpoc/CRMPOC1/.venv/Scripts/python.exe"),
+            Path("C:/migrationtool/.python-runtime/python.exe"),
+        )
+        for candidate_path in bundled_candidates:
+            if candidate_path.is_file():
+                return str(candidate_path)
         for candidate in ("py", "python", "python3"):
             if shutil.which(candidate):
                 return candidate
@@ -160,7 +195,62 @@ def python_executable() -> str:
     return py
 
 
-def build_ui(*, for_production: bool = False) -> None:
+def ensure_api_venv() -> Path:
+    api_python = API_DIR / ("venv\\Scripts\\python.exe" if sys.platform == "win32" else "venv/bin/python")
+    requirements = API_DIR / "requirements.txt"
+
+    def venv_works() -> bool:
+        if not api_python.is_file():
+            return False
+        result = subprocess.run(
+            [str(api_python), "--version"],
+            cwd=API_DIR,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
+        return result.returncode == 0
+
+    if venv_works():
+        return api_python
+
+    print(f"API virtual environment is missing or broken: {api_python}")
+    if api_python.parent.parent.exists():
+        print("Recreating API virtual environment...")
+        shutil.rmtree(api_python.parent.parent)
+    base_python = python_executable()
+    venv_check = subprocess.run(
+        [base_python, "-c", "import venv"],
+        cwd=API_DIR,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    )
+    if venv_check.returncode != 0:
+        raise SystemExit(
+            "Found Python, but it cannot create virtual environments because the venv module is missing.\n"
+            f"Python used: {base_python}\n"
+            "Set PYTHON_EXE to a full Python install, for example:\n"
+            "  $env:PYTHON_EXE='C:\\Path\\To\\Python\\python.exe'\n"
+            "  python scripts\\deploy.py"
+        )
+    run_local([base_python, "-m", "venv", "venv"], cwd=API_DIR)
+    run_local([str(api_python), "-m", "pip", "install", "--upgrade", "pip"], cwd=API_DIR)
+    run_local([str(api_python), "-m", "pip", "install", "-r", str(requirements)], cwd=API_DIR)
+    return api_python
+
+
+def stamp_release_build(build_id: str) -> None:
+    release_file = API_DIR / "app" / "release_build.py"
+    release_file.write_text(
+        '"""Auto-stamped by scripts/deploy.py on production deploy."""\n'
+        f'RELEASE_BUILD = "{build_id}"\n',
+        encoding="utf-8",
+    )
+    print(f"Release build id: {build_id}")
+
+
+def build_ui(*, for_production: bool = False, build_id: str | None = None) -> None:
     print("\n=== Build UI (production) ===")
     npm = npm_executable()
     if not (UI_DIR / "node_modules").is_dir():
@@ -169,6 +259,8 @@ def build_ui(*, for_production: bool = False) -> None:
     if for_production:
         # .env.local overrides .env.production during vite build; force same-origin API.
         build_env["VITE_API_BASE_URL"] = ""
+        if build_id:
+            build_env["VITE_RELEASE_BUILD"] = build_id
     run_local([npm, "run", "build", "--", "--mode", "production"], cwd=UI_DIR, env=build_env)
     if not UI_DIST.is_dir():
         raise SystemExit(f"UI build failed: {UI_DIST} not found")
@@ -182,16 +274,17 @@ def deploy_local() -> None:
     print("\n=== Stop existing local services ===")
     stop_port_processes((5173, 8010))
 
-    api_python = API_DIR / ("venv\\Scripts\\python.exe" if sys.platform == "win32" else "venv/bin/python")
-    if not api_python.is_file():
-        raise SystemExit(f"API virtual environment not found: {api_python}")
+    api_python = ensure_api_venv()
     if not (UI_DIR / "node_modules").is_dir():
         run_local([npm_executable(), "install"], cwd=UI_DIR, env=local_env)
 
     print("\n=== Local database migrations ===")
-    run_local([str(api_python), "-m", "alembic", "-c", "alembic.ini", "upgrade", "head"], cwd=API_DIR, env=local_env)
+    run_alembic_upgrade(api_python, cwd=API_DIR, env=local_env)
     print("\n=== Local seed (safe bootstrap) ===")
-    run_local([str(api_python), "-m", "app.seed"], cwd=API_DIR, env=local_env, check=False)
+    seed_cmd = [str(api_python), "-m", "app.seed"]
+    if not ask_seed_demo_data():
+        seed_cmd.append("--minimal")
+    run_local(seed_cmd, cwd=API_DIR, env=local_env, check=False)
 
     start_local_process(
         [str(api_python), "-m", "uvicorn", "app.main:app", "--reload", "--host", "127.0.0.1", "--port", "8010"],
@@ -229,12 +322,20 @@ def iter_api_files() -> list[Path]:
     return sorted(files)
 
 
-def ssh_run(client, cmd: str) -> str:
-    _, stdout, stderr = client.exec_command(cmd, get_pty=True)
-    out = stdout.read().decode("utf-8", "replace")
-    err = stderr.read().decode("utf-8", "replace")
+def ssh_run(client, cmd: str, *, timeout: int = 600) -> str:
+    print(f"  remote$ {cmd[:180]}{'...' if len(cmd) > 180 else ''}", flush=True)
+    _, stdout, stderr = client.exec_command(cmd, get_pty=True, timeout=timeout)
+    stdout.channel.settimeout(timeout)
+    try:
+        out = stdout.read().decode("utf-8", "replace")
+        err = stderr.read().decode("utf-8", "replace")
+        status_code = stdout.channel.recv_exit_status()
+    except socket.timeout as exc:
+        raise TimeoutError(f"Remote command timed out after {timeout}s:\n{cmd}") from exc
     if err.strip():
         out += "\nSTDERR: " + err
+    if status_code != 0:
+        raise RuntimeError(f"Remote command failed with exit code {status_code}:\n{cmd}\n\n{out}")
     return out
 
 
@@ -272,7 +373,12 @@ def deploy_ui_remote(sftp, client, remote_ui: str) -> None:
     print(f"  {count} files uploaded")
 
 
-def deploy_database_remote(client, remote_api: str) -> None:
+def ask_seed_demo_data() -> bool:
+    answer = input("\nSeed demo/sample data (sample users, orders, complaints, etc.)? Product Details masters are always seeded. [y/N]: ").strip().lower()
+    return answer in {"y", "yes"}
+
+
+def deploy_database_remote(client, remote_api: str, *, seed_demo_data: bool) -> None:
     print("\n=== Production database migrations ===")
     remote_migrate = r"""
 import os, subprocess
@@ -284,19 +390,29 @@ for line in Path("/var/www/indcool/api/.env").read_text(encoding="utf-8").splitl
     k, v = line.split("=", 1)
     os.environ[k.strip()] = v.strip()
 os.chdir("/var/www/indcool/api")
-subprocess.run(["/var/www/indcool/api/venv/bin/alembic", "-c", "alembic.ini", "current"], check=False)
-subprocess.run(["/var/www/indcool/api/venv/bin/alembic", "-c", "alembic.ini", "upgrade", "head"], check=True)
+alembic_bin = "/var/www/indcool/api/venv/bin/alembic"
+subprocess.run([alembic_bin, "-c", "alembic.ini", "current"], check=False)
+result = subprocess.run([alembic_bin, "-c", "alembic.ini", "upgrade", "head"], capture_output=True, text=True)
+print(result.stdout, end="")
+print(result.stderr, end="")
+if result.returncode != 0:
+    if "already exists" not in result.stderr:
+        raise SystemExit(result.returncode)
+    print("Schema already present but unstamped; running 'alembic stamp head' and retrying...")
+    subprocess.run([alembic_bin, "-c", "alembic.ini", "stamp", "head"], check=True)
+    subprocess.run([alembic_bin, "-c", "alembic.ini", "upgrade", "head"], check=True)
 """.replace("/var/www/indcool/api", remote_api)
     ssh_run(client, f"cat > /tmp/indcool_migrate.py <<'PY'\n{remote_migrate}\nPY")
     print(ssh_run(client, f"sudo -u www-data {remote_api}/venv/bin/python /tmp/indcool_migrate.py"))
 
-    print("\n=== Production seed (safe bootstrap) ===")
+    print("\n=== Production seed (safe bootstrap + Product Details masters) ===")
+    seed_flag = "" if seed_demo_data else " --master-data"
     print(ssh_run(
         client,
         f"sudo -u www-data bash -lc 'cd {remote_api} && "
         f"export $(grep -E ^DATABASE_BACKEND= .env | xargs) "
         f"$(grep -E ^MYSQL_DATABASE_URL= .env | xargs) && "
-        f"venv/bin/python -m app.seed'",
+        f"venv/bin/python -m app.seed{seed_flag}'",
     ))
 
 
@@ -307,10 +423,52 @@ def restart_production_services(client) -> None:
     print(ssh_run(client, "sudo nginx -t && sudo systemctl reload nginx"))
 
 
-def verify_production(client, remote_api: str) -> None:
+def verify_production(
+    client,
+    remote_api: str,
+    remote_ui: str,
+    *,
+    expected_build: str | None = None,
+) -> None:
     print("\n=== Verify production ===")
-    print(ssh_run(client, f"curl -s -o /dev/null -w 'health:%{{http_code}}\\n' http://127.0.0.1:8000/health"))
-    print(ssh_run(client, "curl -s -o /dev/null -w 'site:%{http_code}\\n' http://127.0.0.1/"))
+    health = ""
+    health_body = ""
+    for attempt in range(1, 16):
+        health = ssh_run(
+            client,
+            "curl -s -o /dev/null -w 'health:%{http_code}\\n' --max-time 5 http://127.0.0.1:8000/health || true",
+            timeout=15,
+        ).strip()
+        health_body = ssh_run(
+            client,
+            "curl -s --max-time 5 http://127.0.0.1:8000/health || true",
+            timeout=15,
+        ).strip()
+        print(f"attempt {attempt}/15: {health} {health_body}")
+        if "health:200" in health:
+            break
+        ssh_run(client, "sleep 2", timeout=10)
+    if "health:200" not in health:
+        print("\n=== API service status ===")
+        print(ssh_run(client, "sudo systemctl status indcool-api --no-pager -l || true"))
+        print("\n=== Recent API logs ===")
+        print(ssh_run(client, "sudo journalctl -u indcool-api -n 80 --no-pager || true"))
+        raise RuntimeError(f"Production API health check failed: {health}")
+    if expected_build and expected_build not in health_body:
+        raise RuntimeError(
+            f"Production API build mismatch. Expected '{expected_build}' in /health response: {health_body}"
+        )
+    ui_check = ssh_run(
+        client,
+        f"grep -R -l 'orderVerifiedLocally' {remote_ui}/assets 2>/dev/null | head -1 || true",
+        timeout=30,
+    ).strip()
+    if ui_check:
+        raise RuntimeError(
+            "Production UI still contains old order-verify code (orderVerifiedLocally). "
+            "Hard-refresh the browser after deploy; if this persists, re-run production deploy."
+        )
+    print(ssh_run(client, "curl -s -o /dev/null -w 'site:%{http_code}\\n' http://127.0.0.1/ || true"))
 
 
 def deploy_production(config: dict[str, str]) -> None:
@@ -331,7 +489,11 @@ def deploy_production(config: dict[str, str]) -> None:
     if not password or password == "YOUR_PASSWORD_HERE":
         password = getpass.getpass(f"SSH password for {user}@{host}: ")
 
-    build_ui(for_production=True)
+    seed_demo_data = ask_seed_demo_data()
+
+    build_id = time.strftime("%Y%m%d-%H%M%S")
+    stamp_release_build(build_id)
+    build_ui(for_production=True, build_id=build_id)
 
     client = paramiko.SSHClient()
     client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
@@ -341,15 +503,16 @@ def deploy_production(config: dict[str, str]) -> None:
     try:
         deploy_api_remote(sftp, client, remote_api)
         deploy_ui_remote(sftp, client, remote_ui)
-        deploy_database_remote(client, remote_api)
+        deploy_database_remote(client, remote_api, seed_demo_data=seed_demo_data)
         restart_production_services(client)
-        verify_production(client, remote_api)
+        verify_production(client, remote_api, remote_ui, expected_build=build_id)
     finally:
         sftp.close()
         client.close()
 
     print("\nProduction deploy complete.")
     print(f"  Site: https://indcoolappliances.com (server: {host})")
+    print(f"  API build: {build_id}  (check https://indcoolappliances.com/health)")
 
 
 def prompt_target() -> str:

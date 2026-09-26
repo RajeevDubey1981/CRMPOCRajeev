@@ -1,11 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
-
 import { servicesApi } from "../../api/services.js";
 import WarrantyBadge from "../../components/WarrantyBadge.jsx";
 import { ENGINEER_ASSIGNMENT_HINT, formatEngineerOptionLabel } from "../../utils/engineerAssignment.js";
 
 function serialCell(value) {
-  return value ? <span className="font-mono text-xs">{value}</span> : <span className="text-slate-400">—</span>;
+  return value ? <span className="font-mono text-xs">{value}</span> : <span className="text-slate-400">â</span>;
 }
 
 export default function ServiceUnitAssignmentPanel({
@@ -19,7 +18,6 @@ export default function ServiceUnitAssignmentPanel({
 }) {
   const [orderVerifyInput, setOrderVerifyInput] = useState(service?.order_no || "");
   const [orderSearchResults, setOrderSearchResults] = useState([]);
-  const [orderVerifiedLocally, setOrderVerifiedLocally] = useState(false);
   const [selectedItemCode, setSelectedItemCode] = useState("");
   const [selectedUnitIds, setSelectedUnitIds] = useState(new Set());
   const [assignEngineerId, setAssignEngineerId] = useState("");
@@ -27,13 +25,19 @@ export default function ServiceUnitAssignmentPanel({
   const [assignRemarks, setAssignRemarks] = useState("");
   const orderItems = service?.order_items || [];
   const allUnits = service?.units || [];
-  const orderVerified = Boolean(service?.order_id || orderItems.length > 0 || orderVerifiedLocally);
+  // Only server-linked order counts as verified (admin reset clears order_id).
+  const orderVerified = Boolean(service?.order_id);
 
   useEffect(() => {
-    if (service?.order_no) {
+    if (service?.order_id && service?.order_no) {
       setOrderVerifyInput(service.order_no);
+      return;
     }
-  }, [service?.order_no]);
+    if (!service?.order_id) {
+      setSelectedItemCode("");
+      setSelectedUnitIds(new Set());
+    }
+  }, [service?.id, service?.order_id, service?.order_no]);
 
   useEffect(() => {
     const search = orderVerifyInput.trim();
@@ -119,7 +123,6 @@ export default function ServiceUnitAssignmentPanel({
           : "Order verified and items loaded.",
       },
     );
-    setOrderVerifiedLocally(true);
     setSelectedItemCode("");
     setSelectedUnitIds(new Set());
     onRefresh?.();
@@ -153,7 +156,7 @@ export default function ServiceUnitAssignmentPanel({
             {engineerGroups.map((group) => (
               <div key={group.item_code} className="rounded-md border border-slate-200">
                 <div className="border-b border-slate-200 bg-slate-50 px-4 py-3 text-sm">
-                  <div className="font-medium text-slate-800">{group.item_code} — {group.item_name}</div>
+                  <div className="font-medium text-slate-800">{group.item_code} â {group.item_name}</div>
                   <div className="text-slate-500">Assigned quantity: {group.units.length}</div>
                 </div>
                 <div className="overflow-x-auto">
@@ -232,39 +235,94 @@ export default function ServiceUnitAssignmentPanel({
       {workflowUnlocked && !orderVerified && orderSearchResults.length > 0 && (
         <div className="-mt-2 space-y-2 rounded-md border border-slate-200 bg-white p-2 shadow-sm">
           {orderSearchResults.map((result) => (
-            <button
+            <div
               key={`${result.order_id}-${result.order_no}`}
-              type="button"
-              onClick={() => {
-                setOrderVerifyInput(result.order_no || String(result.order_id));
-                setOrderSearchResults([]);
-              }}
-              className="block w-full rounded-md border border-slate-200 px-3 py-2 text-left text-sm hover:bg-sky-50"
+              className="flex flex-col gap-2 rounded-md border border-slate-200 px-3 py-2 text-sm hover:bg-sky-50 sm:flex-row sm:items-center sm:justify-between"
             >
-              <span className="font-medium text-slate-800">Order {result.order_no || `#${result.order_id}`}</span>
-              <span className="ml-2 text-slate-500">
-                {[result.customer_name, result.customer_mobile].filter(Boolean).join(" • ")}
-              </span>
-            </button>
+              <div>
+                <a
+                  href={`/orders/${result.order_id}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="font-medium text-sky-700 underline underline-offset-2 hover:text-sky-900"
+                >
+                  Order {result.order_no || `#${result.order_id}`}
+                </a>
+                <span className="ml-2 text-slate-500">
+                  {[result.customer_name, result.customer_mobile].filter(Boolean).join("  ")}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setOrderVerifyInput(result.order_no || String(result.order_id));
+                  setOrderSearchResults([]);
+                }}
+                className="self-start rounded-md border border-slate-300 px-3 py-1 text-xs font-medium text-slate-700 hover:bg-white sm:self-auto"
+              >
+                Use for verify
+              </button>
+            </div>
           ))}
         </div>
       )}
 
-      {orderVerified && (
+      {orderVerified && service.order_id && (
         <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
           Order verified and linked
-          {service.order_no && (
-            <span> — <span className="font-mono">{service.order_no}</span></span>
-          )}
-          {service.order_id && !service.order_no && (
-            <span> — order #{service.order_id}</span>
+          <span>
+            {" — "}
+            <a
+              href={`/orders/${service.order_id}`}
+              target="_blank"
+              rel="noreferrer"
+              className="font-mono font-medium text-emerald-900 underline underline-offset-2 hover:text-emerald-700"
+            >
+              {service.order_no || `order #${service.order_id}`}
+            </a>
+          </span>
+          {isServiceTeam && service.status === "Service Team Review" && (
+            <div className="mt-2 border-t border-emerald-200 pt-2 text-amber-900">
+              <p className="text-xs">
+                This order was linked in an earlier pass. Clear it to continue step by step from document review.
+              </p>
+              <button
+                type="button"
+                className="mt-2 rounded-md border border-amber-400 bg-white px-3 py-1.5 text-xs font-medium text-amber-900 hover:bg-amber-50"
+                onClick={() => {
+                  if (!window.confirm(
+                    "Clear order verification and engineer assignment for this step? Customer documents will stay approved.",
+                  )) {
+                    return;
+                  }
+                  run(
+                    () => servicesApi.restartTeamReview(service.id),
+                    { successMessage: "Service team review restarted. Verify the order again, then assign the engineer." },
+                  ).then(() => onRefresh?.());
+                }}
+              >
+                Clear order and continue step by step
+              </button>
+            </div>
           )}
         </div>
       )}
 
       {workflowUnlocked && service.order_no && !orderVerified && (
         <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
-          Linked order: <span className="font-mono">{service.order_no}</span>
+          Linked order:{" "}
+          {service.order_id ? (
+            <a
+              href={`/orders/${service.order_id}`}
+              target="_blank"
+              rel="noreferrer"
+              className="font-mono font-medium text-emerald-900 underline underline-offset-2 hover:text-emerald-700"
+            >
+              {service.order_no}
+            </a>
+          ) : (
+            <span className="font-mono">{service.order_no}</span>
+          )}
         </div>
       )}
 
@@ -294,7 +352,7 @@ export default function ServiceUnitAssignmentPanel({
               {orderItems.map((item) => (
                 <tr key={item.id} className={selectedItemCode === item.item_code ? "bg-sky-50" : ""}>
                   <td className="px-3 py-2 font-mono text-xs">{item.item_code}</td>
-                  <td className="px-3 py-2">{item.item_name || "—"}</td>
+                  <td className="px-3 py-2">{item.item_name || "â"}</td>
                   <td className="px-3 py-2 text-center">{item.ordered_quantity}</td>
                   <td className="px-3 py-2 text-center">{item.installed_quantity ?? item.units_count}</td>
                   <td className="px-3 py-2 text-center">{item.pending_installation_quantity ?? 0}</td>
@@ -375,11 +433,11 @@ export default function ServiceUnitAssignmentPanel({
                         <td key={colIdx} className="px-3 py-2">{serialCell(value)}</td>
                       ))}
                       <td className="px-3 py-2"><WarrantyBadge value={unit.warranty_status} /></td>
-                      <td className="px-3 py-2 text-center">{unit.free_service_count ?? "—"}</td>
-                      <td className="px-3 py-2 text-center">{unit.paid_service_count ?? "—"}</td>
+                      <td className="px-3 py-2 text-center">{unit.free_service_count ?? "â"}</td>
+                      <td className="px-3 py-2 text-center">{unit.paid_service_count ?? "â"}</td>
                       <td className="px-3 py-2"><WarrantyBadge value={unit.part_warranty_status} /></td>
-                      <td className="px-3 py-2">{unit.assigned_engineer_name || "—"}</td>
-                      <td className="px-3 py-2">{unit.admin_billing_type || "—"}</td>
+                      <td className="px-3 py-2">{unit.assigned_engineer_name || "â"}</td>
+                      <td className="px-3 py-2">{unit.admin_billing_type || "â"}</td>
                     </tr>
                   );
                 })}
@@ -393,7 +451,7 @@ export default function ServiceUnitAssignmentPanel({
               onChange={(e) => setAssignEngineerId(e.target.value)}
               className="rounded-md border border-slate-300 px-3 py-2 text-sm"
             >
-              <option value="">— Choose engineer —</option>
+              <option value="">â Choose engineer â</option>
               {engineers.map((engineer) => (
                 <option key={engineer.id} value={engineer.id}>{formatEngineerOptionLabel(engineer)}</option>
               ))}

@@ -152,14 +152,17 @@ export default function OrderDetail() {
   const { user } = useAuth();
   const role = user?.role?.toLowerCase?.() || "";
   const isVendor = role === "vendor";
+  const orderPermission = (Array.isArray(user?.permissions) ? user.permissions : [])
+    .find((permission) => permission.module === "orders");
+  const canUpdateOrder = Boolean(orderPermission?.can_edit);
 
   const [order, setOrder] = useState(null);
   const isVendorPendingOrder = isVendor && order?.status === "Pending";
   const isVendorShippedOrder = isVendor && VENDOR_POST_SHIPMENT_STATUSES.has(order?.status);
-  const canManageOemBill = !isVendor || isOperationsAdminRole(role) || isVendorPendingOrder;
+  const canManageOemBill = canUpdateOrder;
   const canVendorEditShippedFields = isVendorShippedOrder;
   const canVendorEditPendingItems = isVendorPendingOrder;
-  const canManageItemCsv = isOperationsAdminRole(role);
+  const canManageItemCsv = canUpdateOrder;
   const canViewInstallationRequest = isOperationsAdminRole(role);
   const [err, setErr] = useState("");
   const [editing, setEditing] = useState(false);
@@ -290,6 +293,7 @@ export default function OrderDetail() {
   }
 
   function openEdit() {
+    if (!canEditOrder) return;
     if (!order) return;
     setEditForm({
       order_no: order.order_no || "",
@@ -612,6 +616,10 @@ export default function OrderDetail() {
   async function saveEdit(e) {
     e.preventDefault();
     setEditErr("");
+    if (!canEditOrder) {
+      setEditErr("Your role cannot edit orders.");
+      return;
+    }
     setEditSaving(true);
     try {
       if (isVendor && canVendorEditPendingItems) {
@@ -688,7 +696,7 @@ export default function OrderDetail() {
     }
   }
 
-  const canEditOrder = !isVendor || isVendorShippedOrder || isVendorPendingOrder;
+  const canEditOrder = canUpdateOrder || isVendorShippedOrder || isVendorPendingOrder;
   const canVendorEditPendingDetails = canVendorEditPendingItems;
   const vendorBlockedPendingStatus = isVendor
     && Boolean((order?.oem_bill_no || "").trim())
@@ -800,7 +808,7 @@ export default function OrderDetail() {
   const previewSerialColumns = serialColumnsForCount(importPreview?.serialColumnCount ?? 0);
   const previewHasIssues = previewRowsWithDuplicates.some((row) => row.duplicateReasons.length > 0);
   const previewHasRows = (importPreview?.rows?.length || 0) > 0;
-  const canSubmitInstallationRequest = Boolean(order?.status === "Delivered" && (order?.oem_bill_no || "").trim());
+  const canSubmitInstallationRequest = Boolean(canUpdateOrder && order?.status === "Delivered" && (order?.oem_bill_no || "").trim());
   const selectedSubmitItemCodes = Array.from(selectedSerials).reduce((codes, key) => {
     const [itemIdStr] = key.split("-");
     const item = (order?.items || []).find((candidate) => String(candidate.id) === itemIdStr);

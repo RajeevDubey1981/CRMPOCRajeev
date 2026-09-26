@@ -34,6 +34,21 @@ export const partnerRegistrationsApi = {
   update: (id, body) => api.put(`/api/partner-registrations/${id}`, body).then((r) => r.data),
   reject: (id, body) => api.post(`/api/partner-registrations/${id}/reject`, body).then((r) => r.data),
   agreement: (id) => api.get(`/api/partner-registrations/${id}/agreement`).then((r) => r.data),
+  downloadAgreement: async (id) => {
+    const response = await api.get(`/api/partner-registrations/${id}/agreement/download`, {
+      responseType: "blob",
+    });
+    const blobUrl = URL.createObjectURL(response.data);
+    const disposition = response.headers?.["content-disposition"] || "";
+    const filename = disposition.match(/filename="([^"]+)"/)?.[1] || `partner_agreement_${id}.html`;
+    const link = document.createElement("a");
+    link.href = blobUrl;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(blobUrl);
+  },
   delete: (id) => api.delete(`/api/partner-registrations/${id}`),
   validateGst: async (id) => {
     const key = String(id);

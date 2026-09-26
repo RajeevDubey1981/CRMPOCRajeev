@@ -6,11 +6,18 @@ import {
   EMPTY_PARTNER_FORM,
   INDIAN_STATES,
   PARTNER_DOCUMENTS,
+  buildShopPhotoDocuments,
+  gemSellerIdRequired,
+  requiredShopPhotoCount,
 } from "./partnerFormConstants.js";
 
 const fieldClass =
   "w-full rounded-xl border border-slate-300 px-3 py-3 text-base sm:text-sm focus:border-sky-600 focus:outline-none focus:ring-1 focus:ring-sky-600";
 const labelClass = "mb-1 block text-sm font-medium text-slate-700";
+const DOCUMENT_FILE_EXTENSIONS = new Set(["pdf", "jpg", "jpeg", "png", "doc", "docx"]);
+const SHOP_PHOTO_FILE_EXTENSIONS = new Set(["jpg", "jpeg", "png"]);
+const DOCUMENT_ACCEPT = ".pdf,.jpg,.jpeg,.png,.doc,.docx";
+const SHOP_PHOTO_ACCEPT = ".jpg,.jpeg,.png";
 
 function toFileUrl(path) {
   if (!path) return "";
@@ -137,6 +144,7 @@ export default function PartnerRegistrationPublic() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [success, setSuccess] = useState("");
+  const [fileErrors, setFileErrors] = useState({});
   const totalSteps = 9;
   const isSubmitted = context?.is_submitted;
 
@@ -144,6 +152,27 @@ export default function PartnerRegistrationPublic() {
     () => ["Private Limited", "Public Limited", "LLP", "Partnership"].includes(form.business_type),
     [form.business_type],
   );
+
+  const partnerTypeForRules = form.partner_type || context?.partner_type;
+  const isGemIdRequired = useMemo(
+    () => (context ? !!context.gem_seller_id_required : gemSellerIdRequired(partnerTypeForRules)),
+    [context, partnerTypeForRules],
+  );
+  const shopPhotoCount = useMemo(
+    () => (context ? context.required_shop_photo_count || 1 : requiredShopPhotoCount(partnerTypeForRules)),
+    [context, partnerTypeForRules],
+  );
+  const shopPhotoDocs = useMemo(() => buildShopPhotoDocuments(shopPhotoCount), [shopPhotoCount]);
+  const requiredDocumentItems = useMemo(
+    () => PARTNER_DOCUMENTS.filter((doc) => doc.required || (doc.key === "incorporation_certificate" && needsIncorporation)),
+    [needsIncorporation],
+  );
+  const documentsComplete = useMemo(() => {
+    if (!context?.data) return false;
+    const requiredDocsUploaded = requiredDocumentItems.every((doc) => Boolean(context.data?.[`${doc.key}_path`]));
+    const shopPhotosUploaded = shopPhotoDocs.every((doc) => Boolean(context.data?.[`${doc.key}_path`]));
+    return requiredDocsUploaded && shopPhotosUploaded;
+  }, [context, requiredDocumentItems, shopPhotoDocs]);
 
   function applyContext(result) {
     setContext(result);
@@ -186,6 +215,18 @@ export default function PartnerRegistrationPublic() {
 
   async function uploadDocument(documentKey, file) {
     if (!file) return;
+    const extension = file.name.split(".").pop()?.toLowerCase() || "";
+    const allowedExtensions = documentKey.startsWith("shop_photo_") ? SHOP_PHOTO_FILE_EXTENSIONS : DOCUMENT_FILE_EXTENSIONS;
+    if (!allowedExtensions.has(extension)) {
+      const supported = documentKey.startsWith("shop_photo_") ? "JPG or PNG" : "PDF, DOC, DOCX, JPG, or PNG";
+      setFileErrors((current) => ({ ...current, [documentKey]: `Unsupported file type. Please upload ${supported}.` }));
+      return;
+    }
+    setFileErrors((current) => {
+      const next = { ...current };
+      delete next[documentKey];
+      return next;
+    });
     setBusy(true);
     setErr("");
     try {
@@ -193,7 +234,8 @@ export default function PartnerRegistrationPublic() {
       setContext(result);
       setForm(mapApiToForm(result.data));
     } catch (error) {
-      setErr(error.response?.data?.detail || "Document upload failed");
+      const message = error.response?.data?.detail || "Document upload failed";
+      setFileErrors((current) => ({ ...current, [documentKey]: message }));
     } finally {
       setBusy(false);
     }
@@ -254,7 +296,7 @@ export default function PartnerRegistrationPublic() {
       <div className="mx-auto max-w-3xl space-y-5 px-4">
         <div className="rounded-2xl border border-sky-200 bg-white p-5 shadow-sm">
           <div className="text-xs font-semibold uppercase tracking-widest text-sky-700">Indcool Partner Registration</div>
-          <h1 className="mt-2 text-2xl font-bold text-slate-900">GeM Partner Onboarding Form</h1>
+          <h1 className="mt-2 text-2xl font-bold text-slate-900">Partner Onboarding Form</h1>
           <p className="mt-1 text-sm text-slate-600">
             Registration No: <span className="font-mono">{context.registration_no}</span>
           </p>
@@ -323,9 +365,22 @@ export default function PartnerRegistrationPublic() {
                 <Field label="Annual Turnover (₹)">
                   <input type="number" value={form.annual_turnover} onChange={(e) => setField("annual_turnover", e.target.value)} className={fieldClass} />
                 </Field>
-                <Field label="GeM Seller ID">
-                  <input value={form.gem_seller_id} onChange={(e) => setField("gem_seller_id", e.target.value)} className={fieldClass} />
-                </Field>
+                <div>
+                  <Field label="GeM Seller ID" required={isGemIdRequired}>
+                    <input
+                      value={form.gem_seller_id}
+                      onChange={(e) => setField("gem_seller_id", e.target.value)}
+                      disabled={!isGemIdRequired}
+                      placeholder={isGemIdRequired ? "" : "Not required for CSD Dealer"}
+                      className={`${fieldClass} ${!isGemIdRequired ? "bg-slate-100 text-slate-500 cursor-not-allowed" : ""}`}
+                    />
+                  </Field>
+                  {!isGemIdRequired ? (
+                    <p className="mt-1 text-xs text-slate-500">
+                      GeM Seller ID is not required for CSD Dealers.
+                    </p>
+                  ) : null}
+                </div>
               </div>
             )}
 
@@ -439,31 +494,96 @@ export default function PartnerRegistrationPublic() {
             )}
 
             {step === 8 && (
-              <div className="space-y-3">
-                {PARTNER_DOCUMENTS.map((doc) => {
-                  const isRequired = doc.required || (doc.key === "incorporation_certificate" && needsIncorporation);
-                  const uploaded = context.data?.[`${doc.key}_path`];
-                  return (
-                    <div key={doc.key} className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4">
-                      <div className="text-sm font-medium text-slate-800">
-                        {doc.label}
-                        {isRequired ? <span className="text-rose-600"> *</span> : null}
+              <div className="space-y-4">
+                <div className="space-y-3">
+                  <div className="text-sm font-semibold text-slate-700">Submit Documents</div>
+                  {PARTNER_DOCUMENTS.map((doc) => {
+                    const isRequired = doc.required || (doc.key === "incorporation_certificate" && needsIncorporation);
+                    const uploaded = context.data?.[`${doc.key}_path`];
+                    const fileError = fileErrors[doc.key];
+                    return (
+                      <div key={doc.key} className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4">
+                        <div className="text-sm font-medium text-slate-800">
+                          {doc.label}
+                          {isRequired ? <span className="text-rose-600"> *</span> : null}
+                        </div>
+                        {uploaded && (
+                          <a href={toFileUrl(uploaded)} target="_blank" rel="noreferrer" className="mt-1 inline-block text-xs text-sky-700 underline">
+                            View uploaded file
+                          </a>
+                        )}
+                        <input
+                          type="file"
+                          accept={DOCUMENT_ACCEPT}
+                          disabled={busy}
+                          onChange={(e) => {
+                            uploadDocument(doc.key, e.target.files?.[0] || null);
+                            e.target.value = "";
+                          }}
+                          className="mt-2 block w-full text-sm"
+                        />
+                        {fileError && <div className="mt-2 text-xs text-rose-700">{fileError}</div>}
                       </div>
-                      {uploaded && (
-                        <a href={toFileUrl(uploaded)} target="_blank" rel="noreferrer" className="mt-1 inline-block text-xs text-sky-700 underline">
-                          View uploaded file
-                        </a>
-                      )}
-                      <input
-                        type="file"
-                        accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
-                        disabled={busy}
-                        onChange={(e) => uploadDocument(doc.key, e.target.files?.[0] || null)}
-                        className="mt-2 block w-full text-sm"
-                      />
+                    );
+                  })}
+                </div>
+
+                <div className="space-y-3 border-t border-slate-200 pt-4">
+                  <div className="flex items-center justify-between">
+                    <div className="text-sm font-semibold text-slate-700">
+                      Shop Photographs
+                      <span className="text-rose-600"> *</span>
                     </div>
-                  );
-                })}
+                    <div className="text-xs text-slate-500">
+                      {partnerTypeForRules === "CSD Dealer"
+                        ? `CSD Dealer: please upload all ${shopPhotoCount} photos`
+                        : `Upload ${shopPhotoCount} shop photo${shopPhotoCount > 1 ? "s" : ""}`}
+                    </div>
+                  </div>
+                  <p className="text-xs text-slate-500">
+                    {partnerTypeForRules === "CSD Dealer"
+                      ? "CSD Dealers must upload 5 clear photographs of the shop premises (front, interior, signboard, storage, billing counter)."
+                      : "Upload at least 1 clear photograph of the shop / office front."}
+                  </p>
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    {shopPhotoDocs.map((doc) => {
+                      const uploaded = context.data?.[`${doc.key}_path`];
+                      const fileError = fileErrors[doc.key];
+                      return (
+                        <div
+                          key={doc.key}
+                          className="rounded-xl border border-dashed border-sky-300 bg-sky-50/40 p-4"
+                        >
+                          <div className="text-sm font-medium text-slate-800">
+                            {doc.label}
+                            <span className="text-rose-600"> *</span>
+                          </div>
+                          {uploaded && (
+                            <a href={toFileUrl(uploaded)} target="_blank" rel="noreferrer" className="mt-1 inline-block text-xs text-sky-700 underline">
+                              View uploaded file
+                            </a>
+                          )}
+                          <input
+                            type="file"
+                            accept={SHOP_PHOTO_ACCEPT}
+                            disabled={busy}
+                            onChange={(e) => {
+                              uploadDocument(doc.key, e.target.files?.[0] || null);
+                              e.target.value = "";
+                            }}
+                            className="mt-2 block w-full text-sm"
+                          />
+                          {fileError && <div className="mt-2 text-xs text-rose-700">{fileError}</div>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+                {!documentsComplete && (
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                    Upload all required documents and shop photographs to continue.
+                  </div>
+                )}
               </div>
             )}
 
@@ -506,7 +626,7 @@ export default function PartnerRegistrationPublic() {
               {step === 8 && (
                 <button
                   type="button"
-                  disabled={busy}
+                  disabled={busy || !documentsComplete}
                   onClick={() => setStep(9)}
                   className="rounded-md bg-sky-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
                 >

@@ -13,12 +13,13 @@ from app.schemas.partner_registration import DOCUMENT_FIELDS, ONBOARDING_STEPS, 
 from app.services.file_service import to_public_upload_path
 
 PARTNER_ADMIN_ROLES = frozenset({"admin", "incool", "indcool"})
+PARTNER_INVITE_ROLES = PARTNER_ADMIN_ROLES | frozenset({"sales"})
 
 FORM_STATUSES = ("Invite Sent", "In Progress", "Submitted")
 
 FORM_STEP_DEFINITIONS = (
     {"step": 1, "title": "Partner Category", "fields": ("partner_type", "business_type")},
-    {"step": 2, "title": "Firm Details", "fields": ("name",)},
+    {"step": 2, "title": "Firm Details", "fields": ("name", "gem_seller_id")},
     {"step": 3, "title": "Contact Person", "fields": ("contact_person_name", "contact_designation", "mobile", "email")},
     {"step": 4, "title": "Address", "fields": ("firm_address", "city", "state", "pincode")},
     {"step": 5, "title": "Tax Registration", "fields": ("gst_no", "pan_no", "aadhaar_no")},
@@ -33,6 +34,7 @@ FORM_STEP_DEFINITIONS = (
             "cancelled_cheque_path",
             "address_proof_path",
             "aadhaar_card_path",
+            "shop_photo_1_path",
         ),
     },
 )
@@ -46,6 +48,11 @@ DOCUMENT_KEYS = (
     "msme_certificate",
     "incorporation_certificate",
     "photo",
+    "shop_photo_1",
+    "shop_photo_2",
+    "shop_photo_3",
+    "shop_photo_4",
+    "shop_photo_5",
 )
 
 REQUIRED_DOCUMENT_KEYS = frozenset({
@@ -57,10 +64,41 @@ REQUIRED_DOCUMENT_KEYS = frozenset({
 })
 
 COMPANY_BUSINESS_TYPES = frozenset({"Private Limited", "Public Limited", "LLP", "Partnership"})
+CSD_PARTNER_TYPE = "CSD Dealer"
+SHOP_PHOTO_FIELDS = (
+    "shop_photo_1",
+    "shop_photo_2",
+    "shop_photo_3",
+    "shop_photo_4",
+    "shop_photo_5",
+)
+CSD_REQUIRED_SHOP_PHOTO_COUNT = 5
+DEFAULT_REQUIRED_SHOP_PHOTO_COUNT = 1
+GEM_SELLER_ID_REQUIRED_FOR = frozenset({
+    "Gem Partner",
+    "Distributor",
+    "Service Partner",
+    "Retailer",
+    "Partner",
+})
+
+
+def required_shop_photo_count(partner_type: str | None) -> int:
+    if (partner_type or "").strip() == CSD_PARTNER_TYPE:
+        return CSD_REQUIRED_SHOP_PHOTO_COUNT
+    return DEFAULT_REQUIRED_SHOP_PHOTO_COUNT
+
+
+def gem_seller_id_required(partner_type: str | None) -> bool:
+    return (partner_type or "").strip() in GEM_SELLER_ID_REQUIRED_FOR
 
 
 def is_partner_admin(role: str | None) -> bool:
     return (role or "").strip().lower() in PARTNER_ADMIN_ROLES
+
+
+def can_invite_partner(role: str | None) -> bool:
+    return (role or "").strip().lower() in PARTNER_INVITE_ROLES
 
 
 def _now() -> datetime:
@@ -98,6 +136,25 @@ def _required_document_keys(row: PartnerRegistration) -> set[str]:
     return keys
 
 
+def _shop_photo_uploaded_count(row: PartnerRegistration) -> int:
+    count = 0
+    for key in SHOP_PHOTO_FIELDS:
+        if _is_filled(getattr(row, f"{key}_path", None)):
+            count += 1
+    return count
+
+
+def _step_fields_required_fields(step: int, row: PartnerRegistration) -> list[str]:
+    """Return the list of required fields for a given step considering partner type."""
+    definition = next((item for item in FORM_STEP_DEFINITIONS if item["step"] == step), None)
+    if definition is None:
+        return []
+    fields = list(definition["fields"])
+    if step == 2 and not gem_seller_id_required(row.partner_type):
+        fields = [f for f in fields if f != "gem_seller_id"]
+    return fields
+
+
 # Public wizard has 9 steps (8 data steps + declaration).
 TOTAL_FORM_STEPS = 9
 
@@ -109,9 +166,18 @@ def compute_form_progress(row: PartnerRegistration) -> tuple[int, int]:
         step_filled = 0
         if definition["step"] == 8:
             required_keys = _required_document_keys(row)
-            step_total = len(required_keys)
+            required_shop_photos = required_shop_photo_count(row.partner_type)
+            step_total = len(required_keys) + required_shop_photos
             for key in required_keys:
                 if _is_filled(getattr(row, f"{key}_path", None)):
+                    step_filled += 1
+            shop_uploaded = _shop_photo_uploaded_count(row)
+            step_filled += min(shop_uploaded, required_shop_photos)
+        elif definition["step"] == 2:
+            step_fields = _step_fields_required_fields(2, row)
+            step_total = len(step_fields)
+            for field in step_fields:
+                if _is_filled(getattr(row, field, None)):
                     step_filled += 1
         else:
             step_total = len(definition["fields"])
@@ -120,7 +186,6 @@ def compute_form_progress(row: PartnerRegistration) -> tuple[int, int]:
                     step_filled += 1
 
         if step_filled == step_total and step_total > 0:
-            # Advance past completed data steps; declaration is step 9.
             current_step = min(definition["step"] + 1, TOTAL_FORM_STEPS)
         elif step_filled > 0:
             current_step = definition["step"]
@@ -130,7 +195,6 @@ def compute_form_progress(row: PartnerRegistration) -> tuple[int, int]:
         current_step = TOTAL_FORM_STEPS
         percent = 100
     else:
-        # Align % with wizard step (e.g. step 3 of 9 → 33%), not raw field counts.
         percent = round((current_step / TOTAL_FORM_STEPS) * 100)
 
     return percent, current_step
@@ -251,8 +315,16 @@ def validate_submission(row: PartnerRegistration) -> list[str]:
             for key in _required_document_keys(row):
                 if not _is_filled(getattr(row, f"{key}_path", None)):
                     errors.append(f"Missing document: {key}")
+            required_count = required_shop_photo_count(row.partner_type)
+            uploaded_count = _shop_photo_uploaded_count(row)
+            if uploaded_count < required_count:
+                errors.append(
+                    f"Upload at least {required_count} shop photo(s); "
+                    f"{row.partner_type} requires {required_count}, you have uploaded {uploaded_count}"
+                )
             continue
-        for field in definition["fields"]:
+        step_fields = _step_fields_required_fields(definition["step"], row)
+        for field in step_fields:
             if not _is_filled(getattr(row, field, None)):
                 errors.append(f"Missing field: {field}")
     if not row.declaration_accepted:

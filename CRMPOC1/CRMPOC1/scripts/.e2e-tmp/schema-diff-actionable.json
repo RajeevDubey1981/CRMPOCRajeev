@@ -1,14 +1,14 @@
 {
-  "generated_at": "2026-08-29T12:49:26.788807+00:00",
-  "local_alembic": "0023_service_unit_lifecycle",
-  "prod_alembic": "0023_service_unit_lifecycle",
+  "generated_at": "2026-09-12T08:31:35.929828+00:00",
+  "local_alembic": "0037_partner_agreements",
+  "prod_alembic": "0037_partner_agreements",
   "alembic_in_sync": true,
   "summary": {
     "missing_tables": 0,
     "extra_tables": 0,
     "missing_columns": 0,
     "extra_columns": 0,
-    "cosmetic_mismatches": 80,
+    "cosmetic_mismatches": 86,
     "review_mismatches": 26,
     "actionable_mismatches": 0,
     "needs_migration": false

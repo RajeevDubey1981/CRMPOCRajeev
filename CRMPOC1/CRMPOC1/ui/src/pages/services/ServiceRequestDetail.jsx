@@ -421,10 +421,17 @@ export default function ServiceRequestDetail() {
     ),
   );
   const latestObservation = service?.observations?.[0] || null;
-  const serialVerified = Boolean(service?.serial_no);
+  const serialVerified = Boolean(
+    service?.serial_no
+    && !["Assigned", "Engineer Visit", "Serial Verification Review"].includes(service?.status),
+  );
   const canVerifySerial = Boolean(!serialVerified && ["Assigned", "Engineer Visit"].includes(service?.status));
   const observationSubmitted = service?.status === "Pending Service Approval";
-  const canSubmitObservation = Boolean(serialVerified && service?.status === "Serial Verified" && (roleIsEngineer || roleIsVendor));
+  const canSubmitObservation = Boolean(
+    serialVerified
+    && service?.status === "Serial Verified"
+    && (roleIsEngineer || roleIsVendor),
+  );
   const canCancelObservation = Boolean(observationSubmitted && latestObservation && (roleIsEngineer || roleIsVendor || roleIsServiceTeam));
   const approvalPending = service?.status === "Pending Service Approval";
   const approvalCompleted = ["Approved for Service", "Rejected"].includes(service?.status);
@@ -477,6 +484,9 @@ export default function ServiceRequestDetail() {
       {canEditWorkflow && (
         <section className="rounded-lg border border-amber-200 bg-amber-50 p-4 shadow-sm">
           <div className="text-sm font-semibold text-amber-900">Admin workflow control</div>
+          <p className="mt-1 text-xs text-amber-800">
+            Update step clears later work from the selected step onward (order verify, assignment, engineer steps). Customer documents are kept. Use the current step to restart from here.
+          </p>
           <div className="mt-3 grid gap-3 md:grid-cols-[1fr_2fr_auto]">
             <select
               value={workflowStatus || service.status}
@@ -497,14 +507,25 @@ export default function ServiceRequestDetail() {
             />
             <button
               type="button"
-              disabled={busy || (workflowStatus || service.status) === service.status}
+              disabled={busy}
               onClick={() => {
+                const step = workflowStatus || service.status;
+                const sameStep = step === service.status;
+                if (sameStep && !window.confirm(
+                  `Clear later steps and restart from "${step}"? Customer documents will stay on file.`,
+                )) {
+                  return;
+                }
                 const body = new FormData();
-                body.append("new_status", workflowStatus || service.status);
+                body.append("new_status", step);
                 if (workflowRemarks.trim()) body.append("remarks", workflowRemarks.trim());
                 run(
                   () => servicesApi.updateStatus(service.id, body),
-                  { successMessage: "Workflow step updated." },
+                  {
+                    successMessage: sameStep
+                      ? `Workflow reset from ${step}. Continue step by step from here.`
+                      : "Workflow step updated.",
+                  },
                 );
               }}
               className="rounded-md bg-amber-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
@@ -753,7 +774,7 @@ export default function ServiceRequestDetail() {
                   {assignmentLocked && (
                     <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
                       This request is already assigned to engineer {activeAssignment.assignee_user_name || "assigned user"}.
-                      Cancel the current assignment before assigning again.
+                      Cancel the current assignment before assigning again, or ask an admin to reset the workflow from this step.
                     </div>
                   )}
                   {isServiceTeam && <>
@@ -813,11 +834,6 @@ export default function ServiceRequestDetail() {
           <div className="grid gap-6 lg:grid-cols-2">
             <div className="space-y-3">
               <div className="text-sm font-medium text-slate-700">Verify product serial number</div>
-              {serialVerified && (
-                <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-                  Serial is already verified. Cancel the later workflow step before changing this request.
-                </div>
-              )}
               <input value={serialNo} onChange={(e) => setSerialNo(e.target.value)} disabled={!canVerifySerial} placeholder="Scan or enter serial no" className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-100 disabled:text-slate-500" />
               <button
                 onClick={() => run(
@@ -829,7 +845,7 @@ export default function ServiceRequestDetail() {
               >
                 Verify Serial
               </button>
-              {service.serial_no && (
+              {serialVerified && service.serial_no && (
                 <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
                   <div className="font-medium">
                     Verified serial: {service.serial_no}

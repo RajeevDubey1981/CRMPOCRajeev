@@ -7,6 +7,7 @@ import Pagination from "../../components/Pagination.jsx";
 
 const PARTNER_TYPE_COLORS = {
   "Gem Partner": "bg-blue-100 text-blue-800",
+  "CSD Dealer": "bg-cyan-100 text-cyan-800",
   Partner: "bg-blue-100 text-blue-800",
   Distributor: "bg-purple-100 text-purple-800",
   "Service Partner": "bg-teal-100 text-teal-800",
@@ -117,7 +118,10 @@ export default function PartnerRegistrationList() {
   const [saving, setSaving] = useState(false);
   const [actionBusy, setActionBusy] = useState(null);
   const [pendingResend, setPendingResend] = useState(null);
-  const [pendingCancel, setPendingCancel] = useState(null);
+  const [pendingDelete, setPendingDelete] = useState(null);
+  const [editingRegistration, setEditingRegistration] = useState(null);
+  const [editForm, setEditForm] = useState(EMPTY_INVITE);
+  const [editError, setEditError] = useState("");
 
   const [inviteOpen, setInviteOpen] = useState(false);
   const [inviteForm, setInviteForm] = useState(EMPTY_INVITE);
@@ -210,17 +214,56 @@ export default function PartnerRegistrationList() {
     }
   }
 
-  async function cancelRegistration() {
-    if (!pendingCancel) return;
-    const row = pendingCancel;
-    setActionBusy(`cancel-${row.id}`);
+  function openEditRegistration(row) {
+    setEditingRegistration(row);
+    setEditError("");
+    setEditForm({
+      partner_type: row.partner_type || "Gem Partner",
+      email: row.email || "",
+      contact_person_name: row.contact_person_name || "",
+      mobile: row.mobile || "",
+      name: row.name || "",
+    });
+  }
+
+  async function saveEditedRegistration({ resendAfterSave = false } = {}) {
+    if (!editingRegistration) return;
+    const row = editingRegistration;
+    setActionBusy(resendAfterSave ? `edit-resend-${row.id}` : `edit-${row.id}`);
     setErr("");
+    setEditError("");
     try {
-      await partnerRegistrationsApi.update(row.id, { onboarding_status: "Cancelled" });
-      setPendingCancel(null);
+      await partnerRegistrationsApi.update(row.id, {
+        partner_type: editForm.partner_type,
+        email: editForm.email,
+        contact_person_name: editForm.contact_person_name || null,
+        mobile: editForm.mobile || null,
+        name: editForm.name || null,
+      });
+      if (resendAfterSave) {
+        await partnerRegistrationsApi.resendEmail(row.id);
+      }
+      setEditingRegistration(null);
       await load();
     } catch (error) {
-      setErr(error.response?.data?.detail || "Failed to cancel registration");
+      const detail = error.response?.data?.detail;
+      setEditError(Array.isArray(detail) ? detail.map((item) => item.msg).join("; ") : detail || "Failed to update registration");
+    } finally {
+      setActionBusy(null);
+    }
+  }
+
+  async function deleteRegistration() {
+    if (!pendingDelete) return;
+    const row = pendingDelete;
+    setActionBusy(`delete-${row.id}`);
+    setErr("");
+    try {
+      await partnerRegistrationsApi.delete(row.id);
+      setPendingDelete(null);
+      await load();
+    } catch (error) {
+      setErr(error.response?.data?.detail || "Failed to delete registration");
     } finally {
       setActionBusy(null);
     }
@@ -357,6 +400,14 @@ export default function PartnerRegistrationList() {
                   <div className="flex flex-wrap gap-2">
                     <button
                       type="button"
+                      disabled={Boolean(actionBusy) || row.form_status === "Submitted"}
+                      onClick={() => openEditRegistration(row)}
+                      className="text-xs font-medium text-slate-700 underline disabled:text-slate-400 disabled:no-underline"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      type="button"
                       disabled={Boolean(actionBusy) || row.onboarding_status === "Cancelled"}
                       onClick={() => setPendingResend(row)}
                       className="text-xs font-medium text-sky-700 underline disabled:text-slate-400 disabled:no-underline"
@@ -366,10 +417,10 @@ export default function PartnerRegistrationList() {
                     <button
                       type="button"
                       disabled={Boolean(actionBusy)}
-                      onClick={() => setPendingCancel(row)}
+                      onClick={() => setPendingDelete(row)}
                       className="text-xs font-medium text-rose-700 underline disabled:text-slate-400 disabled:no-underline"
                     >
-                      {actionBusy === `cancel-${row.id}` ? "Cancelling..." : "Cancel"}
+                      {actionBusy === `delete-${row.id}` ? "Deleting..." : "Delete"}
                     </button>
                   </div>
                 </td>
@@ -571,6 +622,98 @@ export default function PartnerRegistrationList() {
       </Modal>
 
       <Modal
+        open={Boolean(editingRegistration)}
+        onClose={() => { if (!actionBusy) setEditingRegistration(null); }}
+        title={editingRegistration ? `Edit ${editingRegistration.registration_no}` : "Edit registration"}
+        maxWidth="max-w-lg"
+      >
+        <form className="space-y-3" onSubmit={(event) => { event.preventDefault(); saveEditedRegistration(); }}>
+          {editError && (
+            <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+              {editError}
+            </div>
+          )}
+          <div>
+            <label className="mb-1 block text-sm font-medium text-slate-700">Partner type</label>
+            <select
+              value={editForm.partner_type}
+              onChange={(e) => setEditForm((f) => ({ ...f, partner_type: e.target.value }))}
+              className={fieldClass}
+            >
+              {meta.partner_types.map((type) => (
+                <option key={type} value={type}>{type}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="mb-1 block text-sm font-medium text-slate-700">Partner email *</label>
+            <input
+              type="email"
+              required
+              value={editForm.email}
+              onChange={(e) => { setEditError(""); setEditForm((f) => ({ ...f, email: e.target.value })); }}
+              className={`${fieldClass} ${editError.toLowerCase().includes("email") ? "border-rose-500" : ""}`}
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-sm font-medium text-slate-700">Firm name (optional)</label>
+            <input
+              value={editForm.name}
+              onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))}
+              className={fieldClass}
+            />
+          </div>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div>
+              <label className="mb-1 block text-sm font-medium text-slate-700">Contact person (optional)</label>
+              <input
+                value={editForm.contact_person_name}
+                onChange={(e) => setEditForm((f) => ({ ...f, contact_person_name: e.target.value }))}
+                className={fieldClass}
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium text-slate-700">Mobile *</label>
+              <input
+                type="tel"
+                required
+                minLength={10}
+                maxLength={20}
+                value={editForm.mobile}
+                onChange={(e) => { setEditError(""); setEditForm((f) => ({ ...f, mobile: e.target.value })); }}
+                className={`${fieldClass} ${editError.toLowerCase().includes("mobile") ? "border-rose-500" : ""}`}
+              />
+            </div>
+          </div>
+          <div className="flex flex-wrap justify-end gap-2">
+            <button
+              type="button"
+              disabled={Boolean(actionBusy)}
+              onClick={() => setEditingRegistration(null)}
+              className="rounded-md border border-slate-300 px-4 py-2 text-sm"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={Boolean(actionBusy)}
+              className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 disabled:opacity-50"
+            >
+              {actionBusy === `edit-${editingRegistration?.id}` ? "Saving..." : "Save"}
+            </button>
+            <button
+              type="button"
+              disabled={Boolean(actionBusy)}
+              onClick={() => saveEditedRegistration({ resendAfterSave: true })}
+              className="rounded-md bg-sky-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+            >
+              {actionBusy === `edit-resend-${editingRegistration?.id}` ? "Saving..." : "Save & resend link"}
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      <Modal
         open={Boolean(pendingResend)}
         onClose={() => { if (!actionBusy) setPendingResend(null); }}
         title="Resend email?"
@@ -602,31 +745,31 @@ export default function PartnerRegistrationList() {
       </Modal>
 
       <Modal
-        open={Boolean(pendingCancel)}
-        onClose={() => { if (!actionBusy) setPendingCancel(null); }}
-        title="Cancel registration?"
+        open={Boolean(pendingDelete)}
+        onClose={() => { if (!actionBusy) setPendingDelete(null); }}
+        title="Delete registration?"
         maxWidth="max-w-md"
       >
         <div className="space-y-4">
           <p className="text-sm text-slate-700">
-            Cancel registration <strong>{pendingCancel?.registration_no}</strong>? The partner link will stop working.
+            Delete registration <strong>{pendingDelete?.registration_no}</strong>? This removes it from the admin grid.
           </p>
           <div className="flex justify-end gap-2">
             <button
               type="button"
               disabled={Boolean(actionBusy)}
-              onClick={() => setPendingCancel(null)}
+              onClick={() => setPendingDelete(null)}
               className="rounded-md border border-slate-300 px-4 py-2 text-sm"
             >
               Keep registration
             </button>
             <button
               type="button"
-              disabled={actionBusy === `cancel-${pendingCancel?.id}`}
-              onClick={cancelRegistration}
+              disabled={actionBusy === `delete-${pendingDelete?.id}`}
+              onClick={deleteRegistration}
               className="rounded-md bg-rose-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
             >
-              {actionBusy === `cancel-${pendingCancel?.id}` ? "Cancelling..." : "Confirm cancellation"}
+              {actionBusy === `delete-${pendingDelete?.id}` ? "Deleting..." : "Confirm delete"}
             </button>
           </div>
         </div>

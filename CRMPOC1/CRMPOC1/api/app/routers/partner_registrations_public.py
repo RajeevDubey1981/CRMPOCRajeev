@@ -16,9 +16,11 @@ from app.services.file_service import save_upload
 from app.services.partner_registration import (
     DOCUMENT_KEYS,
     apply_step_fields,
+    gem_seller_id_required,
     get_by_token,
     hydrate_partner,
     refresh_form_progress,
+    required_shop_photo_count,
     validate_submission,
 )
 
@@ -56,6 +58,8 @@ def public_registration_context(token: str, db: Session = Depends(get_db)):
         partner_types=list(PARTNER_TYPES),
         business_types=list(BUSINESS_TYPES),
         data=hydrated,
+        gem_seller_id_required=gem_seller_id_required(row.partner_type),
+        required_shop_photo_count=required_shop_photo_count(row.partner_type),
     )
 
 

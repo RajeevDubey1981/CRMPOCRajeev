@@ -63,17 +63,35 @@ def create_serial_history_event(
     source_id: int | None = None,
     remarks: str | None = None,
     metadata: dict | None = None,
-) -> SerialHistoryEvent:
+) -> SerialHistoryEvent | None:
+    if not isinstance(event_at, datetime):
+        # Skip malformed/zero-date source rows instead of failing the whole history load.
+        return None
     existing = None
     if source_table and source_id is not None:
-        existing = db.scalar(
-            select(SerialHistoryEvent).where(
-                SerialHistoryEvent.source_table == source_table,
-                SerialHistoryEvent.source_id == source_id,
-                SerialHistoryEvent.event_type == event_type,
-                SerialHistoryEvent.serial_no == serial_no,
-            )
+        # The session uses autoflush=False, so a duplicate key added earlier in this same
+        # call is not yet visible to a DB query — check pending/loaded objects first to
+        # avoid a duplicate-key IntegrityError on commit.
+        existing = next(
+            (
+                obj for obj in db.new
+                if isinstance(obj, SerialHistoryEvent)
+                and obj.source_table == source_table
+                and obj.source_id == source_id
+                and obj.event_type == event_type
+                and obj.serial_no == serial_no
+            ),
+            None,
         )
+        if existing is None:
+            existing = db.scalar(
+                select(SerialHistoryEvent).where(
+                    SerialHistoryEvent.source_table == source_table,
+                    SerialHistoryEvent.source_id == source_id,
+                    SerialHistoryEvent.event_type == event_type,
+                    SerialHistoryEvent.serial_no == serial_no,
+                )
+            )
     if existing is not None:
         existing.event_at = event_at
         existing.title = title
@@ -178,7 +196,10 @@ def backfill_serial_history_for_serial(db: Session, serial_no: str) -> bool:
                 performed_by_user_id=order.created_by,
                 performed_by_name=_performed_by_name(db, order.created_by),
                 source_table="orders",
-                source_id=order.id,
+                # Distinct source_id: without autoflush, the same key as ORDER_CREATED
+                # (source_id=order.id) is not visible to the dedup lookup yet and causes
+                # a duplicate-key IntegrityError on commit.
+                source_id=order.id + 500000,
                 title="Order dispatched",
                 description=f"Order status moved to {order.status}.",
                 metadata={"order_status": order.status, "lrn_no": order.lrn_no},

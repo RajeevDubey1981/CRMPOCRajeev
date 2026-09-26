@@ -1,10 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
 import { api } from "../../api/client.js";
 import { partnerRegistrationsApi } from "../../api/partnerRegistrations.js";
 import PartnerOnboardingStepper from "../../components/partners/PartnerOnboardingStepper.jsx";
-import { PARTNER_DOCUMENTS } from "./partnerFormConstants.js";
+import { PARTNER_DOCUMENTS, buildShopPhotoDocuments } from "./partnerFormConstants.js";
 
 const fieldClass = "w-full rounded-md border border-slate-300 px-3 py-2 text-sm";
 
@@ -31,6 +31,67 @@ function DetailField({ label, value, highlight }) {
       <div className="text-xs uppercase text-slate-500">{label}</div>
       <div className={`font-medium ${highlight ? "text-amber-700" : "text-slate-800"}`}>{value || "—"}</div>
     </div>
+  );
+}
+
+function EditableReviewField({ label, fieldKey, value, onChange }) {
+  if (fieldKey === "declaration_accepted") {
+    return (
+      <label className="flex items-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700">
+        <input
+          type="checkbox"
+          checked={Boolean(value)}
+          onChange={(event) => onChange(fieldKey, event.target.checked)}
+          className="h-4 w-4 rounded border-slate-300 text-sky-700"
+        />
+        {label}
+      </label>
+    );
+  }
+
+  if (SELECT_OPTIONS[fieldKey]) {
+    return (
+      <label className="block">
+        <span className="text-xs uppercase text-slate-500">{label}</span>
+        <select
+          value={value || ""}
+          onChange={(event) => onChange(fieldKey, event.target.value)}
+          className={`${fieldClass} mt-1 bg-white`}
+        >
+          {SELECT_OPTIONS[fieldKey].map((option) => (
+            <option key={option} value={option}>{option}</option>
+          ))}
+        </select>
+      </label>
+    );
+  }
+
+  if (TEXTAREA_FIELDS.has(fieldKey)) {
+    return (
+      <label className="block md:col-span-2">
+        <span className="text-xs uppercase text-slate-500">{label}</span>
+        <textarea
+          rows={3}
+          value={value || ""}
+          onChange={(event) => onChange(fieldKey, event.target.value)}
+          className={`${fieldClass} mt-1`}
+        />
+      </label>
+    );
+  }
+
+  return (
+    <label className="block">
+      <span className="text-xs uppercase text-slate-500">{label}</span>
+      <input
+        type={inputTypeForField(fieldKey)}
+        value={value || ""}
+        min={fieldKey === "year_of_establishment" ? "1800" : undefined}
+        step={fieldKey === "annual_turnover" ? "0.01" : undefined}
+        onChange={(event) => onChange(fieldKey, event.target.value)}
+        className={`${fieldClass} mt-1`}
+      />
+    </label>
   );
 }
 
@@ -72,8 +133,30 @@ const REVIEW_STEPS = [
   { title: "Declaration", fields: [["Declaration Accepted", "declaration_accepted"]] },
 ];
 
+const PARTNER_TYPE_OPTIONS = ["Gem Partner", "CSD Dealer", "Distributor", "Service Partner", "Retailer", "Partner"];
+const BUSINESS_TYPE_OPTIONS = ["Proprietorship", "Partnership", "LLP", "Private Limited", "Public Limited", "Trust / Society", "Other"];
+const SELECT_OPTIONS = {
+  partner_type: PARTNER_TYPE_OPTIONS,
+  business_type: BUSINESS_TYPE_OPTIONS,
+};
+const TEXTAREA_FIELDS = new Set(["firm_address", "operating_states", "product_categories", "remarks"]);
+const NUMBER_FIELDS = new Set(["year_of_establishment", "annual_turnover"]);
+
 function normalize(value) {
   return String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function inputTypeForField(key) {
+  if (key === "email") return "email";
+  if (key === "website") return "url";
+  if (key.includes("mobile") || key === "pincode" || key === "account_number" || key === "aadhaar_no") return "tel";
+  if (NUMBER_FIELDS.has(key)) return "number";
+  return "text";
+}
+
+function toDraftValue(value) {
+  if (value === null || value === undefined) return "";
+  return value;
 }
 
 export default function PartnerRegistrationReview() {
@@ -90,9 +173,19 @@ export default function PartnerRegistrationReview() {
 
   const [adminRemark, setAdminRemark] = useState("");
   const [saving, setSaving] = useState(null);
+  const [downloadingAgreement, setDownloadingAgreement] = useState(false);
   const [confirmReject, setConfirmReject] = useState(false);
   const [agreement, setAgreement] = useState(null);
   const [reviewStep, setReviewStep] = useState(0);
+  const [editingReview, setEditingReview] = useState(false);
+  const [reviewDraft, setReviewDraft] = useState({});
+  const [reviewSaving, setReviewSaving] = useState(false);
+
+  const shopPhotoDocs = useMemo(() => {
+    if (!detail) return [];
+    const count = detail.partner_type === "CSD Dealer" ? 5 : 1;
+    return buildShopPhotoDocuments(count);
+  }, [detail]);
 
   async function load() {
     setLoading(true);
@@ -114,6 +207,55 @@ export default function PartnerRegistrationReview() {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
+
+  useEffect(() => {
+    setEditingReview(false);
+    setReviewDraft({});
+  }, [reviewStep]);
+
+  function startReviewEdit() {
+    const draft = {};
+    REVIEW_STEPS[reviewStep].fields.forEach(([, key]) => {
+      draft[key] = toDraftValue(detail[key]);
+    });
+    setReviewDraft(draft);
+    setEditingReview(true);
+  }
+
+  function updateReviewDraft(key, value) {
+    setReviewDraft((current) => ({ ...current, [key]: value }));
+  }
+
+  function buildReviewPayload() {
+    return REVIEW_STEPS[reviewStep].fields.reduce((payload, [, key]) => {
+      const value = reviewDraft[key];
+      if (key === "declaration_accepted") {
+        payload[key] = Boolean(value);
+      } else if (key === "email" || key === "partner_type") {
+        payload[key] = String(value || "").trim();
+      } else if (NUMBER_FIELDS.has(key)) {
+        payload[key] = value === "" || value === null || value === undefined ? null : Number(value);
+      } else {
+        payload[key] = String(value || "").trim() || null;
+      }
+      return payload;
+    }, {});
+  }
+
+  async function saveReviewStep() {
+    setReviewSaving(true);
+    setErr("");
+    try {
+      await partnerRegistrationsApi.update(id, buildReviewPayload());
+      await load();
+      setEditingReview(false);
+      setReviewDraft({});
+    } catch (error) {
+      setErr(error.response?.data?.detail || "Failed to save registration changes");
+    } finally {
+      setReviewSaving(false);
+    }
+  }
 
   async function validateGst() {
     setGstBusy(true);
@@ -158,6 +300,18 @@ export default function PartnerRegistrationReview() {
       setErr(error.response?.data?.detail || "Failed to reject registration");
     } finally {
       setSaving(null);
+    }
+  }
+
+  async function downloadAgreement() {
+    setDownloadingAgreement(true);
+    setErr("");
+    try {
+      await partnerRegistrationsApi.downloadAgreement(id);
+    } catch (error) {
+      setErr(error.response?.data?.detail || "Failed to download agreement");
+    } finally {
+      setDownloadingAgreement(false);
     }
   }
 
@@ -239,6 +393,18 @@ export default function PartnerRegistrationReview() {
               <DocumentLink key={doc.key} label={doc.label} path={detail[`${doc.key}_path`]} />
             ))}
           </div>
+          {shopPhotoDocs.length > 0 ? (
+            <div className="mt-3">
+              <div className="mb-1 text-xs uppercase tracking-wide text-slate-500">
+                Shop photographs ({detail.partner_type === "CSD Dealer" ? "5 required for CSD Dealer" : "1 required"})
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {shopPhotoDocs.map((doc) => (
+                  <DocumentLink key={doc.key} label={doc.label} path={detail[`${doc.key}_path`]} />
+                ))}
+              </div>
+            </div>
+          ) : null}
         </div>
 
         <PartnerOnboardingStepper steps={detail.onboarding_steps} />
@@ -250,7 +416,42 @@ export default function PartnerRegistrationReview() {
             <div className="text-sm font-semibold text-slate-900">Form review</div>
             <div className="text-xs text-slate-500">Review the submitted information in the same order as the partner onboarding form.</div>
           </div>
-          <div className="text-sm font-medium text-slate-500">Step {reviewStep + 1} of {REVIEW_STEPS.length}</div>
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <div className="text-sm font-medium text-slate-500">Step {reviewStep + 1} of {REVIEW_STEPS.length}</div>
+            {reviewStep !== 7 && (
+              editingReview ? (
+                <>
+                  <button
+                    type="button"
+                    disabled={reviewSaving}
+                    onClick={() => {
+                      setEditingReview(false);
+                      setReviewDraft({});
+                    }}
+                    className="rounded-md border border-slate-300 px-3 py-2 text-xs font-medium text-slate-700 disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    disabled={reviewSaving}
+                    onClick={saveReviewStep}
+                    className="rounded-md bg-sky-700 px-3 py-2 text-xs font-medium text-white disabled:opacity-50"
+                  >
+                    {reviewSaving ? "Saving..." : "Save changes"}
+                  </button>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  onClick={startReviewEdit}
+                  className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-xs font-medium text-sky-700 hover:bg-sky-100"
+                >
+                  Edit this step
+                </button>
+              )
+            )}
+          </div>
         </div>
 
         <div className="mt-4 flex flex-wrap gap-2">
@@ -269,13 +470,40 @@ export default function PartnerRegistrationReview() {
         <div className="mt-4 rounded-md border border-slate-200 bg-slate-50 p-4">
           <h2 className="text-base font-semibold text-slate-900">{REVIEW_STEPS[reviewStep].title}</h2>
           {reviewStep === 7 ? (
-            <div className="mt-3 flex flex-wrap gap-2">
-              {PARTNER_DOCUMENTS.map((doc) => (
-                <DocumentLink key={doc.key} label={doc.label} path={detail[`${doc.key}_path`]} />
+            <div className="mt-3 space-y-3">
+              <div>
+                <div className="mb-1 text-xs uppercase tracking-wide text-slate-500">Documents</div>
+                <div className="flex flex-wrap gap-2">
+                  {PARTNER_DOCUMENTS.map((doc) => (
+                    <DocumentLink key={doc.key} label={doc.label} path={detail[`${doc.key}_path`]} />
+                  ))}
+                  {!PARTNER_DOCUMENTS.some((doc) => detail[`${doc.key}_path`]) && (
+                    <span className="text-sm text-slate-500">No documents uploaded.</span>
+                  )}
+                </div>
+              </div>
+              <div>
+                <div className="mb-1 text-xs uppercase tracking-wide text-slate-500">
+                  Shop photographs ({detail.partner_type === "CSD Dealer" ? "5 required for CSD Dealer" : "1 required"})
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {shopPhotoDocs.map((doc) => (
+                    <DocumentLink key={doc.key} label={doc.label} path={detail[`${doc.key}_path`]} />
+                  ))}
+                </div>
+              </div>
+            </div>
+          ) : editingReview ? (
+            <div className="mt-3 grid grid-cols-1 gap-4 text-sm md:grid-cols-2">
+              {REVIEW_STEPS[reviewStep].fields.map(([label, key]) => (
+                <EditableReviewField
+                  key={key}
+                  label={label}
+                  fieldKey={key}
+                  value={reviewDraft[key]}
+                  onChange={updateReviewDraft}
+                />
               ))}
-              {!PARTNER_DOCUMENTS.some((doc) => detail[`${doc.key}_path`]) && (
-                <span className="text-sm text-slate-500">No documents uploaded.</span>
-              )}
             </div>
           ) : (
             <div className="mt-3 grid grid-cols-1 gap-4 text-sm md:grid-cols-2">
@@ -378,6 +606,8 @@ export default function PartnerRegistrationReview() {
               Signed on {fmtDateTime(agreement.signed_at)} by {agreement.email}
               {agreement.ip_address ? ` (IP ${agreement.ip_address})` : ""}. Partner account and vendor code have been
               issued.
+              {agreement.signed_method ? ` Signed via ${agreement.signed_method}` : ""}
+              {agreement.signed_destination ? ` to ${agreement.signed_destination}` : ""}.
             </div>
           ) : (
             <div className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
@@ -389,6 +619,18 @@ export default function PartnerRegistrationReview() {
             <DetailField label="Agreement No" value={agreement.agreement_no} />
             <DetailField label="Version" value={agreement.agreement_version} />
             <DetailField label="Issued" value={fmtDateTime(agreement.created_at)} />
+            <DetailField label="Signed Method" value={agreement.signed_method} />
+            <DetailField label="Verified Contact" value={agreement.signed_destination} />
+          </div>
+          <div className="mt-3">
+            <button
+              type="button"
+              onClick={downloadAgreement}
+              disabled={downloadingAgreement}
+              className="rounded-md bg-sky-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+            >
+              {downloadingAgreement ? "Preparing..." : "Download full agreement"}
+            </button>
           </div>
           {!agreement.is_signed && (
             <div className="mt-3 flex items-center gap-2 rounded-md border border-slate-200 bg-slate-50 p-3 text-sm">

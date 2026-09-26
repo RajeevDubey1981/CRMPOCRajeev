@@ -1,5 +1,5 @@
 {
-  "alembic_version": "0023_service_unit_lifecycle",
+  "alembic_version": "0037_partner_agreements",
   "tables": {
     "alembic_version": {
       "version_num": {
@@ -473,6 +473,12 @@
         "nullable": "YES",
         "default": null,
         "extra": ""
+      },
+      "order_id": {
+        "type": "int",
+        "nullable": "YES",
+        "default": null,
+        "extra": ""
       }
     },
     "couriers": {
@@ -526,6 +532,172 @@
       },
       "deleted_at": {
         "type": "datetime",
+        "nullable": "YES",
+        "default": null,
+        "extra": ""
+      }
+    },
+    "installation_documents": {
+      "id": {
+        "type": "int",
+        "nullable": "NO",
+        "default": null,
+        "extra": "auto_increment"
+      },
+      "installation_request_id": {
+        "type": "int",
+        "nullable": "NO",
+        "default": null,
+        "extra": ""
+      },
+      "document_type": {
+        "type": "varchar(100)",
+        "nullable": "NO",
+        "default": null,
+        "extra": ""
+      },
+      "file_path": {
+        "type": "varchar(500)",
+        "nullable": "NO",
+        "default": null,
+        "extra": ""
+      },
+      "uploaded_by_type": {
+        "type": "varchar(50)",
+        "nullable": "NO",
+        "default": null,
+        "extra": ""
+      },
+      "uploaded_by_user_id": {
+        "type": "int",
+        "nullable": "YES",
+        "default": null,
+        "extra": ""
+      },
+      "uploaded_by_customer_name": {
+        "type": "varchar(255)",
+        "nullable": "YES",
+        "default": null,
+        "extra": ""
+      },
+      "status": {
+        "type": "varchar(50)",
+        "nullable": "NO",
+        "default": "Uploaded",
+        "extra": ""
+      },
+      "reviewed_by": {
+        "type": "int",
+        "nullable": "YES",
+        "default": null,
+        "extra": ""
+      },
+      "reviewed_at": {
+        "type": "datetime",
+        "nullable": "YES",
+        "default": null,
+        "extra": ""
+      },
+      "review_remarks": {
+        "type": "text",
+        "nullable": "YES",
+        "default": null,
+        "extra": ""
+      },
+      "uploaded_at": {
+        "type": "datetime",
+        "nullable": "NO",
+        "default": "CURRENT_TIMESTAMP",
+        "extra": "DEFAULT_GENERATED"
+      }
+    },
+    "installation_engineer_serials": {
+      "id": {
+        "type": "int",
+        "nullable": "NO",
+        "default": null,
+        "extra": "auto_increment"
+      },
+      "installation_request_id": {
+        "type": "int",
+        "nullable": "NO",
+        "default": null,
+        "extra": ""
+      },
+      "line_no": {
+        "type": "int",
+        "nullable": "NO",
+        "default": "1",
+        "extra": ""
+      },
+      "serial_no": {
+        "type": "varchar(100)",
+        "nullable": "NO",
+        "default": null,
+        "extra": ""
+      },
+      "serial_no_2": {
+        "type": "varchar(100)",
+        "nullable": "YES",
+        "default": null,
+        "extra": ""
+      },
+      "observation": {
+        "type": "text",
+        "nullable": "YES",
+        "default": null,
+        "extra": ""
+      },
+      "unit_status": {
+        "type": "varchar(50)",
+        "nullable": "YES",
+        "default": null,
+        "extra": ""
+      },
+      "verification_status": {
+        "type": "varchar(50)",
+        "nullable": "NO",
+        "default": "Pending",
+        "extra": ""
+      },
+      "admin_remark": {
+        "type": "text",
+        "nullable": "YES",
+        "default": null,
+        "extra": ""
+      },
+      "verified_by": {
+        "type": "int",
+        "nullable": "YES",
+        "default": null,
+        "extra": ""
+      },
+      "verified_at": {
+        "type": "datetime",
+        "nullable": "YES",
+        "default": null,
+        "extra": ""
+      },
+      "submitted_by": {
+        "type": "int",
+        "nullable": "YES",
+        "default": null,
+        "extra": ""
+      },
+      "submitted_at": {
+        "type": "datetime",
+        "nullable": "YES",
+        "default": null,
+        "extra": ""
+      },
+      "created_at": {
+        "type": "datetime",
+        "nullable": "NO",
+        "default": "now()",
+        "extra": "DEFAULT_GENERATED"
+      },
+      "split_installation_request_id": {
+        "type": "int",
         "nullable": "YES",
         "default": null,
         "extra": ""
@@ -713,6 +885,194 @@
         "extra": "DEFAULT_GENERATED"
       },
       "updated_at": {
+        "type": "datetime",
+        "nullable": "NO",
+        "default": "CURRENT_TIMESTAMP",
+        "extra": "DEFAULT_GENERATED"
+      },
+      "source": {
+        "type": "varchar(50)",
+        "nullable": "NO",
+        "default": "vendor",
+        "extra": ""
+      },
+      "order_id": {
+        "type": "int",
+        "nullable": "YES",
+        "default": null,
+        "extra": ""
+      },
+      "created_by": {
+        "type": "int",
+        "nullable": "YES",
+        "default": null,
+        "extra": ""
+      },
+      "document_access_token": {
+        "type": "varchar(120)",
+        "nullable": "YES",
+        "default": null,
+        "extra": ""
+      },
+      "ask_for_documents": {
+        "type": "tinyint(1)",
+        "nullable": "NO",
+        "default": "0",
+        "extra": ""
+      },
+      "document_request_sent_at": {
+        "type": "datetime",
+        "nullable": "YES",
+        "default": null,
+        "extra": ""
+      },
+      "order_verified_at": {
+        "type": "datetime",
+        "nullable": "YES",
+        "default": null,
+        "extra": ""
+      },
+      "order_verified_by": {
+        "type": "int",
+        "nullable": "YES",
+        "default": null,
+        "extra": ""
+      },
+      "engineer_entered_serial_no": {
+        "type": "varchar(100)",
+        "nullable": "YES",
+        "default": null,
+        "extra": ""
+      },
+      "engineer_entered_serial_no_2": {
+        "type": "varchar(100)",
+        "nullable": "YES",
+        "default": null,
+        "extra": ""
+      },
+      "serial_verified_at": {
+        "type": "datetime",
+        "nullable": "YES",
+        "default": null,
+        "extra": ""
+      },
+      "serial_verified_by": {
+        "type": "int",
+        "nullable": "YES",
+        "default": null,
+        "extra": ""
+      },
+      "admin_billing_type": {
+        "type": "varchar(20)",
+        "nullable": "YES",
+        "default": null,
+        "extra": ""
+      },
+      "admin_approval_remark": {
+        "type": "text",
+        "nullable": "YES",
+        "default": null,
+        "extra": ""
+      },
+      "admin_approved_at": {
+        "type": "datetime",
+        "nullable": "YES",
+        "default": null,
+        "extra": ""
+      },
+      "admin_approved_by": {
+        "type": "int",
+        "nullable": "YES",
+        "default": null,
+        "extra": ""
+      },
+      "customer_email": {
+        "type": "varchar(255)",
+        "nullable": "YES",
+        "default": null,
+        "extra": ""
+      },
+      "complaint_id": {
+        "type": "int",
+        "nullable": "YES",
+        "default": null,
+        "extra": ""
+      },
+      "engineer_site_remarks": {
+        "type": "text",
+        "nullable": "YES",
+        "default": null,
+        "extra": ""
+      },
+      "engineer_serials_submitted_at": {
+        "type": "datetime",
+        "nullable": "YES",
+        "default": null,
+        "extra": ""
+      },
+      "parent_installation_id": {
+        "type": "int",
+        "nullable": "YES",
+        "default": null,
+        "extra": ""
+      }
+    },
+    "installation_status_logs": {
+      "id": {
+        "type": "int",
+        "nullable": "NO",
+        "default": null,
+        "extra": "auto_increment"
+      },
+      "installation_request_id": {
+        "type": "int",
+        "nullable": "NO",
+        "default": null,
+        "extra": ""
+      },
+      "action": {
+        "type": "varchar(100)",
+        "nullable": "NO",
+        "default": null,
+        "extra": ""
+      },
+      "old_status": {
+        "type": "varchar(50)",
+        "nullable": "YES",
+        "default": null,
+        "extra": ""
+      },
+      "new_status": {
+        "type": "varchar(50)",
+        "nullable": "YES",
+        "default": null,
+        "extra": ""
+      },
+      "performed_by": {
+        "type": "int",
+        "nullable": "YES",
+        "default": null,
+        "extra": ""
+      },
+      "performed_role": {
+        "type": "varchar(100)",
+        "nullable": "YES",
+        "default": null,
+        "extra": ""
+      },
+      "remarks": {
+        "type": "text",
+        "nullable": "YES",
+        "default": null,
+        "extra": ""
+      },
+      "metadata_json": {
+        "type": "text",
+        "nullable": "YES",
+        "default": null,
+        "extra": ""
+      },
+      "created_at": {
         "type": "datetime",
         "nullable": "NO",
         "default": "CURRENT_TIMESTAMP",
@@ -1353,6 +1713,442 @@
         "extra": ""
       }
     },
+    "partner_agreements": {
+      "id": {
+        "type": "int",
+        "nullable": "NO",
+        "default": null,
+        "extra": "auto_increment"
+      },
+      "registration_id": {
+        "type": "int",
+        "nullable": "NO",
+        "default": null,
+        "extra": ""
+      },
+      "agreement_no": {
+        "type": "varchar(50)",
+        "nullable": "NO",
+        "default": null,
+        "extra": ""
+      },
+      "agreement_version": {
+        "type": "varchar(10)",
+        "nullable": "NO",
+        "default": "1.0",
+        "extra": ""
+      },
+      "access_token": {
+        "type": "varchar(64)",
+        "nullable": "NO",
+        "default": null,
+        "extra": ""
+      },
+      "email": {
+        "type": "varchar(255)",
+        "nullable": "NO",
+        "default": null,
+        "extra": ""
+      },
+      "signed_at": {
+        "type": "datetime",
+        "nullable": "YES",
+        "default": null,
+        "extra": ""
+      },
+      "ip_address": {
+        "type": "varchar(45)",
+        "nullable": "YES",
+        "default": null,
+        "extra": ""
+      },
+      "user_agent": {
+        "type": "text",
+        "nullable": "YES",
+        "default": null,
+        "extra": ""
+      },
+      "otp_code": {
+        "type": "varchar(10)",
+        "nullable": "YES",
+        "default": null,
+        "extra": ""
+      },
+      "otp_expires_at": {
+        "type": "datetime",
+        "nullable": "YES",
+        "default": null,
+        "extra": ""
+      },
+      "otp_attempts": {
+        "type": "int",
+        "nullable": "NO",
+        "default": "0",
+        "extra": ""
+      },
+      "otp_sent_at": {
+        "type": "datetime",
+        "nullable": "YES",
+        "default": null,
+        "extra": ""
+      },
+      "otp_send_count": {
+        "type": "int",
+        "nullable": "NO",
+        "default": "0",
+        "extra": ""
+      },
+      "created_at": {
+        "type": "datetime",
+        "nullable": "NO",
+        "default": "now()",
+        "extra": "DEFAULT_GENERATED"
+      },
+      "updated_at": {
+        "type": "datetime",
+        "nullable": "NO",
+        "default": "now()",
+        "extra": "DEFAULT_GENERATED"
+      }
+    },
+    "partner_registrations": {
+      "id": {
+        "type": "int",
+        "nullable": "NO",
+        "default": null,
+        "extra": "auto_increment"
+      },
+      "registration_no": {
+        "type": "varchar(50)",
+        "nullable": "NO",
+        "default": null,
+        "extra": ""
+      },
+      "partner_type": {
+        "type": "varchar(50)",
+        "nullable": "NO",
+        "default": null,
+        "extra": ""
+      },
+      "name": {
+        "type": "varchar(255)",
+        "nullable": "YES",
+        "default": null,
+        "extra": ""
+      },
+      "mobile": {
+        "type": "varchar(20)",
+        "nullable": "YES",
+        "default": null,
+        "extra": ""
+      },
+      "email": {
+        "type": "varchar(255)",
+        "nullable": "NO",
+        "default": null,
+        "extra": ""
+      },
+      "contact_person_name": {
+        "type": "varchar(255)",
+        "nullable": "YES",
+        "default": null,
+        "extra": ""
+      },
+      "onboarding_status": {
+        "type": "varchar(50)",
+        "nullable": "NO",
+        "default": "Registration Submitted",
+        "extra": ""
+      },
+      "firm_address": {
+        "type": "text",
+        "nullable": "YES",
+        "default": null,
+        "extra": ""
+      },
+      "city": {
+        "type": "varchar(100)",
+        "nullable": "YES",
+        "default": null,
+        "extra": ""
+      },
+      "state": {
+        "type": "varchar(100)",
+        "nullable": "YES",
+        "default": null,
+        "extra": ""
+      },
+      "pincode": {
+        "type": "varchar(20)",
+        "nullable": "YES",
+        "default": null,
+        "extra": ""
+      },
+      "gst_no": {
+        "type": "varchar(20)",
+        "nullable": "YES",
+        "default": null,
+        "extra": ""
+      },
+      "pan_no": {
+        "type": "varchar(20)",
+        "nullable": "YES",
+        "default": null,
+        "extra": ""
+      },
+      "gem_seller_id": {
+        "type": "varchar(100)",
+        "nullable": "YES",
+        "default": null,
+        "extra": ""
+      },
+      "remarks": {
+        "type": "text",
+        "nullable": "YES",
+        "default": null,
+        "extra": ""
+      },
+      "admin_remark": {
+        "type": "text",
+        "nullable": "YES",
+        "default": null,
+        "extra": ""
+      },
+      "submitted_at": {
+        "type": "datetime",
+        "nullable": "NO",
+        "default": "CURRENT_TIMESTAMP",
+        "extra": "DEFAULT_GENERATED"
+      },
+      "status_updated_at": {
+        "type": "datetime",
+        "nullable": "YES",
+        "default": null,
+        "extra": ""
+      },
+      "created_by": {
+        "type": "int",
+        "nullable": "YES",
+        "default": null,
+        "extra": ""
+      },
+      "created_at": {
+        "type": "datetime",
+        "nullable": "NO",
+        "default": "CURRENT_TIMESTAMP",
+        "extra": "DEFAULT_GENERATED"
+      },
+      "updated_at": {
+        "type": "datetime",
+        "nullable": "NO",
+        "default": "CURRENT_TIMESTAMP",
+        "extra": "DEFAULT_GENERATED"
+      },
+      "business_type": {
+        "type": "varchar(50)",
+        "nullable": "YES",
+        "default": null,
+        "extra": ""
+      },
+      "contact_designation": {
+        "type": "varchar(100)",
+        "nullable": "YES",
+        "default": null,
+        "extra": ""
+      },
+      "alternate_mobile": {
+        "type": "varchar(20)",
+        "nullable": "YES",
+        "default": null,
+        "extra": ""
+      },
+      "district": {
+        "type": "varchar(100)",
+        "nullable": "YES",
+        "default": null,
+        "extra": ""
+      },
+      "website": {
+        "type": "varchar(255)",
+        "nullable": "YES",
+        "default": null,
+        "extra": ""
+      },
+      "udyam_no": {
+        "type": "varchar(50)",
+        "nullable": "YES",
+        "default": null,
+        "extra": ""
+      },
+      "cin_no": {
+        "type": "varchar(30)",
+        "nullable": "YES",
+        "default": null,
+        "extra": ""
+      },
+      "aadhaar_no": {
+        "type": "varchar(20)",
+        "nullable": "YES",
+        "default": null,
+        "extra": ""
+      },
+      "year_of_establishment": {
+        "type": "int",
+        "nullable": "YES",
+        "default": null,
+        "extra": ""
+      },
+      "annual_turnover": {
+        "type": "decimal(14,2)",
+        "nullable": "YES",
+        "default": null,
+        "extra": ""
+      },
+      "operating_states": {
+        "type": "text",
+        "nullable": "YES",
+        "default": null,
+        "extra": ""
+      },
+      "product_categories": {
+        "type": "text",
+        "nullable": "YES",
+        "default": null,
+        "extra": ""
+      },
+      "bank_name": {
+        "type": "varchar(150)",
+        "nullable": "YES",
+        "default": null,
+        "extra": ""
+      },
+      "bank_branch": {
+        "type": "varchar(150)",
+        "nullable": "YES",
+        "default": null,
+        "extra": ""
+      },
+      "account_holder_name": {
+        "type": "varchar(255)",
+        "nullable": "YES",
+        "default": null,
+        "extra": ""
+      },
+      "account_number": {
+        "type": "varchar(30)",
+        "nullable": "YES",
+        "default": null,
+        "extra": ""
+      },
+      "ifsc_code": {
+        "type": "varchar(20)",
+        "nullable": "YES",
+        "default": null,
+        "extra": ""
+      },
+      "gst_certificate_path": {
+        "type": "varchar(500)",
+        "nullable": "YES",
+        "default": null,
+        "extra": ""
+      },
+      "pan_card_path": {
+        "type": "varchar(500)",
+        "nullable": "YES",
+        "default": null,
+        "extra": ""
+      },
+      "cancelled_cheque_path": {
+        "type": "varchar(500)",
+        "nullable": "YES",
+        "default": null,
+        "extra": ""
+      },
+      "msme_certificate_path": {
+        "type": "varchar(500)",
+        "nullable": "YES",
+        "default": null,
+        "extra": ""
+      },
+      "address_proof_path": {
+        "type": "varchar(500)",
+        "nullable": "YES",
+        "default": null,
+        "extra": ""
+      },
+      "incorporation_certificate_path": {
+        "type": "varchar(500)",
+        "nullable": "YES",
+        "default": null,
+        "extra": ""
+      },
+      "aadhaar_card_path": {
+        "type": "varchar(500)",
+        "nullable": "YES",
+        "default": null,
+        "extra": ""
+      },
+      "photo_path": {
+        "type": "varchar(500)",
+        "nullable": "YES",
+        "default": null,
+        "extra": ""
+      },
+      "declaration_accepted": {
+        "type": "tinyint(1)",
+        "nullable": "NO",
+        "default": "0",
+        "extra": ""
+      },
+      "access_token": {
+        "type": "varchar(64)",
+        "nullable": "NO",
+        "default": null,
+        "extra": ""
+      },
+      "form_status": {
+        "type": "varchar(30)",
+        "nullable": "NO",
+        "default": "Submitted",
+        "extra": ""
+      },
+      "current_form_step": {
+        "type": "int",
+        "nullable": "NO",
+        "default": "8",
+        "extra": ""
+      },
+      "completion_percent": {
+        "type": "int",
+        "nullable": "NO",
+        "default": "100",
+        "extra": ""
+      },
+      "invited_at": {
+        "type": "datetime",
+        "nullable": "YES",
+        "default": null,
+        "extra": ""
+      },
+      "form_started_at": {
+        "type": "datetime",
+        "nullable": "YES",
+        "default": null,
+        "extra": ""
+      },
+      "form_submitted_at": {
+        "type": "datetime",
+        "nullable": "YES",
+        "default": null,
+        "extra": ""
+      },
+      "email_resend_used": {
+        "type": "tinyint(1)",
+        "nullable": "NO",
+        "default": "0",
+        "extra": ""
+      }
+    },
     "payment_transactions": {
       "id": {
         "type": "int",
@@ -1838,6 +2634,12 @@
       },
       "service_request_unit_id": {
         "type": "int",
+        "nullable": "YES",
+        "default": null,
+        "extra": ""
+      },
+      "engineer_completion_code": {
+        "type": "varchar(10)",
         "nullable": "YES",
         "default": null,
         "extra": ""
@@ -2619,6 +3421,12 @@
         "nullable": "YES",
         "default": null,
         "extra": ""
+      },
+      "completion_code": {
+        "type": "varchar(10)",
+        "nullable": "YES",
+        "default": null,
+        "extra": ""
       }
     },
     "service_status_logs": {
@@ -2743,6 +3551,122 @@
         "nullable": "YES",
         "default": null,
         "extra": ""
+      }
+    },
+    "user_pending_actions": {
+      "id": {
+        "type": "int",
+        "nullable": "NO",
+        "default": null,
+        "extra": "auto_increment"
+      },
+      "recipient_user_id": {
+        "type": "int",
+        "nullable": "NO",
+        "default": null,
+        "extra": ""
+      },
+      "recipient_vendor_id": {
+        "type": "int",
+        "nullable": "YES",
+        "default": null,
+        "extra": ""
+      },
+      "module": {
+        "type": "varchar(30)",
+        "nullable": "NO",
+        "default": null,
+        "extra": ""
+      },
+      "entity_id": {
+        "type": "int",
+        "nullable": "NO",
+        "default": null,
+        "extra": ""
+      },
+      "entity_ref": {
+        "type": "varchar(80)",
+        "nullable": "NO",
+        "default": "",
+        "extra": ""
+      },
+      "action_type": {
+        "type": "varchar(80)",
+        "nullable": "NO",
+        "default": null,
+        "extra": ""
+      },
+      "title": {
+        "type": "varchar(255)",
+        "nullable": "NO",
+        "default": null,
+        "extra": ""
+      },
+      "message": {
+        "type": "text",
+        "nullable": "NO",
+        "default": null,
+        "extra": ""
+      },
+      "action_label": {
+        "type": "varchar(120)",
+        "nullable": "NO",
+        "default": null,
+        "extra": ""
+      },
+      "href": {
+        "type": "varchar(500)",
+        "nullable": "NO",
+        "default": null,
+        "extra": ""
+      },
+      "entity_status": {
+        "type": "varchar(50)",
+        "nullable": "NO",
+        "default": "",
+        "extra": ""
+      },
+      "occurred_at": {
+        "type": "datetime",
+        "nullable": "NO",
+        "default": null,
+        "extra": ""
+      },
+      "is_active": {
+        "type": "tinyint(1)",
+        "nullable": "NO",
+        "default": "1",
+        "extra": ""
+      },
+      "is_read": {
+        "type": "tinyint(1)",
+        "nullable": "NO",
+        "default": "0",
+        "extra": ""
+      },
+      "read_at": {
+        "type": "datetime",
+        "nullable": "YES",
+        "default": null,
+        "extra": ""
+      },
+      "resolved_at": {
+        "type": "datetime",
+        "nullable": "YES",
+        "default": null,
+        "extra": ""
+      },
+      "created_at": {
+        "type": "datetime",
+        "nullable": "NO",
+        "default": "CURRENT_TIMESTAMP",
+        "extra": "DEFAULT_GENERATED"
+      },
+      "updated_at": {
+        "type": "datetime",
+        "nullable": "NO",
+        "default": "CURRENT_TIMESTAMP",
+        "extra": "DEFAULT_GENERATED"
       }
     },
     "users": {

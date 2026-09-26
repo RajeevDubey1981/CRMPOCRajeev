@@ -5,6 +5,7 @@ import Modal from "../../components/Modal.jsx";
 import Pagination from "../../components/Pagination.jsx";
 import OrderSearchBar from "../../components/orders/OrderSearchBar.jsx";
 import { ordersApi } from "../../api/orders.js";
+import { useAuth } from "../../auth/AuthContext.jsx";
 
 const ORDER_STATUSES = ["Pending", "Shipped", "In Transit", "Delivered", "Returned", "Cancelled"];
 
@@ -85,6 +86,13 @@ function DeleteIcon() {
 
 export default function OrderList() {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const orderPermission = (Array.isArray(user?.permissions) ? user.permissions : [])
+    .find((permission) => permission.module === "orders");
+  const canCreateOrders = Boolean(orderPermission?.can_create);
+  const canEditOrders = Boolean(orderPermission?.can_edit);
+  const canDeleteOrders = Boolean(orderPermission?.can_delete);
+  const canExportOrders = Boolean(orderPermission?.can_export);
   const listRequestRef = useRef(0);
 
   const [data, setData] = useState({ items: [], total: 0 });
@@ -175,19 +183,23 @@ export default function OrderList() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-semibold text-slate-800">Order List</h1>
         <div className="flex gap-2">
-          <button
-            onClick={exportCsv}
-            disabled={loading}
-            className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            Export CSV
-          </button>
-          <Link
-            to="/orders/new"
-            className="rounded-md bg-brand-600 px-3 py-2 text-sm font-medium text-white hover:bg-brand-700"
-          >
-            + New Order
-          </Link>
+          {canExportOrders && (
+            <button
+              onClick={exportCsv}
+              disabled={loading}
+              className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              Export CSV
+            </button>
+          )}
+          {canCreateOrders && (
+            <Link
+              to="/orders/new"
+              className="rounded-md bg-brand-600 px-3 py-2 text-sm font-medium text-white hover:bg-brand-700"
+            >
+              + New Order
+            </Link>
+          )}
         </div>
       </div>
 
@@ -296,20 +308,24 @@ export default function OrderList() {
                     >
                       <ViewIcon />
                     </button>
-                    <button
-                      title="Edit"
-                      onClick={() => navigate(`/orders/${o.id}`)}
-                      className="rounded p-1 text-slate-600 hover:bg-slate-100"
-                    >
-                      <EditIcon />
-                    </button>
-                    <button
-                      title="Delete"
-                      onClick={() => setConfirmDelete(o)}
-                      className="rounded p-1 text-rose-600 hover:bg-rose-50"
-                    >
-                      <DeleteIcon />
-                    </button>
+                    {canEditOrders && (
+                      <button
+                        title="Edit"
+                        onClick={() => navigate(`/orders/${o.id}`)}
+                        className="rounded p-1 text-slate-600 hover:bg-slate-100"
+                      >
+                        <EditIcon />
+                      </button>
+                    )}
+                    {canDeleteOrders && (
+                      <button
+                        title="Delete"
+                        onClick={() => setConfirmDelete(o)}
+                        className="rounded p-1 text-rose-600 hover:bg-rose-50"
+                      >
+                        <DeleteIcon />
+                      </button>
+                    )}
                   </div>
                 </td>
                     </>

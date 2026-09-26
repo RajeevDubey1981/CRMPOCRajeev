@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.models.partner_agreement import PartnerAgreement
 from app.models.partner_registration import PartnerRegistration
-from app.services.agreement_text import AGREEMENT_VERSION
+from app.services.agreement_text import agreement_for_partner_type
 
 OTP_EXPIRY_MINUTES = 10
 OTP_MAX_ATTEMPTS = 3
@@ -68,7 +68,7 @@ def ensure_agreement(db: Session, registration: PartnerRegistration) -> PartnerA
     row = PartnerAgreement(
         registration_id=registration.id,
         agreement_no=generate_agreement_no(db),
-        agreement_version=AGREEMENT_VERSION,
+        agreement_version=agreement_for_partner_type(registration.partner_type).version,
         access_token=secrets.token_urlsafe(32),
         email=registration.email.strip().lower(),
     )

@@ -1,14 +1,14 @@
 {
-  "generated_at": "2026-08-29T12:49:26.788807+00:00",
-  "local_alembic": "0023_service_unit_lifecycle",
-  "prod_alembic": "0023_service_unit_lifecycle",
+  "generated_at": "2026-09-12T08:31:35.929828+00:00",
+  "local_alembic": "0037_partner_agreements",
+  "prod_alembic": "0037_partner_agreements",
   "alembic_in_sync": true,
   "summary": {
     "missing_tables": 0,
     "extra_tables": 0,
     "missing_columns": 0,
     "extra_columns": 0,
-    "cosmetic_mismatches": 80,
+    "cosmetic_mismatches": 86,
     "review_mismatches": 26,
     "actionable_mismatches": 0,
     "needs_migration": false
@@ -896,6 +896,102 @@
         "nullable": "NO",
         "default": "CURRENT_TIMESTAMP",
         "extra": "DEFAULT_GENERATED"
+      }
+    },
+    {
+      "table": "partner_agreements",
+      "column": "created_at",
+      "local": {
+        "type": "datetime(6)",
+        "nullable": "NO",
+        "default": "CURRENT_TIMESTAMP(6)",
+        "extra": "DEFAULT_GENERATED"
+      },
+      "prod": {
+        "type": "datetime",
+        "nullable": "NO",
+        "default": "now()",
+        "extra": "DEFAULT_GENERATED"
+      }
+    },
+    {
+      "table": "partner_agreements",
+      "column": "otp_expires_at",
+      "local": {
+        "type": "datetime(6)",
+        "nullable": "YES",
+        "default": null,
+        "extra": ""
+      },
+      "prod": {
+        "type": "datetime",
+        "nullable": "YES",
+        "default": null,
+        "extra": ""
+      }
+    },
+    {
+      "table": "partner_agreements",
+      "column": "otp_sent_at",
+      "local": {
+        "type": "datetime(6)",
+        "nullable": "YES",
+        "default": null,
+        "extra": ""
+      },
+      "prod": {
+        "type": "datetime",
+        "nullable": "YES",
+        "default": null,
+        "extra": ""
+      }
+    },
+    {
+      "table": "partner_agreements",
+      "column": "signed_at",
+      "local": {
+        "type": "datetime(6)",
+        "nullable": "YES",
+        "default": null,
+        "extra": ""
+      },
+      "prod": {
+        "type": "datetime",
+        "nullable": "YES",
+        "default": null,
+        "extra": ""
+      }
+    },
+    {
+      "table": "partner_agreements",
+      "column": "updated_at",
+      "local": {
+        "type": "datetime(6)",
+        "nullable": "NO",
+        "default": "CURRENT_TIMESTAMP(6)",
+        "extra": "DEFAULT_GENERATED on update CURRENT_TIMESTAMP(6)"
+      },
+      "prod": {
+        "type": "datetime",
+        "nullable": "NO",
+        "default": "now()",
+        "extra": "DEFAULT_GENERATED"
+      }
+    },
+    {
+      "table": "partner_agreements",
+      "column": "user_agent",
+      "local": {
+        "type": "longtext",
+        "nullable": "YES",
+        "default": null,
+        "extra": ""
+      },
+      "prod": {
+        "type": "text",
+        "nullable": "YES",
+        "default": null,
+        "extra": ""
       }
     },
     {

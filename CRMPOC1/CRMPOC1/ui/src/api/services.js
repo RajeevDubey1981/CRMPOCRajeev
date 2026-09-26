@@ -12,6 +12,7 @@ export const servicesApi = {
   engineers: () => api.get("/api/services/lookup/engineers").then((r) => r.data),
   vendors: () => api.get("/api/services/lookup/vendors").then((r) => r.data),
   verifyOrder: (id, body) => api.post(`/api/services/${id}/verify-order`, body).then((r) => r.data),
+  restartTeamReview: (id) => api.post(`/api/services/${id}/restart-team-review`).then((r) => r.data),
   listUnits: (id, params) => api.get(`/api/services/${id}/units`, { params }).then((r) => r.data),
   assignUnits: (id, body) => api.post(`/api/services/${id}/assign-units`, body).then((r) => r.data),
   myAssignedUnits: () => api.get("/api/services/my-assigned-units").then((r) => r.data),

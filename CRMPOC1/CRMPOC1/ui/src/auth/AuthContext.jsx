@@ -5,32 +5,64 @@ import { api } from "../api/client.js";
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
+  const normalizeUser = (rawUser) => {
+    if (!rawUser) return null;
+
+    const permissions = Array.isArray(rawUser.permissions)
+      ? rawUser.permissions
+      : typeof rawUser.permission_list === "string"
+      ? rawUser.permission_list
+          .split(",")
+          .map((p) => p.trim())
+          .filter(Boolean)
+      : [];
+
+    return {
+      ...rawUser,
+      permissions,
+    };
+  };
+
   const [user, setUser] = useState(() => {
     const raw = localStorage.getItem("indcool_user");
-    return raw ? JSON.parse(raw) : null;
+    if (!raw) return null;
+    try {
+      const parsed = JSON.parse(raw);
+      return normalizeUser(parsed);
+    } catch {
+      return null;
+    }
   });
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     const token = localStorage.getItem("indcool_token");
-    if (token && !user) {
-      api.get("/api/auth/me")
-        .then((r) => {
-          setUser(r.data);
-          localStorage.setItem("indcool_user", JSON.stringify(r.data));
+    if (token) {
+       api.get("/api/auth/me")
+         .then((r) => {
+           const normalized = normalizeUser(r.data);
+           setUser(normalized);
+           localStorage.setItem("indcool_user", JSON.stringify(normalized));
         })
-        .catch(() => {});
+        .catch(() => {
+          localStorage.removeItem("indcool_token");
+          localStorage.removeItem("indcool_user");
+          setUser(null);
+        });
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function login(email, password) {
     setLoading(true);
     try {
-      const { data } = await api.post("/api/auth/login", { email, password });
+       const { data } = await api.post("/api/auth/login", { email, password });
+
+       const normalizedUser = normalizeUser(data.user);
+
       localStorage.setItem("indcool_token", data.access_token);
-      localStorage.setItem("indcool_user", JSON.stringify(data.user));
-      setUser(data.user);
-      return data.user;
+      localStorage.setItem("indcool_user", JSON.stringify(normalizedUser));
+      setUser(normalizedUser);
+      return normalizedUser;
     } finally {
       setLoading(false);
     }

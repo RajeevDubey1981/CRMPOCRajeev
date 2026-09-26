@@ -6,8 +6,7 @@ export function sanitizeTextInput(value) {
   return String(value ?? "")
     .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "")
     .replace(/<[^>]*>/g, "")
-    .replace(/\b(?:javascript|vbscript|data):/gi, "")
-    .trim();
+    .replace(/\b(?:javascript|vbscript|data):/gi, "");
 }
 
 function handleTextInput(event) {

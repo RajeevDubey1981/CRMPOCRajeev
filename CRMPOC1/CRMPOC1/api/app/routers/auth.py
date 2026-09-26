@@ -1,19 +1,56 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.deps import get_current_user
+from app.models.role import Permission, Role
 from app.models.user import User
 from app.schemas.auth import (
     ChangePasswordRequest,
     LoginRequest,
     TokenResponse,
+    UserPermissionOut,
     UserOut,
 )
+from app.schemas.role import MODULES, SUB_MODULES
 from app.security import create_access_token, hash_password, verify_password
+from app.services.role_access import permission_role_name
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
+
+
+def _all_permission_keys() -> list[tuple[str, str | None]]:
+    keys: list[tuple[str, str | None]] = []
+    for module in MODULES:
+        keys.append((module, None))
+        for sub_module in SUB_MODULES.get(module, ()):
+            keys.append((module, sub_module))
+    return keys
+
+
+def _user_out(db: Session, user: User) -> UserOut:
+    out = UserOut.model_validate(user)
+    role_name = permission_role_name(user.role)
+    role = db.scalar(select(Role).where(func.lower(func.trim(Role.name)) == role_name))
+    rows = []
+    if role is not None:
+        rows = db.scalars(select(Permission).where(Permission.role_id == role.id)).all()
+    by_key = {(row.module, row.sub_module): row for row in rows}
+    out.permissions = [
+        UserPermissionOut(
+            module=module,
+            sub_module=sub_module,
+            can_view=permission.can_view if permission else False,
+            can_create=permission.can_create if permission else False,
+            can_edit=permission.can_edit if permission else False,
+            can_delete=permission.can_delete if permission else False,
+            can_export=permission.can_export if permission else False,
+        )
+        for module, sub_module in _all_permission_keys()
+        for permission in [by_key.get((module, sub_module))]
+    ]
+    return out
 
 
 @router.post("/login", response_model=TokenResponse)
@@ -25,7 +62,7 @@ def login(body: LoginRequest, db: Session = Depends(get_db)):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "User is inactive")
 
     token = create_access_token(subject=str(user.id), extra_claims={"role": user.role})
-    return TokenResponse(access_token=token, user=UserOut.model_validate(user))
+    return TokenResponse(access_token=token, user=_user_out(db, user))
 
 
 @router.post("/logout")
@@ -35,8 +72,8 @@ def logout(_: User = Depends(get_current_user)):
 
 
 @router.get("/me", response_model=UserOut)
-def me(user: User = Depends(get_current_user)):
-    return user
+def me(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    return _user_out(db, user)
 
 
 @router.put("/change-password")

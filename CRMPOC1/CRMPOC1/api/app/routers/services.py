@@ -93,6 +93,9 @@ from app.services.service_documents import (
     customer_document_types,
     customer_documents_approved,
     order_workflow_unlocked,
+    on_enter_service_team_review,
+    reset_service_workflow_from_status,
+    service_workflow_is_revert,
     sync_document_workflow_status,
 )
 from app.services.serial_history import EVENT_TYPES, create_serial_history_event
@@ -889,7 +892,16 @@ def vendor_lookup(db: Session = Depends(get_db), user: User = Depends(get_curren
     if not (_is_service_team(user) or _is_call_center(user)):
         return []
     rows = db.scalars(select(Vendor).where(Vendor.deleted_at.is_(None), Vendor.is_active == True).order_by(Vendor.name_of_firm)).all()
-    return [{"id": row.id, "name": row.name_of_firm, "email": row.email, "phone": row.contact_mobile} for row in rows]
+    return [
+        {
+            "id": row.id,
+            "name": row.name_of_firm,
+            "email": row.email,
+            "phone": row.contact_mobile,
+            "vendor_type": row.vendor_type,
+        }
+        for row in rows
+    ]
 
 
 @router.get("/customers/search")
@@ -1052,6 +1064,43 @@ def identify_customer(service_id: int, body: ServiceIdentifyCustomer, db: Sessio
         service.status_date = _now()
     service.customer_identified_at = _now()
     _log_status(db, service, action="Customer Identified", user=user, old_status=old_status, new_status=service.status, metadata={"order_id": service.order_id, "order_item_id": service.order_item_id})
+    db.commit()
+    db.refresh(service)
+    return _hydrate_service(db, service)
+
+
+@router.post("/{service_id}/restart-team-review", response_model=ServiceOut)
+def restart_service_team_review(
+    service_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    service = _load_visible_service(db, service_id, user)
+    if not _is_service_team(user):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only Indcool Service can restart service team review")
+    if service.status != "Service Team Review":
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "Restart is only available while the request is in Service Team Review",
+        )
+    if not customer_documents_approved(db, service):
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "Approve all required customer documents before restarting this step",
+        )
+    old_status = service.status
+    on_enter_service_team_review(db, service)
+    service.status = "Service Team Review"
+    service.status_date = _now()
+    _log_status(
+        db,
+        service,
+        action="Service Team Review Restarted",
+        user=user,
+        old_status=old_status,
+        new_status=service.status,
+        remarks="Cleared order verification and assignment; documents kept.",
+    )
     db.commit()
     db.refresh(service)
     return _hydrate_service(db, service)
@@ -2396,6 +2445,20 @@ def update_service_status(
     elif new_status not in SERVICE_STATUSES:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid status")
     old_status = service.status
+    entering_team_review = (
+        new_status == "Service Team Review"
+        and (
+            new_status == old_status
+            or old_status == "Admin Review Document"
+            or service_workflow_is_revert(old_status, new_status)
+        )
+    )
+    if _is_workflow_admin(user) and entering_team_review:
+        on_enter_service_team_review(db, service)
+    elif _is_workflow_admin(user) and (
+        service_workflow_is_revert(old_status, new_status) or new_status == old_status
+    ):
+        reset_service_workflow_from_status(db, service, new_status)
     align_units_to_service_status(db, service, new_status)
     service.status = new_status
     service.status_date = _now()
@@ -2482,6 +2545,7 @@ def review_document(service_id: int, document_id: int, body: ServiceDocumentRevi
     if body.status in {"Reviewed", "Approved"} and customer_documents_approved(db, service):
         if service.status == "Admin Review Document":
             _enforce_transition(service.status, "Service Team Review")
+            on_enter_service_team_review(db, service)
             service.status = "Service Team Review"
             service.status_date = _now()
             new_status = service.status
@@ -2658,7 +2722,7 @@ async def public_upload(
             uploaded_at=_now(),
         )
     )
-    if service.status in {"New", "Service Team Review"}:
+    if service.status in {"New", "Service Team Review", "Rejected"}:
         service.status = "Admin Review Document"
         service.status_date = _now()
     _notify_service_team(

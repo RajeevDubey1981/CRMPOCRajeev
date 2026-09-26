@@ -436,6 +436,51 @@ def send_document_upload_link_email(
     )
 
 
+def send_service_rejection_document_request_email(
+    to: str,
+    customer_name: str | None,
+    ticket_id: str | None,
+    upload_url: str,
+    reason: str | None,
+    required_documents: list[str] | None = None,
+) -> bool:
+    display_name = (customer_name or "Customer").strip() or "Customer"
+    ticket = (ticket_id or "").strip() or "your request"
+    reason_text = (reason or "").strip() or "The service request needs additional review and updated documents."
+    document_items = _document_items_for_email(required_documents)
+    document_lines = "\n".join(f"- {item}" for item in document_items)
+    documents_html = _documents_html(document_items)
+    from_name = (settings.smtp_from_name or "").strip() or "INDcool Service Team"
+    subject = f"Service request sent back - Ticket ID: {ticket}"
+    text_body = (
+        f"Dear {display_name},\n\n"
+        "Greetings from INDcool!\n\n"
+        f"Your Ticket ID: {ticket}\n\n"
+        "Your service request has been reviewed and sent back for updated documents.\n\n"
+        f"Reason: {reason_text}\n\n"
+        "Please upload a fresh set of the required documents using the link below:\n\n"
+        f"{document_lines}\n\n"
+        f"Upload Documents: {upload_url}\n\n"
+        "Please retain this Ticket ID for future communication.\n\n"
+        f"Thank you,\n{from_name}"
+    )
+    html_body = (
+        "<!DOCTYPE html><html><body style=\"font-family: Arial, sans-serif; line-height: 1.6; color: #1e293b;\">"
+        f"<p>Dear {display_name},</p>"
+        "<p>Greetings from <strong>INDcool</strong>!</p>"
+        f"<p>Your Ticket ID: <strong>{ticket}</strong></p>"
+        "<p>Your service request has been reviewed and sent back for updated documents.</p>"
+        f"<p><strong>Reason:</strong> {reason_text}</p>"
+        "<p>Please upload a fresh set of the required documents using the link below:</p>"
+        f"<ul style=\"margin: 16px 0; padding-left: 24px;\">{documents_html}</ul>"
+        f"<p><a href=\"{upload_url}\" style=\"color: #2563eb; font-weight: 600; text-decoration: underline;\">Upload Documents Again</a></p>"
+        "<p>Please retain this Ticket ID for future communication.</p>"
+        f"<p>Thank you,<br>{from_name}</p>"
+        "</body></html>"
+    )
+    return send_email(to, subject, html_body, text_body=text_body)
+
+
 def send_complaint_created_email(
     to: str,
     customer_name: str | None,

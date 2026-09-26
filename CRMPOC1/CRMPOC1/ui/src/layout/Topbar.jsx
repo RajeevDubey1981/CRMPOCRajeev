@@ -11,7 +11,7 @@ export default function Topbar({ onToggle, pendingCount = 0, onOpenPending, pend
   const badgeLabel = pendingCount > 9 ? "9+" : String(pendingCount);
 
   return (
-    <header className="flex items-center justify-between border-b bg-white px-4 py-3 shadow-sm">
+    <header className="flex flex-wrap items-center gap-2 border-b bg-white px-3 py-2 shadow-sm sm:px-4 sm:py-3">
       <button
         type="button"
         aria-label="Toggle sidebar"
@@ -22,10 +22,10 @@ export default function Topbar({ onToggle, pendingCount = 0, onOpenPending, pend
         <span className="mt-1 block h-0.5 w-5 bg-current" />
         <span className="mt-1 block h-0.5 w-5 bg-current" />
       </button>
-      <div className="flex-1 px-4">
+      <div className="order-3 min-w-full flex-1 sm:order-none sm:min-w-0 sm:px-4">
         {canUseSerialHistory ? <SerialSearch /> : null}
       </div>
-      <div className="flex items-center gap-3">
+      <div className="ml-auto flex min-w-0 items-center gap-2 sm:gap-3">
         <button
           type="button"
           aria-label="Pending actions"
@@ -43,16 +43,16 @@ export default function Topbar({ onToggle, pendingCount = 0, onOpenPending, pend
             </span>
           )}
         </button>
-        <div className="text-right">
-          <div className="text-sm font-medium text-slate-800">{user?.name}</div>
-          <div className="text-xs text-slate-500">{user?.role}</div>
+        <div className="hidden min-w-0 text-right sm:block">
+          <div className="truncate text-sm font-medium text-slate-800">{user?.name}</div>
+          <div className="truncate text-xs text-slate-500">{user?.role}</div>
         </div>
         <button
           onClick={() => {
             logout();
             navigate("/login");
           }}
-          className="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-100"
+          className="rounded-md border border-slate-300 px-2.5 py-1.5 text-sm text-slate-700 hover:bg-slate-100 sm:px-3"
         >
           Logout
         </button>

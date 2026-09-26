@@ -13,12 +13,17 @@ let _collapsed = false;
 export default function Layout() {
   const { user } = useAuth();
   const [collapsed, setCollapsed] = useState(_collapsed);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [pendingItems, setPendingItems] = useState([]);
   const [pendingTotal, setPendingTotal] = useState(0);
   const [modalOpen, setModalOpen] = useState(false);
   const [loadingPending, setLoadingPending] = useState(false);
 
   function toggle() {
+    if (window.matchMedia?.("(max-width: 767px)").matches) {
+      setMobileSidebarOpen((open) => !open);
+      return;
+    }
     _collapsed = !_collapsed;
     setCollapsed(_collapsed);
   }
@@ -57,7 +62,19 @@ export default function Layout() {
 
   return (
     <div className="flex h-screen min-w-0 overflow-hidden">
-      <Sidebar collapsed={collapsed} />
+      {mobileSidebarOpen && (
+        <button
+          type="button"
+          aria-label="Close sidebar"
+          onClick={() => setMobileSidebarOpen(false)}
+          className="fixed inset-0 z-30 bg-slate-900/50 md:hidden"
+        />
+      )}
+      <Sidebar
+        collapsed={collapsed}
+        mobileOpen={mobileSidebarOpen}
+        onNavigate={() => setMobileSidebarOpen(false)}
+      />
       <div className="flex flex-1 flex-col min-w-0">
         <Topbar
           onToggle={toggle}
@@ -68,7 +85,7 @@ export default function Layout() {
           }}
           pendingLoading={loadingPending}
         />
-        <main className="flex-1 min-w-0 overflow-x-hidden overflow-y-auto p-6">
+        <main className="flex-1 min-w-0 overflow-x-hidden overflow-y-auto p-3 sm:p-4 lg:p-6">
           <CallcenterGuard>
             <Outlet />
           </CallcenterGuard>

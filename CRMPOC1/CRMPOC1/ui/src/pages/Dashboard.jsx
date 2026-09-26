@@ -12,6 +12,7 @@ import ComplaintQuickViewModal from "../components/complaints/ComplaintQuickView
 import LinkedRequestCell from "../components/complaints/LinkedRequestCell.jsx";
 import { api } from "../api/client.js";
 import { complaintsApi } from "../api/complaints.js";
+import { partnerRegistrationsApi } from "../api/partnerRegistrations.js";
 import { servicesApi } from "../api/services.js";
 import { useAuth } from "../auth/AuthContext.jsx";
 import { isOperationsAdminRole } from "../utils/roles.js";
@@ -51,6 +52,13 @@ const STATUSES   = ["Pending", "Under Process", "In Process", "Resolved", "Rejec
 const QUERY_TYPES = ["Service", "Installation", "Sales", "Others"];
 const SERVICE_TYPES = ["Free Service", "Warranty Service", "Paid Service"];
 const SOURCES    = [{ value: "callcenter", label: "callcenter" }, { value: "public", label: "Public User" }];
+const EMPTY_PARTNER_INVITE = {
+  partner_type: "Gem Partner",
+  email: "",
+  contact_person_name: "",
+  mobile: "",
+  name: "",
+};
 
 function fmtDate(s) {
   if (!s) return "—";
@@ -103,16 +111,24 @@ const GRID_COLUMNS = [
   { key: "row_actions", label: "" },
 ];
 
+const GRID_COLUMN_CELL_CLASS = {
+  status: "min-w-[11rem] whitespace-nowrap align-middle",
+  workflow_action: "min-w-[10.5rem] whitespace-nowrap align-middle",
+};
+
 /* ─── component ─────────────────────────────────────────────────── */
 
 export default function Dashboard() {
   const navigate = useNavigate();
   const dashboardRef = useRef(null);
   const { user } = useAuth();
-  const role = user?.role?.toLowerCase?.() || "";
+  const rawRole = user?.role || "";
+  const role = rawRole.toString().trim().toLowerCase();
   const isCallcenter = role === "callcenter";
   const isEngineer = role === "engineer";
-  const isAdminLike = isOperationsAdminRole(role);
+  const isSales = role === "sales";
+  // Only operations/admin-like roles can delete complaints from dashboard
+  const isAdminLike = isOperationsAdminRole(role) && !isSales;
 
   // summary / chart
   const [summary, setSummary]   = useState(null);
@@ -136,6 +152,12 @@ export default function Dashboard() {
   const [serviceSummary, setServiceSummary] = useState(null);
   const [serviceRequests, setServiceRequests] = useState({ items: [], total: 0 });
   const [serviceErr, setServiceErr] = useState("");
+  const [partnerInviteOpen, setPartnerInviteOpen] = useState(false);
+  const [partnerInviteMeta, setPartnerInviteMeta] = useState({ partner_types: [] });
+  const [partnerInviteForm, setPartnerInviteForm] = useState(EMPTY_PARTNER_INVITE);
+  const [partnerInviteSaving, setPartnerInviteSaving] = useState(false);
+  const [partnerInviteResult, setPartnerInviteResult] = useState(null);
+  const [partnerInviteError, setPartnerInviteError] = useState("");
 
   const visibleColumns = useMemo(() => (
     isEngineer
@@ -186,6 +208,15 @@ export default function Dashboard() {
       })
       .catch((e) => setServiceErr(e.response?.data?.detail || "Failed to load service requests"));
   }, [isEngineer, filters.service_type]);
+
+  useEffect(() => {
+    if (!isSales) return;
+    partnerRegistrationsApi.meta()
+      .then(setPartnerInviteMeta)
+      .catch(() => setPartnerInviteMeta({
+        partner_types: ["Gem Partner", "CSD Dealer", "Distributor", "Service Partner", "Retailer", "Partner"],
+      }));
+  }, [isSales]);
 
   useEffect(() => {
     function closeQuickLinksOnScroll() {
@@ -265,6 +296,29 @@ export default function Dashboard() {
       loadGrid();
     } catch (e) {
       alert(e.response?.data?.detail || "Failed to delete complaint");
+    }
+  }
+
+  async function sendPartnerInvite(event) {
+    event.preventDefault();
+    setPartnerInviteSaving(true);
+    setPartnerInviteError("");
+    setPartnerInviteResult(null);
+    try {
+      const result = await partnerRegistrationsApi.invite({
+        partner_type: partnerInviteForm.partner_type,
+        email: partnerInviteForm.email,
+        contact_person_name: partnerInviteForm.contact_person_name || null,
+        mobile: partnerInviteForm.mobile || null,
+        name: partnerInviteForm.name || null,
+      });
+      setPartnerInviteResult(result);
+      setPartnerInviteForm(EMPTY_PARTNER_INVITE);
+    } catch (error) {
+      const detail = error.response?.data?.detail;
+      setPartnerInviteError(Array.isArray(detail) ? detail.map((item) => item.msg).join("; ") : detail || "Failed to send onboarding invite");
+    } finally {
+      setPartnerInviteSaving(false);
     }
   }
 
@@ -384,7 +438,7 @@ export default function Dashboard() {
           <button
             type="button"
             onClick={() => handleWorkflowAction(c)}
-            className={`rounded border px-2 py-0.5 text-xs font-medium hover:opacity-80 ${WORKFLOW_ACTION_STYLE[workflowAction] || "bg-slate-100 text-slate-600 border-slate-200"}`}
+            className={`inline-block whitespace-nowrap rounded border px-2.5 py-1 text-xs font-medium leading-snug hover:opacity-80 ${WORKFLOW_ACTION_STYLE[workflowAction] || "bg-slate-100 text-slate-600 border-slate-200"}`}
           >
             {workflowAction}
           </button>
@@ -491,11 +545,24 @@ export default function Dashboard() {
           </div>
           )}
 
-          {/* Quick Links */}
-          {!isCallcenter && !isEngineer && (
+           {/* Quick Links */}
+           {!isEngineer && (
           <div className="rounded bg-white p-4 shadow-sm">
             <h3 className="text-sm font-semibold text-slate-600">Quick Links</h3>
             <div className="mt-3 flex flex-wrap gap-2">
+               {isSales && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPartnerInviteOpen(true);
+                    setPartnerInviteResult(null);
+                    setPartnerInviteError("");
+                  }}
+                  className="rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700"
+                >
+                  Send onboarding invite
+                 </button>
+               )}
               {QUICK_LINKS.map(ql => (
                 <Link key={ql.to} to={ql.to}
                   className={`rounded px-4 py-2 text-sm font-medium text-white transition-colors ${ql.bg}`}>
@@ -578,11 +645,14 @@ export default function Dashboard() {
 
       {/* Complaint Grid */}
       <div className="overflow-x-auto rounded bg-white shadow-sm">
-        <table className="min-w-full text-xs">
+        <table className="w-full min-w-[1280px] text-xs">
           <thead className="border-b-2 border-slate-200 bg-slate-50">
             <tr>
               {visibleColumns.map((column) => (
-                <th key={column.key} className="whitespace-nowrap px-3 py-2.5 text-left font-semibold text-slate-600">
+                <th
+                  key={column.key}
+                  className={`whitespace-nowrap px-3 py-2.5 text-left font-semibold text-slate-600 ${GRID_COLUMN_CELL_CLASS[column.key] || ""}`}
+                >
                   {column.label}
                 </th>
               ))}
@@ -602,7 +672,7 @@ export default function Dashboard() {
                 className="cursor-pointer transition-colors hover:bg-sky-50/40"
               >
                 {visibleColumns.map((column) => (
-                  <td key={column.key} className="px-3 py-2">
+                  <td key={column.key} className={`px-3 py-2 ${GRID_COLUMN_CELL_CLASS[column.key] || ""}`}>
                     {renderEngineerCell(column, row)}
                   </td>
                 ))}
@@ -614,7 +684,7 @@ export default function Dashboard() {
             {!loading && !isEngineer && complaints.items.map((c) => (
               <tr key={c.id} className="transition-colors hover:bg-sky-50/40">
                 {visibleColumns.map((column) => (
-                  <td key={column.key} className="px-3 py-2">
+                  <td key={column.key} className={`px-3 py-2 ${GRID_COLUMN_CELL_CLASS[column.key] || ""}`}>
                     {renderCell(column, c)}
                   </td>
                 ))}
@@ -703,6 +773,86 @@ export default function Dashboard() {
             <button onClick={deleteComplaint} className="rounded bg-rose-600 px-3 py-2 text-sm text-white hover:bg-rose-700">Delete</button>
           </div>
         </div>
+      </Modal>
+
+      <Modal
+        open={partnerInviteOpen}
+        onClose={() => setPartnerInviteOpen(false)}
+        title="Send onboarding invite"
+        maxWidth="max-w-lg"
+      >
+        <form onSubmit={sendPartnerInvite} className="space-y-4">
+          {partnerInviteResult && (
+            <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
+              Invite sent to {partnerInviteResult.email}. Registration no: {partnerInviteResult.registration_no}
+            </div>
+          )}
+          {partnerInviteError && (
+            <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+              {partnerInviteError}
+            </div>
+          )}
+          <div>
+            <label className="mb-1 block text-sm font-medium text-slate-700">Partner type</label>
+            <select
+              value={partnerInviteForm.partner_type}
+              onChange={(event) => setPartnerInviteForm((form) => ({ ...form, partner_type: event.target.value }))}
+              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+            >
+              {(partnerInviteMeta.partner_types.length ? partnerInviteMeta.partner_types : ["Gem Partner"]).map((type) => (
+                <option key={type} value={type}>{type}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="mb-1 block text-sm font-medium text-slate-700">Partner email *</label>
+            <input
+              type="email"
+              required
+              value={partnerInviteForm.email}
+              onChange={(event) => setPartnerInviteForm((form) => ({ ...form, email: event.target.value }))}
+              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-sm font-medium text-slate-700">Firm name</label>
+            <input
+              value={partnerInviteForm.name}
+              onChange={(event) => setPartnerInviteForm((form) => ({ ...form, name: event.target.value }))}
+              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+            />
+          </div>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div>
+              <label className="mb-1 block text-sm font-medium text-slate-700">Contact person</label>
+              <input
+                value={partnerInviteForm.contact_person_name}
+                onChange={(event) => setPartnerInviteForm((form) => ({ ...form, contact_person_name: event.target.value }))}
+                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium text-slate-700">Mobile *</label>
+              <input
+                type="tel"
+                required
+                minLength={10}
+                maxLength={20}
+                value={partnerInviteForm.mobile}
+                onChange={(event) => setPartnerInviteForm((form) => ({ ...form, mobile: event.target.value }))}
+                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+              />
+            </div>
+          </div>
+          <div className="flex justify-end gap-2">
+            <button type="button" onClick={() => setPartnerInviteOpen(false)} className="rounded-md border border-slate-300 px-4 py-2 text-sm">
+              Cancel
+            </button>
+            <button type="submit" disabled={partnerInviteSaving} className="rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">
+              {partnerInviteSaving ? "Sending..." : "Send onboarding invite"}
+            </button>
+          </div>
+        </form>
       </Modal>
 
     </div>

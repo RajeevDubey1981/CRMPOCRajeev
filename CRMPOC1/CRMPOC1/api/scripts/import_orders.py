@@ -23,6 +23,10 @@ from app.models.order import Order
 from app.models.vendor import Vendor
 from app.models.courier import Courier
 
+VENDOR_EMAILS = {
+    "SAVITAR SERVICES PVT LTD": "vivek.s@pia-consultancy.com",
+}
+
 # ---------------------------------------------------------------------------
 # Raw CSV data — first 20 rows (IDs 6-25)
 # Columns: order_no, order_date, oem_bill_no, status_html, vendor_name,
@@ -76,6 +80,7 @@ def parse_date(s: str) -> date | None:
 def get_or_create_vendor(db, name: str, vendor_cache: dict) -> int | None:
     if not name:
         return None
+    vendor_email = VENDOR_EMAILS.get(name.upper())
     if name in vendor_cache:
         return vendor_cache[name]
     vendor = db.scalar(
@@ -90,10 +95,14 @@ def get_or_create_vendor(db, name: str, vendor_cache: dict) -> int | None:
         while db.scalar(select(Vendor).where(Vendor.vendor_code == code)):
             code = f"{base}{counter}"
             counter += 1
-        vendor = Vendor(vendor_code=code, name_of_firm=name, is_active=True)
+        vendor = Vendor(vendor_code=code, name_of_firm=name, email=vendor_email, is_active=True)
         db.add(vendor)
         db.flush()
         print(f"[vendor+] Created: {name} (code={code})")
+    elif vendor_email and vendor.email != vendor_email:
+        vendor.email = vendor_email
+        db.flush()
+        print(f"[vendor~] Updated email: {name} ({vendor_email})")
     vendor_cache[name] = vendor.id
     return vendor.id
 

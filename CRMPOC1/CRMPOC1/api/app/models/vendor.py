@@ -16,6 +16,7 @@ class Vendor(Base, TimestampMixin, SoftDeleteMixin):
     contact_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     contact_mobile: Mapped[str | None] = mapped_column(String(20), nullable=True)
     email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    vendor_type: Mapped[str | None] = mapped_column(String(100), nullable=True)
     gst_no: Mapped[str | None] = mapped_column(String(20), nullable=True)
     address: Mapped[str | None] = mapped_column(Text, nullable=True)
     state: Mapped[str | None] = mapped_column(String(100), nullable=True)

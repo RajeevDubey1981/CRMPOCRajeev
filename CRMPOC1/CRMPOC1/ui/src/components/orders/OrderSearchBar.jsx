@@ -49,13 +49,18 @@ export default function OrderSearchBar({
   const setSearchInput = onChange || setInternalValue;
   const normalizedSearchInput = searchInput.trim();
 
+  const onDebouncedSearchRef = useRef(onDebouncedSearch);
   useEffect(() => {
-    if (!onDebouncedSearch) return undefined;
+    onDebouncedSearchRef.current = onDebouncedSearch;
+  }, [onDebouncedSearch]);
+
+  useEffect(() => {
+    if (!onDebouncedSearchRef.current) return undefined;
     const handle = window.setTimeout(() => {
-      onDebouncedSearch(normalizedSearchInput);
+      onDebouncedSearchRef.current?.(normalizedSearchInput);
     }, AUTOCOMPLETE_DEBOUNCE_MS);
     return () => window.clearTimeout(handle);
-  }, [normalizedSearchInput, onDebouncedSearch]);
+  }, [normalizedSearchInput]);
 
   useEffect(() => {
     function onDocClick(e) {

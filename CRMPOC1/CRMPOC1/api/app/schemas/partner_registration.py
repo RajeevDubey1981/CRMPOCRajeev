@@ -4,7 +4,7 @@ from typing import Literal
 
 from pydantic import BaseModel, EmailStr, Field
 
-PARTNER_TYPES = ("Gem Partner", "Distributor", "Service Partner", "Retailer", "Partner")
+PARTNER_TYPES = ("Gem Partner", "CSD Dealer", "Distributor", "Service Partner", "Retailer", "Partner")
 BUSINESS_TYPES = (
     "Proprietorship",
     "Partnership",
@@ -43,6 +43,11 @@ DOCUMENT_FIELDS = (
     "incorporation_certificate_path",
     "aadhaar_card_path",
     "photo_path",
+    "shop_photo_1_path",
+    "shop_photo_2_path",
+    "shop_photo_3_path",
+    "shop_photo_4_path",
+    "shop_photo_5_path",
 )
 
 FORM_STEPS = (
@@ -59,7 +64,7 @@ FORM_STEPS = (
 
 
 class PartnerInviteCreate(BaseModel):
-    partner_type: Literal["Gem Partner", "Partner", "Distributor", "Service Partner", "Retailer"]
+    partner_type: Literal["Gem Partner", "CSD Dealer", "Partner", "Distributor", "Service Partner", "Retailer"]
     email: EmailStr
     contact_person_name: str | None = Field(default=None, max_length=255)
     mobile: str = Field(min_length=10, max_length=20)
@@ -90,6 +95,37 @@ class PartnerRegistrationUpdate(BaseModel):
         "Cancelled",
     ] | None = None
     admin_remark: str | None = None
+    partner_type: Literal["Gem Partner", "CSD Dealer", "Partner", "Distributor", "Service Partner", "Retailer"] | None = None
+    business_type: Literal["Proprietorship", "Partnership", "LLP", "Private Limited", "Public Limited", "Trust / Society", "Other"] | None = None
+    name: str | None = Field(default=None, max_length=255)
+    mobile: str | None = Field(default=None, max_length=20)
+    alternate_mobile: str | None = Field(default=None, max_length=20)
+    email: EmailStr | None = None
+    website: str | None = Field(default=None, max_length=255)
+    contact_person_name: str | None = Field(default=None, max_length=255)
+    contact_designation: str | None = Field(default=None, max_length=100)
+    firm_address: str | None = None
+    city: str | None = Field(default=None, max_length=100)
+    district: str | None = Field(default=None, max_length=100)
+    state: str | None = Field(default=None, max_length=100)
+    pincode: str | None = Field(default=None, max_length=20)
+    gst_no: str | None = Field(default=None, max_length=20)
+    pan_no: str | None = Field(default=None, max_length=20)
+    udyam_no: str | None = Field(default=None, max_length=50)
+    cin_no: str | None = Field(default=None, max_length=30)
+    aadhaar_no: str | None = Field(default=None, max_length=20)
+    gem_seller_id: str | None = Field(default=None, max_length=100)
+    year_of_establishment: int | None = Field(default=None, ge=1800, le=2100)
+    annual_turnover: Decimal | None = Field(default=None, ge=0)
+    operating_states: str | None = None
+    product_categories: str | None = None
+    bank_name: str | None = Field(default=None, max_length=150)
+    bank_branch: str | None = Field(default=None, max_length=150)
+    account_holder_name: str | None = Field(default=None, max_length=255)
+    account_number: str | None = Field(default=None, max_length=30)
+    ifsc_code: str | None = Field(default=None, max_length=20)
+    remarks: str | None = None
+    declaration_accepted: bool | None = None
 
 
 class PartnerPublicStepSave(BaseModel):
@@ -157,6 +193,11 @@ class PartnerRegistrationOut(BaseModel):
     incorporation_certificate_path: str | None = None
     aadhaar_card_path: str | None = None
     photo_path: str | None = None
+    shop_photo_1_path: str | None = None
+    shop_photo_2_path: str | None = None
+    shop_photo_3_path: str | None = None
+    shop_photo_4_path: str | None = None
+    shop_photo_5_path: str | None = None
     invited_at: datetime | None = None
     form_started_at: datetime | None = None
     form_submitted_at: datetime | None = None
@@ -212,3 +253,5 @@ class PartnerPublicContext(BaseModel):
     partner_types: list[str]
     business_types: list[str]
     data: PartnerRegistrationOut
+    gem_seller_id_required: bool
+    required_shop_photo_count: int

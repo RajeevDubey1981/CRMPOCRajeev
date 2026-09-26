@@ -4,29 +4,31 @@ import { NavLink } from "react-router-dom";
 import { isIndcoolServiceRole, isOperationsAdminRole, isPartnerAdminRole, isSystemAdminRole } from "../utils/roles.js";
 
 const NAV = [
-  { to: "/dashboard", label: "Dashboard" },
-  { to: "/vendor-dashboard", label: "Vendor Dashboard" },
+  { to: "/dashboard", label: "Dashboard", module: "dashboard" },
+  { to: "/vendor-dashboard", label: "Vendor Dashboard", vendorOnly: true },
   {
     label: "Admin",
+    adminOnly: true,
     children: [
-      { to: "/admin/users", label: "Users" },
-      { to: "/admin/roles", label: "Roles" },
-      { to: "/admin/permissions", label: "Permissions" },
-      { to: "/admin/payments", label: "Payment History" },
-      { to: "/admin/partner-registrations", label: "Partner Registrations" },
+      { to: "/admin/users", label: "Users", module: "users" },
+      { to: "/admin/roles", label: "Roles", module: "roles" },
+      { to: "/admin/permissions", label: "Permissions", module: "roles" },
+      { to: "/admin/payments", label: "Payment History", systemAdminOnly: true },
+      { to: "/admin/partner-registrations", label: "Partner Registrations", partnerAdminOnly: true },
     ],
   },
-  { to: "/complaints", label: "Complaints" },
-  { to: "/services", label: "Service Requests" },
-  { to: "/services/my-units", label: "My Assigned Units" },
-  { to: "/items", label: "Item Masters" },
-  { to: "/couriers", label: "Courier Masters" },
-  { to: "/orders", label: "Order List" },
-  { to: "/serials/history", label: "Serial History" },
-  { to: "/installations", label: "Installation Requests" },
-  { to: "/claims", label: "Claims" },
+  { to: "/complaints", label: "Complaints", module: "complaints" },
+  { to: "/services", label: "Service Requests", module: "services" },
+  { to: "/services/my-units", label: "My Assigned Units", engineerOnly: true },
+  { to: "/items", label: "Item Masters", module: "items" },
+  { to: "/couriers", label: "Courier Masters", module: "couriers" },
+  { to: "/orders", label: "Order List", module: "orders" },
+  { to: "/serials/history", label: "Serial History", operationsOnly: true },
+  { to: "/installations", label: "Installation Requests", module: "installations" },
+  { to: "/claims", label: "Claims", module: "claims" },
   {
     label: "Market Admin",
+    systemAdminOnly: true,
     children: [
       { to: "/market-admin/dashboard", label: "Dashboard" },
       { to: "/market-admin/users", label: "Users" },
@@ -39,7 +41,7 @@ const NAV = [
   },
 ];
 
-function LeafLink({ to, label, disabled }) {
+function LeafLink({ to, label, disabled, onNavigate }) {
   if (disabled) {
     return (
       <span className="block rounded-md px-3 py-2 text-sm text-slate-500 cursor-not-allowed select-none">
@@ -50,6 +52,7 @@ function LeafLink({ to, label, disabled }) {
   return (
     <NavLink
       to={to}
+      onClick={onNavigate}
       className={({ isActive }) =>
         `block rounded-md px-3 py-2 text-sm transition ${
           isActive
@@ -63,7 +66,7 @@ function LeafLink({ to, label, disabled }) {
   );
 }
 
-function Group({ label, children, defaultOpen = false }) {
+function Group({ label, children, defaultOpen = false, onNavigate }) {
   const [open, setOpen] = useState(defaultOpen);
   return (
     <div>
@@ -78,7 +81,7 @@ function Group({ label, children, defaultOpen = false }) {
       {open && (
         <div className="ml-3 mt-1 space-y-0.5 border-l border-slate-700 pl-3">
           {children.map((c) => (
-            <LeafLink key={c.to} to={c.to} label={c.label} />
+            <LeafLink key={c.to} to={c.to} label={c.label} onNavigate={onNavigate} />
           ))}
         </div>
       )}
@@ -86,7 +89,7 @@ function Group({ label, children, defaultOpen = false }) {
   );
 }
 
-export default function Sidebar({ collapsed }) {
+export default function Sidebar({ collapsed, mobileOpen = false, onNavigate }) {
   const { user } = useAuth();
   const role = user?.role?.toLowerCase?.() || "";
 
@@ -100,44 +103,43 @@ export default function Sidebar({ collapsed }) {
   const isPartnerAdmin = isPartnerAdminRole(user?.role);
   const isSystemAdmin = isSystemAdminRole(user?.role);
 
-  const allowedPaths = isVendor
-    ? new Set(["/vendor-dashboard", "/orders", "/installations", "/services"])
-    : isEngineer
-    ? new Set(["/dashboard", "/installations", "/services", "/services/my-units"])
-    : isCallcenter
-    ? new Set(["/dashboard"])
-    : null;
+  const permissions = Array.isArray(user?.permissions) ? user.permissions : [];
+  const hasPermissionPayload = permissions.length > 0;
+  function canView(module) {
+    if (!module) return false;
+    return permissions.some((permission) => permission.module === module && permission.can_view);
+  }
+
+  function canShow(item) {
+    if (item.vendorOnly) return isVendor;
+    if (item.engineerOnly) return isEngineer;
+    if (item.operationsOnly) return isCourierAdmin;
+    if (item.systemAdminOnly) return isSystemAdmin;
+    if (item.partnerAdminOnly) return isPartnerAdmin;
+    if (item.adminOnly) return isSystemAdmin || isPartnerAdmin;
+    if (!item.module) return isSystemAdmin;
+    if (!hasPermissionPayload) return false;
+    return canView(item.module);
+  }
 
   const filteredNav = NAV
-    .filter((it) => {
-      if (it.label === "Admin") {
-        return isSystemAdmin || isPartnerAdmin;
-      }
-      return (isCourierAdmin || it.to !== "/couriers") && (isCourierAdmin || it.to !== "/serials/history");
-    })
+    .filter(canShow)
     .map((it) => {
-      if (it.label === "Admin" && it.children) {
-        const children = it.children.filter((child) => {
-          if (child.to === "/admin/partner-registrations") return isPartnerAdmin;
-          return isSystemAdmin;
-        });
-        if (children.length === 0) return null;
-        return { ...it, children };
-      }
-      if (!allowedPaths) return it;
       if (it.children) {
-        const children = it.children.filter((c) => allowedPaths.has(c.to));
+        const children = it.children.filter(canShow);
         if (children.length === 0) return null;
         return { ...it, children };
       }
-      return allowedPaths.has(it.to) ? it : null;
+      return it;
     })
     .filter(Boolean);
 
   return (
     <aside
-      className={`relative shrink-0 h-full overflow-x-hidden overflow-y-auto bg-slate-800 transition-all ${
-        collapsed ? "w-0 min-w-0 -ml-1" : "w-64 min-w-64"
+      className={`fixed inset-y-0 left-0 z-40 h-full w-72 max-w-[85vw] overflow-x-hidden overflow-y-auto bg-slate-800 shadow-xl transition-transform duration-200 md:relative md:z-auto md:max-w-none md:shrink-0 md:shadow-none md:transition-all ${
+        mobileOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
+      } ${
+        collapsed ? "md:w-0 md:min-w-0 md:-ml-1" : "md:w-64 md:min-w-64"
       }`}
     >
       <div className="px-4 py-5">
@@ -147,9 +149,9 @@ export default function Sidebar({ collapsed }) {
       <nav className="space-y-1 px-3 pb-6">
         {filteredNav.map((item) =>
           item.children ? (
-            <Group key={item.label} label={item.label} children={item.children} />
+            <Group key={item.label} label={item.label} children={item.children} onNavigate={onNavigate} />
           ) : (
-            <LeafLink key={item.label} to={item.to} label={item.label} disabled={item.disabled} />
+            <LeafLink key={item.label} to={item.to} label={item.label} disabled={item.disabled} onNavigate={onNavigate} />
           ),
         )}
       </nav>

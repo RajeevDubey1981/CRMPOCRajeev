@@ -2,15 +2,12 @@ import { useEffect, useState } from "react";
 
 import Modal from "../../components/Modal.jsx";
 import { complaintsApi } from "../../api/complaints.js";
-import { installationsApi } from "../../api/installations.js";
-import { ENGINEER_ASSIGNMENT_HINT, formatEngineerOptionLabel } from "../../utils/engineerAssignment.js";
 
 const QUERY_TYPES = ["Service", "Installation", "Sales", "Others"];
 const STATUSES = ["Pending", "Under Process", "In Process", "Resolved", "Rejected"];
 
 export default function ComplaintEdit({ complaint, onClose, onSaved }) {
   const [modelOptions, setModelOptions] = useState([]);
-  const [engineers, setEngineers] = useState([]);
   const [form, setForm] = useState({
     customer_name: complaint.customer_name || "",
     customer_mobile: complaint.customer_mobile || "",
@@ -21,7 +18,6 @@ export default function ComplaintEdit({ complaint, onClose, onSaved }) {
     problem_description: complaint.problem_description || "",
     remark: complaint.remark || "",
     status: complaint.status || "Pending",
-    assigned_engineer: complaint.assigned_engineer || "",
   });
   const [busy, setBusy] = useState(false);
   const [submitErr, setSubmitErr] = useState("");
@@ -30,9 +26,6 @@ export default function ComplaintEdit({ complaint, onClose, onSaved }) {
     complaintsApi.modelOptions()
       .then(setModelOptions)
       .catch(() => setModelOptions([]));
-    installationsApi.engineerAssignmentOptions()
-      .then(setEngineers)
-      .catch(() => setEngineers([]));
   }, []);
 
   function set(field, value) {
@@ -58,7 +51,6 @@ export default function ComplaintEdit({ complaint, onClose, onSaved }) {
         problem_description: form.problem_description.trim() || null,
         remark: form.remark.trim() || null,
         status: form.status,
-        assigned_engineer: form.assigned_engineer ? Number(form.assigned_engineer) : null,
       };
       await complaintsApi.update(complaint.id, body);
       onSaved?.();
@@ -128,20 +120,6 @@ export default function ComplaintEdit({ complaint, onClose, onSaved }) {
             <select value={form.status} onChange={(e) => set("status", e.target.value)} className={fieldClass}>
               {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
             </select>
-          </div>
-          <div>
-            <label className={labelClass}>Assigned engineer</label>
-            <select
-              value={form.assigned_engineer}
-              onChange={(e) => set("assigned_engineer", e.target.value ? Number(e.target.value) : "")}
-              className={fieldClass}
-            >
-              <option value="">— Unassigned —</option>
-              {engineers.map((u) => (
-                <option key={u.id} value={u.id}>{formatEngineerOptionLabel(u)}</option>
-              ))}
-            </select>
-            <p className="mt-1 text-xs text-slate-500">{ENGINEER_ASSIGNMENT_HINT}</p>
           </div>
         </div>
 
