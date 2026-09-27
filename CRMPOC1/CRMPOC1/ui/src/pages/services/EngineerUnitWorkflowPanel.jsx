@@ -1,10 +1,23 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { servicesApi } from "../../api/services.js";
+import { engineerIdsMatch } from "../../utils/engineerAssignment.js";
 import Modal from "../../components/Modal.jsx";
 import StatusBadge from "../../components/StatusBadge.jsx";
 
 const PAYMENT_TYPES = ["Cash", "UPI"];
+const BILLING_LOCKED_STATUSES = ["Payment Completed", "Closed"];
+
+function unitBillingValue(unit) {
+  if (unit?.admin_billing_type === "Paid" || unit?.admin_billing_type === "Free") {
+    return unit.admin_billing_type;
+  }
+  return unit?.service_type === "Paid Service" ? "Paid" : "Free";
+}
+
+function unitBillingLocked(unit) {
+  return BILLING_LOCKED_STATUSES.includes(unit?.unit_status || "");
+}
 
 function toDownloadUrl(path) {
   if (!path) {
@@ -155,11 +168,13 @@ export default function EngineerUnitWorkflowPanel({
   isVendor,
   isServiceTeam,
   run,
+  busy = false,
+  actionError = "",
 }) {
   const workUnits = useMemo(() => {
     const units = service?.units || [];
     if (isEngineer) {
-      return units.filter((unit) => unit.assigned_engineer_id === userId);
+      return units.filter((unit) => engineerIdsMatch(unit.assigned_engineer_id, userId));
     }
     return units.filter((unit) => unit.assigned_engineer_id);
   }, [service?.units, isEngineer, userId]);
@@ -173,7 +188,9 @@ export default function EngineerUnitWorkflowPanel({
   const [approvalRemarks, setApprovalRemarks] = useState({});
   const [serialReviewForms, setSerialReviewForms] = useState({});
   const [paymentApprovalForms, setPaymentApprovalForms] = useState({});
+  const [completionReviewRemarks, setCompletionReviewRemarks] = useState({});
   const [activeModal, setActiveModal] = useState(null);
+  const [newVisitSerial, setNewVisitSerial] = useState("");
 
   useEffect(() => {
     setRows(workUnits.map((unit) => emptyRow(unit)));
@@ -266,6 +283,25 @@ export default function EngineerUnitWorkflowPanel({
     );
   }
 
+  async function addSerialToVisit() {
+    const serial = newVisitSerial.trim();
+    if (!serial || busy) return;
+    setNewVisitSerial("");
+    await run(
+      async () => {
+        const updated = await servicesApi.addUnitBySerial(service.id, { serial_no: serial });
+        const assignedToYou = (updated.units || []).some(
+          (unit) => engineerIdsMatch(unit.assigned_engineer_id, userId),
+        );
+        const message = assignedToYou
+          ? `Serial ${serial} added and assigned to you. Use Verify on that row below to continue.`
+          : `Serial ${serial} was saved on this request. If you do not see a row below, refresh or ask service team to assign the unit.`;
+        return { ...updated, successMessage: message };
+      },
+      { scrollToId: "engineer-serial-workflow-table" },
+    );
+  }
+
   function openSerialReview(unit) {
     setSerialReviewForms((current) => ({
       ...current,
@@ -273,9 +309,18 @@ export default function EngineerUnitWorkflowPanel({
         remarks: current[unit.id]?.remarks || (unit.serial_not_in_order ? "" : "Approved"),
         override_serial: unit.serial_no || "",
         associate_with_order: Boolean(unit.serial_not_in_order),
+        billing_type: current[unit.id]?.billing_type || unitBillingValue(unit),
       },
     }));
     openModal("serialReview", unit.id);
+  }
+
+  async function saveUnitBilling(unit, billingType) {
+    if (!unit?.id || unitBillingLocked(unit)) return;
+    await run(
+      () => servicesApi.setUnitBilling(service.id, { unit_id: unit.id, billing_type: billingType }),
+      { successMessage: `Billing set to ${billingType} for ${unit.serial_no || "serial"}.` },
+    );
   }
 
   function updateSerialReview(unitId, field, value) {
@@ -300,6 +345,7 @@ export default function EngineerUnitWorkflowPanel({
       remarks: remarks || null,
       serial_no: (form.override_serial || unit.serial_no || "").trim() || null,
       associate_serial_with_order: Boolean(form.associate_with_order),
+      billing_type: form.billing_type || unitBillingValue(unit),
     };
     const successMessages = {
       approve: unit.serial_not_in_order
@@ -381,13 +427,35 @@ export default function EngineerUnitWorkflowPanel({
     );
   }
 
-  async function reviewCompletion(unitId, decision) {
-    const remarks = window.prompt(`${decision} completion remarks (optional):`, "");
-    if (remarks === null) return;
+  function openCompletionReview(unit) {
+    setCompletionReviewRemarks((current) => ({
+      ...current,
+      [unit.id]: current[unit.id] || "",
+    }));
+    openModal("completionReview", unit.id);
+  }
+
+  async function submitCompletionReview(decision) {
+    const unit = activeUnit();
+    if (!unit || activeModal?.type !== "completionReview") return;
+    const remarks = (completionReviewRemarks[unit.id] || "").trim();
+    if (decision === "Reject" && !remarks) {
+      window.alert("Please enter a reason for rejecting this completion.");
+      return;
+    }
     await run(
-      () => servicesApi.reviewCompletion(service.id, { unit_id: unitId, decision, remarks }),
-      { successMessage: decision === "Approve" ? "Completion approved. Engineer can raise payment." : "Completion rejected and returned to engineer." },
+      () => servicesApi.reviewCompletion(service.id, {
+        unit_id: unit.id,
+        decision,
+        remarks: remarks || null,
+      }),
+      {
+        successMessage: decision === "Approve"
+          ? "Completion approved. Engineer can raise payment."
+          : "Completion rejected and returned to engineer.",
+      },
     );
+    closeModal();
   }
 
   async function completeUnit(unitId) {
@@ -600,8 +668,14 @@ export default function EngineerUnitWorkflowPanel({
       if (isServiceTeam) {
         return (
           <div className="flex flex-col items-end gap-1">
-            <button type="button" onClick={() => reviewCompletion(unit.id, "Approve")} className="rounded-md bg-emerald-600 px-3 py-1.5 text-xs text-white">Approve completion</button>
-            <button type="button" onClick={() => reviewCompletion(unit.id, "Reject")} className="rounded-md border border-rose-300 px-3 py-1.5 text-xs text-rose-700">Reject completion</button>
+            <button
+              type="button"
+              onClick={() => openCompletionReview(unit)}
+              className="rounded-md bg-emerald-600 px-3 py-1.5 text-xs text-white"
+            >
+              Review completion
+            </button>
+            {proofActionLink(unit, openModal)}
           </div>
         );
       }
@@ -891,6 +965,7 @@ export default function EngineerUnitWorkflowPanel({
       remarks: unit.serial_not_in_order ? "" : "Approved",
       override_serial: unit.serial_no || "",
       associate_with_order: Boolean(unit.serial_not_in_order),
+      billing_type: unitBillingValue(unit),
     };
 
     return (
@@ -916,6 +991,21 @@ export default function EngineerUnitWorkflowPanel({
               className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm font-mono"
               placeholder="Serial number"
             />
+          </div>
+
+          <div>
+            <label className="mb-1 block text-sm font-medium text-slate-700">Service billing</label>
+            <select
+              value={form.billing_type || "Free"}
+              onChange={(event) => updateSerialReview(unit.id, "billing_type", event.target.value)}
+              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+            >
+              <option value="Free">Free</option>
+              <option value="Paid">Paid</option>
+            </select>
+            <p className="mt-1 text-xs text-slate-500">
+              Applies to this serial for the rest of the service (observation, completion, payment).
+            </p>
           </div>
 
           {unit.serial_not_in_order && (
@@ -969,6 +1059,102 @@ export default function EngineerUnitWorkflowPanel({
               className="rounded-md bg-emerald-600 px-3 py-2 text-sm text-white disabled:opacity-50"
             >
               Approve serial
+            </button>
+          </div>
+        </div>
+      </Modal>
+    );
+  }
+
+  function renderCompletionReviewModal() {
+    const unit = activeUnit();
+    if (!unit || activeModal?.type !== "completionReview") return null;
+    const remarks = completionReviewRemarks[unit.id] || "";
+
+    return (
+      <Modal
+        open
+        onClose={closeModal}
+        title={`Review completion — ${unit.serial_no || "Serial"}`}
+        maxWidth="max-w-lg"
+      >
+        <div className="space-y-4">
+          <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+            Engineer submitted completion for this serial. Approve to allow payment request, or reject to send it back.
+          </div>
+
+          <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700 space-y-1">
+            <div>
+              <strong>Serial:</strong>{" "}
+              <span className="font-mono">{unit.serial_no || "—"}</span>
+            </div>
+            <div>
+              <strong>Billing:</strong> {unit.admin_billing_type || (unit.service_type === "Paid Service" ? "Paid" : "Free")}
+            </div>
+            {unit.work_performed && (
+              <div><strong>Work performed:</strong> {unit.work_performed}</div>
+            )}
+            {unit.final_amount != null && unit.final_amount !== "" && (
+              <div><strong>Final amount:</strong> {unit.final_amount}</div>
+            )}
+            {unit.engineer_completion_code && (
+              <div>
+                <strong>Happy code:</strong>{" "}
+                <span className="font-mono font-semibold">{unit.engineer_completion_code}</span>
+                {service?.completion_code && (
+                  <span className="ml-2 text-xs text-slate-500">
+                    ({unit.engineer_completion_code === service.completion_code ? "matches" : "does not match"})
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
+
+          {unit.completion_proof_path ? (
+            <AttachmentPreview
+              title="Service proof"
+              path={unit.completion_proof_path}
+              description="Uploaded by engineer with completion."
+            />
+          ) : (
+            <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+              No service proof uploaded for this serial.
+            </div>
+          )}
+
+          <div>
+            <FieldLabel>Remarks {remarks.trim() ? "" : "(required to reject)"}</FieldLabel>
+            <textarea
+              value={remarks}
+              onChange={(e) => setCompletionReviewRemarks((current) => ({
+                ...current,
+                [unit.id]: e.target.value,
+              }))}
+              rows={3}
+              placeholder="Optional approval remarks, or reason for rejection"
+              className={inputClass()}
+            />
+          </div>
+
+          <div className="flex flex-wrap justify-end gap-2 pt-1">
+            <button type="button" onClick={closeModal} className="rounded-md border border-slate-300 px-4 py-2 text-sm">
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => submitCompletionReview("Reject")}
+              disabled={busy || !remarks.trim()}
+              className="rounded-md border border-rose-300 px-4 py-2 text-sm text-rose-700 disabled:opacity-50"
+            >
+              Reject completion
+            </button>
+            <button
+              type="button"
+              onClick={() => submitCompletionReview("Approve")}
+              disabled={busy}
+              className="rounded-md bg-emerald-600 px-4 py-2 text-sm text-white disabled:opacity-50"
+            >
+              Approve completion
             </button>
           </div>
         </div>
@@ -1423,12 +1609,65 @@ export default function EngineerUnitWorkflowPanel({
     );
   }
 
+  const customerIdentified = Boolean(
+    service?.order_id
+    || (service?.customer_mobile || "").trim()
+    || (service?.customer_email || "").trim()
+    || (service?.customer_name || "").trim(),
+  );
+  const addSerialBlock = (isEngineer || isServiceTeam) && customerIdentified && (
+    <div className="rounded-md border border-sky-200 bg-sky-50 px-4 py-3 space-y-2">
+      <div className="text-sm font-medium text-sky-900">Multiple serials on one visit</div>
+      <p className="text-xs text-sky-800">
+        Scan or enter each installed serial to add it to this visit. The serial may be on this order or another order
+        for the same customer. Admin reviews each serial (free/paid); then complete and raise payment per serial.
+      </p>
+      <div className="flex flex-wrap gap-2">
+        <input
+          value={newVisitSerial}
+          onChange={(e) => setNewVisitSerial(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              addSerialToVisit();
+            }
+          }}
+          placeholder="Serial number"
+          className="min-w-[12rem] flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm"
+        />
+        <button
+          type="button"
+          onClick={addSerialToVisit}
+          disabled={busy || !newVisitSerial.trim()}
+          className="rounded-md bg-sky-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+        >
+          {busy ? "Adding…" : "Add serial"}
+        </button>
+      </div>
+      {actionError && (
+        <p className="text-sm text-rose-700">{actionError}</p>
+      )}
+    </div>
+  );
+
   if (!workUnits.length) {
-    return null;
+    if (!addSerialBlock) return null;
+    return (
+      <section className="rounded-lg bg-white p-6 shadow-sm space-y-4" id="engineer-serial-workflow-table">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-700">Serial workflow (per unit)</h2>
+        {addSerialBlock}
+        {!busy && (service?.units || []).length > 0 && workUnits.length === 0 && isEngineer && (
+          <p className="text-sm text-amber-800">
+            This order has {service.units.length} unit(s) on the request, but none are assigned to you yet. Adding a serial
+            here assigns that unit to you and opens the verify → service steps.
+          </p>
+        )}
+      </section>
+    );
   }
 
   return (
-    <section className="rounded-lg bg-white p-6 shadow-sm space-y-6">
+    <section className="rounded-lg bg-white p-6 shadow-sm space-y-6" id="engineer-serial-workflow-table">
       <div>
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-700">
           Serial workflow (per unit)
@@ -1437,6 +1676,8 @@ export default function EngineerUnitWorkflowPanel({
           Each serial moves step by step: verify → observation → approval → <strong>complete service (with proof)</strong> → <strong>raise payment</strong> → admin payment approval. Only admin closes the request.
         </p>
       </div>
+
+      {addSerialBlock}
 
       {isEngineer && unitsWithUnknownSerial.length > 0 && (
         <div className="rounded-md border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
@@ -1482,6 +1723,7 @@ export default function EngineerUnitWorkflowPanel({
         <table className="min-w-full text-sm">
           <thead className="bg-slate-100 text-left text-slate-700">
             <tr>
+              {isServiceTeam && <th className="px-3 py-2">Billing</th>}
               <th className="px-3 py-2">Serial</th>
               <th className="px-3 py-2">Status</th>
               <th className="px-3 py-2">Verify</th>
@@ -1495,6 +1737,24 @@ export default function EngineerUnitWorkflowPanel({
               const verified = Boolean(unit.serial_verified_at);
               return (
                 <tr key={unit.id}>
+                  {isServiceTeam && (
+                    <td className="px-3 py-2">
+                      <select
+                        value={unitBillingValue(unit)}
+                        disabled={busy || unitBillingLocked(unit) || !unit.serial_no}
+                        onChange={(event) => saveUnitBilling(unit, event.target.value)}
+                        className="rounded-md border border-slate-300 px-2 py-1 text-xs disabled:bg-slate-100"
+                        title={
+                          unitBillingLocked(unit)
+                            ? "Billing is locked after payment or close"
+                            : "Free or paid service for this serial"
+                        }
+                      >
+                        <option value="Free">Free</option>
+                        <option value="Paid">Paid</option>
+                      </select>
+                    </td>
+                  )}
                   <td className="px-3 py-2 font-mono text-xs">{unit.serial_no || "—"}</td>
                   <td className="px-3 py-2"><StatusBadge value={unit.unit_status || "Assigned"} /></td>
                   <td className="px-3 py-2">
@@ -1525,6 +1785,7 @@ export default function EngineerUnitWorkflowPanel({
       {renderSerialModal()}
       {renderSerialReviewModal()}
       {renderApprovalModal()}
+      {renderCompletionReviewModal()}
       {renderCompletionModal()}
       {renderPaymentModal()}
       {renderPaymentApprovalModal()}

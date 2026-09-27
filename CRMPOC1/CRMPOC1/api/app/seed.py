@@ -10,6 +10,7 @@ from app.database import SessionLocal
 from app.database import engine
 from app.data.complaint_models import COMPLAINT_MODEL_CATEGORY, COMPLAINT_MODEL_ITEMS
 from app.models.item_master import ItemMaster
+from app.models.order import OrderConsigneeAddress
 from app.models.role import Permission, Role
 from app.models.user import User
 from app.security import hash_password, verify_password
@@ -73,6 +74,14 @@ def ensure_engineer_completion_code_column() -> None:
         with engine.begin() as conn:
             conn.execute(text("ALTER TABLE service_completions ADD COLUMN engineer_completion_code VARCHAR(10) NULL"))
         print("[seed] added service_completions.engineer_completion_code")
+
+
+def ensure_order_consignee_addresses_table() -> None:
+    inspector = inspect(engine)
+    if "order_consignee_addresses" in inspector.get_table_names():
+        return
+    OrderConsigneeAddress.__table__.create(engine)
+    print("[seed] created order_consignee_addresses table")
 
 
 def ensure_order_item_service_columns() -> None:
@@ -255,14 +264,10 @@ def seed_items(db) -> None:
 
 
 def seed_complaint_models(db) -> None:
-    created = 0
-    for code, name in COMPLAINT_MODEL_ITEMS:
-        if db.scalar(select(ItemMaster).where(ItemMaster.item_code == code)):
-            continue
-        db.add(ItemMaster(item_code=code, item_name=name, category=COMPLAINT_MODEL_CATEGORY))
-        created += 1
-    db.commit()
-    print(f"[seed] complaint model masters ensured ({created} new, {len(COMPLAINT_MODEL_ITEMS)} total)")
+    from app.services.complaint_model_masters import ensure_complaint_model_masters
+
+    changed = ensure_complaint_model_masters(db)
+    print(f"[seed] complaint model masters ensured ({changed} inserted/repaired, {len(COMPLAINT_MODEL_ITEMS)} total)")
 
 
 def seed_engineers(db) -> None:
@@ -799,6 +804,7 @@ def main() -> None:
     ensure_service_payment_columns()
     ensure_service_completion_code_column()
     ensure_engineer_completion_code_column()
+    ensure_order_consignee_addresses_table()
     ensure_order_item_service_columns()
     ensure_vendor_type_column()
     ensure_partner_registration_email_controls()

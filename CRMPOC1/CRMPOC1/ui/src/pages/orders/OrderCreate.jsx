@@ -15,6 +15,15 @@ function todayStr() {
   return new Date().toISOString().slice(0, 10);
 }
 
+const BLANK_CONSIGNEE = {
+  consignee_name: "",
+  contact: "",
+  email: "",
+  city: "",
+  state: "",
+  address: "",
+};
+
 const BLANK_ITEM = {
   serial_no: "",
   serial_no_2: "",
@@ -79,6 +88,7 @@ export default function OrderCreate() {
   };
 
   const [form, setForm] = useState(initialForm);
+  const [consignees, setConsignees] = useState([]);
   const [lineItems, setLineItems] = useState([]);
 
   useEffect(() => {
@@ -109,6 +119,32 @@ export default function OrderCreate() {
 
   function set(field, value) {
     setForm((f) => ({ ...f, [field]: value }));
+  }
+
+  function addConsignee() {
+    setConsignees((prev) => [...prev, { ...BLANK_CONSIGNEE }]);
+  }
+
+  function removeConsignee(idx) {
+    setConsignees((prev) => prev.filter((_, i) => i !== idx));
+  }
+
+  function setConsignee(idx, field, value) {
+    setConsignees((prev) => prev.map((row, i) => (i === idx ? { ...row, [field]: value } : row)));
+  }
+
+  function consigneeRowHasContent(row) {
+    return Object.values(row).some((value) => (value || "").trim());
+  }
+
+  function validateConsignees() {
+    for (const [idx, row] of consignees.entries()) {
+      if (!consigneeRowHasContent(row)) continue;
+      const label = consignees.length > 1 ? `Consignee address ${idx + 1}` : "Consignee address";
+      if (!(row.consignee_name || "").trim()) return `${label}: Consignee name is required.`;
+      if (!(row.address || "").trim()) return `${label}: Address is required.`;
+    }
+    return "";
   }
 
   function addItem() {
@@ -143,6 +179,7 @@ export default function OrderCreate() {
 
   function resetForm() {
     setForm(isVendor && currentVendor ? { ...initialForm, vendor_id: String(currentVendor.id) } : initialForm);
+    setConsignees([]);
     setLineItems([]);
     setFile(null);
     setErr("");
@@ -213,6 +250,11 @@ export default function OrderCreate() {
       setErr(lineItemError);
       return;
     }
+    const consigneeError = validateConsignees();
+    if (consigneeError) {
+      setErr(consigneeError);
+      return;
+    }
     if (!file) {
       setErr("Order Document is required");
       return;
@@ -232,6 +274,16 @@ export default function OrderCreate() {
         customer_city: form.customer_city || null,
         customer_state: form.customer_state || null,
         customer_address: form.customer_address || null,
+        consignee_addresses: consignees
+          .filter(consigneeRowHasContent)
+          .map((row) => ({
+            consignee_name: (row.consignee_name || "").trim() || null,
+            contact: (row.contact || "").trim() || null,
+            email: (row.email || "").trim() || null,
+            city: (row.city || "").trim() || null,
+            state: (row.state || "").trim() || null,
+            address: (row.address || "").trim() || null,
+          })),
         expected_delivery_date: form.expected_delivery_date || null,
         lrn_no: isVendor ? null : (form.lrn_no || null),
         items: lineItems
@@ -312,9 +364,23 @@ export default function OrderCreate() {
         </section>
 
         <section className="rounded-lg bg-white p-6 shadow-sm">
-          <h2 className="mb-4 text-sm font-semibold text-slate-700 uppercase tracking-wide">
-            Customer Information
-          </h2>
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-sm font-semibold text-slate-700 uppercase tracking-wide">
+              Customer Information
+            </h2>
+            <button
+              type="button"
+              onClick={addConsignee}
+              className="inline-flex items-center gap-1 rounded-md border border-brand-300 bg-brand-50 px-3 py-1.5 text-sm font-medium text-brand-800 hover:bg-brand-100"
+              title="Add another delivery location (consignee)"
+            >
+              <span className="text-lg leading-none">+</span>
+              Consignee address
+            </button>
+          </div>
+          <p className="mb-4 text-xs text-slate-500">
+            Primary customer / billing details below. Use <strong>+ Consignee address</strong> when the order ships to additional locations.
+          </p>
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div>
               <label className={labelClass}>Customer Name</label>
@@ -369,6 +435,76 @@ export default function OrderCreate() {
             </div>
           </div>
         </section>
+
+        {consignees.map((row, idx) => (
+          <section key={`consignee-${idx}`} className="rounded-lg border border-sky-100 bg-white p-6 shadow-sm">
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+              <h2 className="text-sm font-semibold uppercase tracking-wide text-sky-900">
+                Consignee address{consignees.length > 1 ? ` ${idx + 1}` : ""}
+              </h2>
+              <button
+                type="button"
+                onClick={() => removeConsignee(idx)}
+                className="text-sm text-rose-600 hover:text-rose-800"
+              >
+                Remove
+              </button>
+            </div>
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div>
+                <label className={labelClass}>Consignee name</label>
+                <input
+                  value={row.consignee_name}
+                  onChange={(e) => setConsignee(idx, "consignee_name", e.target.value)}
+                  className={fieldClass}
+                />
+              </div>
+              <div>
+                <label className={labelClass}>Contact</label>
+                <input
+                  value={row.contact}
+                  onChange={(e) => setConsignee(idx, "contact", e.target.value)}
+                  className={fieldClass}
+                />
+              </div>
+              <div>
+                <label className={labelClass}>Email</label>
+                <input
+                  type="email"
+                  value={row.email}
+                  onChange={(e) => setConsignee(idx, "email", e.target.value)}
+                  className={fieldClass}
+                />
+              </div>
+              <div>
+                <label className={labelClass}>City</label>
+                <input
+                  value={row.city}
+                  onChange={(e) => setConsignee(idx, "city", e.target.value)}
+                  className={fieldClass}
+                />
+              </div>
+              <div>
+                <label className={labelClass}>State</label>
+                <SearchableSelect
+                  options={stateOptions}
+                  value={row.state}
+                  onChange={(v) => setConsignee(idx, "state", v)}
+                  placeholder="Search state..."
+                />
+              </div>
+              <div className="md:col-span-2">
+                <label className={labelClass}>Consignee address</label>
+                <textarea
+                  rows={3}
+                  value={row.address}
+                  onChange={(e) => setConsignee(idx, "address", e.target.value)}
+                  className={fieldClass}
+                />
+              </div>
+            </div>
+          </section>
+        ))}
 
         <section className="rounded-lg bg-white p-6 shadow-sm">
           <h2 className="mb-4 text-sm font-semibold text-slate-700 uppercase tracking-wide">

@@ -129,6 +129,12 @@ class InstallationEngineerAssignmentOption(BaseModel):
     completed_requests: int = 0
 
 
+class InstallationCompletionProofOut(BaseModel):
+    slot: int
+    serial_no: str | None = None
+    file_path: str | None = None
+
+
 class InstallationOut(BaseModel):
     id: int
     source: str = "vendor"
@@ -151,6 +157,9 @@ class InstallationOut(BaseModel):
     installation_date: datetime | None
     work_report: str | None
     work_report_file_path: str | None
+    work_report_file_path_2: str | None = None
+    item_serial_count: int = 1
+    completion_proofs: list[InstallationCompletionProofOut] = Field(default_factory=list)
     settlement_approved_by: int | None
     settlement_approved_by_name: str | None
     payment_amount_requested: float | None = None

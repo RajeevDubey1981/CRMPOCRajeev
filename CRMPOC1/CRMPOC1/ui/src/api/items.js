@@ -1,6 +1,7 @@
 import { api } from "./client.js";
 
 export const itemsApi = {
+  categories: () => api.get("/api/items/categories").then((r) => r.data),
   list: (params) => api.get("/api/items", { params }).then((r) => r.data),
   get: (id) => api.get(`/api/items/${id}`).then((r) => r.data),
   create: (body) => api.post("/api/items", body).then((r) => r.data),

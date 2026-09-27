@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 
 import { complaintsApi } from "../../api/complaints.js";
 import { servicesApi } from "../../api/services.js";
+import { mergeComplaintModelOptions } from "../../constants/complaintModels.js";
 
 function todayStr() {
   return new Date().toISOString().slice(0, 10);
@@ -28,8 +29,8 @@ export default function ServiceRequestCreate() {
 
   useEffect(() => {
     complaintsApi.modelOptions()
-      .then(setModelOptions)
-      .catch(() => setModelOptions([]));
+      .then((rows) => setModelOptions(mergeComplaintModelOptions(rows)))
+      .catch(() => setModelOptions(mergeComplaintModelOptions([])));
   }, []);
 
   function set(field, value) {

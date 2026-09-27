@@ -3,7 +3,7 @@ from app.models.role import Role, Permission
 from app.models.item_master import ItemMaster
 from app.models.courier import Courier
 from app.models.vendor import Vendor
-from app.models.order import Order, OrderItem
+from app.models.order import Order, OrderConsigneeAddress, OrderItem
 from app.models.complaint import Complaint, ComplaintStatusLog
 from app.models.installation import InstallationRequest
 from app.models.call import Call

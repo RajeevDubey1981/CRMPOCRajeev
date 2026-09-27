@@ -53,6 +53,8 @@ export default function InstallationDetail() {
   const { id } = useParams();
   const [searchParams] = useSearchParams();
   const wantsEdit = searchParams.get("edit") === "1";
+  const bulkIds = (searchParams.get("bulkIds") || "").trim();
+  const bulkWorkflowHref = bulkIds ? `/installations/bulk-workflow?ids=${bulkIds}` : null;
   const workflowRef = useRef(null);
   const { user } = useAuth();
   const role = (user?.role || "").toLowerCase();
@@ -190,7 +192,17 @@ export default function InstallationDetail() {
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <Link to="/installations" className="text-sm text-brand-600 hover:underline">Back to installations</Link>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+            <Link to="/installations" className="text-brand-600 hover:underline">Back to installations</Link>
+            {bulkWorkflowHref && (
+              <>
+                <span className="text-slate-300">|</span>
+                <Link to={bulkWorkflowHref} className="font-medium text-brand-600 hover:underline">
+                  Back to bulk workflow
+                </Link>
+              </>
+            )}
+          </div>
           <h1 className="mt-1 flex items-center gap-3 text-2xl font-semibold text-slate-800">
             Installation Request #{installation.id}
             <StatusBadge value={installation.status} />

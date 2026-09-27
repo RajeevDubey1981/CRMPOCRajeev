@@ -4,12 +4,8 @@ import { Link, useNavigate } from "react-router-dom";
 import Modal from "../../components/Modal.jsx";
 import Pagination from "../../components/Pagination.jsx";
 import { itemsApi } from "../../api/items.js";
-
-const CATEGORIES = [
-  "Split AC", "Window AC", "Cassette AC", "Duct AC",
-  "Geyser", "Refrigerator", "Air Cooler",
-  "PCB", "Spare Part", "Accessory", "Others",
-];
+import AddItemCategoryModal from "../../components/items/AddItemCategoryModal.jsx";
+import ItemCategorySelect from "../../components/items/ItemCategorySelect.jsx";
 
 function fmtDate(s) {
   if (!s) return "—";
@@ -27,6 +23,7 @@ export default function ItemMasterList() {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
   const [filters, setFilters] = useState({ search: "", category: "", is_active: "" });
+  const [addCategoryOpen, setAddCategoryOpen] = useState(false);
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState(20);
   const [confirmDelete, setConfirmDelete] = useState(null);
@@ -98,8 +95,16 @@ export default function ItemMasterList() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-semibold text-slate-800">Item Masters</h1>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <button
+            type="button"
+            onClick={() => setAddCategoryOpen(true)}
+            className="rounded-md border border-brand-300 bg-brand-50 px-3 py-2 text-sm font-medium text-brand-800 hover:bg-brand-100"
+          >
+            Add category
+          </button>
+          <button
+            type="button"
             onClick={exportCsv}
             className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
           >
@@ -114,6 +119,11 @@ export default function ItemMasterList() {
         </div>
       </div>
 
+      <AddItemCategoryModal
+        open={addCategoryOpen}
+        onClose={() => setAddCategoryOpen(false)}
+      />
+
       <div className="rounded-lg bg-white p-4 shadow-sm">
         <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
           <input
@@ -123,14 +133,11 @@ export default function ItemMasterList() {
             onChange={(e) => applyFilter({ search: e.target.value })}
             className="rounded-md border border-slate-300 px-3 py-2 text-sm"
           />
-          <select
+          <ItemCategorySelect
             value={filters.category}
-            onChange={(e) => applyFilter({ category: e.target.value })}
-            className="rounded-md border border-slate-300 px-3 py-2 text-sm"
-          >
-            <option value="">All categories</option>
-            {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
-          </select>
+            onChange={(v) => applyFilter({ category: v })}
+            placeholder="All categories"
+          />
           <select
             value={filters.is_active}
             onChange={(e) => applyFilter({ is_active: e.target.value })}

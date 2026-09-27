@@ -6,6 +6,29 @@ from pydantic import BaseModel, EmailStr, Field
 ORDER_STATUSES = ("Pending", "Shipped", "In Transit", "Delivered", "Returned", "Cancelled")
 
 
+class OrderConsigneeAddressCreate(BaseModel):
+    consignee_name: str | None = None
+    contact: str | None = None
+    email: str | None = None
+    city: str | None = None
+    state: str | None = None
+    address: str | None = None
+
+
+class OrderConsigneeAddressOut(BaseModel):
+    id: int
+    consignee_name: str | None
+    contact: str | None
+    email: str | None
+    city: str | None
+    state: str | None
+    address: str | None
+    sort_order: int
+
+    class Config:
+        from_attributes = True
+
+
 class OrderItemCreate(BaseModel):
     item_id: int | None = None
     item_code: str | None = None
@@ -60,6 +83,7 @@ class OrderCreate(BaseModel):
     status: Literal[ORDER_STATUSES] = "Pending"  # type: ignore[valid-type]
     expected_delivery_date: date | None = None
     items: list[OrderItemCreate] = []
+    consignee_addresses: list[OrderConsigneeAddressCreate] = []
 
 
 class OrderItemUpdate(BaseModel):
@@ -100,6 +124,7 @@ class OrderUpdate(BaseModel):
     expected_delivery_date: date | None = None
     actual_delivery_date: date | None = None
     items: list[OrderItemUpdate] | None = None
+    consignee_addresses: list[OrderConsigneeAddressCreate] | None = None
 
 
 class OrderOut(BaseModel):
@@ -128,6 +153,7 @@ class OrderOut(BaseModel):
     created_at: datetime
     updated_at: datetime
     items: list[OrderItemOut] = []
+    consignee_addresses: list[OrderConsigneeAddressOut] = []
 
     class Config:
         from_attributes = True

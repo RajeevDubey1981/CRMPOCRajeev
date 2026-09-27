@@ -1,3 +1,9 @@
+/** Compare engineer/user ids from API (number) vs auth state (may be string). */
+export function engineerIdsMatch(a, b) {
+  if (a == null || b == null) return false;
+  return Number(a) === Number(b);
+}
+
 export function formatEngineerOptionLabel(engineer) {
   const name = engineer?.name || "Engineer";
   const pending = Number(engineer?.pending_requests ?? 0);

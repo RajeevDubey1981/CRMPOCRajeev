@@ -22,7 +22,6 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.deps import get_current_user
-from app.data.complaint_models import COMPLAINT_MODEL_CATEGORY, COMPLAINT_MODEL_ITEMS
 from app.models.call import Call
 from app.models.complaint import Complaint, ComplaintStatusLog
 from app.models.installation import InstallationDocument, InstallationRequest
@@ -905,31 +904,9 @@ def list_complaint_model_options(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    can_use = any(
-        can_act_on(db, user, "complaints", "can_create", query_type)
-        for query_type in QUERY_TYPES
-    )
-    if not can_use:
-        return []
-    rows = db.scalars(
-        select(ItemMaster)
-        .where(
-            ItemMaster.deleted_at.is_(None),
-            ItemMaster.is_active.is_(True),
-            ItemMaster.category == COMPLAINT_MODEL_CATEGORY,
-        )
-        .order_by(ItemMaster.item_name)
-    ).all()
-    options = [
-        ComplaintModelOption(id=row.id, item_code=row.item_code, item_name=row.item_name)
-        for row in rows
-    ]
-    if not options:
-        return [
-            ComplaintModelOption(id=-(index + 1), item_code=code, item_name=name)
-            for index, (code, name) in enumerate(COMPLAINT_MODEL_ITEMS)
-        ]
-    return options
+    from app.services.complaint_model_masters import list_complaint_model_options as load_options
+
+    return load_options(db)
 
 
 @router.get("/customers/search")

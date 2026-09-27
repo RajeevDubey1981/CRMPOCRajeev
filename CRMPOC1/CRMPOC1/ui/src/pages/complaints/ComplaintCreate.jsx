@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 
 import { complaintsApi } from "../../api/complaints.js";
 import { useAuth } from "../../auth/AuthContext.jsx";
+import { mergeComplaintModelOptions } from "../../constants/complaintModels.js";
 
 const QUERY_TYPES = ["Service", "Installation", "Sales", "Others"];
 
@@ -38,8 +39,8 @@ export default function ComplaintCreate() {
 
   useEffect(() => {
     complaintsApi.modelOptions()
-      .then(setModelOptions)
-      .catch(() => setModelOptions([]));
+      .then((rows) => setModelOptions(mergeComplaintModelOptions(rows)))
+      .catch(() => setModelOptions(mergeComplaintModelOptions([])));
   }, []);
 
   useEffect(() => {

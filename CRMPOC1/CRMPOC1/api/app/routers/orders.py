@@ -15,13 +15,15 @@ from app.models.claim import Claim
 from app.models.complaint import Complaint
 from app.models.courier import Courier
 from app.models.item_master import ItemMaster
-from app.models.order import Order, OrderItem
+from app.models.order import Order, OrderConsigneeAddress, OrderItem
 from app.models.serial_history import SerialHistoryEvent
 from app.models.vendor import Vendor
 from app.models.user import User
 from app.schemas.order import (
     ORDER_STATUSES,
     OrderAutocompleteSuggestion,
+    OrderConsigneeAddressCreate,
+    OrderConsigneeAddressOut,
     OrderCreate,
     OrderItemCreate,
     OrderItemQuantitySummary,
@@ -286,6 +288,85 @@ def _hydrate_items(db: Session, order: Order) -> list[OrderItemOut]:
     return out
 
 
+def _consignee_row_has_content(row: OrderConsigneeAddressCreate) -> bool:
+    return any(
+        (value or "").strip()
+        for value in (
+            row.consignee_name,
+            row.contact,
+            row.email,
+            row.city,
+            row.state,
+            row.address,
+        )
+    )
+
+
+def _coerce_consignee_row(row: OrderConsigneeAddressCreate | dict) -> OrderConsigneeAddressCreate:
+    if isinstance(row, OrderConsigneeAddressCreate):
+        return row
+    return OrderConsigneeAddressCreate.model_validate(row)
+
+
+def _validate_consignee_rows(
+    rows: list[OrderConsigneeAddressCreate | dict],
+) -> list[OrderConsigneeAddressCreate]:
+    validated: list[OrderConsigneeAddressCreate] = []
+    for idx, raw in enumerate(rows, start=1):
+        row = _coerce_consignee_row(raw)
+        if not _consignee_row_has_content(row):
+            continue
+        name = (row.consignee_name or "").strip()
+        address = (row.address or "").strip()
+        if not name:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                f"Consignee address {idx}: Consignee name is required.",
+            )
+        if not address:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                f"Consignee address {idx}: Address is required.",
+            )
+        validated.append(row)
+    return validated
+
+
+def _replace_consignee_addresses(
+    db: Session,
+    order_id: int,
+    rows: list[OrderConsigneeAddressCreate],
+) -> None:
+    existing = db.scalars(
+        select(OrderConsigneeAddress).where(OrderConsigneeAddress.order_id == order_id)
+    ).all()
+    for row in existing:
+        db.delete(row)
+    db.flush()
+    for sort_order, row in enumerate(rows):
+        db.add(
+            OrderConsigneeAddress(
+                order_id=order_id,
+                consignee_name=(row.consignee_name or "").strip() or None,
+                contact=(row.contact or "").strip() or None,
+                email=(str(row.email).strip() if row.email else None) or None,
+                city=(row.city or "").strip() or None,
+                state=(row.state or "").strip() or None,
+                address=(row.address or "").strip() or None,
+                sort_order=sort_order,
+            )
+        )
+
+
+def _load_consignee_addresses(db: Session, order_id: int) -> list[OrderConsigneeAddressOut]:
+    rows = db.scalars(
+        select(OrderConsigneeAddress)
+        .where(OrderConsigneeAddress.order_id == order_id)
+        .order_by(OrderConsigneeAddress.sort_order, OrderConsigneeAddress.id)
+    ).all()
+    return [OrderConsigneeAddressOut.model_validate(row) for row in rows]
+
+
 def _hydrate_order(db: Session, order: Order) -> OrderOut:
     return OrderOut(
         id=order.id,
@@ -313,6 +394,7 @@ def _hydrate_order(db: Session, order: Order) -> OrderOut:
         created_at=order.created_at,
         updated_at=order.updated_at,
         items=_hydrate_items(db, order),
+        consignee_addresses=_load_consignee_addresses(db, order.id),
     )
 
 
@@ -985,6 +1067,10 @@ async def create_order(
     db.add(order)
     db.flush()  # get order.id
 
+    consignee_rows = _validate_consignee_rows(body.consignee_addresses or [])
+    if consignee_rows:
+        _replace_consignee_addresses(db, order.id, consignee_rows)
+
     for item_data in body.items:
         resolved_item_code = _resolve_item_code(db, item_data.item_id, item_data.item_code)
         for unit_idx in range(item_data.item_qty):
@@ -1465,6 +1551,7 @@ def update_order(
             raise HTTPException(status.HTTP_403_FORBIDDEN, "Vendors cannot update OEM bill details")
 
     item_updates = data.pop("items", None)
+    consignee_updates = data.pop("consignee_addresses", None)
     order_expected_delivery_before = order.expected_delivery_date
     vendor_notify_fields: dict[str, object] = {}
 
@@ -1475,6 +1562,12 @@ def update_order(
         if previous != value:
             vendor_notify_fields[field] = {"from": previous, "to": value}
         setattr(order, field, value)
+
+    if consignee_updates is not None:
+        if user.role == "vendor" and not can_vendor_pending and not can_edit_order:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "Your role cannot edit consignee addresses")
+        rows = _validate_consignee_rows(consignee_updates)
+        _replace_consignee_addresses(db, order.id, rows)
 
     if item_updates is not None:
         existing_items = {

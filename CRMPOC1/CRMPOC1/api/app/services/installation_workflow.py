@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 from app.models.claim import Claim
 from app.models.complaint import Complaint
 from app.models.installation import InstallationDocument, InstallationEngineerSerial, InstallationRequest, InstallationStatusLog
+from app.models.item_master import ItemMaster
 from app.models.order import Order, OrderItem
 from app.models.serial_history import SerialHistoryEvent
 from app.models.user import User
@@ -28,6 +29,7 @@ from app.services.service_documents import (
 
 INSTALLATION_SOURCES = {"vendor", "callcenter"}
 BILLING_TYPES = {"Free", "Paid"}
+COMPLETION_PROOF_SERIAL_2_TYPE = "Completion Proof - Serial 2"
 CUSTOMER_DOCUMENT_OPTIONS = sorted(CUSTOMER_DOCUMENT_TYPES)
 PRE_ORDER_VERIFIED_STATUSES = {"Pending", "Document Requested", "Admin Review Document"}
 CALLCENTER_ASSIGNABLE_STATUSES = {
@@ -692,16 +694,23 @@ def split_installations_from_approved_serials(
 def sync_callcenter_order_item_on_completion(db: Session, inst: InstallationRequest) -> None:
     if not is_callcenter_source(inst) or inst.status != "Completed":
         return
+    sync_order_item_for_service_eligibility(db, inst)
+
+
+def sync_order_item_for_service_eligibility(db: Session, inst: InstallationRequest) -> None:
+    """Mark the linked order line installation-complete for service workflows."""
+    from app.services.service_serial import SERVICE_ELIGIBLE_INSTALLATION_REQUEST_STATUSES
+
+    if (inst.status or "") not in SERVICE_ELIGIBLE_INSTALLATION_REQUEST_STATUSES:
+        return
+    item: OrderItem | None = None
     if inst.order_item_id:
         item = db.get(OrderItem, inst.order_item_id)
-        if item is not None:
-            item.installation_status = "Completed"
-            return
-    if not inst.order_id or not inst.serial_no:
-        return
-    item = find_order_item_by_serial_on_order(db, inst.order_id, inst.serial_no, inst.serial_no_2)
+    elif inst.order_id and inst.serial_no:
+        item = find_order_item_by_serial_on_order(db, inst.order_id, inst.serial_no, inst.serial_no_2)
+        if item is not None and not inst.order_item_id:
+            inst.order_item_id = item.id
     if item is not None:
-        inst.order_item_id = item.id
         item.installation_status = "Completed"
 
 
@@ -738,6 +747,125 @@ def clear_installation_payment_request(inst: InstallationRequest) -> None:
 def clear_installation_completion_submission(inst: InstallationRequest) -> None:
     inst.installation_date = None
     inst.work_report_file_path = None
+
+
+def replace_completion_proof_serial_2(
+    db: Session,
+    inst: InstallationRequest,
+    file_path: str,
+    user: User,
+) -> None:
+    for row in db.scalars(
+        select(InstallationDocument).where(
+            InstallationDocument.installation_request_id == inst.id,
+            InstallationDocument.document_type == COMPLETION_PROOF_SERIAL_2_TYPE,
+        )
+    ).all():
+        db.delete(row)
+    db.add(
+        InstallationDocument(
+            installation_request_id=inst.id,
+            document_type=COMPLETION_PROOF_SERIAL_2_TYPE,
+            file_path=file_path,
+            uploaded_by_type="engineer",
+            uploaded_by_user_id=user.id,
+            status="Uploaded",
+            uploaded_at=now_utc(),
+        )
+    )
+
+
+def latest_completion_proof_serial_2_path(db: Session, installation_id: int) -> str | None:
+    row = db.scalar(
+        select(InstallationDocument)
+        .where(
+            InstallationDocument.installation_request_id == installation_id,
+            InstallationDocument.document_type == COMPLETION_PROOF_SERIAL_2_TYPE,
+        )
+        .order_by(InstallationDocument.uploaded_at.desc())
+        .limit(1)
+    )
+    if row is None:
+        return None
+    return to_public_upload_path(row.file_path)
+
+
+def resolve_order_item_serial_count(db: Session, order_item: OrderItem | None) -> int:
+    if order_item is None:
+        return 1
+    if order_item.item_id:
+        master = db.get(ItemMaster, order_item.item_id)
+        if master is not None and master.deleted_at is None:
+            return max(1, int(master.serial_count or 1))
+    normalized_code = (order_item.item_code or "").strip()
+    if normalized_code:
+        master = db.scalar(
+            select(ItemMaster).where(
+                ItemMaster.item_code == normalized_code,
+                ItemMaster.deleted_at.is_(None),
+            )
+        )
+        if master is not None:
+            return max(1, int(master.serial_count or 1))
+    return 1
+
+
+def _pick_installation_serial_value(
+    inst: InstallationRequest,
+    order_item: OrderItem | None,
+    slot: int,
+) -> str | None:
+    if slot == 1:
+        value = (
+            (inst.serial_no or "").strip()
+            or (inst.engineer_entered_serial_no or "").strip()
+            or ((order_item.serial_no or "").strip() if order_item else "")
+        )
+        return value or None
+    value = (
+        (inst.serial_no_2 or "").strip()
+        or (inst.engineer_entered_serial_no_2 or "").strip()
+        or ((order_item.serial_no_2 or "").strip() if order_item else "")
+    )
+    return value or None
+
+
+def installation_required_serial_proof_slots(db: Session, inst: InstallationRequest) -> list[dict]:
+    order_item = db.get(OrderItem, inst.order_item_id) if inst.order_item_id else None
+    serial_count = resolve_order_item_serial_count(db, order_item)
+    required = max(1, serial_count)
+    if _pick_installation_serial_value(inst, order_item, 2):
+        required = max(required, 2)
+    return [
+        {"slot": slot, "serial_no": _pick_installation_serial_value(inst, order_item, slot)}
+        for slot in range(1, required + 1)
+    ]
+
+
+def build_installation_completion_proofs(db: Session, inst: InstallationRequest) -> list[dict]:
+    path1 = to_public_upload_path(inst.work_report_file_path)
+    path2 = latest_completion_proof_serial_2_path(db, inst.id)
+    proofs = []
+    for entry in installation_required_serial_proof_slots(db, inst):
+        slot = entry["slot"]
+        file_path = path1 if slot == 1 else path2 if slot == 2 else None
+        proofs.append(
+            {
+                "slot": slot,
+                "serial_no": entry["serial_no"],
+                "file_path": file_path,
+            }
+        )
+    return proofs
+
+
+def installation_requires_second_serial_proof(db: Session, inst: InstallationRequest) -> bool:
+    return len(installation_required_serial_proof_slots(db, inst)) >= 2
+
+
+def installation_completion_proofs_complete(db: Session, inst: InstallationRequest) -> bool:
+    proofs = build_installation_completion_proofs(db, inst)
+    return bool(proofs) and all((proof.get("file_path") or "").strip() for proof in proofs)
 
 
 def return_installation_to_engineer_for_rework(

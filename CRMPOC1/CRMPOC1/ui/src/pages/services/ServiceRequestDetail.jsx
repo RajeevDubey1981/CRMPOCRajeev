@@ -9,7 +9,7 @@ import { servicesApi } from "../../api/services.js";
 import { installationsApi } from "../../api/installations.js";
 import ServiceUnitAssignmentPanel from "./ServiceUnitAssignmentPanel.jsx";
 import EngineerUnitWorkflowPanel from "./EngineerUnitWorkflowPanel.jsx";
-import { formatEngineerOptionLabel, ENGINEER_ASSIGNMENT_HINT } from "../../utils/engineerAssignment.js";
+import { engineerIdsMatch, formatEngineerOptionLabel, ENGINEER_ASSIGNMENT_HINT } from "../../utils/engineerAssignment.js";
 
 const PAYMENT_TYPES = ["Cash", "UPI"];
 const SERVICE_STATUSES = [
@@ -152,6 +152,7 @@ export default function ServiceRequestDetail() {
   const [serialInfo, setSerialInfo] = useState(null);
   const [workflowStatus, setWorkflowStatus] = useState("");
   const [workflowRemarks, setWorkflowRemarks] = useState("");
+  const [pendingOrderVerifyNo, setPendingOrderVerifyNo] = useState("");
 
   async function load() {
     try {
@@ -279,10 +280,18 @@ export default function ServiceRequestDetail() {
     }
     try {
       const result = await action();
+      if (result && result.id != null && Array.isArray(result.units)) {
+        setService(result);
+      }
       await load();
       const message = (result && result.successMessage) || options.successMessage;
       if (message) {
         setSuccessMsg(message);
+      }
+      if (options.scrollToId) {
+        requestAnimationFrame(() => {
+          document.getElementById(options.scrollToId)?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+        });
       }
     } catch (error) {
       setErr(error.response?.data?.detail || "Action failed");
@@ -303,14 +312,25 @@ export default function ServiceRequestDetail() {
   const engineerWorkUnits = useMemo(() => {
     if (!service?.units?.length) return [];
     if (roleIsEngineer) {
-      return service.units.filter((unit) => unit.assigned_engineer_id === user?.id);
+      return service.units.filter((unit) => engineerIdsMatch(unit.assigned_engineer_id, user?.id));
     }
     if (roleIsVendor || roleIsServiceTeam) {
       return service.units.filter((unit) => unit.assigned_engineer_id);
     }
     return [];
   }, [service?.units, roleIsEngineer, roleIsVendor, roleIsServiceTeam, user?.id]);
-  const useUnitWorkflow = engineerWorkUnits.length > 0;
+  const engineerOnRequest = roleIsEngineer && (
+    engineerIdsMatch(service?.assigned_engineer_id, user?.id)
+    || (service?.units || []).some((unit) => engineerIdsMatch(unit.assigned_engineer_id, user?.id))
+  );
+  const useUnitWorkflow = engineerWorkUnits.length > 0
+    || ((roleIsVendor || roleIsServiceTeam) && (service?.units || []).some((unit) => unit.assigned_engineer_id))
+    || (engineerOnRequest && (
+      Boolean(service?.order_id)
+      || Boolean((service?.customer_mobile || "").trim())
+      || Boolean((service?.customer_email || "").trim())
+      || Boolean((service?.customer_name || "").trim())
+    ));
   const usePerUnitAssignment = Boolean(
     (service?.units?.length > 0) || (service?.order_items?.length > 0),
   );
@@ -711,7 +731,7 @@ export default function ServiceRequestDetail() {
         </section>
       )}
 
-      {isServiceTeam && (
+      {(isServiceTeam || (roleIsEngineer && engineerWorkUnits.length > 0)) && (
         <ServiceUnitAssignmentPanel
           service={service}
           engineers={engineers}
@@ -720,6 +740,9 @@ export default function ServiceRequestDetail() {
           onRefresh={load}
           run={run}
           workflowUnlocked={documentsWorkflowUnlocked}
+          pendingOrderVerifyNo={pendingOrderVerifyNo}
+          onServiceUpdated={setService}
+          parentBusy={busy}
         />
       )}
 
@@ -750,6 +773,14 @@ export default function ServiceRequestDetail() {
                       setSelectedCustomerKey(`${option.source_type || "result"}-${option.order_id || option.customer_mobile || option.customer_name}`);
                       setCustomerSearch(option.customer_name || option.customer_mobile || "");
                       setCustomerOptions([]);
+                      if (option.order_no) {
+                        setPendingOrderVerifyNo(option.order_no);
+                      }
+                      return {
+                        successMessage: option.order_no
+                          ? `Customer linked. Click Verify Order for ${option.order_no} to load installed units.`
+                          : "Customer linked. Enter an order number and click Verify Order.",
+                      };
                     })}
                     className={`block w-full rounded-md border px-3 py-2 text-left text-sm hover:bg-sky-50 ${selectedCustomerKey === `${option.source_type || "result"}-${option.order_id || option.customer_mobile || option.customer_name}` ? "border-emerald-400 bg-emerald-50" : "border-slate-200"}`}
                   >
@@ -766,8 +797,22 @@ export default function ServiceRequestDetail() {
                   <div className="text-sm font-medium text-slate-700">Unit assignment</div>
                   <div className="rounded-md border border-sky-200 bg-sky-50 px-3 py-3 text-sm text-sky-900">
                     <p>
-                      This order uses <strong>per-serial assignment</strong>. Assign engineers in the
-                      {" "}<strong>Order verify &amp; unit assignment</strong> section above.
+                      This order uses <strong>per-serial assignment</strong>.
+                      {roleIsEngineer
+                        ? (
+                          <>
+                            {" "}
+                            Add each serial in the <strong>Serial workflow (per unit)</strong> section below — that
+                            assigns the unit to you and starts verify → service steps.
+                          </>
+                        )
+                        : (
+                          <>
+                            {" "}
+                            Assign engineers in the <strong>Order verify &amp; unit assignment</strong> section above,
+                            or engineers can add serials from the workflow section below.
+                          </>
+                        )}
                     </p>
                     {unitAssignmentSummary && (
                       <div className="mt-3 space-y-1">
@@ -847,6 +892,8 @@ export default function ServiceRequestDetail() {
           isVendor={isVendor}
           isServiceTeam={isServiceTeam}
           run={run}
+          busy={busy}
+          actionError={err}
         />
       )}
 
@@ -867,6 +914,23 @@ export default function ServiceRequestDetail() {
               >
                 Verify Serial
               </button>
+              {isServiceTeam && service.serial_no && !["Payment Completed", "Closed"].includes(service.status) && (
+                <div className="flex flex-wrap items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
+                  <span className="text-sm font-medium text-slate-700">Billing for this serial</span>
+                  <select
+                    value={service.service_type === "Paid Service" ? "Paid" : "Free"}
+                    disabled={busy}
+                    onChange={(e) => run(
+                      () => servicesApi.setUnitBilling(service.id, { billing_type: e.target.value }),
+                      { successMessage: `Billing updated to ${e.target.value}.` },
+                    )}
+                    className="rounded-md border border-slate-300 px-3 py-1.5 text-sm"
+                  >
+                    <option value="Free">Free</option>
+                    <option value="Paid">Paid</option>
+                  </select>
+                </div>
+              )}
               {serialVerified && service.serial_no && (
                 <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
                   <div className="font-medium">

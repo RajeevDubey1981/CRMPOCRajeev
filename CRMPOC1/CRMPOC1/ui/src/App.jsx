@@ -13,6 +13,7 @@ import ComplaintDetail from "./pages/complaints/ComplaintDetail.jsx";
 import InstallationList from "./pages/installations/InstallationList.jsx";
 import InstallationCreate from "./pages/installations/InstallationCreate.jsx";
 import InstallationDetail from "./pages/installations/InstallationDetail.jsx";
+import BulkInstallationWorkflowPage from "./pages/installations/BulkInstallationWorkflowPage.jsx";
 import CallList from "./pages/calls/CallList.jsx";
 import CallCreate from "./pages/calls/CallCreate.jsx";
 import CallDetail from "./pages/calls/CallDetail.jsx";
@@ -150,6 +151,7 @@ export default function App() {
         <Route path="/orders/:id" element={<PermissionRoute module="orders"><OrderDetail /></PermissionRoute>} />
         <Route path="/installations" element={<PermissionRoute module="installations"><InstallationList /></PermissionRoute>} />
         <Route path="/installations/new" element={<PermissionRoute module="installations" action="can_create"><InstallationCreate /></PermissionRoute>} />
+        <Route path="/installations/bulk-workflow" element={<PermissionRoute module="installations"><BulkInstallationWorkflowPage /></PermissionRoute>} />
         <Route path="/installations/:id" element={<PermissionRoute module="installations"><InstallationDetail /></PermissionRoute>} />
         <Route path="/claims" element={<PermissionRoute module="claims"><ClaimList /></PermissionRoute>} />
         <Route path="/claims/new" element={<PermissionRoute module="claims" action="can_create"><ClaimCreate /></PermissionRoute>} />

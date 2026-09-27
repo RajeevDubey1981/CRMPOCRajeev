@@ -8,8 +8,18 @@ from fastapi import HTTPException, status
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
+from app.models.installation import InstallationRequest
 from app.models.order import Order, OrderItem
 from app.models.service import ServiceRequest
+
+SERVICE_ELIGIBLE_INSTALLATION_STATUS = "Completed"
+SERVICE_ELIGIBLE_INSTALLATION_REQUEST_STATUSES = frozenset({
+    "Installation Completed",
+    "Payment Pending",
+    "Completed",
+    "Settlement Pending",
+    "Settlement Approved",
+})
 
 
 def _normalize_mobile(value: str | None) -> str:
@@ -72,6 +82,57 @@ def find_customer_order_item_by_serial(
     if order is None or order.deleted_at is not None:
         return None
     if not order_matches_service_customer(order, service):
+        return None
+    return item
+
+
+def _installation_request_ready_for_service(inst: InstallationRequest | None) -> bool:
+    return inst is not None and (inst.status or "") in SERVICE_ELIGIBLE_INSTALLATION_REQUEST_STATUSES
+
+
+def order_item_is_installed_for_service(db: Session, order_item: OrderItem) -> bool:
+    """True when installation work is done enough to raise service (matches order UI installation states)."""
+    if (order_item.installation_status or "").strip() == SERVICE_ELIGIBLE_INSTALLATION_STATUS:
+        return True
+    inst = db.scalar(
+        select(InstallationRequest)
+        .where(InstallationRequest.order_item_id == order_item.id)
+        .order_by(InstallationRequest.updated_at.desc())
+        .limit(1)
+    )
+    if _installation_request_ready_for_service(inst):
+        return True
+    serial_filters = []
+    serial_one = (order_item.serial_no or "").strip()
+    serial_two = (order_item.serial_no_2 or "").strip()
+    if serial_one:
+        serial_filters.append(func.lower(InstallationRequest.serial_no) == serial_one.lower())
+    if serial_two:
+        serial_filters.append(func.lower(InstallationRequest.serial_no_2) == serial_two.lower())
+    if not serial_filters:
+        return False
+    inst = db.scalar(
+        select(InstallationRequest)
+        .where(
+            InstallationRequest.order_id == order_item.order_id,
+            or_(*serial_filters),
+        )
+        .order_by(InstallationRequest.updated_at.desc())
+        .limit(1)
+    )
+    return _installation_request_ready_for_service(inst)
+
+
+def find_customer_installed_order_item(
+    db: Session,
+    service: ServiceRequest,
+    serial_no: str,
+) -> OrderItem | None:
+    """Serial on any order belonging to this service customer, with installation completed."""
+    item = find_customer_order_item_by_serial(db, service, serial_no)
+    if item is None:
+        return None
+    if not order_item_is_installed_for_service(db, item):
         return None
     return item
 

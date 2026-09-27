@@ -231,10 +231,19 @@ def _hydrate(db: Session, inst: InstallationRequest) -> dict:
         if complaint is not None:
             complaint_id = complaint.id
             complaint_no = complaint.comp_no
-    item_code = None
-    if inst.order_item_id:
-        order_item = db.get(OrderItem, inst.order_item_id)
-        item_code = order_item.item_code if order_item else None
+    from app.services.installation_workflow import (
+        build_installation_completion_proofs,
+        resolve_order_item_serial_count,
+    )
+
+    order_item = db.get(OrderItem, inst.order_item_id) if inst.order_item_id else None
+    item_code = order_item.item_code if order_item else None
+    item_serial_count = resolve_order_item_serial_count(db, order_item)
+    completion_proofs = build_installation_completion_proofs(db, inst)
+    work_report_file_path_2 = next(
+        (proof["file_path"] for proof in completion_proofs if proof["slot"] == 2),
+        None,
+    )
     return {
         **{k: getattr(inst, k) for k in (
             "id", "source", "customer_name", "contact_number", "customer_email", "address",
@@ -254,6 +263,9 @@ def _hydrate(db: Session, inst: InstallationRequest) -> dict:
         "payment_amount_requested": float(inst.payment_amount_requested) if inst.payment_amount_requested is not None else None,
         "payment_amount_paid": float(inst.payment_amount_paid) if inst.payment_amount_paid is not None else None,
         "work_report_file_path": to_public_upload_path(inst.work_report_file_path),
+        "work_report_file_path_2": work_report_file_path_2,
+        "item_serial_count": item_serial_count,
+        "completion_proofs": completion_proofs,
         "payment_qr_code_path": _payment_qr_view_url(inst),
         "payment_qr_code_filename": inst.payment_qr_code_filename,
         "payment_proof_file_path": to_public_upload_path(inst.payment_proof_file_path),

@@ -1,7 +1,7 @@
 import json
 from datetime import datetime, timezone
 
-from sqlalchemy import delete, func, or_, select
+from sqlalchemy import and_, delete, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.models.claim import Claim
@@ -10,9 +10,16 @@ from app.models.installation import InstallationRequest
 from app.models.item_master import ItemMaster
 from app.models.order import Order, OrderItem
 from app.models.serial_history import SerialHistoryEvent
-from app.models.service import ServiceCompletion, ServiceObservation, ServiceRequest
+from app.models.service import (
+    ServiceCompletion,
+    ServiceObservation,
+    ServicePaymentRequest,
+    ServiceRequest,
+    ServiceRequestUnit,
+)
 from app.models.user import User
 from app.models.vendor import Vendor
+from app.services.order_item_context import service_billing_label
 
 EVENT_TYPES = {
     "ORDER": "ORDER",
@@ -132,6 +139,170 @@ def _order_context(db: Session, item: OrderItem):
     return order, item_master, vendor
 
 
+def _format_history_amount(value) -> str | None:
+    if value is None:
+        return None
+    try:
+        num = float(value)
+    except (TypeError, ValueError):
+        return str(value)
+    if num == int(num):
+        return str(int(num))
+    return f"{num:.2f}".rstrip("0").rstrip(".")
+
+
+def _billing_line(admin_billing_type: str | None, amount) -> str | None:
+    if not admin_billing_type:
+        return None
+    if admin_billing_type == "Paid":
+        formatted = _format_history_amount(amount)
+        if formatted is not None:
+            return f"Billing: Paid (amount {formatted})"
+        return "Billing: Paid"
+    return f"Billing: {admin_billing_type}"
+
+
+def _resolve_completion_billing(
+    db: Session,
+    service: ServiceRequest,
+    unit: ServiceRequestUnit | None,
+    completion: ServiceCompletion,
+) -> tuple[str | None, str | None, float | None, ServicePaymentRequest | None]:
+    service_type = unit.service_type if unit is not None else service.service_type
+    admin_billing_type = service_billing_label(service_type)
+    payment_stmt = (
+        select(ServicePaymentRequest)
+        .where(ServicePaymentRequest.service_request_id == service.id)
+        .order_by(ServicePaymentRequest.created_at.desc())
+    )
+    if unit is not None:
+        payment_stmt = payment_stmt.where(ServicePaymentRequest.service_request_unit_id == unit.id)
+    else:
+        payment_stmt = payment_stmt.where(ServicePaymentRequest.service_request_unit_id.is_(None))
+    payment = db.scalar(payment_stmt)
+
+    amount = None
+    if payment is not None:
+        amount = payment.approved_amount or payment.total_requested_amount or payment.customer_charge_amount
+    if amount is None and completion.final_amount is not None:
+        amount = float(completion.final_amount)
+
+    return service_type, admin_billing_type, amount, payment
+
+
+def write_service_completion_serial_history(
+    db: Session,
+    service: ServiceRequest,
+    completion: ServiceCompletion,
+    *,
+    performed_by_user_id: int | None = None,
+    performed_by_name: str | None = None,
+) -> SerialHistoryEvent | None:
+    unit = (
+        db.get(ServiceRequestUnit, completion.service_request_unit_id)
+        if completion.service_request_unit_id
+        else None
+    )
+
+    serial_no: str | None = None
+    serial_no_2: str | None = None
+    order_item_id: int | None = None
+    if unit is not None:
+        serial_no = (unit.serial_no or "").strip() or None
+        serial_no_2 = (unit.serial_no_2 or "").strip() or None
+        order_item_id = unit.order_item_id
+    if not serial_no:
+        serial_no = (service.serial_no or "").strip() or None
+        order_item_id = order_item_id or service.order_item_id
+
+    if not serial_no:
+        return None
+
+    obs_stmt = (
+        select(ServiceObservation)
+        .where(ServiceObservation.service_request_id == service.id)
+        .order_by(ServiceObservation.submitted_at.desc())
+    )
+    if unit is not None:
+        obs_stmt = obs_stmt.where(ServiceObservation.service_request_unit_id == unit.id)
+    latest_observation = db.scalar(obs_stmt)
+
+    problem = (
+        latest_observation.problem_found
+        if latest_observation and latest_observation.problem_found
+        else service.problem_description
+    )
+    action = completion.work_performed or (
+        latest_observation.recommended_action if latest_observation else None
+    )
+    parts: list = []
+    try:
+        parts = json.loads(completion.parts_replaced_json or "[]")
+    except json.JSONDecodeError:
+        parts = []
+    if not parts and latest_observation and latest_observation.parts_required_json:
+        try:
+            parts = json.loads(latest_observation.parts_required_json)
+        except json.JSONDecodeError:
+            parts = []
+
+    service_type, admin_billing_type, amount, payment = _resolve_completion_billing(
+        db, service, unit, completion
+    )
+    warranty_status = unit.warranty_status if unit is not None else service.warranty_status
+
+    summary_bits: list[str] = []
+    billing_text = _billing_line(admin_billing_type, amount)
+    if billing_text:
+        summary_bits.append(billing_text)
+    if problem:
+        summary_bits.append(f"Problem: {problem}")
+    if action:
+        summary_bits.append(f"Final action: {action}")
+    if parts:
+        summary_bits.append(f"Parts replaced: {', '.join(parts)}")
+    summary = ". ".join(summary_bits) or f"Service completed for request {service.request_no or service.id}"
+
+    if performed_by_user_id and not performed_by_name:
+        performed_by_name = _performed_by_name(db, performed_by_user_id)
+    if not performed_by_name and completion.performed_by_user_id:
+        performed_by_name = _performed_by_name(db, completion.performed_by_user_id)
+
+    return create_serial_history_event(
+        db,
+        serial_no=serial_no,
+        serial_no_2=serial_no_2,
+        order_item_id=order_item_id,
+        event_type=EVENT_TYPES["SERVICE"],
+        event_subtype="SERVICE_SUMMARY",
+        event_at=completion.completed_at,
+        performed_by_user_id=performed_by_user_id or completion.performed_by_user_id,
+        performed_by_name=performed_by_name,
+        source_table="service_completions",
+        source_id=completion.id,
+        title="Service completed",
+        description=summary,
+        remarks=completion.completion_remarks or (latest_observation.remarks if latest_observation else None),
+        metadata={
+            "request_no": service.request_no,
+            "status": service.status,
+            "unit_id": unit.id if unit is not None else None,
+            "service_type": service_type,
+            "admin_billing_type": admin_billing_type,
+            "warranty_status": warranty_status,
+            "query_type": service.query_type,
+            "problem_found": problem,
+            "final_action": action,
+            "parts_replaced": parts,
+            "amount": _format_history_amount(amount) if amount is not None else None,
+            "final_amount": _format_history_amount(completion.final_amount),
+            "payment_status": payment.status if payment is not None else None,
+            "approved_amount": _format_history_amount(payment.approved_amount) if payment else None,
+            "proof_document": completion.customer_acknowledgement_path,
+        },
+    )
+
+
 def _item_serials(item: OrderItem, serial_no: str) -> tuple[str, str | None]:
     if item.serial_no and item.serial_no.lower() == serial_no.lower():
         return item.serial_no, item.serial_no_2
@@ -157,7 +328,8 @@ def backfill_serial_history_for_serial(db: Session, serial_no: str) -> bool:
         delete(SerialHistoryEvent).where(
             func.lower(SerialHistoryEvent.serial_no) == primary_serial.lower(),
             SerialHistoryEvent.event_type == EVENT_TYPES["SERVICE"],
-            SerialHistoryEvent.source_table.in_(["service_requests", "service_status_logs"]),
+            SerialHistoryEvent.event_subtype == "SERVICE_SUMMARY",
+            SerialHistoryEvent.source_table.in_(["service_requests", "service_status_logs", "service_completions"]),
         )
     )
     order, item_master, vendor = _order_context(db, item)
@@ -418,68 +590,31 @@ def backfill_serial_history_for_serial(db: Session, serial_no: str) -> bool:
             ServiceRequest.deleted_at.is_(None),
         )
     ).all()
-    for service in service_requests:
-        latest_completion = db.scalar(
+    service_ids = [service.id for service in service_requests]
+    unit_ids = list(
+        db.scalars(
+            select(ServiceRequestUnit.id).where(ServiceRequestUnit.order_item_id == item.id)
+        ).all()
+    )
+    completion_filters = []
+    if unit_ids:
+        completion_filters.append(ServiceCompletion.service_request_unit_id.in_(unit_ids))
+    if service_ids:
+        completion_filters.append(
+            and_(
+                ServiceCompletion.service_request_unit_id.is_(None),
+                ServiceCompletion.service_request_id.in_(service_ids),
+            )
+        )
+    if completion_filters:
+        completions = db.scalars(
             select(ServiceCompletion)
-            .where(ServiceCompletion.service_request_id == service.id)
-            .order_by(ServiceCompletion.completed_at.desc())
-        )
-        if latest_completion is None:
-            continue
-        latest_observation = db.scalar(
-            select(ServiceObservation)
-            .where(ServiceObservation.service_request_id == service.id)
-            .order_by(ServiceObservation.submitted_at.desc())
-        )
-        problem = (
-            latest_observation.problem_found
-            if latest_observation and latest_observation.problem_found
-            else service.problem_description
-        )
-        action = latest_completion.work_performed or (latest_observation.recommended_action if latest_observation else None)
-        parts = []
-        try:
-            parts = json.loads(latest_completion.parts_replaced_json or "[]")
-        except json.JSONDecodeError:
-            parts = []
-        if not parts and latest_observation and latest_observation.parts_required_json:
-            try:
-                parts = json.loads(latest_observation.parts_required_json)
-            except json.JSONDecodeError:
-                parts = []
-        summary_bits = []
-        if problem:
-            summary_bits.append(f"Problem: {problem}")
-        if action:
-            summary_bits.append(f"Final action: {action}")
-        if parts:
-            summary_bits.append(f"Parts replaced: {', '.join(parts)}")
-        summary = ". ".join(summary_bits) or f"Service completed for request {service.request_no or service.id}"
-        create_serial_history_event(
-            db,
-            serial_no=primary_serial,
-            serial_no_2=secondary_serial,
-            order_item_id=item.id,
-            event_type=EVENT_TYPES["SERVICE"],
-            event_subtype="SERVICE_SUMMARY",
-            event_at=latest_completion.completed_at,
-            performed_by_user_id=latest_completion.performed_by_user_id,
-            performed_by_name=_performed_by_name(db, latest_completion.performed_by_user_id),
-            source_table="service_requests",
-            source_id=service.id,
-            title="Service completed",
-            description=summary,
-            remarks=latest_completion.completion_remarks or (latest_observation.remarks if latest_observation else None),
-            metadata={
-                "request_no": service.request_no,
-                "status": service.status,
-                "service_type": service.service_type,
-                "warranty_status": service.warranty_status,
-                "query_type": service.query_type,
-                "problem_found": problem,
-                "final_action": action,
-                "parts_replaced": parts,
-                "proof_document": latest_completion.customer_acknowledgement_path,
-            },
-        )
+            .where(or_(*completion_filters))
+            .order_by(ServiceCompletion.completed_at.asc())
+        ).all()
+        for completion in completions:
+            service = db.get(ServiceRequest, completion.service_request_id)
+            if service is None or service.deleted_at is not None:
+                continue
+            write_service_completion_serial_history(db, service, completion)
     return True

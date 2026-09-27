@@ -47,6 +47,10 @@ from app.services.installation_workflow import (
     apply_installation_workflow_step,
     sync_callcenter_order_item_on_completion,
     validate_customer_document_upload,
+    installation_completion_proofs_complete,
+    installation_requires_second_serial_proof,
+    replace_completion_proof_serial_2,
+    sync_order_item_for_service_eligibility,
 )
 from app.services.permissions import can_act_on
 
@@ -673,6 +677,7 @@ async def complete_installation(
     installation_date: str = Form(...),
     work_report: str | None = Form(None),
     proof_document: UploadFile = File(...),
+    proof_document_serial_2: UploadFile | None = File(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -689,8 +694,18 @@ async def complete_installation(
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Installation can be completed only while Assigned, In Progress, or Returned for rework")
     if proof_document is None or not proof_document.filename:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Installation proof document is required")
+    if installation_requires_second_serial_proof(db, inst):
+        if proof_document_serial_2 is None or not proof_document_serial_2.filename:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                "Installation proof for Serial 2 is required when this unit has a second serial number",
+            )
 
     proof_path = await save_upload(proof_document, module="installations")
+    proof_path_2 = None
+    if proof_document_serial_2 and proof_document_serial_2.filename:
+        proof_path_2 = await save_upload(proof_document_serial_2, module="installations")
+        replace_completion_proof_serial_2(db, inst, proof_path_2, user)
     old_status = inst.status
     inst.installation_date = datetime.fromisoformat(installation_date)
     inst.work_report = (work_report or "").strip() or inst.work_report
@@ -706,7 +721,11 @@ async def complete_installation(
         old_status=old_status,
         new_status=inst.status,
         remarks=work_report,
-        metadata={"proof_document": proof_path, "billing_type": inst.admin_billing_type},
+        metadata={
+            "proof_document": proof_path,
+            "proof_document_serial_2": proof_path_2,
+            "billing_type": inst.admin_billing_type,
+        },
     )
     db.commit()
     db.refresh(inst)
@@ -730,11 +749,21 @@ def review_installation_completion(
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Installation completion is not awaiting approval")
     old_status = inst.status
     if decision.strip().lower() == "approve":
+        if not installation_completion_proofs_complete(db, inst):
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                "Upload completion proof for every serial on this unit before approving",
+            )
         inst.status = "Installation Completed"
+        sync_order_item_for_service_eligibility(db, inst)
         action = "Completion Approved"
     elif decision.strip().lower() == "reject":
-        if remarks:
-            inst.admin_approval_remark = remarks.strip()
+        if not (remarks or "").strip():
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                "Remarks are required when returning installation completion to the engineer",
+            )
+        inst.admin_approval_remark = remarks.strip()
         inst.status = return_installation_to_engineer_for_rework(inst, reject_stage="completion")
         action = "Completion Rejected"
     else:

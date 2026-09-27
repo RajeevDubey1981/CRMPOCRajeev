@@ -34,6 +34,7 @@ from app.schemas.service import (
     SERVICE_STATUSES,
     ServiceApprovalIn,
     ServiceApprovalOut,
+    ServiceAddUnitBySerialIn,
     ServiceAssignUnitsIn,
     ServiceAssignmentIn,
     ServiceAssignmentOut,
@@ -62,6 +63,7 @@ from app.schemas.service import (
     AdminServicePaymentUpdate,
     ServicePublicDocumentContext,
     ServiceRequestUnitOut,
+    ServiceUnitBillingIn,
     ServiceSerialVerifyIn,
     ServiceSerialReviewIn,
     ServiceSummary,
@@ -98,7 +100,7 @@ from app.services.service_documents import (
     service_workflow_is_revert,
     sync_document_workflow_status,
 )
-from app.services.serial_history import EVENT_TYPES, create_serial_history_event
+from app.services.serial_history import write_service_completion_serial_history
 from app.services.service_serial import (
     associate_serial_with_service_order,
     find_customer_order_item_by_serial,
@@ -106,7 +108,11 @@ from app.services.service_serial import (
     find_order_item_by_serial_on_order,
 )
 from app.services.service_units import (
+    add_service_unit_by_serial,
+    apply_service_billing_choice,
+    apply_unit_billing_choice,
     assign_units_to_engineer,
+    BILLING_LOCKED_UNIT_STATUSES,
     build_engineer_unit_groups,
     build_order_item_summaries,
     build_unit_rows,
@@ -482,50 +488,12 @@ def _write_service_summary_to_serial_history(
     completion: ServiceCompletion,
     user: User,
 ) -> None:
-    if not service.serial_no:
-        return
-    latest_observation = db.scalar(
-        select(ServiceObservation)
-        .where(ServiceObservation.service_request_id == service.id)
-        .order_by(desc(ServiceObservation.submitted_at))
-    )
-    problem = latest_observation.problem_found if latest_observation and latest_observation.problem_found else service.problem_description
-    action = completion.work_performed or (latest_observation.recommended_action if latest_observation else None)
-    parts = _json_load(completion.parts_replaced_json, [])
-    if not parts and latest_observation:
-        parts = _json_load(latest_observation.parts_required_json, [])
-    summary_bits = []
-    if problem:
-        summary_bits.append(f"Problem: {problem}")
-    if action:
-        summary_bits.append(f"Final action: {action}")
-    if parts:
-        summary_bits.append(f"Parts replaced: {', '.join(parts)}")
-    summary = ". ".join(summary_bits) or f"Service completed for request {service.request_no}"
-    create_serial_history_event(
+    write_service_completion_serial_history(
         db,
-        serial_no=service.serial_no,
-        order_item_id=service.order_item_id,
-        event_type=EVENT_TYPES["SERVICE"],
-        event_subtype="SERVICE_SUMMARY",
-        event_at=completion.completed_at,
+        service,
+        completion,
         performed_by_user_id=user.id,
         performed_by_name=user.name,
-        source_table="service_requests",
-        source_id=service.id,
-        title="Service completed",
-        description=summary,
-        remarks=completion.completion_remarks or (latest_observation.remarks if latest_observation else None),
-        metadata={
-            "request_no": service.request_no,
-            "status": service.status,
-            "service_type": service.service_type,
-            "warranty_status": service.warranty_status,
-            "problem_found": problem,
-            "final_action": action,
-            "parts_replaced": parts,
-            "proof_document": completion.customer_acknowledgement_path,
-        },
     )
 
 
@@ -1038,7 +1006,7 @@ def identify_customer(service_id: int, body: ServiceIdentifyCustomer, db: Sessio
     if item and order and item.order_id != order.id:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Order item does not belong to selected order")
     if order:
-        service.order_id = order.id
+        # Customer context only — order is linked when service team runs verify-order (loads units).
         service.customer_name = order.customer_name or service.customer_name
         service.customer_mobile = order.customer_contact or service.customer_mobile
         service.customer_email = order.customer_email or service.customer_email
@@ -1235,6 +1203,66 @@ def assign_service_units(
     return _hydrate_service(db, service)
 
 
+@router.post("/{service_id}/units/add-by-serial", response_model=ServiceOut)
+def add_service_unit_by_serial_endpoint(
+    service_id: int,
+    body: ServiceAddUnitBySerialIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Add an installation-complete serial to this request and assign it to an engineer (bulk visit workflow)."""
+    service = _load_visible_service(db, service_id, user)
+    _ensure_order_workflow_unlocked(db, service)
+
+    if _is_engineer(user):
+        if not _engineer_can_work_on_service(db, service, user):
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "This request is not assigned to you")
+        engineer_id = user.id
+        assigned_by = user.id
+    elif _is_service_team(user):
+        engineer_id = body.engineer_id or service.assigned_engineer_id
+        if engineer_id is None:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Select an engineer or assign the service request first")
+        assigned_by = user.id
+    else:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Your role cannot add serials to this service request")
+
+    old_status = service.status
+    unit = add_service_unit_by_serial(
+        db,
+        service,
+        serial_no=body.serial_no,
+        engineer_id=engineer_id,
+        assigned_by_user_id=assigned_by,
+        billing_type=body.billing_type,
+        remarks=body.remarks,
+    )
+    if unit.assigned_engineer_id is None:
+        assign_units_to_engineer(
+            db,
+            service,
+            [unit.id],
+            engineer_id,
+            assigned_by,
+            body.remarks,
+            body.billing_type,
+        )
+        db.refresh(unit)
+    _log_status(
+        db,
+        service,
+        action="Unit Added By Serial",
+        user=user,
+        old_status=old_status,
+        new_status=service.status,
+        remarks=body.remarks,
+        metadata={"unit_id": unit.id, "serial_no": body.serial_no, "engineer_id": engineer_id},
+    )
+    db.commit()
+    db.refresh(service)
+    return _hydrate_service(db, service)
+
+
 @router.post("/{service_id}/assign", response_model=ServiceOut)
 def assign_service(
     service_id: int,
@@ -1359,6 +1387,54 @@ def cancel_assignment(service_id: int, db: Session = Depends(get_db), user: User
         user=user,
         old_status=old_status,
         new_status=service.status,
+    )
+    db.commit()
+    db.refresh(service)
+    return _hydrate_service(db, service)
+
+
+@router.post("/{service_id}/units/billing", response_model=ServiceOut)
+def set_service_unit_billing(
+    service_id: int,
+    body: ServiceUnitBillingIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    service = _load_visible_service(db, service_id, user)
+    if not _is_service_team(user):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only Admin or Indcool Service can set billing")
+    _ensure_order_workflow_unlocked(db, service)
+
+    old_status = service.status
+    if body.unit_id is None:
+        apply_service_billing_choice(db, service, body.billing_type)
+        action = "Service Billing Updated"
+        metadata = {"billing_type": body.billing_type}
+    else:
+        unit = db.get(ServiceRequestUnit, body.unit_id)
+        if unit is None or unit.service_request_id != service.id:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Unit not found on this service request")
+        if (unit.unit_status or "") in BILLING_LOCKED_UNIT_STATUSES:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                "Billing cannot be changed after payment is completed or the unit is closed",
+            )
+        order_item = db.get(OrderItem, unit.order_item_id) if unit.order_item_id else None
+        if order_item is None and unit.serial_no:
+            order_item = _find_order_item_by_serial(db, unit.serial_no.strip())
+        apply_unit_billing_choice(db, unit, body.billing_type, order_item=order_item)
+        sync_service_request_from_units(db, service, engineer_id=unit.assigned_engineer_id)
+        action = "Unit Billing Updated"
+        metadata = {"unit_id": unit.id, "serial_no": unit.serial_no, "billing_type": body.billing_type}
+
+    _log_status(
+        db,
+        service,
+        action=action,
+        user=user,
+        old_status=old_status,
+        new_status=service.status,
+        metadata=metadata,
     )
     db.commit()
     db.refresh(service)
@@ -1517,8 +1593,11 @@ def review_serial_verification(
         unit.serial_no_2 = serial_no_2
         unit.order_item_id = item.id
         unit.serial_verified_at = datetime.now(timezone.utc)
-        unit.warranty_status = context["warranty_status"]
-        unit.service_type = context["service_type"]
+        if body.billing_type:
+            apply_unit_billing_choice(db, unit, body.billing_type, order_item=item)
+        else:
+            unit.warranty_status = context["warranty_status"]
+            unit.service_type = context["service_type"]
         unit.unit_status = "Serial Verified"
         action = "Serial Verification Approved" if decision == "approve" else "Serial Override Approved"
     sync_service_request_from_units(db, service, engineer_id=unit.assigned_engineer_id)
@@ -2304,6 +2383,27 @@ def approve_service_payment(
         remarks=body.remarks,
         metadata={"payment_request_id": latest_payment.id, "approved_amount": body.approved_amount, "payment_transaction_id": transaction.id},
     )
+    completion_for_history = None
+    if latest_payment.service_request_unit_id:
+        completion_for_history = db.scalar(
+            select(ServiceCompletion).where(
+                ServiceCompletion.service_request_id == service.id,
+                ServiceCompletion.service_request_unit_id == latest_payment.service_request_unit_id,
+            )
+        )
+    else:
+        completion_for_history = db.scalar(
+            select(ServiceCompletion)
+            .where(ServiceCompletion.service_request_id == service.id)
+            .order_by(desc(ServiceCompletion.completed_at))
+        )
+    if completion_for_history is not None:
+        write_service_completion_serial_history(
+            db,
+            service,
+            completion_for_history,
+            performed_by_user_id=completion_for_history.performed_by_user_id,
+        )
     _resolve_linked_complaint_from_service(db, service, user, body.remarks)
     db.commit()
     db.refresh(service)

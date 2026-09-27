@@ -2,12 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { itemsApi } from "../../api/items.js";
-
-const CATEGORIES = [
-  "Split AC", "Window AC", "Cassette AC", "Duct AC",
-  "Geyser", "Refrigerator", "Air Cooler",
-  "PCB", "Spare Part", "Accessory", "Others",
-];
+import ItemCategorySelect from "../../components/items/ItemCategorySelect.jsx";
 
 const UNITS = ["Pcs", "Set", "Nos", "Kit", "Kg", "Ltr"];
 
@@ -90,10 +85,14 @@ export default function ItemMasterCreate() {
           </div>
           <div>
             <label className={labelClass}>Category</label>
-            <select value={form.category} onChange={(e) => set("category", e.target.value)} className={fieldClass}>
-              <option value="">— Select category —</option>
-              {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
-            </select>
+            <ItemCategorySelect
+              value={form.category}
+              onChange={(v) => set("category", v)}
+              className={fieldClass}
+            />
+            <p className="mt-1 text-xs text-slate-500">
+              Need a new category? Use <strong>Add category</strong> on the Item Masters list page.
+            </p>
           </div>
           <div>
             <label className={labelClass}>Brand</label>

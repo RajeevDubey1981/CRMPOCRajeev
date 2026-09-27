@@ -75,11 +75,28 @@ export function installationSerialReady(installation) {
   return isVendorAssignedInstallation(installation) && Boolean((installation?.serial_no || "").trim());
 }
 
-export function canUseBulkInstallationWorkflow(row, userId, userName = "") {
+const ENGINEER_BULK_WORKFLOW_STATUSES = new Set([
+  "Assigned",
+  "In Progress",
+  "Returned",
+  "Rejected",
+  "Serial Pending Verification",
+  "Completion Pending Approval",
+  "Installation Completed",
+  "Payment Pending",
+]);
+
+const ADMIN_BULK_WORKFLOW_EXTRA_STATUSES = new Set(["Submitted"]);
+
+export function isBulkWorkflowEligibleRow(row, { isAdminLike = false, userId, userName = "" } = {}) {
   if (!row || row.status === "Completed") return false;
-  if (!["Assigned", "In Progress", "Returned", "Rejected"].includes(row.status || "")) return false;
   const source = (row.source || "vendor").toLowerCase();
   if (source !== "vendor") return false;
+  const status = row.status || "";
+  const statusAllowed = ENGINEER_BULK_WORKFLOW_STATUSES.has(status)
+    || (isAdminLike && ADMIN_BULK_WORKFLOW_EXTRA_STATUSES.has(status));
+  if (!statusAllowed) return false;
+  if (isAdminLike) return true;
   if (row.assigned_engineer != null && userId != null) {
     return Number(row.assigned_engineer) === Number(userId);
   }
@@ -87,6 +104,30 @@ export function canUseBulkInstallationWorkflow(row, userId, userName = "") {
     return row.assigned_engineer_name.trim().toLowerCase() === userName.trim().toLowerCase();
   }
   return Boolean(row.assigned_engineer_name);
+}
+
+export function canUseBulkInstallationWorkflow(row, userId, userName = "") {
+  return isBulkWorkflowEligibleRow(row, { isAdminLike: false, userId, userName });
+}
+
+export function adminBulkReviewActionLabel(status) {
+  switch (status) {
+    case "Completion Pending Approval":
+      return "Approve completion (Step 8)";
+    case "Payment Pending":
+      return "Approve payment (Step 10)";
+    case "Serial Pending Verification":
+      return "Verify serials (Step 6)";
+    case "Installation Completed":
+      return "Review / payment request";
+    case "Submitted":
+      return "Assign engineer";
+    case "Assigned":
+    case "In Progress":
+      return "Monitor engineer progress";
+    default:
+      return "Open workflow";
+  }
 }
 
 export function getInstallationWorkflowStepState(installation) {

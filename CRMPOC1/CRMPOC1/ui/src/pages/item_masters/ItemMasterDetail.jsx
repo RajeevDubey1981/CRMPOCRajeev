@@ -3,12 +3,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 
 import Modal from "../../components/Modal.jsx";
 import { itemsApi } from "../../api/items.js";
-
-const CATEGORIES = [
-  "Split AC", "Window AC", "Cassette AC", "Duct AC",
-  "Geyser", "Refrigerator", "Air Cooler",
-  "PCB", "Spare Part", "Accessory", "Others",
-];
+import ItemCategorySelect from "../../components/items/ItemCategorySelect.jsx";
 
 const UNITS = ["Pcs", "Set", "Nos", "Kit", "Kg", "Ltr"];
 
@@ -199,14 +194,11 @@ export default function ItemMasterDetail() {
             </div>
             <div>
               <label className={labelClass}>Category</label>
-              <select
+              <ItemCategorySelect
                 value={editForm?.category || ""}
-                onChange={(e) => setField("category", e.target.value)}
+                onChange={(v) => setField("category", v)}
                 className={fieldClass}
-              >
-                <option value="">— Select category —</option>
-                {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
-              </select>
+              />
             </div>
             <div>
               <label className={labelClass}>Brand</label>

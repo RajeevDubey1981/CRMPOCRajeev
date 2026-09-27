@@ -160,6 +160,27 @@ def export_csv(
     )
 
 
+@router.get("/categories", response_model=list[str])
+def list_item_categories(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Distinct category values already used on items (for dropdowns)."""
+    if not can_act_on(db, user, "items", "can_view", None):
+        return []
+    rows = db.scalars(
+        select(ItemMaster.category)
+        .where(
+            ItemMaster.deleted_at.is_(None),
+            ItemMaster.category.is_not(None),
+            ItemMaster.category != "",
+        )
+        .distinct()
+        .order_by(ItemMaster.category)
+    ).all()
+    return [row for row in rows if row]
+
+
 @router.get("/{item_id}", response_model=ItemMasterOut)
 def get_item(
     item_id: int,

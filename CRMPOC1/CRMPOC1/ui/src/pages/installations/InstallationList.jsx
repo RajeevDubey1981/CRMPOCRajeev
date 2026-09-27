@@ -9,8 +9,7 @@ import { useAuth } from "../../auth/AuthContext.jsx";
 import { isOperationsAdminRole } from "../../utils/roles.js";
 import BulkAssignModal from "./BulkAssignModal.jsx";
 import BulkInstallationEditModal from "./BulkInstallationEditModal.jsx";
-import BulkInstallationWorkflowModal from "./BulkInstallationWorkflowModal.jsx";
-import { canUseBulkInstallationWorkflow } from "../../utils/installationWorkflowSteps.js";
+import { isBulkWorkflowEligibleRow } from "../../utils/installationWorkflowSteps.js";
 
 const STATUSES = ["Pending", "Submitted", "Assigned", "In Progress", "Serial Pending Verification", "Completion Pending Approval", "Installation Completed", "Payment Pending", "Completed", "Settlement Pending", "Settlement Approved", "Returned", "Rejected"];
 const BULK_ASSIGNABLE_STATUSES = new Set(["Submitted", "Assigned"]);
@@ -70,7 +69,6 @@ export default function InstallationList() {
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [bulkAssignOpen, setBulkAssignOpen] = useState(false);
   const [bulkEditOpen, setBulkEditOpen] = useState(false);
-  const [bulkWorkflowOpen, setBulkWorkflowOpen] = useState(false);
 
   const params = useMemo(() => ({
     page,
@@ -215,8 +213,17 @@ export default function InstallationList() {
 
   const canOpenBulkAssign = selectedRows.length > 0 && selectedRows.every((row) => canAdminBulkAssign(row));
   const canOpenBulkWorkflow = selectedRows.length > 1
-    && selectedRows.every((row) => canUseBulkInstallationWorkflow(row, user?.id, user?.name));
-  const canOpenBulkEdit = selectedRows.length > 0 && selectedRows.every((row) => isEngineer ? isEngineerEditable(row) : canAdminBulkEdit(row));
+    && selectedRows.every((row) => isBulkWorkflowEligibleRow(row, {
+      isAdminLike,
+      userId: user?.id,
+      userName: user?.name,
+    }));
+  const canOpenBulkEdit = !isEngineer
+    && selectedRows.length > 0
+    && selectedRows.every((row) => canAdminBulkEdit(row));
+  const canOpenEngineerWorkflow = isEngineer
+    && selectedRows.length === 1
+    && isEngineerEditable(selectedRows[0]);
 
   function openInstallationWorkflow(row) {
     navigate(`/installations/${row.id}?edit=1`);
@@ -227,14 +234,16 @@ export default function InstallationList() {
     return "Edit";
   }
 
+  function openSelectedBulkWorkflow() {
+    if (!canOpenBulkWorkflow || selectedRows.length < 2) return;
+    const ids = selectedRows.map((row) => row.id).join(",");
+    navigate(`/installations/bulk-workflow?ids=${ids}`);
+  }
+
   function openSelectedEdit() {
     if (!canOpenBulkEdit || selectedRows.length === 0) return;
     if (selectedRows.length === 1) {
       openInstallationWorkflow(selectedRows[0]);
-      return;
-    }
-    if (canOpenBulkWorkflow) {
-      setBulkWorkflowOpen(true);
       return;
     }
     setBulkEditOpen(true);
@@ -242,8 +251,7 @@ export default function InstallationList() {
 
   function bulkActionLabel() {
     if (selectedRows.length <= 1) return selectedRows[0] ? editLabel(selectedRows[0]) : "Edit";
-    if (canOpenBulkWorkflow) return "Bulk workflow";
-    return "Edit";
+    return "Bulk edit";
   }
 
   return (
@@ -294,7 +302,7 @@ export default function InstallationList() {
 
       {isAdminLike && (
         <div className="rounded-md border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
-          Click the <strong>+</strong> icon on any row to expand it, then use <strong>Edit</strong>, <strong>Reject</strong>, or <strong>Delete</strong> on individual installation requests.
+          Expand a row with <strong>+</strong>, select multiple requests in the same item code, then use <strong>Bulk workflow</strong> to review each serial and status before approving completion or payment.
         </div>
       )}
 
@@ -313,13 +321,42 @@ export default function InstallationList() {
                 Assign Engineer
               </button>
             )}
-            <button
-              onClick={openSelectedEdit}
-              disabled={!canOpenBulkEdit}
-              className="rounded-md border border-brand-300 px-3 py-1.5 text-sm font-medium text-brand-700 disabled:opacity-50"
-            >
-              {bulkActionLabel()}
-            </button>
+            {isEngineer && selectedRows.length > 1 && (
+              <button
+                onClick={openSelectedBulkWorkflow}
+                disabled={!canOpenBulkWorkflow}
+                className="rounded-md bg-brand-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-50"
+              >
+                Bulk workflow
+              </button>
+            )}
+            {isEngineer && selectedRows.length === 1 && (
+              <button
+                onClick={() => openInstallationWorkflow(selectedRows[0])}
+                disabled={!canOpenEngineerWorkflow}
+                className="rounded-md border border-brand-300 px-3 py-1.5 text-sm font-medium text-brand-700 disabled:opacity-50"
+              >
+                Workflow
+              </button>
+            )}
+            {!isEngineer && selectedRows.length > 1 && (
+              <button
+                onClick={openSelectedBulkWorkflow}
+                disabled={!canOpenBulkWorkflow}
+                className="rounded-md bg-brand-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-50"
+              >
+                Bulk workflow
+              </button>
+            )}
+            {!isEngineer && (
+              <button
+                onClick={openSelectedEdit}
+                disabled={!canOpenBulkEdit}
+                className="rounded-md border border-brand-300 px-3 py-1.5 text-sm font-medium text-brand-700 disabled:opacity-50"
+              >
+                {bulkActionLabel()}
+              </button>
+            )}
             <button
               onClick={clearSelection}
               className="rounded-md border border-slate-300 px-3 py-1.5 text-sm"
@@ -533,16 +570,6 @@ export default function InstallationList() {
           onSaved={() => {
             setBulkAssignOpen(false);
             clearSelection();
-            load();
-          }}
-        />
-      )}
-
-      {bulkWorkflowOpen && (
-        <BulkInstallationWorkflowModal
-          rows={selectedRows}
-          onClose={() => setBulkWorkflowOpen(false)}
-          onSaved={() => {
             load();
           }}
         />

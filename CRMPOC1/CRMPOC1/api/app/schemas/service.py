@@ -87,6 +87,18 @@ class ServiceAssignUnitsIn(BaseModel):
     billing_type: Literal["Free", "Paid"] | None = "Free"
 
 
+class ServiceAddUnitBySerialIn(BaseModel):
+    serial_no: str = Field(min_length=1, max_length=100)
+    engineer_id: int | None = None
+    billing_type: Literal["Free", "Paid"] | None = "Free"
+    remarks: str | None = None
+
+
+class ServiceUnitBillingIn(BaseModel):
+    unit_id: int | None = None
+    billing_type: Literal["Free", "Paid"]
+
+
 class ServiceOrderItemSummary(BaseModel):
     id: int
     item_code: str
@@ -161,6 +173,7 @@ class ServiceSerialReviewIn(BaseModel):
     serial_no: str | None = Field(default=None, max_length=100)
     serial_no_2: str | None = Field(default=None, max_length=100)
     associate_serial_with_order: bool = False
+    billing_type: Literal["Free", "Paid"] | None = None
 
 
 class ServiceBulkSerialVerifyIn(BaseModel):

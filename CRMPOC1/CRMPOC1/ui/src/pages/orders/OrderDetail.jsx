@@ -29,6 +29,60 @@ const ORDER_STATUSES = ["Pending", "Shipped", "In Transit", "Delivered", "Return
 const VENDOR_POST_SHIPMENT_STATUSES = new Set(["Shipped", "In Transit", "Delivered", "Returned", "Completed"]);
 const VENDOR_LOCKED_SHIPMENT_STATUSES = new Set(["Shipped", "In Transit"]);
 
+const BLANK_CONSIGNEE = {
+  consignee_name: "",
+  contact: "",
+  email: "",
+  city: "",
+  state: "",
+  address: "",
+};
+
+function mapConsigneesFromOrder(rows) {
+  return (rows || []).map((row) => ({
+    consignee_name: row.consignee_name || "",
+    contact: row.contact || "",
+    email: row.email || "",
+    city: row.city || "",
+    state: row.state || "",
+    address: row.address || "",
+  }));
+}
+
+function serializeConsigneesForApi(rows) {
+  return (rows || [])
+    .filter((row) => Object.values(row).some((value) => (value || "").trim()))
+    .map((row) => ({
+      consignee_name: (row.consignee_name || "").trim() || null,
+      contact: (row.contact || "").trim() || null,
+      email: (row.email || "").trim() || null,
+      city: (row.city || "").trim() || null,
+      state: (row.state || "").trim() || null,
+      address: (row.address || "").trim() || null,
+    }));
+}
+
+function validateConsigneesForSave(rows) {
+  for (let idx = 0; idx < (rows || []).length; idx += 1) {
+    const row = rows[idx];
+    const hasContent = Object.values(row).some((value) => (value || "").trim());
+    if (!hasContent) continue;
+    const label = rows.length > 1 ? `Consignee address ${idx + 1}` : "Consignee address";
+    if (!(row.consignee_name || "").trim()) return `${label}: Consignee name is required.`;
+    if (!(row.address || "").trim()) return `${label}: Address is required.`;
+  }
+  return null;
+}
+
+function consigneeSummaryLine(addresses) {
+  const rows = addresses || [];
+  if (!rows.length) return null;
+  const names = rows.map((row) => row.consignee_name).filter(Boolean);
+  if (names.length === 1) return names[0];
+  if (names.length > 1) return `${names.length} consignees (${names.slice(0, 2).join(", ")}${names.length > 2 ? ", …" : ""})`;
+  return `${rows.length} consignee address(es)`;
+}
+
 const STATUS_BADGE = {
   Pending: "bg-amber-100 text-amber-700",
   Shipped: "bg-indigo-100 text-indigo-700",
@@ -191,6 +245,7 @@ export default function OrderDetail() {
   const [collapsedItemGroups, setCollapsedItemGroups] = useState({});
   const [itemOptions, setItemOptions] = useState([]);
   const [editLineItems, setEditLineItems] = useState([]);
+  const [editConsignees, setEditConsignees] = useState([]);
 
   async function load() {
     setErr("");
@@ -238,6 +293,58 @@ export default function OrderDetail() {
       if (next.has(inst.id)) next.delete(inst.id);
       else next.add(inst.id);
       return next;
+    });
+  }
+
+  function installationIdsSelectableInGroup(group) {
+    const ids = [];
+    for (const item of group.rows) {
+      const inst = installationForItem(item);
+      if (inst && (inst.status === "Submitted" || inst.status === "Assigned")) {
+        ids.push(inst.id);
+      }
+    }
+    return ids;
+  }
+
+  function toggleSelectAllInstallationsInGroup(group) {
+    const ids = installationIdsSelectableInGroup(group);
+    if (!ids.length) return;
+    const allSelected = ids.every((id) => selectedInstIds.has(id));
+    setSelectedInstIds((prev) => {
+      const next = new Set(prev);
+      if (allSelected) {
+        ids.forEach((id) => next.delete(id));
+      } else {
+        ids.forEach((id) => next.add(id));
+      }
+      return next;
+    });
+  }
+
+  function serialSelectionKeysForGroup(group, serialType) {
+    const keys = [];
+    for (const item of group.rows) {
+      if (isItemLocked(item)) continue;
+      if (serialType === "serial1" && item.serial_no) keys.push(`${item.id}-serial1`);
+      if (serialType === "serial2" && item.serial_no_2) keys.push(`${item.id}-serial2`);
+    }
+    return keys;
+  }
+
+  function toggleSelectAllSerialsInGroup(group, serialType) {
+    if (!canSubmitInstallationRequest) return;
+    const keys = serialSelectionKeysForGroup(group, serialType);
+    if (!keys.length) return;
+    const allSelected = keys.every((key) => selectedSerials.has(key));
+    setSubmitErr("");
+    setSelectedSerials((prev) => {
+      if (allSelected) {
+        const next = new Set(prev);
+        keys.forEach((key) => next.delete(key));
+        return next;
+      }
+      return new Set(keys);
     });
   }
 
@@ -323,6 +430,7 @@ export default function OrderDetail() {
       setEditLineItems(collapseOrderItemsToLineItems(order.items || []));
       ordersApi.items().then(setItemOptions).catch(() => setItemOptions([]));
     }
+    setEditConsignees(mapConsigneesFromOrder(order.consignee_addresses));
     setEditErr("");
     setEditing(true);
   }
@@ -622,13 +730,19 @@ export default function OrderDetail() {
     }
     setEditSaving(true);
     try {
+      const consigneeError = validateConsigneesForSave(editConsignees);
+      if (consigneeError) {
+        setEditErr(consigneeError);
+        return;
+      }
+      let latestOrder = null;
       if (isVendor && canVendorEditPendingItems) {
         const lineItemError = validateVendorLineItems(editLineItems);
         if (lineItemError) {
           setEditErr(lineItemError);
           return;
         }
-        await ordersApi.update(id, {
+        latestOrder = await ordersApi.update(id, {
           order_no: editForm.order_no?.trim() || null,
           order_date: editForm.order_date || null,
           customer_name: editForm.customer_name || null,
@@ -637,6 +751,7 @@ export default function OrderDetail() {
           customer_city: editForm.customer_city || null,
           customer_state: editForm.customer_state || null,
           customer_address: editForm.customer_address || null,
+          consignee_addresses: serializeConsigneesForApi(editConsignees),
           expected_delivery_date: editForm.expected_delivery_date || null,
         });
         await ordersApi.replaceVendorLineItems(id, {
@@ -668,6 +783,9 @@ export default function OrderDetail() {
             customer_contact: editForm.customer_contact || null,
             customer_email: editForm.customer_email || null,
             customer_city: editForm.customer_city || null,
+            customer_state: editForm.customer_state || null,
+            customer_address: editForm.customer_address || null,
+            consignee_addresses: serializeConsigneesForApi(editConsignees),
             courier_id: editForm.courier_id !== "" ? Number(editForm.courier_id) : null,
             lrn_no: editForm.lrn_no || null,
             vendor_bill_no: editForm.vendor_bill_no || null,
@@ -680,10 +798,13 @@ export default function OrderDetail() {
               item_code: item.item_code?.trim() || null,
             })),
           };
-      await ordersApi.update(id, body);
+      latestOrder = await ordersApi.update(id, body);
+      }
+      if (latestOrder) {
+        setOrder(latestOrder);
       }
       setEditing(false);
-      load();
+      await load();
     } catch (e) {
       const detail = e.response?.data?.detail;
       setEditErr(
@@ -853,6 +974,7 @@ export default function OrderDetail() {
           <Field label="OEM Bill No" value={order.oem_bill_no} />
           <Field label="Status" value={order.status} />
           <Field label="Customer" value={order.customer_name} />
+          <Field label="Consignee (ship-to)" value={consigneeSummaryLine(order.consignee_addresses)} />
           <Field label="Courier" value={order.courier_name} />
           <Field label="LRN No" value={order.lrn_no} mono />
           <Field label="Vendor Bill No" value={order.vendor_bill_no} />
@@ -904,6 +1026,42 @@ export default function OrderDetail() {
           <Field label="State" value={order.customer_state} />
           <Field label="Address" value={order.customer_address} full />
         </div>
+      </section>
+
+      <section className="rounded-lg bg-white p-6 shadow-sm" id="order-consignee-addresses">
+        <h2 className="mb-1 text-sm font-semibold uppercase tracking-wide text-sky-900">
+          Consignee addresses
+        </h2>
+        <p className="mb-4 text-xs text-slate-500">
+          Additional delivery locations besides the primary customer address above.
+        </p>
+        {(order.consignee_addresses || []).length === 0 ? (
+          <p className="text-sm text-slate-500">
+            No consignee addresses on this order yet. Use <strong>Edit Order</strong> to add ship-to locations.
+          </p>
+        ) : (
+          <div className="space-y-6">
+            {order.consignee_addresses.map((row, idx) => (
+              <div
+                key={row.id || idx}
+                className="rounded-md border border-sky-100 bg-sky-50/40 p-4"
+              >
+                <div className="mb-3 text-sm font-medium text-sky-900">
+                  Consignee {order.consignee_addresses.length > 1 ? idx + 1 : ""}
+                  {row.consignee_name ? ` — ${row.consignee_name}` : ""}
+                </div>
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                  <Field label="Consignee name" value={row.consignee_name} />
+                  <Field label="Contact" value={row.contact} mono />
+                  <Field label="Email" value={row.email} />
+                  <Field label="City" value={row.city} />
+                  <Field label="State" value={row.state} />
+                  <Field label="Address" value={row.address} full />
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </section>
 
       <section className="rounded-lg bg-white p-6 shadow-sm">
@@ -999,13 +1157,60 @@ export default function OrderDetail() {
                   <table className="min-w-full text-sm">
                     <thead className="bg-slate-50 text-left text-slate-600">
                       <tr>
-                        {!isVendor && <th className="px-3 py-2"></th>}
+                        {!isVendor && (
+                          <th className="px-3 py-2">
+                            {(() => {
+                              const instIds = installationIdsSelectableInGroup(group);
+                              if (!instIds.length) return null;
+                              const allSelected = instIds.every((id) => selectedInstIds.has(id));
+                              return (
+                                <input
+                                  type="checkbox"
+                                  title="Select all submitted rows for engineer assignment"
+                                  checked={allSelected}
+                                  onChange={() => toggleSelectAllInstallationsInGroup(group)}
+                                  className="h-4 w-4"
+                                />
+                              );
+                            })()}
+                          </th>
+                        )}
                         <th className="px-3 py-2">#</th>
                         <th className="px-3 py-2">Item Name</th>
                         <th className="px-3 py-2">Item Code</th>
-                        <th className="px-3 py-2">Serial 1 {canSubmitInstallationRequest && <span className="text-xs">(select)</span>}</th>
+                        <th className="px-3 py-2">
+                          {canSubmitInstallationRequest && serialSelectionKeysForGroup(group, "serial1").length > 0 ? (
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="checkbox"
+                                title="Select all serials in this item code group"
+                                checked={serialSelectionKeysForGroup(group, "serial1").every((key) => selectedSerials.has(key))}
+                                onChange={() => toggleSelectAllSerialsInGroup(group, "serial1")}
+                                className="h-4 w-4"
+                              />
+                              <span>Serial 1 <span className="text-xs">(select)</span></span>
+                            </div>
+                          ) : (
+                            <>Serial 1 {canSubmitInstallationRequest && <span className="text-xs">(select)</span>}</>
+                          )}
+                        </th>
                         {group.serialCount >= 2 && (
-                          <th className="px-3 py-2">Serial 2 {canSubmitInstallationRequest && <span className="text-xs">(select)</span>}</th>
+                          <th className="px-3 py-2">
+                            {canSubmitInstallationRequest && serialSelectionKeysForGroup(group, "serial2").length > 0 ? (
+                              <div className="flex items-center gap-2">
+                                <input
+                                  type="checkbox"
+                                  title="Select all serial 2 values in this item code group"
+                                  checked={serialSelectionKeysForGroup(group, "serial2").every((key) => selectedSerials.has(key))}
+                                  onChange={() => toggleSelectAllSerialsInGroup(group, "serial2")}
+                                  className="h-4 w-4"
+                                />
+                                <span>Serial 2 <span className="text-xs">(select)</span></span>
+                              </div>
+                            ) : (
+                              <>Serial 2 {canSubmitInstallationRequest && <span className="text-xs">(select)</span>}</>
+                            )}
+                          </th>
                         )}
                         <th className="px-3 py-2">PCB Warranty</th>
                         <th className="px-3 py-2">Component Warranty</th>
@@ -1410,6 +1615,80 @@ export default function OrderDetail() {
                 className={fieldClass}
               />
             </div>
+
+            {(!isVendor || canVendorEditPendingDetails) && (
+              <div className="md:col-span-2 space-y-4 border-t border-slate-200 pt-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-sm font-semibold text-sky-900">Consignee addresses</span>
+                  <button
+                    type="button"
+                    onClick={() => setEditConsignees((prev) => [...prev, { ...BLANK_CONSIGNEE }])}
+                    className="text-sm font-medium text-brand-700 hover:text-brand-900"
+                  >
+                    + Add consignee
+                  </button>
+                </div>
+                {editConsignees.map((row, idx) => (
+                  <div key={`edit-consignee-${idx}`} className="rounded-md border border-sky-100 bg-sky-50/30 p-3">
+                    <div className="mb-2 flex items-center justify-between">
+                      <span className="text-xs font-medium uppercase text-sky-800">
+                        Consignee {editConsignees.length > 1 ? idx + 1 : ""}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setEditConsignees((prev) => prev.filter((_, i) => i !== idx))}
+                        className="text-xs text-rose-600"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                      <input
+                        placeholder="Consignee name"
+                        value={row.consignee_name}
+                        onChange={(e) => setEditConsignees((prev) => prev.map((r, i) => (i === idx ? { ...r, consignee_name: e.target.value } : r)))}
+                        className={fieldClass}
+                      />
+                      <input
+                        placeholder="Contact"
+                        value={row.contact}
+                        onChange={(e) => setEditConsignees((prev) => prev.map((r, i) => (i === idx ? { ...r, contact: e.target.value } : r)))}
+                        className={fieldClass}
+                      />
+                      <input
+                        placeholder="Email"
+                        value={row.email}
+                        onChange={(e) => setEditConsignees((prev) => prev.map((r, i) => (i === idx ? { ...r, email: e.target.value } : r)))}
+                        className={fieldClass}
+                      />
+                      <input
+                        placeholder="City"
+                        value={row.city}
+                        onChange={(e) => setEditConsignees((prev) => prev.map((r, i) => (i === idx ? { ...r, city: e.target.value } : r)))}
+                        className={fieldClass}
+                      />
+                      <select
+                        value={row.state}
+                        onChange={(e) => setEditConsignees((prev) => prev.map((r, i) => (i === idx ? { ...r, state: e.target.value } : r)))}
+                        className={fieldClass}
+                      >
+                        <option value="">State</option>
+                        {INDIAN_STATES_UTS.map((state) => (
+                          <option key={state} value={state}>{state}</option>
+                        ))}
+                      </select>
+                      <textarea
+                        rows={2}
+                        placeholder="Consignee address"
+                        value={row.address}
+                        onChange={(e) => setEditConsignees((prev) => prev.map((r, i) => (i === idx ? { ...r, address: e.target.value } : r)))}
+                        className={`${fieldClass} md:col-span-2`}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
 
             <div>
               <label className={labelClass}>Expected Delivery Date</label>

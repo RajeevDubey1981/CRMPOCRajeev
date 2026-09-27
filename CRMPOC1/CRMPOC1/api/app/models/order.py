@@ -32,6 +32,26 @@ class Order(Base, TimestampMixin, SoftDeleteMixin):
     created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
 
 
+class OrderConsigneeAddress(Base, TimestampMixin):
+    """Additional ship-to / consignee locations for one order."""
+
+    __tablename__ = "order_consignee_addresses"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    order_id: Mapped[int] = mapped_column(
+        ForeignKey("orders.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    consignee_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    contact: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    city: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    state: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    address: Mapped[str | None] = mapped_column(Text, nullable=True)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+
+
 class OrderItem(Base, TimestampMixin):
     __tablename__ = "order_items"
 

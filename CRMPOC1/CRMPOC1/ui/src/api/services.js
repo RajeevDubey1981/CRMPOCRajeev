@@ -15,6 +15,8 @@ export const servicesApi = {
   restartTeamReview: (id) => api.post(`/api/services/${id}/restart-team-review`).then((r) => r.data),
   listUnits: (id, params) => api.get(`/api/services/${id}/units`, { params }).then((r) => r.data),
   assignUnits: (id, body) => api.post(`/api/services/${id}/assign-units`, body).then((r) => r.data),
+  addUnitBySerial: (id, body) => api.post(`/api/services/${id}/units/add-by-serial`, body).then((r) => r.data),
+  setUnitBilling: (id, body) => api.post(`/api/services/${id}/units/billing`, body).then((r) => r.data),
   myAssignedUnits: () => api.get("/api/services/my-assigned-units").then((r) => r.data),
   identifyCustomer: (id, body) => api.post(`/api/services/${id}/identify-customer`, body).then((r) => r.data),
   assign: (id, body) => api.post(`/api/services/${id}/assign`, body).then((r) => r.data),

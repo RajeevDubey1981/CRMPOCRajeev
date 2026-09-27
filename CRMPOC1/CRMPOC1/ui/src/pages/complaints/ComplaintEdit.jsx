@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 
 import Modal from "../../components/Modal.jsx";
 import { complaintsApi } from "../../api/complaints.js";
+import { mergeComplaintModelOptions } from "../../constants/complaintModels.js";
 
 const QUERY_TYPES = ["Service", "Installation", "Sales", "Others"];
 const STATUSES = ["Pending", "Under Process", "In Process", "Resolved", "Rejected"];
@@ -24,8 +25,8 @@ export default function ComplaintEdit({ complaint, onClose, onSaved }) {
 
   useEffect(() => {
     complaintsApi.modelOptions()
-      .then(setModelOptions)
-      .catch(() => setModelOptions([]));
+      .then((rows) => setModelOptions(mergeComplaintModelOptions(rows)))
+      .catch(() => setModelOptions(mergeComplaintModelOptions([])));
   }, []);
 
   function set(field, value) {

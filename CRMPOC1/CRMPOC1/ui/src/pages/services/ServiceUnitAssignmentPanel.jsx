@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { servicesApi } from "../../api/services.js";
 import WarrantyBadge from "../../components/WarrantyBadge.jsx";
+import { formatApiError } from "../../utils/apiError.js";
 import { ENGINEER_ASSIGNMENT_HINT, formatEngineerOptionLabel } from "../../utils/engineerAssignment.js";
 
 function serialCell(value) {
@@ -15,8 +16,13 @@ export default function ServiceUnitAssignmentPanel({
   onRefresh,
   run,
   workflowUnlocked = true,
+  pendingOrderVerifyNo = "",
+  onServiceUpdated,
+  parentBusy = false,
 }) {
   const [orderVerifyInput, setOrderVerifyInput] = useState(service?.order_no || "");
+  const [verifyBusy, setVerifyBusy] = useState(false);
+  const [verifyErr, setVerifyErr] = useState("");
   const [orderSearchResults, setOrderSearchResults] = useState([]);
   const [selectedItemCode, setSelectedItemCode] = useState("");
   const [selectedUnitIds, setSelectedUnitIds] = useState(new Set());
@@ -25,19 +31,24 @@ export default function ServiceUnitAssignmentPanel({
   const [assignRemarks, setAssignRemarks] = useState("");
   const orderItems = service?.order_items || [];
   const allUnits = service?.units || [];
-  // Only server-linked order counts as verified (admin reset clears order_id).
-  const orderVerified = Boolean(service?.order_id);
+  const orderVerified = (orderItems.length > 0)
+    || (allUnits.length > 0 && Boolean(service?.order_id));
 
   useEffect(() => {
-    if (service?.order_id && service?.order_no) {
+    if (orderVerified && service?.order_no) {
       setOrderVerifyInput(service.order_no);
       return;
     }
-    if (!service?.order_id) {
+    if (!orderVerified) {
       setSelectedItemCode("");
       setSelectedUnitIds(new Set());
     }
-  }, [service?.id, service?.order_id, service?.order_no]);
+  }, [service?.id, service?.order_id, service?.order_no, orderVerified]);
+
+  useEffect(() => {
+    const next = (pendingOrderVerifyNo || "").trim();
+    if (next) setOrderVerifyInput(next);
+  }, [pendingOrderVerifyNo]);
 
   useEffect(() => {
     const search = orderVerifyInput.trim();
@@ -110,22 +121,34 @@ export default function ServiceUnitAssignmentPanel({
 
   async function verifyOrder() {
     const trimmed = orderVerifyInput.trim();
-    if (!trimmed) return;
+    if (!trimmed || orderVerified || verifyBusy || parentBusy) return;
     const body = /^\d+$/.test(trimmed) ? { order_id: Number(trimmed) } : { order_no: trimmed };
-    if (service?.serial_no?.trim()) {
+    if (service?.serial_no?.trim() && service?.order_item_id) {
       body.serial_no = service.serial_no.trim();
     }
-    await run(
-      () => servicesApi.verifyOrder(service.id, body),
-      {
-        successMessage: service?.serial_no
-          ? "Order verified for the linked serial number."
-          : "Order verified and items loaded.",
-      },
-    );
-    setSelectedItemCode("");
-    setSelectedUnitIds(new Set());
-    onRefresh?.();
+    setVerifyBusy(true);
+    setVerifyErr("");
+    try {
+      const updated = await servicesApi.verifyOrder(service.id, body);
+      onServiceUpdated?.(updated);
+      await onRefresh?.();
+      const orderLabel = updated?.order_no || trimmed;
+      const unitCount = updated?.units?.length ?? 0;
+      window.alert(
+        `Order ${orderLabel} is verified.\n\n${unitCount} installed unit(s) loaded. Use the table below to assign engineers.`,
+      );
+      setSelectedItemCode("");
+      setSelectedUnitIds(new Set());
+    } catch (error) {
+      const message = formatApiError(error, "Order verification failed");
+      setVerifyErr(message);
+      window.alert(message);
+    } finally {
+      setVerifyBusy(false);
+      window.requestAnimationFrame(() => {
+        document.getElementById("service-order-items-table")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    }
   }
 
   async function assignSelectedUnits() {
@@ -204,10 +227,16 @@ export default function ServiceUnitAssignmentPanel({
         </div>
       )}
 
-      {workflowUnlocked && service.serial_no && (
+      {workflowUnlocked && service.serial_no && service.order_item_id && (
         <div className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-900">
           Customer serial linked: <span className="font-mono font-medium">{service.serial_no}</span>.
           {" "}Order verification will load only this serial from the order (not all units).
+        </div>
+      )}
+      {workflowUnlocked && service.serial_no && !service.order_item_id && (
+        <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+          Request serial on file: <span className="font-mono font-medium">{service.serial_no}</span>.
+          {" "}Verify order loads <strong>all installed units</strong> on the order (not filtered to this serial unless already linked to a line).
         </div>
       )}
 
@@ -225,12 +254,15 @@ export default function ServiceUnitAssignmentPanel({
         <button
           type="button"
           onClick={verifyOrder}
-          disabled={orderVerified}
+          disabled={orderVerified || verifyBusy || parentBusy || !orderVerifyInput.trim()}
           className="rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {orderVerified ? "Order verified" : "Verify Order"}
+          {orderVerified ? "Order verified" : verifyBusy ? "Verifying…" : "Verify Order"}
         </button>
       </div>
+      {verifyErr && (
+        <p className="rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-700">{verifyErr}</p>
+      )}
 
       {workflowUnlocked && !orderVerified && orderSearchResults.length > 0 && (
         <div className="-mt-2 space-y-2 rounded-md border border-slate-200 bg-white p-2 shadow-sm">
@@ -333,7 +365,7 @@ export default function ServiceUnitAssignmentPanel({
       )}
 
       {workflowUnlocked && orderItems.length > 0 && (
-        <div className="overflow-x-auto rounded-md border border-slate-200">
+        <div id="service-order-items-table" className="overflow-x-auto rounded-md border border-slate-200">
           <table className="min-w-full text-sm">
             <thead className="bg-slate-100 text-left text-slate-700">
               <tr>

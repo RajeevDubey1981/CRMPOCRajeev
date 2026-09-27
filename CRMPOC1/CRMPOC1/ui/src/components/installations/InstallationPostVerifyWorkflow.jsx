@@ -23,7 +23,7 @@ function isImagePath(path) {
   return /\.(png|jpe?g|gif|webp)$/i.test(path || "");
 }
 
-function PaymentQrPreview({ path, label = "QR code" }) {
+function UploadedFilePreview({ path, label = "Uploaded file", downloadLabel = "Download file" }) {
   const [objectUrl, setObjectUrl] = useState("");
   const [isImage, setIsImage] = useState(false);
   const [loadFailed, setLoadFailed] = useState(false);
@@ -39,7 +39,7 @@ function PaymentQrPreview({ path, label = "QR code" }) {
     let active = true;
     let nextObjectUrl = "";
 
-    async function loadQr() {
+    async function loadFile() {
       setLoadFailed(false);
       try {
         const response = await api.get(path, { responseType: "blob" });
@@ -57,7 +57,7 @@ function PaymentQrPreview({ path, label = "QR code" }) {
       }
     }
 
-    loadQr();
+    loadFile();
 
     return () => {
       active = false;
@@ -78,10 +78,10 @@ function PaymentQrPreview({ path, label = "QR code" }) {
         />
       )}
       {objectUrl && !isImage && (
-        <p className="mt-2 text-xs text-slate-600">QR file uploaded. Use download to open it.</p>
+        <p className="mt-2 text-xs text-slate-600">Document uploaded. Use download to open it.</p>
       )}
       {loadFailed && (
-        <p className="mt-2 text-xs text-rose-600">Unable to preview QR code. Try the download link below.</p>
+        <p className="mt-2 text-xs text-rose-600">Unable to preview this file. Try the download link below.</p>
       )}
       <a
         href={objectUrl || toDownloadUrl(path)}
@@ -90,8 +90,81 @@ function PaymentQrPreview({ path, label = "QR code" }) {
         rel="noreferrer"
         className="mt-2 inline-block text-sm font-medium text-sky-700 underline"
       >
-        Download QR code
+        {downloadLabel}
       </a>
+    </div>
+  );
+}
+
+function PaymentQrPreview({ path, label = "QR code" }) {
+  return <UploadedFilePreview path={path} label={label} downloadLabel="Download QR code" />;
+}
+
+function installationNeedsSecondSerialProof(installation) {
+  const serialCount = Number(installation?.item_serial_count ?? 1);
+  if (serialCount >= 2) return true;
+  return Boolean((installation?.serial_no_2 || installation?.engineer_entered_serial_no_2 || "").trim());
+}
+
+function buildCompletionProofSlots(installation) {
+  const apiProofs = installation?.completion_proofs;
+  if (Array.isArray(apiProofs) && apiProofs.length > 0) {
+    return apiProofs.map((proof) => {
+      const serialLabel = (proof.serial_no || "").trim()
+        || (proof.slot === 1 ? "Serial 1" : `Serial ${proof.slot}`);
+      return {
+        key: `slot-${proof.slot}`,
+        label: proof.slot === 1 ? `Serial — ${serialLabel}` : `Serial ${proof.slot} — ${serialLabel}`,
+        path: proof.file_path || null,
+      };
+    });
+  }
+
+  const slots = [];
+  const serial1 = (installation.serial_no || installation.engineer_entered_serial_no || "Serial 1").trim();
+  slots.push({
+    key: "serial-1",
+    label: `Serial — ${serial1}`,
+    path: installation.work_report_file_path || null,
+  });
+  if (installationNeedsSecondSerialProof(installation)) {
+    const serial2 = (installation.serial_no_2 || installation.engineer_entered_serial_no_2 || "Serial 2").trim();
+    slots.push({
+      key: "serial-2",
+      label: `Serial 2 — ${serial2}`,
+      path: installation.work_report_file_path_2 || null,
+    });
+  }
+  return slots;
+}
+
+function CompletionProofReview({ installation, title = "Installation completion proof" }) {
+  const slots = buildCompletionProofSlots(installation);
+  if (!slots.length) return null;
+
+  return (
+    <div className="mt-3 space-y-3">
+      <div className="text-sm font-medium text-slate-800">{title}</div>
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+        {slots.map((slot) => (
+          slot.path ? (
+            <UploadedFilePreview
+              key={slot.key}
+              path={slot.path}
+              label={slot.label}
+              downloadLabel={`Download proof — ${slot.label}`}
+            />
+          ) : (
+            <div
+              key={slot.key}
+              className="rounded-md border border-amber-200 bg-amber-50 p-3"
+            >
+              <div className="text-xs uppercase tracking-wide text-amber-800">{slot.label}</div>
+              <p className="mt-2 text-sm text-amber-900">No completion document uploaded for this serial.</p>
+            </div>
+          )
+        ))}
+      </div>
     </div>
   );
 }
@@ -126,7 +199,9 @@ export default function InstallationPostVerifyWorkflow({
     installation_date: toDateInputValue(installation.installation_date),
     work_report: installation.work_report || "",
     proof_document: null,
+    proof_document_serial_2: null,
   });
+  const [completionReviewRemarks, setCompletionReviewRemarks] = useState("");
   const [paymentForm, setPaymentForm] = useState({
     payment_amount: installation.payment_amount_requested || "",
     payment_type: installation.payment_type_requested || "Cash",
@@ -166,6 +241,8 @@ export default function InstallationPostVerifyWorkflow({
   const canRaisePayment = isAssignedEngineer
     && installation.status === "Installation Completed";
   const canApproveCompletion = isAdminLike && installation.status === "Completion Pending Approval";
+  const needsSecondSerialProof = installationNeedsSecondSerialProof(installation);
+  const hasSubmittedCompletionProof = Boolean(installation.work_report_file_path);
   const canApprovePayment = isAdminLike && installation.status === "Payment Pending";
   const isUpiPaymentApproval = canApprovePayment && adminForm.payment_type === "UPI";
   const showSubmittedPaymentQr = installation.payment_type_requested === "UPI"
@@ -242,13 +319,26 @@ export default function InstallationPostVerifyWorkflow({
   }
 
   async function reviewCompletion(decision) {
-    const remarks = window.prompt(`${decision} installation completion remarks (optional):`, "");
-    if (remarks === null) return;
+    setApprovalErr("");
+    const remarks = completionReviewRemarks.trim();
+    if (decision === "Approve" && buildCompletionProofSlots(installation).some((slot) => !slot.path)) {
+      const message = "Every serial on this unit must have a completion document before you can approve.";
+      setApprovalErr(message);
+      onError?.(message);
+      return;
+    }
+    if (decision === "Reject" && !remarks) {
+      const message = "Add remarks explaining what the engineer should fix before returning this installation.";
+      setApprovalErr(message);
+      onError?.(message);
+      return;
+    }
     await run(async () => {
       const body = new FormData();
       body.append("decision", decision);
-      if (remarks.trim()) body.append("remarks", remarks.trim());
+      if (remarks) body.append("remarks", remarks);
       await installationsApi.reviewCompletion(installationId, body);
+      setCompletionReviewRemarks("");
       setSubmitMsg(decision === "Approve" ? "Completion approved. Payment request is now available." : "Returned to engineer for correction.");
     });
   }
@@ -262,7 +352,17 @@ export default function InstallationPostVerifyWorkflow({
         <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-3">
           <Field label="Item code" value={installation.item_code} mono />
           <Field label="Serial" value={installation.serial_no} mono />
-          <Field label="Serial 2" value={installation.serial_no_2} mono />
+          <Field
+            label="Serial 2"
+            value={installation.serial_no_2 || installation.engineer_entered_serial_no_2}
+            mono
+          />
+          {Number(installation.item_serial_count ?? 1) >= 2 && (
+            <Field
+              label="Serials required on unit"
+              value={`${installation.item_serial_count} (completion proof needed for each)`}
+            />
+          )}
           <Field label="Billing" value={installation.admin_billing_type || "Free"} />
           <Field label="Status" value={installation.status} />
         </div>
@@ -309,9 +409,12 @@ export default function InstallationPostVerifyWorkflow({
             : "Installation completion recorded."}
         >
           <p className="text-xs text-emerald-800">
-            Upload installation proof (required) and record the installation date.
+            Upload installation proof for each serial on this unit (required) and record the installation date.
             Admin must approve completion before you can raise a payment request.
           </p>
+          {step7?.done && hasSubmittedCompletionProof && !canComplete && (
+            <CompletionProofReview installation={installation} title="Submitted completion proof" />
+          )}
           <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
             <div>
               <label className="text-xs uppercase tracking-wide text-slate-500">Installation date</label>
@@ -320,24 +423,47 @@ export default function InstallationPostVerifyWorkflow({
                 value={completeForm.installation_date}
                 onChange={(e) => setCompleteForm((current) => ({ ...current, installation_date: e.target.value }))}
                 className={`${fieldClass} mt-1`}
+                disabled={!canComplete}
               />
             </div>
             <div>
               <label className="text-xs uppercase tracking-wide text-slate-500">
-                Installation proof <span className="text-rose-600">*</span>
+                Installation proof — Serial {(installation.serial_no || "").trim() || "1"}
+                <span className="text-rose-600"> *</span>
               </label>
               <input
                 type="file"
                 accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
-                required
+                required={canComplete}
+                disabled={!canComplete}
                 onChange={(e) => {
                   setCompleteErr("");
                   onError?.("");
                   setCompleteForm((current) => ({ ...current, proof_document: e.target.files?.[0] || null }));
                 }}
-                className="mt-1 block w-full text-sm"
+                className="mt-1 block w-full text-sm disabled:opacity-60"
               />
             </div>
+            {needsSecondSerialProof && (
+              <div className="md:col-span-2">
+                <label className="text-xs uppercase tracking-wide text-slate-500">
+                  Installation proof — Serial 2 {(installation.serial_no_2 || "").trim()}
+                  <span className="text-rose-600"> *</span>
+                </label>
+                <input
+                  type="file"
+                  accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                  required={canComplete}
+                  disabled={!canComplete}
+                  onChange={(e) => {
+                    setCompleteErr("");
+                    onError?.("");
+                    setCompleteForm((current) => ({ ...current, proof_document_serial_2: e.target.files?.[0] || null }));
+                  }}
+                  className="mt-1 block w-full text-sm disabled:opacity-60"
+                />
+              </div>
+            )}
             <div className="md:col-span-2">
               <label className="text-xs uppercase tracking-wide text-slate-500">Work report</label>
               <textarea
@@ -346,52 +472,53 @@ export default function InstallationPostVerifyWorkflow({
                 onChange={(e) => setCompleteForm((current) => ({ ...current, work_report: e.target.value }))}
                 className={`${fieldClass} mt-1`}
                 placeholder="Summary of installation work completed"
+                disabled={!canComplete}
               />
             </div>
           </div>
           {completeErr && (
             <p className="mt-3 rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-700">{completeErr}</p>
           )}
-          <button
-            type="button"
-            disabled={busy || !completeForm.proof_document}
-            onClick={() => {
-              if (!completeForm.proof_document) {
-                const message = "Installation proof is required before submitting completion.";
-                setCompleteErr(message);
-                onError?.(message);
-                return;
+          {canComplete && (
+            <button
+              type="button"
+              disabled={
+                busy
+                || !completeForm.proof_document
+                || (needsSecondSerialProof && !completeForm.proof_document_serial_2)
               }
-              run(async () => {
-                setCompleteErr("");
-                const fd = new FormData();
-                fd.append("installation_date", completeForm.installation_date);
-                if (completeForm.work_report) fd.append("work_report", completeForm.work_report);
-                fd.append("proof_document", completeForm.proof_document);
-                await installationsApi.completeInstallation(installationId, fd);
-                setSubmitMsg("Installation completion submitted. Waiting for admin approval.");
-              });
-            }}
-            className="mt-3 rounded-md bg-emerald-600 px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            Submit installation completion
-          </button>
+              onClick={() => {
+                if (!completeForm.proof_document) {
+                  const message = "Installation proof for Serial 1 is required before submitting completion.";
+                  setCompleteErr(message);
+                  onError?.(message);
+                  return;
+                }
+                if (needsSecondSerialProof && !completeForm.proof_document_serial_2) {
+                  const message = "Installation proof for Serial 2 is required for this unit.";
+                  setCompleteErr(message);
+                  onError?.(message);
+                  return;
+                }
+                run(async () => {
+                  setCompleteErr("");
+                  const fd = new FormData();
+                  fd.append("installation_date", completeForm.installation_date);
+                  if (completeForm.work_report) fd.append("work_report", completeForm.work_report);
+                  fd.append("proof_document", completeForm.proof_document);
+                  if (completeForm.proof_document_serial_2) {
+                    fd.append("proof_document_serial_2", completeForm.proof_document_serial_2);
+                  }
+                  await installationsApi.completeInstallation(installationId, fd);
+                  setSubmitMsg("Installation completion submitted. Waiting for admin approval.");
+                });
+              }}
+              className="mt-3 rounded-md bg-emerald-600 px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Submit installation completion
+            </button>
+          )}
         </WorkflowStepSection>
-      )}
-
-      {installation.work_report_file_path && (
-        <div className="rounded-md border border-slate-200 bg-white p-4 text-sm">
-          <div className="font-medium text-slate-800">Submitted installation proof</div>
-          <a
-            href={toDownloadUrl(installation.work_report_file_path)}
-            download
-            target="_blank"
-            rel="noreferrer"
-            className="mt-2 inline-block text-sky-700 underline"
-          >
-            Download installation proof
-          </a>
-        </div>
       )}
 
       {canApproveCompletion && (
@@ -403,11 +530,67 @@ export default function InstallationPostVerifyWorkflow({
           summary="Engineer completion is waiting for Admin/Indcool approval before payment."
         >
           <p className="text-xs text-emerald-800">
-            Review the submitted installation proof and work report, then approve or reject.
+            Review installation date, work report, and proof for each serial below. Add optional approval remarks or
+            required feedback if you return the job to the engineer.
           </p>
+          <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
+            <Field
+              label="Installation date"
+              value={installation.installation_date
+                ? new Date(installation.installation_date).toLocaleDateString()
+                : "—"}
+            />
+            <Field label="Billing" value={installation.admin_billing_type || "Free"} />
+            <div className="md:col-span-2">
+              <div className="text-xs uppercase tracking-wide text-slate-500">Work report</div>
+              <div className="mt-1 whitespace-pre-wrap rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800">
+                {(installation.work_report || "").trim() || "—"}
+              </div>
+            </div>
+          </div>
+          <CompletionProofReview installation={installation} />
+          {buildCompletionProofSlots(installation).some((slot) => !slot.path) && (
+            <p className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+              One or more serial numbers are missing a completion document. Return the installation to the engineer
+              so they can upload proof for each serial before you approve.
+            </p>
+          )}
+          <div className="mt-4">
+            <label className="text-xs uppercase tracking-wide text-slate-500">
+              Admin remarks
+              <span className="ml-1 font-normal normal-case text-slate-500">(required if returning to engineer)</span>
+            </label>
+            <textarea
+              rows={3}
+              value={completionReviewRemarks}
+              onChange={(e) => {
+                setApprovalErr("");
+                setCompletionReviewRemarks(e.target.value);
+              }}
+              className={`${fieldClass} mt-1`}
+              placeholder="Optional notes on approval, or explain what must be corrected before resubmission."
+            />
+          </div>
+          {approvalErr && (
+            <p className="mt-3 rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-700">{approvalErr}</p>
+          )}
           <div className="mt-3 flex flex-wrap gap-2">
-            <button type="button" onClick={() => reviewCompletion("Reject")} disabled={busy} className="rounded-md border border-rose-300 px-4 py-2 text-sm text-rose-700 disabled:opacity-50">Return to engineer</button>
-            <button type="button" onClick={() => reviewCompletion("Approve")} disabled={busy} className="rounded-md bg-emerald-600 px-4 py-2 text-sm text-white disabled:opacity-50">Approve completion</button>
+            <button
+              type="button"
+              onClick={() => reviewCompletion("Reject")}
+              disabled={busy}
+              className="rounded-md border border-rose-300 px-4 py-2 text-sm text-rose-700 disabled:opacity-50"
+            >
+              Return to engineer
+            </button>
+            <button
+              type="button"
+              onClick={() => reviewCompletion("Approve")}
+              disabled={busy}
+              className="rounded-md bg-emerald-600 px-4 py-2 text-sm text-white disabled:opacity-50"
+            >
+              Approve completion
+            </button>
           </div>
         </WorkflowStepSection>
       )}

@@ -7,7 +7,7 @@ from collections import defaultdict
 from datetime import datetime, timezone
 
 from fastapi import HTTPException, status
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.models.item_master import ItemMaster
@@ -23,7 +23,9 @@ from app.services.order_item_context import derive_service_type_for_item, serial
 from app.services.service_documents import order_workflow_unlocked
 from app.services.service_serial import (
     filter_installed_items_by_serial,
+    find_customer_installed_order_item,
     find_customer_order_item_by_serial,
+    order_item_is_installed_for_service,
     order_item_matches_serial,
     serial_exists_in_order_records,
 )
@@ -35,9 +37,6 @@ from app.services.service_unit_workflow import (
     payment_requests_for_service,
 )
 
-SERVICE_ELIGIBLE_INSTALLATION_STATUS = "Completed"
-
-
 def _json_load_parts(observation) -> list[str]:
     if observation is None or not observation.parts_required_json:
         return []
@@ -48,12 +47,62 @@ def _json_load_parts(observation) -> list[str]:
         return []
 
 
-def _is_installed_order_item(order_item: OrderItem) -> bool:
-    return (order_item.installation_status or "").strip() == SERVICE_ELIGIBLE_INSTALLATION_STATUS
+def _is_installed_order_item(db: Session, order_item: OrderItem) -> bool:
+    return order_item_is_installed_for_service(db, order_item)
 
 
 def _now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+BILLING_LOCKED_UNIT_STATUSES = frozenset({"Payment Completed", "Closed"})
+
+
+def apply_unit_billing_choice(
+    db: Session,
+    unit: ServiceRequestUnit,
+    billing_type: str,
+    *,
+    order_item: OrderItem | None = None,
+) -> None:
+    billing = (billing_type or "").strip()
+    if billing not in {"Free", "Paid"}:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "billing_type must be Free or Paid")
+    if order_item is None and unit.order_item_id:
+        order_item = db.get(OrderItem, unit.order_item_id)
+    if billing == "Paid":
+        unit.service_type = "Paid Service"
+    else:
+        unit.service_type = (
+            derive_service_type_for_item(db, order_item) if order_item else "Free Service"
+        )
+    if order_item is not None:
+        fields = serial_fields_for_item(db, order_item)
+        if fields.get("warranty_status"):
+            unit.warranty_status = fields.get("warranty_status")
+
+
+def apply_service_billing_choice(
+    db: Session,
+    service: ServiceRequest,
+    billing_type: str,
+    *,
+    order_item: OrderItem | None = None,
+) -> None:
+    billing = (billing_type or "").strip()
+    if billing not in {"Free", "Paid"}:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "billing_type must be Free or Paid")
+    if order_item is None and service.order_item_id:
+        order_item = db.get(OrderItem, service.order_item_id)
+    if billing == "Paid":
+        service.service_type = "Paid Service"
+    elif order_item is not None:
+        service.service_type = derive_service_type_for_item(db, order_item)
+    else:
+        service.service_type = "Free Service"
+    if order_item is not None:
+        fields = serial_fields_for_item(db, order_item)
+        service.warranty_status = fields.get("warranty_status")
 
 
 def _resolve_item_master(db: Session, item_code: str | None, item_id: int | None) -> ItemMaster | None:
@@ -108,7 +157,10 @@ def verify_order_for_service(
     elif order_no:
         normalized = order_no.strip()
         order = db.scalar(
-            select(Order).where(Order.order_no == normalized, Order.deleted_at.is_(None))
+            select(Order).where(
+                func.lower(Order.order_no) == normalized.lower(),
+                Order.deleted_at.is_(None),
+            )
         )
     if order is None or order.deleted_at is not None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Order not found")
@@ -126,7 +178,7 @@ def verify_order_for_service(
     order_items = db.scalars(
         select(OrderItem).where(OrderItem.order_id == order.id).order_by(OrderItem.id)
     ).all()
-    installed_items = [row for row in order_items if _is_installed_order_item(row)]
+    installed_items = [row for row in order_items if _is_installed_order_item(db, row)]
     if not installed_items:
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST,
@@ -223,7 +275,7 @@ def verify_order_for_service(
     # Drop unassigned units that are not installation-complete (e.g. after re-verify).
     for unit in list(existing_units.values()):
         order_item = db.get(OrderItem, unit.order_item_id)
-        if order_item is None or not _is_installed_order_item(order_item):
+        if order_item is None or not _is_installed_order_item(db, order_item):
             if unit.assigned_engineer_id is None:
                 db.delete(unit)
             continue
@@ -240,25 +292,39 @@ def build_order_item_summaries(db: Session, service_id: int) -> list[dict]:
         .where(ServiceRequestItem.service_request_id == service_id)
         .order_by(ServiceRequestItem.item_code)
     ).all()
+    order_ids = {item.order_id for item in items if item.order_id}
+    order_items_by_order_code: dict[tuple[int, str], list[OrderItem]] = defaultdict(list)
+    if order_ids:
+        for row in db.scalars(select(OrderItem).where(OrderItem.order_id.in_(order_ids))):
+            code = (row.item_code or "").strip() or "UNASSIGNED"
+            order_items_by_order_code[(row.order_id, code)].append(row)
+
+    unit_rows = db.scalars(
+        select(ServiceRequestUnit).where(ServiceRequestUnit.service_request_id == service_id)
+    ).all()
+    order_item_ids = {unit.order_item_id for unit in unit_rows}
+    order_item_map = {}
+    if order_item_ids:
+        for row in db.scalars(select(OrderItem).where(OrderItem.id.in_(order_item_ids))):
+            order_item_map[row.id] = row
+
+    units_by_item_id: dict[int, list[ServiceRequestUnit]] = defaultdict(list)
+    for unit in unit_rows:
+        units_by_item_id[unit.service_request_item_id].append(unit)
+
     summaries: list[dict] = []
     for item in items:
-        units = db.scalars(
-            select(ServiceRequestUnit).where(ServiceRequestUnit.service_request_item_id == item.id)
-        ).all()
+        units = units_by_item_id.get(item.id, [])
         eligible_units = []
         for unit in units:
-            order_item = db.get(OrderItem, unit.order_item_id)
-            if order_item is not None and _is_installed_order_item(order_item):
+            order_item = order_item_map.get(unit.order_item_id)
+            if order_item is not None and _is_installed_order_item(db, order_item):
                 eligible_units.append(unit)
 
-        order_items_for_code = db.scalars(
-            select(OrderItem).where(
-                OrderItem.order_id == item.order_id,
-                func.coalesce(OrderItem.item_code, "") == item.item_code,
-            )
-        ).all()
+        item_code = (item.item_code or "").strip() or "UNASSIGNED"
+        order_items_for_code = order_items_by_order_code.get((item.order_id, item_code), [])
         total_ordered = len(order_items_for_code)
-        installed_on_order = sum(1 for row in order_items_for_code if _is_installed_order_item(row))
+        installed_on_order = sum(1 for row in order_items_for_code if _is_installed_order_item(db, row))
         pending_installation = total_ordered - installed_on_order
 
         serials_available = sum(
@@ -306,11 +372,22 @@ def build_unit_rows(
     approval_map = approvals_for_service(db, service_id)
     completion_map = completions_for_service(db, service_id)
     payment_map = payment_requests_for_service(db, service_id)
-    for unit, item in db.execute(stmt).all():
-        order_item = db.get(OrderItem, unit.order_item_id)
-        if order_item is None or not _is_installed_order_item(order_item):
+    joined_rows = list(db.execute(stmt).all())
+    order_item_ids = {unit.order_item_id for unit, _ in joined_rows}
+    order_item_map = {}
+    if order_item_ids:
+        for row in db.scalars(select(OrderItem).where(OrderItem.id.in_(order_item_ids))):
+            order_item_map[row.id] = row
+    engineer_ids = {unit.assigned_engineer_id for unit, _ in joined_rows if unit.assigned_engineer_id}
+    engineer_map = {}
+    if engineer_ids:
+        for row in db.scalars(select(User).where(User.id.in_(engineer_ids))):
+            engineer_map[row.id] = row
+    for unit, item in joined_rows:
+        order_item = order_item_map.get(unit.order_item_id)
+        if order_item is None or not _is_installed_order_item(db, order_item):
             continue
-        engineer = db.get(User, unit.assigned_engineer_id) if unit.assigned_engineer_id else None
+        engineer = engineer_map.get(unit.assigned_engineer_id) if unit.assigned_engineer_id else None
         serial_values: list[str | None] = []
         if item.serial_count >= 1:
             serial_values.append(unit.serial_no)
@@ -377,6 +454,149 @@ def build_unit_rows(
     return rows
 
 
+def _ensure_service_item_and_unit(
+    db: Session,
+    service: ServiceRequest,
+    order: Order,
+    order_item: OrderItem,
+) -> ServiceRequestUnit:
+    item_code = (order_item.item_code or "").strip() or "UNASSIGNED"
+    master = _resolve_item_master(db, item_code, order_item.item_id)
+    serial_count = master.serial_count if master else 1
+    item_name = master.item_name if master else item_code
+
+    sr_item = db.scalar(
+        select(ServiceRequestItem).where(
+            ServiceRequestItem.service_request_id == service.id,
+            ServiceRequestItem.item_code == item_code,
+        )
+    )
+    if sr_item is None:
+        sr_item = ServiceRequestItem(
+            service_request_id=service.id,
+            order_id=order.id,
+            item_code=item_code,
+            item_id=master.id if master else order_item.item_id,
+            item_name=item_name,
+            ordered_quantity=1,
+            serial_count=serial_count,
+        )
+        db.add(sr_item)
+        db.flush()
+    else:
+        sr_item.item_id = master.id if master else order_item.item_id
+        sr_item.item_name = item_name
+        sr_item.serial_count = serial_count
+
+    unit = db.scalar(
+        select(ServiceRequestUnit).where(
+            ServiceRequestUnit.service_request_id == service.id,
+            ServiceRequestUnit.order_item_id == order_item.id,
+        )
+    )
+    if unit is None:
+        unit = ServiceRequestUnit(
+            service_request_id=service.id,
+            service_request_item_id=sr_item.id,
+            order_item_id=order_item.id,
+            serial_no=order_item.serial_no,
+            serial_no_2=order_item.serial_no_2,
+        )
+        db.add(unit)
+        db.flush()
+    else:
+        unit.serial_no = order_item.serial_no
+        unit.serial_no_2 = order_item.serial_no_2
+        unit.service_request_item_id = sr_item.id
+    return unit
+
+
+def add_service_unit_by_serial(
+    db: Session,
+    service: ServiceRequest,
+    *,
+    serial_no: str,
+    engineer_id: int,
+    assigned_by_user_id: int,
+    billing_type: str | None = "Free",
+    remarks: str | None = None,
+) -> ServiceRequestUnit:
+    """Attach an installation-complete order serial to this service request and assign it to an engineer.
+
+    The serial may be on any order for the same customer as this service request (not only the linked order).
+    """
+    normalized = (serial_no or "").strip()
+    if not normalized:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Serial number is required")
+
+    if not (
+        (service.customer_mobile or "").strip()
+        or (service.customer_email or "").strip()
+        or (service.customer_name or "").strip()
+        or service.order_id is not None
+    ):
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "Identify the customer or verify an order on this service request before adding serials.",
+        )
+
+    order_item = find_customer_installed_order_item(db, service, normalized)
+    if order_item is None:
+        if find_customer_order_item_by_serial(db, service, normalized) is None:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                "Serial number was not found on any order for this customer.",
+            )
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "Installation must be completed for this serial before it can be added to a service request.",
+        )
+
+    item_order = db.get(Order, order_item.order_id)
+    if item_order is None or item_order.deleted_at is not None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Order for this serial is not available")
+
+    if service.order_id is None:
+        service.order_id = item_order.id
+        service.customer_name = item_order.customer_name or service.customer_name
+        service.customer_mobile = item_order.customer_contact or service.customer_mobile
+        service.customer_email = item_order.customer_email or service.customer_email
+        service.customer_address = item_order.customer_address or service.customer_address
+
+    if engineer_id is None:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "An engineer must be selected to assign this serial.",
+        )
+
+    unit = _ensure_service_item_and_unit(db, service, item_order, order_item)
+
+    if unit.assigned_engineer_id is not None and unit.assigned_engineer_id != engineer_id:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "This serial is already assigned to another engineer on this service request.",
+        )
+
+    if unit.assigned_engineer_id is None:
+        assign_units_to_engineer(
+            db,
+            service,
+            [unit.id],
+            engineer_id,
+            assigned_by_user_id,
+            remarks,
+            billing_type,
+        )
+        db.refresh(unit)
+
+    if unit.assigned_engineer_id is None:
+        raise HTTPException(
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            "Serial was linked but engineer assignment did not save. Try again or ask service team to assign the unit.",
+        )
+    return unit
+
+
 def assign_units_to_engineer(
     db: Session,
     service: ServiceRequest,
@@ -407,7 +627,7 @@ def assign_units_to_engineer(
 
     for unit in units:
         order_item = db.get(OrderItem, unit.order_item_id)
-        if order_item is None or not _is_installed_order_item(order_item):
+        if order_item is None or not _is_installed_order_item(db, order_item):
             serial_label = unit.serial_no or unit.serial_no_2 or f"unit #{unit.id}"
             raise HTTPException(
                 status.HTTP_400_BAD_REQUEST,
@@ -428,12 +648,7 @@ def assign_units_to_engineer(
 
     for unit in units:
         order_item = db.get(OrderItem, unit.order_item_id)
-        fields = serial_fields_for_item(db, order_item)
-        if billing == "Paid":
-            unit.service_type = "Paid Service"
-        else:
-            unit.service_type = derive_service_type_for_item(db, order_item) if order_item else "Free Service"
-        unit.warranty_status = fields.get("warranty_status")
+        apply_unit_billing_choice(db, unit, billing, order_item=order_item)
         unit.assigned_engineer_id = engineer.id
         unit.assigned_at = now
         unit.assigned_by_user_id = assigned_by_user_id
@@ -478,7 +693,7 @@ def build_engineer_unit_groups(db: Session, engineer_id: int) -> list[dict]:
     groups: dict[tuple[int, str], dict] = {}
     for unit, item, service in db.execute(stmt).all():
         order_item = db.get(OrderItem, unit.order_item_id)
-        if order_item is None or not _is_installed_order_item(order_item):
+        if order_item is None or not _is_installed_order_item(db, order_item):
             continue
         order = db.get(Order, service.order_id) if service.order_id else None
         key = (service.id, item.item_code)

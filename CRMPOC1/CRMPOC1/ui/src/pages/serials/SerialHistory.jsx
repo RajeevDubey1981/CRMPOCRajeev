@@ -41,6 +41,25 @@ function sortEventsDesc(items) {
   });
 }
 
+function formatAmount(value) {
+  if (value == null || value === "") return null;
+  const n = Number(value);
+  if (Number.isNaN(n)) return String(value);
+  return n.toLocaleString("en-IN", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+}
+
+function serviceEventBilling(event) {
+  const meta = event.metadata;
+  if (!meta) return null;
+  let billing = meta.admin_billing_type;
+  if (!billing && meta.service_type) {
+    billing = meta.service_type === "Paid Service" ? "Paid" : "Free";
+  }
+  if (!billing) return null;
+  const amount = meta.amount ?? meta.approved_amount ?? meta.final_amount;
+  return { billing, amount };
+}
+
 export default function SerialHistory() {
   const [searchParams, setSearchParams] = useSearchParams();
   const initialSerial = searchParams.get("serial") || "";
@@ -231,6 +250,32 @@ export default function SerialHistory() {
                       <div className="text-xs text-slate-500">{fmt(event.event_at)}</div>
                     </div>
                     <h3 className="mt-3 text-sm font-semibold text-slate-900">{event.title}</h3>
+                    {event.event_type === "SERVICE" && (() => {
+                      const billingInfo = serviceEventBilling(event);
+                      if (!billingInfo) return null;
+                      const amountLabel = billingInfo.billing === "Paid" ? formatAmount(billingInfo.amount) : null;
+                      return (
+                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                          <span
+                            className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+                              billingInfo.billing === "Paid"
+                                ? "bg-violet-100 text-violet-800"
+                                : "bg-emerald-100 text-emerald-800"
+                            }`}
+                          >
+                            {billingInfo.billing === "Paid" ? "Paid service" : "Free service"}
+                          </span>
+                          {amountLabel != null && (
+                            <span className="text-xs font-medium text-slate-700">
+                              Amount: ₹{amountLabel}
+                            </span>
+                          )}
+                          {billingInfo.billing === "Paid" && amountLabel == null && (
+                            <span className="text-xs text-slate-500">Amount not recorded yet</span>
+                          )}
+                        </div>
+                      );
+                    })()}
                     <p className="mt-1 text-sm text-slate-700">{event.description}</p>
                     <div className="mt-2 text-xs text-slate-500">Performed By: {event.performed_by || "System"}</div>
                     {event.remarks && <div className="mt-2 rounded-md bg-slate-50 px-3 py-2 text-sm text-slate-700">{event.remarks}</div>}
