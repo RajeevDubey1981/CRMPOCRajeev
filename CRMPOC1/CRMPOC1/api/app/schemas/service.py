@@ -68,6 +68,15 @@ class ServiceIdentifyCustomer(BaseModel):
     customer_address: str | None = None
 
 
+class ServiceDeskUserAssignIn(BaseModel):
+    service_user_id: int
+    remarks: str | None = None
+
+
+class ServiceDeskReturnIn(BaseModel):
+    remarks: str | None = None
+
+
 class ServiceAssignmentIn(BaseModel):
     assignee_type: Literal["engineer", "vendor"]
     assignee_id: int
@@ -450,6 +459,8 @@ class ServiceOut(BaseModel):
     warranty_status: str | None
     assigned_engineer_id: int | None
     assigned_engineer_name: str | None = None
+    assigned_service_user_id: int | None = None
+    assigned_service_user_name: str | None = None
     assigned_vendor_id: int | None
     assigned_vendor_name: str | None = None
     requires_documents: bool
@@ -488,6 +499,7 @@ class ServiceListItem(BaseModel):
     service_type: str | None = None
     warranty_status: str | None = None
     assigned_engineer_name: str | None = None
+    assigned_service_user_name: str | None = None
     assigned_vendor_name: str | None = None
     requires_documents: bool
     document_count: int = 0

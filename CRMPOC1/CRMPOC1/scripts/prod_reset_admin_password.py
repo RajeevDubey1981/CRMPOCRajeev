@@ -1,4 +1,4 @@
-"""Reset production admin password and sync SEED_ADMIN_PASSWORD in .env."""
+"""Reset production admin password in the database (does not touch .env)."""
 from __future__ import annotations
 
 import secrets
@@ -10,8 +10,6 @@ import paramiko
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from deploy import load_config, ssh_run  # noqa: E402
-
-ENV_PATH = "/var/www/indcool/api/.env"
 
 REMOTE_PY = r'''
 import os
@@ -80,14 +78,6 @@ def main() -> int:
     )
     out = ssh_run(client, cmd)
     print(out.strip())
-
-    # Keep seed/deploy from reverting the password
-    env_escaped = new_password.replace("'", "'\\''")
-    ssh_run(
-        client,
-        f"sudo sed -i 's/^SEED_ADMIN_PASSWORD=.*/SEED_ADMIN_PASSWORD={env_escaped}/' {ENV_PATH} "
-        f"|| echo 'SEED_ADMIN_PASSWORD={env_escaped}' | sudo tee -a {ENV_PATH}",
-    )
     client.close()
 
     print("\n--- Login credentials (production) ---")
