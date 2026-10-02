@@ -10,7 +10,7 @@ export default function Pagination({ page, perPage, total, onPageChange, onPerPa
         <select
           value={perPage}
           onChange={(e) => onPerPageChange?.(Number(e.target.value))}
-          className="rounded-md border border-slate-300 px-2 py-1"
+          className="rounded-md border border-slate-300 px-2 py-1 text-base sm:text-sm"
         >
           {[10, 20, 30, 50, 100].map((n) => (
             <option key={n} value={n}>{n}</option>
