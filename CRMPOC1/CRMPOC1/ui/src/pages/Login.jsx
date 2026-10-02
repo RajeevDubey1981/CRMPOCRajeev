@@ -41,11 +41,12 @@ export default function Login() {
           </div>
           <p className="mt-2 text-xs text-white/85 md:text-sm">Made in India. Made for Indians.</p>
         </div>
-        <div className="my-6 md:my-0">
-          <div className="text-3xl font-black tracking-tight md:text-5xl">SSO</div>
-          <p className="mt-2 text-base font-bold md:text-xl">Service, Sales and Operations</p>
+        <div className="my-8 text-xl font-bold leading-snug md:my-0 md:text-3xl">
+          Service and operations,
+          <br />
+          all in one place.
         </div>
-        <p className="hidden text-xs text-white/70 md:block">INDcool</p>
+        <p className="text-xs text-white/80 md:text-sm">INDcool CRM</p>
       </div>
       <div className="flex flex-1 items-center justify-center p-4 md:p-8">
         <form
@@ -53,7 +54,7 @@ export default function Login() {
           className="w-full max-w-sm space-y-4 rounded-xl bg-white p-6 shadow-lg md:p-8"
         >
           <div>
-            <h1 className="text-2xl font-bold text-indcool-navy">Welcome to INDcool SSO</h1>
+            <h1 className="text-2xl font-bold text-indcool-navy">Welcome to INDcool</h1>
             <p className="text-sm text-slate-500">Sign in to continue</p>
           </div>
           {error && (

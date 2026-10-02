@@ -145,10 +145,8 @@ export default function Sidebar({ collapsed, mobileOpen = false, onNavigate }) {
       }`}
     >
       <div className="px-2.5 py-4">
-        <div className="text-base font-black tracking-wide text-white leading-tight">
-          IND<span className="text-sky-300">cool</span> SSO
-        </div>
-        <div className="text-[10px] leading-snug text-slate-200">Service, Sales and Operations</div>
+        <div className="text-base font-black tracking-wide text-white leading-tight">INDcool CRM</div>
+        <div className="text-[10px] leading-snug text-slate-200">Service and operations</div>
       </div>
       <nav className="space-y-0.5 px-2 pb-6">
         {filteredNav.map((item) =>
