@@ -1,6 +1,5 @@
-import { Link } from "react-router-dom";
-
 import { getLinkedRequestInfo } from "../../utils/complaintLinks.js";
+import ReferenceChip from "./ReferenceChip.jsx";
 
 export default function LinkedRequestCell({ complaint, onClick, plainInstallationLink = false }) {
   const linked = getLinkedRequestInfo(complaint);
@@ -9,19 +8,15 @@ export default function LinkedRequestCell({ complaint, onClick, plainInstallatio
   }
 
   if (plainInstallationLink && linked.kind === "installation") {
-    return <span className="font-mono text-slate-600">{linked.label}</span>;
+    return <ReferenceChip label={linked.label} title={linked.label} />;
   }
 
   return (
-    <Link
+    <ReferenceChip
+      label={linked.label}
+      title={`Open ${linked.kind === "installation" ? "installation" : "service"} ${linked.label}`}
       to={linked.path}
-      onClick={(e) => {
-        e.stopPropagation();
-        onClick?.(e);
-      }}
-      className="font-mono text-brand-600 underline decoration-brand-300 underline-offset-2 hover:text-brand-700"
-    >
-      {linked.label}
-    </Link>
+      onClick={onClick}
+    />
   );
 }

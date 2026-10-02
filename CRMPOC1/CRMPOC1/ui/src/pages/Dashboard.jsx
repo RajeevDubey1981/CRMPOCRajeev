@@ -10,6 +10,7 @@ import Pagination from "../components/Pagination.jsx";
 import StatusBadge from "../components/StatusBadge.jsx";
 import ComplaintQuickViewModal from "../components/complaints/ComplaintQuickViewModal.jsx";
 import LinkedRequestCell from "../components/complaints/LinkedRequestCell.jsx";
+import ReferenceChip from "../components/complaints/ReferenceChip.jsx";
 import { api } from "../api/client.js";
 import { complaintsApi } from "../api/complaints.js";
 import { partnerRegistrationsApi } from "../api/partnerRegistrations.js";
@@ -112,8 +113,13 @@ const GRID_COLUMNS = [
 ];
 
 const GRID_COLUMN_CELL_CLASS = {
+  id: "w-14 whitespace-nowrap align-middle tabular-nums",
+  comp_no: "min-w-[10.5rem] whitespace-nowrap align-middle",
+  linked_request: "min-w-[10.5rem] whitespace-nowrap align-middle",
   status: "min-w-[11rem] whitespace-nowrap align-middle",
   workflow_action: "min-w-[10.5rem] whitespace-nowrap align-middle",
+  customer_mobile: "whitespace-nowrap align-middle tabular-nums",
+  customer_email: "max-w-[11rem] truncate align-middle",
 };
 
 /* ─── component ─────────────────────────────────────────────────── */
@@ -374,21 +380,21 @@ export default function Dashboard() {
       case "service_request_no":
         return service?.request_no || complaint?.service_request_no
           ? (
-            <span className="font-mono text-brand-700">
-              {service?.request_no || complaint?.service_request_no}
-            </span>
+            <ReferenceChip
+              label={service?.request_no || complaint?.service_request_no}
+              title={service?.request_no || complaint?.service_request_no}
+            />
           )
           : "—";
       case "comp_no":
         return complaint?.comp_no
           ? (
-            <button
-              type="button"
+            <ReferenceChip
+              label={complaint.comp_no}
+              title={`Complaint ${complaint.comp_no}`}
+              asButton
               onClick={(e) => { e.stopPropagation(); setViewTarget(complaint); }}
-              className="font-mono text-brand-600 underline decoration-brand-300 underline-offset-2 hover:text-brand-700"
-            >
-              {complaint.comp_no}
-            </button>
+            />
           )
           : "—";
       case "customer_name":
@@ -417,13 +423,12 @@ export default function Dashboard() {
         return <span className="font-medium text-slate-700">{c.id}</span>;
       case "comp_no":
         return (
-          <button
-            type="button"
+          <ReferenceChip
+            label={c.comp_no}
+            title={`Complaint ${c.comp_no}`}
+            asButton
             onClick={() => setViewTarget(c)}
-            className="font-mono text-brand-600 underline decoration-brand-300 underline-offset-2 hover:text-brand-700"
-          >
-            {c.comp_no}
-          </button>
+          />
         );
       case "customer_name":
         return <span className="max-w-[110px] truncate" title={c.customer_name}>{c.customer_name || "—"}</span>;
@@ -448,7 +453,7 @@ export default function Dashboard() {
       case "assigned_engineer_name":
         return <span className="whitespace-nowrap">{c.assigned_engineer_name || "—"}</span>;
       case "customer_mobile":
-        return c.customer_mobile || "—";
+        return <span className="whitespace-nowrap tabular-nums">{c.customer_mobile || "—"}</span>;
       case "model_details":
         return <span className="max-w-[100px] truncate" title={c.model_details || ""}>{trunc(c.model_details, 20)}</span>;
       case "problem_description":
@@ -645,7 +650,7 @@ export default function Dashboard() {
 
       {/* Complaint Grid */}
       <div className="overflow-x-auto rounded bg-white shadow-sm">
-        <table className="w-full min-w-[1280px] text-xs">
+        <table className="w-full min-w-[1320px] text-xs">
           <thead className="border-b-2 border-slate-200 bg-slate-50">
             <tr>
               {visibleColumns.map((column) => (

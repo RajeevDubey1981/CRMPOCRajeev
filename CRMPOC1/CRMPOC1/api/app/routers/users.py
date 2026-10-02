@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -7,9 +7,33 @@ from app.deps import get_current_user, require_roles
 from app.models.user import User
 from app.schemas.user import ResetPasswordRequest, UserCreate, UserOut, UserUpdate
 from app.security import hash_password
-from app.services.vendor_accounts import ensure_vendor_for_user
+from app.services.vendor_accounts import (
+    ensure_vendor_for_user,
+    sync_vendor_for_user_email_update,
+    vendor_master_for_user,
+)
 
 router = APIRouter(prefix="/api/users", tags=["users"])
+
+
+def _normalized_email(value: str | None) -> str:
+    return (value or "").strip().lower()
+
+
+def _user_out(db: Session, user: User) -> UserOut:
+    vendor = vendor_master_for_user(db, user)
+    return UserOut(
+        id=user.id,
+        name=user.name,
+        email=user.email,
+        role=user.role,
+        phone=user.phone,
+        is_active=user.is_active,
+        created_at=user.created_at,
+        updated_at=user.updated_at,
+        vendor_id=vendor.id if vendor else None,
+        vendor_code=vendor.vendor_code if vendor else None,
+    )
 
 
 @router.get("", response_model=list[UserOut])
@@ -28,7 +52,8 @@ def list_users(
     if search:
         like = f"%{search.strip()}%"
         stmt = stmt.where(or_(User.name.ilike(like), User.email.ilike(like)))
-    return db.scalars(stmt.order_by(User.id)).all()
+    users = db.scalars(stmt.order_by(User.id)).all()
+    return [_user_out(db, user) for user in users]
 
 
 @router.get("/{user_id}", response_model=UserOut)
@@ -40,7 +65,7 @@ def get_user(
     user = db.get(User, user_id)
     if user is None or user.deleted_at is not None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
-    return user
+    return _user_out(db, user)
 
 
 @router.post("", response_model=UserOut, status_code=status.HTTP_201_CREATED)
@@ -49,7 +74,12 @@ def create_user(
     db: Session = Depends(get_db),
     _: User = Depends(require_roles("admin")),
 ):
-    if db.scalar(select(User).where(User.email == body.email, User.deleted_at.is_(None))):
+    if db.scalar(
+        select(User).where(
+            func.lower(func.trim(User.email)) == _normalized_email(body.email),
+            User.deleted_at.is_(None),
+        )
+    ):
         raise HTTPException(status.HTTP_409_CONFLICT, "Email already exists")
     user = User(
         name=body.name,
@@ -64,7 +94,7 @@ def create_user(
     ensure_vendor_for_user(db, user)
     db.commit()
     db.refresh(user)
-    return user
+    return _user_out(db, user)
 
 
 @router.put("/{user_id}", response_model=UserOut)
@@ -79,19 +109,26 @@ def update_user(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
 
     data = body.model_dump(exclude_unset=True)
-    if "email" in data and data["email"] != user.email:
-        existing = db.scalar(
-            select(User).where(User.email == data["email"], User.id != user.id, User.deleted_at.is_(None))
-        )
-        if existing:
-            raise HTTPException(status.HTTP_409_CONFLICT, "Email already in use")
+    previous_email = user.email
+    if "email" in data:
+        new_email = (data["email"] or "").strip()
+        if _normalized_email(new_email) != _normalized_email(previous_email):
+            existing = db.scalar(
+                select(User).where(
+                    func.lower(func.trim(User.email)) == _normalized_email(new_email),
+                    User.id != user.id,
+                    User.deleted_at.is_(None),
+                )
+            )
+            if existing:
+                raise HTTPException(status.HTTP_409_CONFLICT, "Email already in use")
 
     for field, value in data.items():
         setattr(user, field, value)
-    ensure_vendor_for_user(db, user)
+    sync_vendor_for_user_email_update(db, user, previous_email)
     db.commit()
     db.refresh(user)
-    return user
+    return _user_out(db, user)
 
 
 @router.put("/{user_id}/reset-password", status_code=status.HTTP_204_NO_CONTENT)

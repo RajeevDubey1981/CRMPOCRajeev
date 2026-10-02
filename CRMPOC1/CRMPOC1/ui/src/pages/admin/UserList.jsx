@@ -75,6 +75,23 @@ function UserForm({ initial, roles, busy, onCancel, onSubmit }) {
             {roles.map((r) => <option key={r.id} value={r.name}>{r.name}</option>)}
           </select>
         </div>
+        {form.role === "vendor" && isEdit && (
+          <div>
+            <label className={labelClass}>Vendor code</label>
+            <input
+              readOnly
+              disabled
+              value={initial?.vendor_code || "—"}
+              className={`${fieldClass} bg-slate-50 text-slate-700`}
+              title={initial?.vendor_id ? `Vendor master id ${initial.vendor_id}` : "No vendor master linked for this email"}
+            />
+            {!initial?.vendor_code && (
+              <p className="mt-1 text-xs text-amber-700">
+                No vendor master row matches this user&apos;s email yet.
+              </p>
+            )}
+          </div>
+        )}
         <div>
           <label className={labelClass}>Phone</label>
           <input value={form.phone} onChange={(e) => set("phone", e.target.value)} className={fieldClass} />

@@ -10,6 +10,7 @@ import Pagination from "../../components/Pagination.jsx";
 import StatusBadge from "../../components/StatusBadge.jsx";
 import ComplaintQuickViewModal from "../../components/complaints/ComplaintQuickViewModal.jsx";
 import LinkedRequestCell from "../../components/complaints/LinkedRequestCell.jsx";
+import ReferenceChip from "../../components/complaints/ReferenceChip.jsx";
 import { complaintsApi } from "../../api/complaints.js";
 import { api } from "../../api/client.js";
 import { useAuth } from "../../auth/AuthContext.jsx";
@@ -385,15 +386,14 @@ export default function ComplaintList() {
 
               return (
                 <tr key={c.id} className="transition-colors hover:bg-sky-50/40">
-                  <td className="px-3 py-2 font-medium text-slate-700">{c.id}</td>
-                  <td className="px-3 py-2">
-                    <button
-                      type="button"
+                  <td className="w-14 whitespace-nowrap px-3 py-2 font-medium tabular-nums text-slate-700">{c.id}</td>
+                  <td className="min-w-[10.5rem] whitespace-nowrap px-3 py-2">
+                    <ReferenceChip
+                      label={c.comp_no}
+                      title={`Complaint ${c.comp_no}`}
+                      asButton
                       onClick={() => setViewTarget(c)}
-                      className="font-mono text-brand-600 underline decoration-brand-300 underline-offset-2 hover:text-brand-700"
-                    >
-                      {c.comp_no}
-                    </button>
+                    />
                   </td>
                   <td className="max-w-[110px] truncate px-3 py-2" title={c.customer_name}>
                     {c.customer_name || "—"}
@@ -402,14 +402,14 @@ export default function ComplaintList() {
                     <StatusBadge value={getComplaintWorkflowStatus(c) || c.status} />
                   </td>
                   <td className="px-3 py-2">{c.query_type || "—"}</td>
-                  <td className="px-3 py-2">
+                  <td className="min-w-[10.5rem] whitespace-nowrap px-3 py-2">
                     <LinkedRequestCell complaint={c} />
                   </td>
                   <td className="max-w-[120px] truncate px-3 py-2" title={c.remark || ""}>
                     {trunc(c.remark)}
                   </td>
                   <td className="whitespace-nowrap px-3 py-2">{c.assigned_engineer_name || "—"}</td>
-                  <td className="px-3 py-2">{c.customer_mobile}</td>
+                  <td className="whitespace-nowrap px-3 py-2 tabular-nums">{c.customer_mobile}</td>
                   <td className="max-w-[110px] truncate px-3 py-2" title={c.model_details || ""}>
                     {trunc(c.model_details, 22)}
                   </td>
