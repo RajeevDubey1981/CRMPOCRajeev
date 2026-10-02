@@ -167,7 +167,15 @@ class ServiceRequestUnitOut(BaseModel):
     payment_status: str | None = None
     payment_type: str | None = None
     total_requested_amount: float | None = None
+    approved_amount: float | None = None
     payment_qr_code_path: str | None = None
+    payment_proof_file_path: str | None = None
+    payment_approval_status: str | None = None
+    payment_approval_stage: str | None = None
+    payment_approval_stage_label: str | None = None
+    payment_approval_step: int | None = None
+    payment_approval_total_steps: int | None = None
+    payment_next_approver_role: str | None = None
 
 
 class ServiceSerialVerifyIn(BaseModel):
@@ -378,9 +386,16 @@ class ServicePaymentRequestOut(BaseModel):
     total_requested_amount: float | None
     payment_type: str | None
     payment_qr_code_path: str | None = None
+    payment_proof_file_path: str | None = None
     approved_amount: float | None = None
     remarks: str | None
     status: str
+    approval_status: str | None = None
+    approval_stage: str | None = None
+    approval_stage_label: str | None = None
+    approval_step: int | None = None
+    approval_total_steps: int | None = None
+    next_approver_role: str | None = None
     processed_at: datetime | None
     processed_by_user_id: int | None = None
     processed_by_name: str | None = None
@@ -393,6 +408,7 @@ class ServicePaymentCompleteIn(BaseModel):
     payment_type: str | None = None
     remarks: str | None = None
     unit_id: int | None = None
+    decision: Literal["Approved", "Rejected"] = "Approved"
 
 
 class AdminServicePaymentUpdate(BaseModel):
@@ -427,6 +443,23 @@ class ServiceAssignmentOut(BaseModel):
     assigned_at: datetime
     remarks: str | None
     is_active: bool
+
+
+class PaymentApprovalLogOut(BaseModel):
+    id: int
+    module: str
+    entity_id: int
+    service_payment_request_id: int | None = None
+    stage_key: str
+    stage_label: str
+    stage_level: int
+    total_stages: int
+    decision: str
+    approved_by_user_id: int | None = None
+    approved_by_name: str | None = None
+    approver_role: str | None = None
+    remarks: str | None = None
+    created_at: datetime
 
 
 class ServiceOut(BaseModel):
@@ -481,6 +514,7 @@ class ServiceOut(BaseModel):
     approvals: list[ServiceApprovalOut] = []
     completions: list[ServiceCompletionOut] = []
     payment_requests: list[ServicePaymentRequestOut] = []
+    payment_approval_history: list[PaymentApprovalLogOut] = []
     order_items: list[ServiceOrderItemSummary] = []
     units: list[ServiceRequestUnitOut] = []
     required_document_types: list[str] = []

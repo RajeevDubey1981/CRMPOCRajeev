@@ -10,6 +10,7 @@ import {
   canViewAllServiceRequests,
   isOperationsAdminRole,
   isServiceDeskRole,
+  isSystemAdminRole,
   isServiceTeamRole,
 } from "../../utils/roles.js";
 import { servicesApi } from "../../api/services.js";
@@ -149,7 +150,7 @@ export default function ServiceRequestDetail() {
   const [completionProof, setCompletionProof] = useState(null);
   const [payment, setPayment] = useState({ customer_charge_amount: "", settlement_service_amount: "", settlement_parts_amount: "", total_requested_amount: "", payment_type: "Cash", remarks: "" });
   const [paymentQrCode, setPaymentQrCode] = useState(null);
-  const [paymentApproval, setPaymentApproval] = useState({ approved_amount: "", remarks: "" });
+  const [paymentApproval, setPaymentApproval] = useState({ approved_amount: "", remarks: "", proof_document: null });
   const [cancelAssignmentOpen, setCancelAssignmentOpen] = useState(false);
   const [cancelObservationOpen, setCancelObservationOpen] = useState(false);
   const [cancelApprovalOpen, setCancelApprovalOpen] = useState(false);
@@ -278,8 +279,9 @@ export default function ServiceRequestDetail() {
       remarks: latest.remarks || "",
     });
     setPaymentApproval((current) => ({
-      approved_amount: current.approved_amount || formatMoneyInput(latest.approved_amount ?? latest.total_requested_amount ?? latest.settlement_service_amount ?? latest.customer_charge_amount),
+      approved_amount: formatMoneyInput(latest.approved_amount ?? latest.total_requested_amount ?? latest.settlement_service_amount ?? latest.customer_charge_amount),
       remarks: current.remarks,
+      proof_document: null,
     }));
   }, [service?.payment_requests]);
 
@@ -319,6 +321,7 @@ export default function ServiceRequestDetail() {
   const roleCanViewAllServices = canViewAllServiceRequests(role);
   const canAssignServiceDesk = canAssignServiceDeskUser(role);
   const roleIsAdminLike = isOperationsAdminRole(role);
+  const roleIsPaymentAdmin = isSystemAdminRole(role);
   const roleIsEngineer = role === "engineer";
   const roleIsVendor = role === "vendor";
   const canEditWorkflow = roleIsAdminLike;
@@ -497,11 +500,27 @@ export default function ServiceRequestDetail() {
     && ["Service Completed", "Completion Pending Approval"].includes(service?.status),
   );
   const latestPaymentRequest = service?.payment_requests?.[0] || null;
-  const canRaisePayment = Boolean((roleIsEngineer || roleIsVendor || roleIsServiceTeam) && service?.status === "Service Completed");
   const paymentSubmitted = service?.status === "Payment Requested";
   const paymentCompleted = ["Payment Completed", "Closed"].includes(service?.status);
-  const canCancelPayment = Boolean((roleIsEngineer || roleIsVendor || roleIsServiceTeam) && paymentSubmitted);
   const canApprovePayment = Boolean(roleIsServiceTeam && paymentSubmitted && latestPaymentRequest);
+  const latestPaymentFinalStage = latestPaymentRequest?.approval_status === "Approved"
+    || paymentCompleted
+    || roleIsPaymentAdmin
+    || latestPaymentRequest?.approval_stage === "admin"
+    || latestPaymentRequest?.approval_stage_label === "Admin";
+  const latestPaymentProofRequired = canApprovePayment
+    && roleIsPaymentAdmin
+    && latestPaymentFinalStage
+    && (latestPaymentRequest?.payment_type || payment.payment_type) === "UPI";
+  const latestPaymentStageSummary = latestPaymentRequest?.approval_status === "Pending"
+    ? `Current approval: ${latestPaymentRequest.approval_stage_label || "Service Role"} (${latestPaymentRequest.approval_step || 1}/${latestPaymentRequest.approval_total_steps || 3}). Next: ${latestPaymentRequest.next_approver_role || latestPaymentRequest.approval_stage_label || "Service Role"}.`
+    : latestPaymentRequest?.approval_status === "Approved"
+      ? "Payment approval completed."
+      : latestPaymentRequest?.approval_status === "Rejected"
+        ? "Payment request rejected."
+        : "Payment approval is pending.";
+  const canRaisePayment = Boolean((roleIsEngineer || roleIsVendor || roleIsServiceTeam) && service?.status === "Service Completed");
+  const canCancelPayment = Boolean((roleIsEngineer || roleIsVendor || roleIsServiceTeam) && paymentSubmitted);
   const canReopenToEngineer = Boolean(roleIsServiceTeam && ["Payment Completed", "Payment Requested", "Service Completed"].includes(service?.status));
   const paymentQrRequired = payment.payment_type === "UPI";
 
@@ -981,6 +1000,7 @@ export default function ServiceRequestDetail() {
           isEngineer={isEngineer}
           isVendor={isVendor}
           isServiceTeam={isServiceTeam}
+          isPaymentAdmin={roleIsPaymentAdmin}
           run={run}
           busy={busy}
           actionError={err}
@@ -1299,9 +1319,11 @@ export default function ServiceRequestDetail() {
               {canApprovePayment && (
                 <div className="space-y-3 rounded-lg border border-emerald-200 bg-emerald-50 p-4">
                   <div>
-                    <div className="text-sm font-semibold text-emerald-900">Admin payment approval</div>
+                    <div className="text-sm font-semibold text-emerald-900">
+                      {latestPaymentRequest?.approval_stage_label || "Payment"} approval
+                    </div>
                     <p className="mt-1 text-xs text-emerald-800">
-                      Engineer/vendor submits requested amounts. Enter the amount actually approved/paid.
+                      {latestPaymentStageSummary} Only final Admin approval marks payment done.
                     </p>
                   </div>
                   <input
@@ -1320,19 +1342,39 @@ export default function ServiceRequestDetail() {
                     placeholder="Admin payment approval remarks"
                     className="w-full rounded-md border border-emerald-300 px-3 py-2 text-sm"
                   />
+                  {latestPaymentProofRequired && (
+                    <div>
+                      <label className="mb-1 block text-sm font-medium text-emerald-900">
+                        Payment proof document <span className="text-rose-600">*</span>
+                      </label>
+                      <input
+                        type="file"
+                        accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                        onChange={(e) => setPaymentApproval((current) => ({ ...current, proof_document: e.target.files?.[0] || null }))}
+                        className="block w-full text-sm"
+                      />
+                      <p className="mt-1 text-xs text-emerald-800">Only final Admin approval requires the actual payment proof.</p>
+                    </div>
+                  )}
                   <button
                     onClick={() => run(
-                      () => servicesApi.approvePayment(service.id, {
-                        approved_amount: Number(paymentApproval.approved_amount),
-                        payment_type: latestPaymentRequest?.payment_type || payment.payment_type,
-                        remarks: paymentApproval.remarks,
-                      }),
-                      { successMessage: "Payment approved and added to payment history." },
+                      () => {
+                        if (latestPaymentProofRequired && !paymentApproval.proof_document && !latestPaymentRequest?.payment_proof_file_path) {
+                          throw new Error("Upload Payment Proof / Document is required when payment type is UPI");
+                        }
+                        return servicesApi.approvePayment(service.id, {
+                          approved_amount: Number(paymentApproval.approved_amount),
+                          payment_type: latestPaymentRequest?.payment_type || payment.payment_type,
+                          remarks: paymentApproval.remarks,
+                          proof_document: paymentApproval.proof_document,
+                        });
+                      },
+                      { successMessage: latestPaymentFinalStage ? "Payment approved and added to payment history." : "Payment stage approved and forwarded." },
                     )}
                     disabled={busy || paymentApproval.approved_amount === ""}
                     className="rounded-md bg-emerald-700 px-4 py-2 text-sm text-white disabled:opacity-50"
                   >
-                    Approve Payment
+                    {latestPaymentFinalStage ? "Approve Payment" : "Approve Stage"}
                   </button>
                 </div>
               )}

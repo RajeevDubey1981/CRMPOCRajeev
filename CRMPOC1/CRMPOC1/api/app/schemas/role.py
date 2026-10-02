@@ -16,6 +16,7 @@ MODULES = (
     "roles",
     "dashboard",
     "services",
+    "partner_registrations",
 )
 
 # Modules with sub-module scoping. A sub_module=None permission row means

@@ -15,9 +15,10 @@ const fieldClass =
   "w-full rounded-xl border border-slate-300 px-3 py-3 text-base sm:text-sm focus:border-sky-600 focus:outline-none focus:ring-1 focus:ring-sky-600";
 const labelClass = "mb-1 block text-sm font-medium text-slate-700";
 const DOCUMENT_FILE_EXTENSIONS = new Set(["pdf", "jpg", "jpeg", "png", "doc", "docx"]);
-const SHOP_PHOTO_FILE_EXTENSIONS = new Set(["jpg", "jpeg", "png"]);
+const SHOP_PHOTO_FILE_EXTENSIONS = new Set(["pdf", "jpg", "jpeg", "png"]);
+const SHOP_PHOTO_MAX_BYTES = 2 * 1024 * 1024;
 const DOCUMENT_ACCEPT = ".pdf,.jpg,.jpeg,.png,.doc,.docx";
-const SHOP_PHOTO_ACCEPT = ".jpg,.jpeg,.png";
+const SHOP_PHOTO_ACCEPT = ".pdf,.jpg,.jpeg,.png";
 
 function toFileUrl(path) {
   if (!path) return "";
@@ -37,6 +38,18 @@ function Field({ label, required, children }) {
       {children}
     </div>
   );
+}
+
+function apiErrorMessage(error, fallback) {
+  const detail = error.response?.data?.detail;
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail)) {
+    return detail
+      .map((item) => item?.msg || item?.message || JSON.stringify(item))
+      .filter(Boolean)
+      .join("; ") || fallback;
+  }
+  return fallback;
 }
 
 function mapApiToForm(data) {
@@ -79,7 +92,6 @@ function mapApiToForm(data) {
 
 function stepPayload(step, form) {
   const numeric = {
-    year_of_establishment: form.year_of_establishment ? Number(form.year_of_establishment) : null,
     annual_turnover: form.annual_turnover ? Number(form.annual_turnover) : null,
   };
   switch (step) {
@@ -88,9 +100,9 @@ function stepPayload(step, form) {
     case 2:
       return {
         name: form.name,
-        year_of_establishment: numeric.year_of_establishment,
+        year_of_establishment: form.year_of_establishment || null,
         annual_turnover: numeric.annual_turnover,
-        gem_seller_id: form.gem_seller_id || null,
+        ...(gemSellerIdRequired(form.partner_type) ? { gem_seller_id: form.gem_seller_id || null } : {}),
       };
     case 3:
       return {
@@ -155,7 +167,7 @@ export default function PartnerRegistrationPublic() {
 
   const partnerTypeForRules = form.partner_type || context?.partner_type;
   const isGemIdRequired = useMemo(
-    () => (context ? !!context.gem_seller_id_required : gemSellerIdRequired(partnerTypeForRules)),
+    () => gemSellerIdRequired(partnerTypeForRules) && (!context || context.gem_seller_id_required !== false),
     [context, partnerTypeForRules],
   );
   const shopPhotoCount = useMemo(
@@ -206,8 +218,7 @@ export default function PartnerRegistrationPublic() {
       applyContext(result);
       setStep(nextStep);
     } catch (error) {
-      const detail = error.response?.data?.detail;
-      setErr(typeof detail === "string" ? detail : "Failed to save step");
+      setErr(apiErrorMessage(error, "Failed to save step"));
     } finally {
       setBusy(false);
     }
@@ -218,8 +229,12 @@ export default function PartnerRegistrationPublic() {
     const extension = file.name.split(".").pop()?.toLowerCase() || "";
     const allowedExtensions = documentKey.startsWith("shop_photo_") ? SHOP_PHOTO_FILE_EXTENSIONS : DOCUMENT_FILE_EXTENSIONS;
     if (!allowedExtensions.has(extension)) {
-      const supported = documentKey.startsWith("shop_photo_") ? "JPG or PNG" : "PDF, DOC, DOCX, JPG, or PNG";
+      const supported = documentKey.startsWith("shop_photo_") ? "PDF, JPG, or PNG" : "PDF, DOC, DOCX, JPG, or PNG";
       setFileErrors((current) => ({ ...current, [documentKey]: `Unsupported file type. Please upload ${supported}.` }));
+      return;
+    }
+    if (documentKey.startsWith("shop_photo_") && file.size > SHOP_PHOTO_MAX_BYTES) {
+      setFileErrors((current) => ({ ...current, [documentKey]: "Shop photograph file exceeds 2MB limit." }));
       return;
     }
     setFileErrors((current) => {
@@ -342,7 +357,11 @@ export default function PartnerRegistrationPublic() {
             {step === 1 && (
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <Field label="Partner Type" required>
-                  <select value={form.partner_type} onChange={(e) => setField("partner_type", e.target.value)} className={fieldClass}>
+                  <select
+                    value={form.partner_type}
+                    disabled
+                    className={`${fieldClass} cursor-not-allowed bg-slate-100 text-slate-600`}
+                  >
                     {context.partner_types.map((type) => <option key={type} value={type}>{type}</option>)}
                   </select>
                 </Field>
@@ -359,28 +378,21 @@ export default function PartnerRegistrationPublic() {
                 <Field label="Firm / Company Name" required>
                   <input value={form.name} onChange={(e) => setField("name", e.target.value)} className={fieldClass} />
                 </Field>
-                <Field label="Year of Establishment">
-                  <input type="number" value={form.year_of_establishment} onChange={(e) => setField("year_of_establishment", e.target.value)} className={fieldClass} />
+                <Field label="Date of Establishment">
+                  <input type="date" value={form.year_of_establishment} onChange={(e) => setField("year_of_establishment", e.target.value)} className={fieldClass} />
                 </Field>
                 <Field label="Annual Turnover (₹)">
                   <input type="number" value={form.annual_turnover} onChange={(e) => setField("annual_turnover", e.target.value)} className={fieldClass} />
                 </Field>
-                <div>
+                {isGemIdRequired && (
                   <Field label="GeM Seller ID" required={isGemIdRequired}>
                     <input
                       value={form.gem_seller_id}
                       onChange={(e) => setField("gem_seller_id", e.target.value)}
-                      disabled={!isGemIdRequired}
-                      placeholder={isGemIdRequired ? "" : "Not required for CSD Dealer"}
-                      className={`${fieldClass} ${!isGemIdRequired ? "bg-slate-100 text-slate-500 cursor-not-allowed" : ""}`}
+                      className={fieldClass}
                     />
                   </Field>
-                  {!isGemIdRequired ? (
-                    <p className="mt-1 text-xs text-slate-500">
-                      GeM Seller ID is not required for CSD Dealers.
-                    </p>
-                  ) : null}
-                </div>
+                )}
               </div>
             )}
 
@@ -598,7 +610,7 @@ export default function PartnerRegistrationPublic() {
                   />
                   <span>
                     I declare that all information and documents provided are true and correct. I authorize INDcool
-                    to verify these details for GeM partner onboarding.
+                    to verify these details for partner onboarding.
                   </span>
                 </label>
               </div>

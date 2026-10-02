@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import Modal from "../../components/Modal.jsx";
 import { rolesApi } from "../../api/admin.js";
 import { useAuth } from "../../auth/AuthContext.jsx";
+import { moduleLabel, normalizePermissionModules } from "../../utils/permissionModules.js";
 
 const fieldClass = "w-full rounded-md border border-slate-300 px-3 py-2 text-sm";
 const labelClass = "mb-1 block text-sm font-medium text-slate-700";
@@ -51,7 +52,7 @@ function PermissionMatrix({ modules, subModulesByModule, permissions, onChange, 
       <tr key={permKey(module, sub_module)} className={isSub ? "bg-slate-50/50" : ""}>
         <td className={`px-3 py-2 ${isSub ? "pl-8 text-slate-600" : "font-medium text-slate-700"}`}>
           {isSub ? <span className="text-slate-400">↳ </span> : null}
-          {label}
+          {moduleLabel(label)}
         </td>
         {FLAGS.map((f) => (
           <td key={f} className="px-3 py-2 text-center">
@@ -187,7 +188,7 @@ export default function RoleList() {
   useEffect(() => {
     rolesApi.modules()
       .then((m) => {
-        setModules(m.modules || []);
+        setModules(normalizePermissionModules(m.modules || []));
         setSubModulesByModule(m.sub_modules || {});
       })
       .catch(() => {});

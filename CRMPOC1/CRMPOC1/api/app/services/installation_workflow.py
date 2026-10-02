@@ -742,6 +742,12 @@ def clear_installation_payment_request(inst: InstallationRequest) -> None:
     inst.payment_qr_code_size_bytes = None
     inst.payment_proof_file_path = None
     inst.payment_requested_at = None
+    inst.payment_approval_status = None
+    inst.payment_approval_stage = None
+    inst.payment_approval_stage_label = None
+    inst.payment_approval_step = None
+    inst.payment_approval_total_steps = None
+    inst.payment_next_approver_role = None
 
 
 def clear_installation_completion_submission(inst: InstallationRequest) -> None:
@@ -917,6 +923,12 @@ def _clear_installation_workflow_fields(inst: InstallationRequest) -> None:
     inst.payment_recorded_at = None
     inst.payment_recorded_by = None
     inst.payment_transaction_id = None
+    inst.payment_approval_status = None
+    inst.payment_approval_stage = None
+    inst.payment_approval_stage_label = None
+    inst.payment_approval_step = None
+    inst.payment_approval_total_steps = None
+    inst.payment_next_approver_role = None
     inst.parent_installation_id = None
     inst.status = "Document Requested" if inst.document_request_sent_at else "Pending"
 

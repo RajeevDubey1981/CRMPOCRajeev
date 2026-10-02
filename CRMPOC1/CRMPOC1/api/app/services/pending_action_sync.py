@@ -10,7 +10,7 @@ from app.models.claim import Claim
 from app.models.complaint import Complaint, ComplaintStatusLog
 from app.models.installation import InstallationRequest
 from app.models.order import Order
-from app.models.service import ServiceNotification, ServiceRequest
+from app.models.service import ServiceNotification, ServicePaymentRequest, ServiceRequest
 from app.models.user import User
 from app.models.vendor import Vendor
 from app.services.permissions import can_act_on
@@ -21,6 +21,7 @@ from app.services.pending_action_service import (
     resolve_all_for_entity,
     upsert_pending_action,
 )
+from app.services.payment_approval_workflow import notify_payment_stage
 
 
 def _coalesce_dt(*values: datetime | None) -> datetime:
@@ -189,11 +190,11 @@ def sync_installation_pending_actions(db: Session, inst: InstallationRequest) ->
         )
 
     if inst.status == "Payment Pending":
-        notify_users(
-            db, ops_users,
-            module="installations", entity_id=inst.id, action_type="approve_payment",
-            title=title, message="Engineer raised a payment request.",
-            action_label="Approve payment", href=href, entity_status=inst.status,
+        notify_payment_stage(
+            db,
+            module="installations", entity_id=inst.id,
+            title=title, href=href, entity_status=inst.status,
+            stage_key=inst.payment_approval_stage,
             occurred_at=_coalesce_dt(inst.payment_requested_at, occurred),
         )
 
@@ -280,11 +281,17 @@ def sync_service_pending_actions(db: Session, service: ServiceRequest) -> None:
         )
 
     if service.status == "Payment Requested":
-        notify_users(
-            db, ops_users,
-            module="services", entity_id=service.id, action_type="approve_payment",
-            title=title, message="Payment request is waiting for admin approval.",
-            action_label="Approve payment", href=href, entity_status=service.status, occurred_at=occurred,
+        latest_payment = db.scalar(
+            select(ServicePaymentRequest)
+            .where(ServicePaymentRequest.service_request_id == service.id)
+            .order_by(ServicePaymentRequest.created_at.desc())
+        )
+        notify_payment_stage(
+            db,
+            module="services", entity_id=service.id,
+            title=title, href=href, entity_status=service.status, occurred_at=occurred,
+            stage_key=latest_payment.approval_stage if latest_payment else None,
+            entity_ref=str(latest_payment.id) if latest_payment else "",
         )
 
     if service.assigned_engineer_id and service.status in {"Assigned", "Engineer Visit", "Service In Progress", "Approved for Service"}:

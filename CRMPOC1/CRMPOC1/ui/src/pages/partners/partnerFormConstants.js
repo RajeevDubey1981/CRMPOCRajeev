@@ -34,7 +34,7 @@ export const INDIAN_STATES = [
   "Chandigarh",
 ];
 
-export const PARTNER_TYPE_GEM_ID_EXEMPT = new Set(["CSD Dealer"]);
+export const GEM_SELLER_ID_PARTNER_TYPE = "Gem Partner";
 export const CSD_PARTNER_TYPE = "CSD Dealer";
 export const CSD_SHOP_PHOTO_COUNT = 5;
 export const DEFAULT_SHOP_PHOTO_COUNT = 1;
@@ -45,8 +45,7 @@ export function requiredShopPhotoCount(partnerType, fallback = DEFAULT_SHOP_PHOT
 }
 
 export function gemSellerIdRequired(partnerType) {
-  if (!partnerType) return true;
-  return !PARTNER_TYPE_GEM_ID_EXEMPT.has(partnerType.trim());
+  return (partnerType || "").trim() === GEM_SELLER_ID_PARTNER_TYPE;
 }
 
 export const EMPTY_PARTNER_FORM = {

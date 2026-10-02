@@ -12,6 +12,7 @@ from app.models.installation import InstallationRequest
 from app.models.complaint import Complaint
 from app.models.order import Order, OrderItem
 from app.models.payment import PaymentTransaction
+from app.models.payment_approval import PaymentApprovalLog
 from app.models.service import ServicePaymentRequest, ServiceRequest
 from app.models.user import User
 from app.models.vendor import Vendor
@@ -29,6 +30,7 @@ from app.schemas.installation import (
     InstallationPaymentHistoryRequestItem,
     InstallationStatusUpdate,
     AdminInstallationPaymentUpdate,
+    PaymentApprovalLogOut,
 )
 from app.services.engineer_assignment import get_engineer_assignment_options
 from app.services.file_service import read_upload_bytes, save_upload, to_public_upload_path
@@ -50,6 +52,16 @@ from app.services.serial_history import EVENT_TYPES, create_serial_history_event
 from app.services.workflow_notifications import (
     notify_customer_installation_update,
     notify_engineer_installation_assigned,
+)
+from app.services.payment_approval_workflow import (
+    approval_stage_payload,
+    ensure_current_stage_approver,
+    first_payment_stage,
+    is_final_stage,
+    next_stage,
+    notify_payment_stage,
+    record_payment_approval,
+    resolve_payment_stage_actions,
 )
 
 router = APIRouter(prefix="/api/installations", tags=["installations"])
@@ -244,6 +256,11 @@ def _hydrate(db: Session, inst: InstallationRequest) -> dict:
         (proof["file_path"] for proof in completion_proofs if proof["slot"] == 2),
         None,
     )
+    payment_approval_logs = db.scalars(
+        select(PaymentApprovalLog)
+        .where(PaymentApprovalLog.module == "installations", PaymentApprovalLog.entity_id == inst.id)
+        .order_by(desc(PaymentApprovalLog.created_at))
+    ).all()
     return {
         **{k: getattr(inst, k) for k in (
             "id", "source", "customer_name", "contact_number", "customer_email", "address",
@@ -253,6 +270,8 @@ def _hydrate(db: Session, inst: InstallationRequest) -> dict:
             "work_report", "work_report_file_path", "settlement_approved_by",
             "payment_type_requested", "payment_qr_code_path", "payment_qr_code_filename", "payment_proof_file_path", "payment_requested_at",
             "payment_type_paid", "payment_recorded_at", "payment_recorded_by",
+            "payment_approval_status", "payment_approval_stage", "payment_approval_stage_label",
+            "payment_approval_step", "payment_approval_total_steps", "payment_next_approver_role",
             "document_request_sent_at", "order_verified_at",
             "engineer_entered_serial_no", "engineer_entered_serial_no_2", "serial_verified_at",
             "admin_billing_type", "admin_approval_remark", "admin_approved_at",
@@ -274,6 +293,24 @@ def _hydrate(db: Session, inst: InstallationRequest) -> dict:
         "assigned_engineer_name": engineer_name,
         "settlement_approved_by_name": approved_by_name,
         "payment_recorded_by_name": payment_recorded_by_name,
+        "payment_approval_history": [
+            PaymentApprovalLogOut(
+                id=row.id,
+                module=row.module,
+                entity_id=row.entity_id,
+                stage_key=row.stage_key,
+                stage_label=row.stage_label,
+                stage_level=row.stage_level,
+                total_stages=row.total_stages,
+                decision=row.decision,
+                approved_by_user_id=row.approved_by_user_id,
+                approved_by_name=(db.get(User, row.approved_by_user_id).name if row.approved_by_user_id and db.get(User, row.approved_by_user_id) else None),
+                approver_role=row.approver_role,
+                remarks=row.remarks,
+                created_at=row.created_at,
+            )
+            for row in payment_approval_logs
+        ],
         "complaint_id": complaint_id,
         "complaint_no": complaint_no,
         "item_code": item_code,
@@ -324,6 +361,13 @@ def _apply_payment_transition(
             inst.payment_qr_code_size_bytes = payment_qr_code_size_bytes
             inst.payment_qr_code_path = None
         inst.payment_requested_at = datetime.now(timezone.utc)
+        payload = approval_stage_payload(first_payment_stage().key)
+        inst.payment_approval_status = "Pending"
+        inst.payment_approval_stage = payload["payment_approval_stage"]
+        inst.payment_approval_stage_label = payload["payment_approval_stage_label"]
+        inst.payment_approval_step = payload["payment_approval_step"]
+        inst.payment_approval_total_steps = payload["payment_approval_total_steps"]
+        inst.payment_next_approver_role = payload["payment_next_approver_role"]
         return "Payment Pending"
 
     if requested_status == "Completed" and is_operations_admin(actor) and inst.status == "Payment Pending":
@@ -1078,6 +1122,7 @@ async def update_status(
     if (
         is_operations_admin(user)
         and new_status in {"Returned", "Rejected"}
+        and inst.status != "Payment Pending"
         and supports_engineer_installation_workflow(inst)
         and inst.assigned_engineer
     ):
@@ -1099,6 +1144,15 @@ async def update_status(
         return InstallationOut(**_hydrate(db, inst))
 
     doc_path = None
+    if (
+        document is not None
+        and document.filename
+        and is_operations_admin(user)
+        and inst.status == "Payment Pending"
+        and new_status == "Completed"
+        and not is_system_admin(user)
+    ):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only Admin can upload payment proof")
     if document is not None and document.filename:
         doc_path = await save_upload(document, module="installations")
     if user.role == "engineer" and new_status == "Completed" and not doc_path and not inst.work_report_file_path:
@@ -1108,6 +1162,7 @@ async def update_status(
         is_operations_admin(user)
         and new_status == "Completed"
         and inst.status == "Payment Pending"
+        and is_system_admin(user)
         and effective_payment_type == "UPI"
         and not doc_path
         and not inst.payment_proof_file_path
@@ -1119,6 +1174,88 @@ async def update_status(
     qr_size_bytes = None
     if qr_code is not None and qr_code.filename:
         qr_blob, qr_filename, qr_content_type, qr_size_bytes = await read_upload_bytes(qr_code)
+
+    if is_operations_admin(user) and inst.status == "Payment Pending" and new_status in {"Completed", "Rejected", "Returned"}:
+        ensure_current_stage_approver(user, inst.payment_approval_stage)
+        admin_bypass = is_system_admin(user)
+        effective_stage_key = "admin" if admin_bypass else inst.payment_approval_stage
+        resolve_payment_stage_actions(
+            db,
+            module="installations",
+            entity_id=inst.id,
+        )
+        if new_status in {"Rejected", "Returned"}:
+            if not (work_report or "").strip():
+                raise HTTPException(status.HTTP_400_BAD_REQUEST, "Remarks are required when rejecting a payment request")
+            record_payment_approval(
+                db,
+                module="installations",
+                entity_id=inst.id,
+                stage_key=effective_stage_key,
+                decision="Rejected",
+                user=user,
+                remarks=work_report,
+            )
+            inst.payment_approval_status = "Rejected"
+            inst.status = return_installation_to_engineer_for_rework(inst, reject_stage="payment")
+            log_installation_action(
+                db,
+                inst,
+                action="Payment Rejected",
+                user=user,
+                old_status=old_status,
+                new_status=inst.status,
+                remarks=work_report,
+            )
+            db.commit()
+            db.refresh(inst)
+            return InstallationOut(**_hydrate(db, inst))
+
+        record_payment_approval(
+            db,
+            module="installations",
+            entity_id=inst.id,
+            stage_key=effective_stage_key,
+            decision="Approved",
+            user=user,
+            remarks=work_report,
+        )
+        if not admin_bypass and not is_final_stage(inst.payment_approval_stage):
+            following_stage = next_stage(inst.payment_approval_stage)
+            payload = approval_stage_payload(following_stage.key if following_stage else None)
+            inst.payment_approval_status = "Pending"
+            inst.payment_approval_stage = payload["payment_approval_stage"]
+            inst.payment_approval_stage_label = payload["payment_approval_stage_label"]
+            inst.payment_approval_step = payload["payment_approval_step"]
+            inst.payment_approval_total_steps = payload["payment_approval_total_steps"]
+            inst.payment_next_approver_role = payload["payment_next_approver_role"]
+            if payment_amount not in (None, ""):
+                inst.payment_amount_requested = float(payment_amount)
+            if effective_payment_type:
+                inst.payment_type_requested = effective_payment_type
+            log_installation_action(
+                db,
+                inst,
+                action="Payment Stage Approved",
+                user=user,
+                old_status=old_status,
+                new_status=inst.status,
+                remarks=work_report,
+                metadata={"next_stage": inst.payment_approval_stage},
+            )
+            notify_payment_stage(
+                db,
+                module="installations",
+                entity_id=inst.id,
+                title=f"Installation {inst.id}",
+                href=f"/installations/{inst.id}",
+                entity_status=inst.status,
+                stage_key=inst.payment_approval_stage,
+                occurred_at=datetime.now(timezone.utc),
+            )
+            db.commit()
+            db.refresh(inst)
+            return InstallationOut(**_hydrate(db, inst))
 
     inst.status = _apply_payment_transition(
         inst,
@@ -1144,8 +1281,8 @@ async def update_status(
         inst.work_report = work_report
     if doc_path:
         if (
-            is_operations_admin(user)
-            and inst.status == "Payment Pending"
+            is_system_admin(user)
+            and old_status == "Payment Pending"
             and new_status == "Completed"
             and effective_payment_type == "UPI"
         ):
@@ -1167,11 +1304,26 @@ async def update_status(
         and not inst.payment_transaction_id
         and old_status == "Payment Pending"
     ):
+        inst.payment_approval_status = "Approved"
+        inst.payment_approval_stage = "admin"
+        inst.payment_approval_stage_label = "Completed"
+        inst.payment_next_approver_role = None
         _create_payment_transaction(
             db,
             rows=[inst],
             actor=user,
             payment_type=inst.payment_type_paid or inst.payment_type_requested or "Cash",
+        )
+    if old_status != "Payment Pending" and inst.status == "Payment Pending":
+        notify_payment_stage(
+            db,
+            module="installations",
+            entity_id=inst.id,
+            title=f"Installation {inst.id}",
+            href=f"/installations/{inst.id}",
+            entity_status=inst.status,
+            stage_key=inst.payment_approval_stage,
+            occurred_at=inst.payment_requested_at,
         )
     _sync_order_completion_state(db, inst)
 
@@ -1263,6 +1415,15 @@ async def bulk_update_status(
     if qr_code is not None and qr_code.filename:
         qr_blob, qr_filename, qr_content_type, qr_size_bytes = await read_upload_bytes(qr_code)
     doc_path = None
+    if (
+        document is not None
+        and document.filename
+        and is_operations_admin(user)
+        and new_status == "Completed"
+        and not is_system_admin(user)
+        and any(row.status == "Payment Pending" for row in rows)
+    ):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only Admin can upload payment proof")
     if document is not None and document.filename:
         doc_path = await save_upload(document, module="installations")
     if (
@@ -1275,6 +1436,7 @@ async def bulk_update_status(
     if is_operations_admin(user) and new_status == "Completed":
         missing_upi_proof = any(
             row.status == "Payment Pending"
+            and is_system_admin(user)
             and ((payment_type or "").strip() or row.payment_type_requested) == "UPI"
             and not row.payment_proof_file_path
             for row in rows
@@ -1322,7 +1484,7 @@ async def bulk_update_status(
         if work_report is not None:
             inst.work_report = work_report
         if doc_path:
-            if is_operations_admin(user) and (inst.status == "Payment Pending" or new_status == "Completed"):
+            if is_system_admin(user) and (inst.status == "Payment Pending" or new_status == "Completed"):
                 inst.payment_proof_file_path = doc_path
             else:
                 inst.work_report_file_path = doc_path

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Navigate, useLocation, useNavigate } from "react-router-dom";
 
 import { useAuth } from "../auth/AuthContext.jsx";
@@ -16,6 +16,20 @@ export default function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const emailInputRef = useRef(null);
+  const passwordInputRef = useRef(null);
+
+  useEffect(() => {
+    setEmail("");
+    setPassword("");
+    const clearAutofill = window.setTimeout(() => {
+      if (emailInputRef.current) emailInputRef.current.value = "";
+      if (passwordInputRef.current) passwordInputRef.current.value = "";
+      setEmail("");
+      setPassword("");
+    }, 100);
+    return () => window.clearTimeout(clearAutofill);
+  }, []);
 
   if (user) {
     const dest = defaultPathForRole(user.role);
@@ -37,6 +51,7 @@ export default function Login() {
     <LoginScene>
       <form
         onSubmit={handleSubmit}
+        autoComplete="off"
         className="w-full space-y-2.5 rounded-xl bg-white p-4 shadow-2xl"
       >
         <div>
@@ -50,22 +65,24 @@ export default function Login() {
           <div className="rounded-md bg-rose-50 px-3 py-1.5 text-xs text-rose-700">{error}</div>
         )}
         <input
+          ref={emailInputRef}
           type="email"
-          name="email"
+          name="login_email"
           aria-label="Email"
           placeholder="Email"
-          autoComplete="username"
+          autoComplete="off"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           required
           className="w-full rounded-md border border-slate-300 px-2.5 py-1.5 text-base focus:border-indcool-navy focus:outline-none focus:ring-1 focus:ring-indcool-navy md:text-[13px]"
         />
         <input
+          ref={passwordInputRef}
           type="password"
-          name="password"
+          name="login_password"
           aria-label="Password"
           placeholder="Password"
-          autoComplete="current-password"
+          autoComplete="new-password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           required

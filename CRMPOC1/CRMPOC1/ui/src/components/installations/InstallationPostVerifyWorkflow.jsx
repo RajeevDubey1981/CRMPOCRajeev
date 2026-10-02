@@ -189,6 +189,7 @@ export default function InstallationPostVerifyWorkflow({
   installation,
   isEngineer,
   isAdminLike,
+  isPaymentAdmin = false,
   userId,
   onUpdated,
   onError,
@@ -209,7 +210,7 @@ export default function InstallationPostVerifyWorkflow({
     qr_code: null,
   });
   const [adminForm, setAdminForm] = useState({
-    payment_amount: installation.payment_amount_requested || "",
+    payment_amount: installation.payment_amount_paid ?? installation.payment_amount_requested ?? "",
     payment_type: installation.payment_type_paid || installation.payment_type_requested || "Cash",
     proof_document: null,
   });
@@ -244,7 +245,19 @@ export default function InstallationPostVerifyWorkflow({
   const needsSecondSerialProof = installationNeedsSecondSerialProof(installation);
   const hasSubmittedCompletionProof = Boolean(installation.work_report_file_path);
   const canApprovePayment = isAdminLike && installation.status === "Payment Pending";
-  const isUpiPaymentApproval = canApprovePayment && adminForm.payment_type === "UPI";
+  const isFinalPaymentApproval = installation.payment_approval_status === "Approved"
+    || installation.status === "Completed"
+    || isPaymentAdmin
+    || installation.payment_approval_stage === "admin"
+    || installation.payment_approval_stage_label === "Admin";
+  const isUpiPaymentApproval = canApprovePayment && isPaymentAdmin && isFinalPaymentApproval && adminForm.payment_type === "UPI";
+  const paymentStageSummary = installation.payment_approval_status === "Pending"
+    ? `Current approval: ${installation.payment_approval_stage_label || "Service Role"} (${installation.payment_approval_step || 1}/${installation.payment_approval_total_steps || 3}). Next: ${installation.payment_next_approver_role || installation.payment_approval_stage_label || "Service Role"}.`
+    : installation.payment_approval_status === "Approved"
+      ? "Payment approval completed."
+      : installation.payment_approval_status === "Rejected"
+        ? "Payment request rejected."
+        : "Payment approval is pending.";
   const showSubmittedPaymentQr = installation.payment_type_requested === "UPI"
     && installation.status === "Payment Pending"
     && Boolean(engineerQrPath);
@@ -258,6 +271,27 @@ export default function InstallationPostVerifyWorkflow({
     setEngineerQrPreviewUrl(nextUrl);
     return () => URL.revokeObjectURL(nextUrl);
   }, [paymentForm.qr_code]);
+
+  useEffect(() => {
+    setAdminForm((current) => ({
+      ...current,
+      payment_amount: installation.payment_amount_paid ?? installation.payment_amount_requested ?? "",
+      payment_type: installation.payment_type_paid || installation.payment_type_requested || "Cash",
+      proof_document: null,
+    }));
+  }, [
+    installation.payment_amount_paid,
+    installation.payment_amount_requested,
+    installation.payment_type_paid,
+    installation.payment_type_requested,
+  ]);
+
+  useEffect(() => {
+    if (!isUpiPaymentApproval && approvalErr.includes("Payment Proof")) {
+      setApprovalErr("");
+      onError?.("");
+    }
+  }, [approvalErr, isUpiPaymentApproval, onError]);
 
   async function approvePayment() {
     setApprovalErr("");
@@ -290,7 +324,7 @@ export default function InstallationPostVerifyWorkflow({
       fd.append("payment_type", adminForm.payment_type);
       if (adminForm.proof_document) fd.append("document", adminForm.proof_document);
       await installationsApi.updateStatus(installationId, fd);
-      setSubmitMsg("Payment approved. Installation completed.");
+      setSubmitMsg(isFinalPaymentApproval ? "Payment approved. Installation completed." : "Payment stage approved. Forwarded to the next approver.");
       if (onUpdated) await onUpdated();
     } catch (error) {
       const message = formatApiError(error, "Failed to approve payment");
@@ -728,11 +762,20 @@ export default function InstallationPostVerifyWorkflow({
           bgClass="bg-indigo-50"
           summary={installation.status === "Completed"
             ? `Payment approved. Amount paid: ${installation.payment_amount_paid ?? installation.payment_amount_requested ?? "—"}.`
-            : "Payment approval completed."}
+            : paymentStageSummary}
         >
           <p className="text-xs text-indigo-800">
-            Review the engineer payment request. You can change the approved amount before completing payment.
+            Review the engineer payment request. Intermediate approvals forward it to the next approver; only final Admin approval completes payment.
           </p>
+          {installation.status === "Payment Pending" && (
+            <div className="mt-3 rounded-md border border-indigo-200 bg-white px-3 py-2 text-sm text-indigo-900">
+              <div className="font-medium">{installation.payment_approval_stage_label || "Service Role"} approval</div>
+              <div className="mt-1 text-xs text-indigo-700">
+                Stage {installation.payment_approval_step || 1} of {installation.payment_approval_total_steps || 3}
+                {installation.payment_next_approver_role ? ` · Next: ${installation.payment_next_approver_role}` : ""}
+              </div>
+            </div>
+          )}
           <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
             <Field label="Requested amount" value={installation.payment_amount_requested} />
             <Field label="Requested type" value={installation.payment_type_requested} />
@@ -762,7 +805,7 @@ export default function InstallationPostVerifyWorkflow({
                 {PAYMENT_TYPES.map((type) => <option key={type} value={type}>{type}</option>)}
               </select>
             </div>
-            {adminForm.payment_type === "UPI" && (
+            {isPaymentAdmin && isFinalPaymentApproval && adminForm.payment_type === "UPI" && (
               <div className="md:col-span-2">
                 <label className="text-xs uppercase tracking-wide text-slate-500">
                   Payment proof <span className="text-rose-600">*</span>
@@ -793,7 +836,7 @@ export default function InstallationPostVerifyWorkflow({
             onClick={approvePayment}
             className="mt-3 rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {busy ? "Approving..." : "Approve payment"}
+            {busy ? "Approving..." : isFinalPaymentApproval ? "Approve payment" : "Approve stage"}
           </button>
           {installation.status === "Completed" && isAdminLike && (
             <button

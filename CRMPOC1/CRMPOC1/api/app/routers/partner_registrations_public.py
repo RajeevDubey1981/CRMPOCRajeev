@@ -26,6 +26,10 @@ from app.services.partner_registration import (
 
 router = APIRouter(prefix="/api/partner-registrations/public", tags=["partner-registrations-public"])
 
+SHOP_PHOTO_UPLOAD_EXTENSIONS = {".pdf", ".jpg", ".jpeg", ".png"}
+SHOP_PHOTO_UPLOAD_MIME_TYPES = {"application/pdf", "image/jpeg", "image/jpg", "image/png"}
+SHOP_PHOTO_MAX_BYTES = 2 * 1024 * 1024
+
 
 def _get_row(db: Session, token: str):
     row = get_by_token(db, token)
@@ -97,7 +101,14 @@ async def public_upload_document(
     if not file.filename:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "File is required")
 
-    path = await save_upload(file, module="partners")
+    is_shop_photo = document_key.startswith("shop_photo_")
+    path = await save_upload(
+        file,
+        module="partners",
+        allowed_ext=SHOP_PHOTO_UPLOAD_EXTENSIONS if is_shop_photo else None,
+        allowed_mime=SHOP_PHOTO_UPLOAD_MIME_TYPES if is_shop_photo else None,
+        max_bytes=SHOP_PHOTO_MAX_BYTES if is_shop_photo else 2 * 1024 * 1024,
+    )
     setattr(row, f"{document_key}_path", path)
     if row.form_started_at is None:
         row.form_started_at = datetime.now(timezone.utc)

@@ -108,6 +108,7 @@ function emptyPayment(unit) {
     settlement_service_amount: unit.estimated_service_charge ?? unit.settlement_service_amount ?? "",
     settlement_parts_amount: unit.estimated_parts_charge ?? unit.settlement_parts_amount ?? "",
     total_requested_amount: unit.total_requested_amount ?? "",
+    approved_amount: unit.approved_amount ?? "",
     payment_type: unit.payment_type || "Cash",
     remarks: unit.payment_remarks || "",
   };
@@ -167,6 +168,7 @@ export default function EngineerUnitWorkflowPanel({
   isEngineer,
   isVendor,
   isServiceTeam,
+  isPaymentAdmin = false,
   run,
   busy = false,
   actionError = "",
@@ -204,8 +206,9 @@ export default function EngineerUnitWorkflowPanel({
       paymentMap[unit.id] = emptyPayment(unit);
       approvalMap[unit.id] = "";
       paymentApprovalMap[unit.id] = {
-        approved_amount: String(unit.total_requested_amount || unit.estimated_service_charge || ""),
+        approved_amount: String(unit.approved_amount ?? unit.total_requested_amount ?? unit.estimated_service_charge ?? ""),
         remarks: "",
+        proof_document: null,
       };
     });
     setCompletionRows(completionMap);
@@ -1460,7 +1463,15 @@ export default function EngineerUnitWorkflowPanel({
     const unit = activeUnit();
     if (!unit || activeModal?.type !== "paymentApproval") return null;
     const payment = paymentRows[unit.id] || emptyPayment(unit);
-    const form = paymentApprovalForms[unit.id] || { approved_amount: "", remarks: "" };
+    const form = paymentApprovalForms[unit.id] || { approved_amount: "", remarks: "", proof_document: null };
+    const finalStage = unit.payment_approval_stage === "admin"
+      || unit.payment_approval_stage_label === "Admin"
+      || isPaymentAdmin
+      || unit.payment_approval_status === "Approved";
+    const proofRequired = isPaymentAdmin && finalStage && (unit.payment_type || payment.payment_type) === "UPI";
+    const stageSummary = unit.payment_approval_status === "Pending"
+      ? `Current approval: ${unit.payment_approval_stage_label || "Service Role"} (${unit.payment_approval_step || 1}/${unit.payment_approval_total_steps || 3}). Next: ${unit.payment_next_approver_role || unit.payment_approval_stage_label || "Service Role"}.`
+      : "Payment approval is pending.";
 
     return (
       <Modal
@@ -1473,6 +1484,7 @@ export default function EngineerUnitWorkflowPanel({
           <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
             <div><strong>Requested:</strong> {unit.total_requested_amount ?? payment.total_requested_amount ?? "—"}</div>
             <div className="mt-1"><strong>Payment type:</strong> {unit.payment_type || payment.payment_type}</div>
+            <div className="mt-1"><strong>Approval stage:</strong> {stageSummary}</div>
           </div>
 
           {(unit.payment_type || payment.payment_type) === "UPI" && !unit.payment_qr_code_path && (
@@ -1523,6 +1535,21 @@ export default function EngineerUnitWorkflowPanel({
               className={inputClass()}
             />
           </div>
+          {proofRequired && (
+            <div>
+              <FieldLabel required>Payment proof document</FieldLabel>
+              <input
+                type="file"
+                accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                onChange={(e) => setPaymentApprovalForms((current) => ({
+                  ...current,
+                  [unit.id]: { ...form, proof_document: e.target.files?.[0] || null },
+                }))}
+                className="block w-full text-sm"
+              />
+              <p className="mt-1 text-xs text-slate-500">Only final Admin approval requires the actual payment proof.</p>
+            </div>
+          )}
           <div className="flex justify-end gap-2 pt-2">
             <button type="button" onClick={closeModal} className="rounded-md border border-slate-300 px-4 py-2 text-sm">
               Cancel
@@ -1538,21 +1565,25 @@ export default function EngineerUnitWorkflowPanel({
             <button
               type="button"
               onClick={async () => {
+                if (proofRequired && !form.proof_document && !unit.payment_proof_file_path && !payment.payment_proof_file_path) {
+                  return;
+                }
                 await run(
                   () => servicesApi.approvePayment(service.id, {
                     unit_id: unit.id,
                     approved_amount: Number(form.approved_amount),
                     payment_type: unit.payment_type || payment.payment_type,
                     remarks: form.remarks,
+                    proof_document: form.proof_document,
                   }),
-                  { successMessage: "Payment approved for this serial." },
+                  { successMessage: finalStage ? "Payment approved for this serial." : "Payment stage approved and forwarded." },
                 );
                 closeModal();
               }}
-              disabled={form.approved_amount === ""}
+              disabled={form.approved_amount === "" || (proofRequired && !form.proof_document && !unit.payment_proof_file_path && !payment.payment_proof_file_path)}
               className="rounded-md bg-emerald-700 px-4 py-2 text-sm text-white disabled:opacity-50"
             >
-              Approve payment
+              {finalStage ? "Approve payment" : "Approve stage"}
             </button>
           </div>
         </div>

@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.deps import get_current_user
 from app.models.partner_registration import PartnerRegistration
+from app.models.role import Permission, Role
 from app.models.user import User
 from app.models.vendor import Vendor
 from app.schemas.partner_agreement import PartnerAgreementAdminOut
@@ -24,11 +25,9 @@ from app.schemas.partner_registration import (
 )
 from app.services.partner_registration import (
     build_public_registration_url,
-    can_invite_partner,
     generate_access_token,
     generate_registration_no,
     hydrate_partner,
-    is_partner_admin,
     refresh_form_progress,
 )
 from app.services.email_service import (
@@ -45,6 +44,7 @@ from app.services.partner_agreement import (
 )
 from app.routers.partner_agreements_public import _agreement_download_response
 from app.services.vendor_accounts import ensure_partner_account
+from app.services.role_access import is_system_admin, permission_role_name
 
 router = APIRouter(prefix="/api/partner-registrations", tags=["partner-registrations"])
 
@@ -153,14 +153,26 @@ def _mobile_exists_for_other_record(db: Session, mobile: str, registration_id: i
     return any(_normalize_mobile(value) == normalized for value in [*existing_registrations, *existing_users, *existing_vendors])
 
 
-def _require_partner_admin(user: User) -> None:
-    if not is_partner_admin(user.role):
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only Admin or Indcool can access partner registrations")
+def _has_partner_permission(db: Session, user: User, action: str) -> bool:
+    if is_system_admin(user):
+        return True
+    role_name = permission_role_name(user.role)
+    role = db.scalar(select(Role).where(func.lower(func.trim(Role.name)) == role_name))
+    if role is None:
+        return False
+    permission = db.scalar(
+        select(Permission).where(
+            Permission.role_id == role.id,
+            Permission.module == "partner_registrations",
+            Permission.sub_module.is_(None),
+        )
+    )
+    return bool(permission and getattr(permission, action, False))
 
 
-def _require_partner_inviter(user: User) -> None:
-    if not can_invite_partner(user.role):
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only Admin, Indcool, or Sales can send partner onboarding invites")
+def _require_partner_permission(db: Session, user: User, action: str, message: str) -> None:
+    if not _has_partner_permission(db, user, action):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, message)
 
 
 def _list_item(row: PartnerRegistration) -> PartnerRegistrationListItem:
@@ -206,7 +218,7 @@ def list_partner_registrations(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    _require_partner_admin(user)
+    _require_partner_permission(db, user, "can_view", "You do not have permission to view partner registrations")
     stmt = select(PartnerRegistration)
     if partner_type:
         stmt = stmt.where(PartnerRegistration.partner_type == partner_type)
@@ -240,8 +252,8 @@ def list_partner_registrations(
 
 
 @router.get("/meta")
-def partner_registration_meta(user: User = Depends(get_current_user)):
-    _require_partner_inviter(user)
+def partner_registration_meta(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    _require_partner_permission(db, user, "can_view", "You do not have permission to view partner registrations")
     return {
         "partner_types": list(PARTNER_TYPES),
         "business_types": list(BUSINESS_TYPES),
@@ -257,7 +269,7 @@ def invite_partner_registration(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    _require_partner_admin(user)
+    _require_partner_permission(db, user, "can_create", "You do not have permission to create partner registrations")
     now = datetime.now(timezone.utc)
     email = str(body.email).strip().lower()
     mobile = _normalize_mobile(body.mobile)
@@ -333,7 +345,7 @@ def get_partner_registration(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    _require_partner_admin(user)
+    _require_partner_permission(db, user, "can_view", "You do not have permission to view partner registrations")
     row = db.get(PartnerRegistration, registration_id)
     if row is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Partner registration not found")
@@ -347,7 +359,7 @@ def get_partner_agreement(
     user: User = Depends(get_current_user),
 ):
     """Agreement signing status for the admin review page (null before approval)."""
-    _require_partner_admin(user)
+    _require_partner_permission(db, user, "can_view", "You do not have permission to view partner registrations")
     row = db.get(PartnerRegistration, registration_id)
     if row is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Partner registration not found")
@@ -376,7 +388,7 @@ def download_partner_agreement(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    _require_partner_inviter(user)
+    _require_partner_permission(db, user, "can_view", "You do not have permission to view partner registrations")
     row = db.get(PartnerRegistration, registration_id)
     if row is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Partner registration not found")
@@ -393,7 +405,7 @@ def validate_partner_gstin(
     user: User = Depends(get_current_user),
 ):
     """Look up the vendor-submitted GSTIN so admin can compare it against submitted data before approving."""
-    _require_partner_admin(user)
+    _require_partner_permission(db, user, "can_edit", "You do not have permission to edit partner registrations")
     row = db.get(PartnerRegistration, registration_id)
     if row is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Partner registration not found")
@@ -412,7 +424,7 @@ def reject_partner_registration(
     user: User = Depends(get_current_user),
 ):
     """Reject a submitted registration: reopen the form for the vendor to redo, and email them to restart."""
-    _require_partner_admin(user)
+    _require_partner_permission(db, user, "can_edit", "You do not have permission to edit partner registrations")
     row = db.get(PartnerRegistration, registration_id)
     if row is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Partner registration not found")
@@ -449,7 +461,7 @@ def resend_partner_email(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    _require_partner_admin(user)
+    _require_partner_permission(db, user, "can_edit", "You do not have permission to edit partner registrations")
     row = db.get(PartnerRegistration, registration_id)
     if row is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Partner registration not found")
@@ -507,7 +519,7 @@ def update_partner_registration(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    _require_partner_admin(user)
+    _require_partner_permission(db, user, "can_edit", "You do not have permission to edit partner registrations")
     row = db.get(PartnerRegistration, registration_id)
     if row is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Partner registration not found")
@@ -574,9 +586,10 @@ def delete_partner_registration(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    _require_partner_admin(user)
+    _require_partner_permission(db, user, "can_delete", "You do not have permission to delete partner registrations")
     row = db.get(PartnerRegistration, registration_id)
     if row is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Partner registration not found")
     db.delete(row)
     db.commit()
+

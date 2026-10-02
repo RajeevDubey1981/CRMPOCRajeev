@@ -12,6 +12,7 @@ from app.deps import get_current_user
 from app.models.complaint import Complaint, ComplaintStatusLog
 from app.models.order import Order, OrderItem
 from app.models.payment import PaymentTransaction
+from app.models.payment_approval import PaymentApprovalLog
 from app.models.service import (
     ServiceApproval,
     ServiceAssignment,
@@ -61,6 +62,7 @@ from app.schemas.service import (
     ServiceOut,
     ServicePaymentRequestIn,
     ServicePaymentRequestOut,
+    PaymentApprovalLogOut,
     ServicePaymentCompleteIn,
     AdminServicePaymentUpdate,
     ServicePublicDocumentContext,
@@ -87,7 +89,7 @@ from app.services.workflow_notifications import (
     notify_engineer_service_assigned,
     notify_vendor_service_assigned,
 )
-from app.services.role_access import is_operations_admin, is_service_team, role_key
+from app.services.role_access import is_operations_admin, is_service_team, is_system_admin, role_key
 from app.services.service_access import (
     SERVICE_DESK_ROLES,
     can_assign_service_desk_user,
@@ -152,6 +154,17 @@ from app.services.service_unit_workflow import (
     sync_service_request_from_units,
     verify_unit_serial,
 )
+from app.services.payment_approval_workflow import (
+    approval_stage_payload,
+    ensure_current_stage_approver,
+    first_payment_stage,
+    is_final_stage,
+    next_stage,
+    notify_payment_stage,
+    record_payment_approval,
+    resolve_payment_stage_actions,
+)
+from app.services.pending_action_sync import sync_service_pending_actions
 
 router = APIRouter(prefix="/api/services", tags=["services"])
 
@@ -459,8 +472,6 @@ def _mark_service_notifications_read(db: Session, service: ServiceRequest, user:
 
 
 def _notify_service_team(db: Session, service: ServiceRequest, title: str, message: str, notification_type: str) -> None:
-    from app.services.pending_action_sync import sync_service_pending_actions
-
     sync_service_pending_actions(db, service)
 
 
@@ -643,13 +654,39 @@ def _payment_out(db: Session, row: ServicePaymentRequest) -> ServicePaymentReque
         total_requested_amount=float(row.total_requested_amount) if row.total_requested_amount is not None else None,
         payment_type=row.payment_type,
         payment_qr_code_path=row.payment_qr_code_path,
+        payment_proof_file_path=to_public_upload_path(row.payment_proof_file_path),
         approved_amount=float(row.approved_amount) if row.approved_amount is not None else None,
         remarks=row.remarks,
         status=row.status,
+        approval_status=row.approval_status,
+        approval_stage=row.approval_stage,
+        approval_stage_label=row.approval_stage_label,
+        approval_step=row.approval_step,
+        approval_total_steps=row.approval_total_steps,
+        next_approver_role=row.next_approver_role,
         processed_at=row.processed_at,
         processed_by_user_id=row.processed_by_user_id,
         processed_by_name=_user_name(db, row.processed_by_user_id),
         payment_transaction_id=row.payment_transaction_id,
+        created_at=row.created_at,
+    )
+
+
+def _payment_approval_log_out(db: Session, row: PaymentApprovalLog) -> PaymentApprovalLogOut:
+    return PaymentApprovalLogOut(
+        id=row.id,
+        module=row.module,
+        entity_id=row.entity_id,
+        service_payment_request_id=row.service_payment_request_id,
+        stage_key=row.stage_key,
+        stage_label=row.stage_label,
+        stage_level=row.stage_level,
+        total_stages=row.total_stages,
+        decision=row.decision,
+        approved_by_user_id=row.approved_by_user_id,
+        approved_by_name=_user_name(db, row.approved_by_user_id),
+        approver_role=row.approver_role,
+        remarks=row.remarks,
         created_at=row.created_at,
     )
 
@@ -664,6 +701,11 @@ def _hydrate_service(db: Session, service: ServiceRequest) -> ServiceOut:
     approvals = db.scalars(select(ServiceApproval).where(ServiceApproval.service_request_id == service.id).order_by(desc(ServiceApproval.approved_at))).all()
     completions = db.scalars(select(ServiceCompletion).where(ServiceCompletion.service_request_id == service.id).order_by(desc(ServiceCompletion.completed_at))).all()
     payment_requests = db.scalars(select(ServicePaymentRequest).where(ServicePaymentRequest.service_request_id == service.id).order_by(desc(ServicePaymentRequest.created_at))).all()
+    payment_approval_logs = db.scalars(
+        select(PaymentApprovalLog)
+        .where(PaymentApprovalLog.module == "services", PaymentApprovalLog.entity_id == service.id)
+        .order_by(desc(PaymentApprovalLog.created_at))
+    ).all()
     complaint = db.get(Complaint, service.complaint_id) if service.complaint_id else None
     return ServiceOut(
         id=service.id,
@@ -717,6 +759,7 @@ def _hydrate_service(db: Session, service: ServiceRequest) -> ServiceOut:
         approvals=[_approval_out(db, row) for row in approvals],
         completions=[_completion_out(db, row) for row in completions],
         payment_requests=[_payment_out(db, row) for row in payment_requests],
+        payment_approval_history=[_payment_approval_log_out(db, row) for row in payment_approval_logs],
         order_items=[ServiceOrderItemSummary(**row) for row in build_order_item_summaries(db, service.id)],
         units=[ServiceRequestUnitOut(**row) for row in build_unit_rows(db, service.id)],
         required_document_types=customer_document_types(db, service),
@@ -1430,6 +1473,8 @@ def assign_service_desk_user(
     service = _load_visible_service(db, service_id, user)
     if not can_assign_service_desk_user(user):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Only Admin or Service Manager can assign service users")
+    if service.status == "Closed":
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Closed service requests cannot be assigned to a service user")
     target = _require_active_service_desk_user(db, body.service_user_id)
     old_status = service.status
     previous_id = service.assigned_service_user_id
@@ -2335,6 +2380,14 @@ async def raise_payment_request(
             total_requested_amount,
             remarks,
         )
+        stage = first_payment_stage()
+        payload = approval_stage_payload(stage.key)
+        payment_request.approval_status = "Pending"
+        payment_request.approval_stage = payload["payment_approval_stage"]
+        payment_request.approval_stage_label = payload["payment_approval_stage_label"]
+        payment_request.approval_step = payload["payment_approval_step"]
+        payment_request.approval_total_steps = payload["payment_approval_total_steps"]
+        payment_request.next_approver_role = payload["payment_next_approver_role"]
     elif has_unit_workflow:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "unit_id is required when raising payment for a specific serial")
     else:
@@ -2357,6 +2410,14 @@ async def raise_payment_request(
             created_at=_now(),
             updated_at=_now(),
         )
+        stage = first_payment_stage()
+        payload = approval_stage_payload(stage.key)
+        payment_request.approval_status = "Pending"
+        payment_request.approval_stage = payload["payment_approval_stage"]
+        payment_request.approval_stage_label = payload["payment_approval_stage_label"]
+        payment_request.approval_step = payload["payment_approval_step"]
+        payment_request.approval_total_steps = payload["payment_approval_total_steps"]
+        payment_request.next_approver_role = payload["payment_next_approver_role"]
         db.add(payment_request)
         service.status = "Payment Requested"
         service.status_date = _now()
@@ -2370,6 +2431,18 @@ async def raise_payment_request(
         new_status=service.status,
         remarks=remarks,
         metadata={"payment_type": normalized_payment_type, "payment_qr_code_path": qr_path},
+    )
+    db.flush()
+    notify_payment_stage(
+        db,
+        module="services",
+        entity_id=service.id,
+        entity_ref=str(payment_request.id),
+        title=f"Service {service.request_no}",
+        href=f"/services/{service.id}",
+        entity_status=service.status,
+        stage_key=payment_request.approval_stage,
+        occurred_at=payment_request.created_at,
     )
     db.commit()
     db.refresh(service)
@@ -2406,7 +2479,44 @@ def cancel_payment_request(
         unit = db.get(ServiceRequestUnit, unit_id)
         if unit is None or unit.service_request_id != service.id:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Unit not found")
-        cancel_payment_for_unit(db, service, unit)
+        if reject:
+            payment = db.scalar(
+                select(ServicePaymentRequest)
+                .where(
+                    ServicePaymentRequest.service_request_id == service.id,
+                    ServicePaymentRequest.service_request_unit_id == unit.id,
+                )
+                .order_by(desc(ServicePaymentRequest.created_at))
+            )
+            if payment is None:
+                raise HTTPException(status.HTTP_400_BAD_REQUEST, "No payment request found for this serial")
+            ensure_current_stage_approver(user, payment.approval_stage)
+            record_payment_approval(
+                db,
+                module="services",
+                entity_id=service.id,
+                service_payment_request_id=payment.id,
+                stage_key=payment.approval_stage,
+                decision="Rejected",
+                user=user,
+                remarks=remarks,
+            )
+            resolve_payment_stage_actions(
+                db,
+                module="services",
+                entity_id=service.id,
+                entity_ref=str(payment.id),
+            )
+            payment.status = "Rejected"
+            payment.approval_status = "Rejected"
+            payment.processed_at = _now()
+            payment.processed_by_user_id = user.id
+            payment.updated_at = _now()
+            payment.remarks = remarks
+            unit.unit_status = "Service Completed"
+            sync_aggregate_service_status(db, service)
+        else:
+            cancel_payment_for_unit(db, service, unit)
     else:
         if service.status != "Payment Requested":
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Only active payment requests can be cancelled")
@@ -2417,7 +2527,32 @@ def cancel_payment_request(
         )
         if latest_payment is None:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "No payment request found to cancel")
-        db.delete(latest_payment)
+        if reject:
+            ensure_current_stage_approver(user, latest_payment.approval_stage)
+            record_payment_approval(
+                db,
+                module="services",
+                entity_id=service.id,
+                service_payment_request_id=latest_payment.id,
+                stage_key=latest_payment.approval_stage,
+                decision="Rejected",
+                user=user,
+                remarks=remarks,
+            )
+            resolve_payment_stage_actions(
+                db,
+                module="services",
+                entity_id=service.id,
+                entity_ref=str(latest_payment.id),
+            )
+            latest_payment.status = "Rejected"
+            latest_payment.approval_status = "Rejected"
+            latest_payment.processed_at = _now()
+            latest_payment.processed_by_user_id = user.id
+            latest_payment.updated_at = _now()
+            latest_payment.remarks = remarks
+        else:
+            db.delete(latest_payment)
         service.status = "Service Completed"
         service.status_date = _now()
 
@@ -2437,19 +2572,29 @@ def cancel_payment_request(
 
 
 @router.post("/{service_id}/payment-approval", response_model=ServiceOut)
-def approve_service_payment(
+async def approve_service_payment(
     service_id: int,
-    body: ServicePaymentCompleteIn,
     background_tasks: BackgroundTasks,
+    approved_amount: float = Form(...),
+    payment_type: str | None = Form(None),
+    remarks: str | None = Form(None),
+    unit_id: int | None = Form(None),
+    decision: str = Form("Approved"),
+    proof_document: UploadFile | None = File(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    body = ServicePaymentCompleteIn(
+        approved_amount=approved_amount,
+        payment_type=payment_type,
+        remarks=remarks,
+        unit_id=unit_id,
+        decision=decision,
+    )
     service = _load_visible_service(db, service_id, user)
-    if not _is_service_team(user):
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only Indcool Service can approve payment")
     if body.unit_id is None and service.status != "Payment Requested":
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Payment can be approved only after a payment request is raised")
-    if body.approved_amount < 0:
+    if body.decision == "Approved" and body.approved_amount < 0:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Approved amount cannot be negative")
 
     if body.unit_id is not None:
@@ -2477,10 +2622,118 @@ def approve_service_payment(
 
     if latest_payment is None:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "No payment request found to approve")
+    if latest_payment.approval_status in {"Approved", "Rejected"} or latest_payment.status == "Processed":
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "This payment request is already finalized")
+    ensure_current_stage_approver(user, latest_payment.approval_stage)
+    admin_bypass = is_system_admin(user)
+    effective_stage_key = "admin" if admin_bypass else latest_payment.approval_stage
+    if proof_document is not None and proof_document.filename and not is_system_admin(user):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only Admin can upload payment proof")
+    resolve_payment_stage_actions(
+        db,
+        module="services",
+        entity_id=service.id,
+        entity_ref=str(latest_payment.id),
+    )
+
+    old_status = service.status
+    if body.decision == "Rejected":
+        if not (body.remarks or "").strip():
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Remarks are required when rejecting a payment request")
+        record_payment_approval(
+            db,
+            module="services",
+            entity_id=service.id,
+            service_payment_request_id=latest_payment.id,
+            stage_key=effective_stage_key,
+            decision="Rejected",
+            user=user,
+            remarks=body.remarks,
+        )
+        latest_payment.status = "Rejected"
+        latest_payment.approval_status = "Rejected"
+        latest_payment.processed_at = _now()
+        latest_payment.processed_by_user_id = user.id
+        latest_payment.updated_at = _now()
+        latest_payment.remarks = body.remarks
+        if latest_payment.service_request_unit_id:
+            unit = db.get(ServiceRequestUnit, latest_payment.service_request_unit_id)
+            if unit is not None:
+                unit.unit_status = "Service Completed"
+            sync_aggregate_service_status(db, service)
+        else:
+            service.status = "Service Completed"
+            service.status_date = _now()
+        _log_status(
+            db,
+            service,
+            action="Payment Rejected",
+            user=user,
+            old_status=old_status,
+            new_status=service.status,
+            remarks=body.remarks,
+            metadata={"payment_request_id": latest_payment.id, "approval_stage": latest_payment.approval_stage},
+        )
+        db.commit()
+        db.refresh(service)
+        after_service_status_change(background_tasks, db, service, old_status=old_status, remarks=body.remarks)
+        return _hydrate_service(db, service)
+
+    record_payment_approval(
+        db,
+        module="services",
+        entity_id=service.id,
+        service_payment_request_id=latest_payment.id,
+        stage_key=effective_stage_key,
+        decision="Approved",
+        user=user,
+        remarks=body.remarks,
+    )
+
+    if not admin_bypass and not is_final_stage(latest_payment.approval_stage):
+        following_stage = next_stage(latest_payment.approval_stage)
+        payload = approval_stage_payload(following_stage.key if following_stage else None)
+        latest_payment.approval_status = "Pending"
+        latest_payment.approval_stage = payload["payment_approval_stage"]
+        latest_payment.approval_stage_label = payload["payment_approval_stage_label"]
+        latest_payment.approval_step = payload["payment_approval_step"]
+        latest_payment.approval_total_steps = payload["payment_approval_total_steps"]
+        latest_payment.next_approver_role = payload["payment_next_approver_role"]
+        latest_payment.approved_amount = body.approved_amount
+        latest_payment.updated_at = _now()
+        if body.remarks:
+            latest_payment.remarks = body.remarks
+        _log_status(
+            db,
+            service,
+            action="Payment Stage Approved",
+            user=user,
+            old_status=old_status,
+            new_status=service.status,
+            remarks=body.remarks,
+            metadata={"payment_request_id": latest_payment.id, "next_stage": latest_payment.approval_stage},
+        )
+        notify_payment_stage(
+            db,
+            module="services",
+            entity_id=service.id,
+            entity_ref=str(latest_payment.id),
+            title=f"Service {service.request_no}",
+            href=f"/services/{service.id}",
+            entity_status=service.status,
+            stage_key=latest_payment.approval_stage,
+            occurred_at=_now(),
+        )
+        db.commit()
+        db.refresh(service)
+        return _hydrate_service(db, service)
 
     payment_type = body.payment_type or latest_payment.payment_type or "Cash"
     if payment_type == "UPI" and not latest_payment.payment_qr_code_path:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "QR Code is required before approving UPI payment")
+    if is_system_admin(user) and payment_type == "UPI" and (proof_document is None or not proof_document.filename) and not latest_payment.payment_proof_file_path:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Upload Payment Proof / Document is required when payment type is UPI")
+    proof_path = await save_upload(proof_document, module="services") if proof_document and proof_document.filename else None
 
     transaction = PaymentTransaction(
         payment_type=payment_type,
@@ -2493,7 +2746,13 @@ def approve_service_payment(
     db.flush()
 
     latest_payment.status = "Processed"
+    latest_payment.approval_status = "Approved"
+    latest_payment.approval_stage = "admin"
+    latest_payment.approval_stage_label = "Completed"
+    latest_payment.next_approver_role = None
     latest_payment.approved_amount = body.approved_amount
+    if proof_path:
+        latest_payment.payment_proof_file_path = proof_path
     latest_payment.processed_at = _now()
     latest_payment.processed_by_user_id = user.id
     latest_payment.payment_transaction_id = transaction.id
@@ -2501,7 +2760,6 @@ def approve_service_payment(
     if body.remarks:
         latest_payment.remarks = body.remarks
 
-    old_status = service.status
     if latest_payment.service_request_unit_id:
         unit = db.get(ServiceRequestUnit, latest_payment.service_request_unit_id)
         if unit is not None:
@@ -2519,7 +2777,7 @@ def approve_service_payment(
         old_status=old_status,
         new_status=service.status,
         remarks=body.remarks,
-        metadata={"payment_request_id": latest_payment.id, "approved_amount": body.approved_amount, "payment_transaction_id": transaction.id},
+        metadata={"payment_request_id": latest_payment.id, "approved_amount": body.approved_amount, "payment_transaction_id": transaction.id, "approval_stage": latest_payment.approval_stage},
     )
     completion_for_history = None
     if latest_payment.service_request_unit_id:

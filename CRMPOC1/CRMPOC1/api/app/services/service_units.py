@@ -449,7 +449,15 @@ def build_unit_rows(
             "payment_status": payment.status if payment else None,
             "payment_type": payment.payment_type if payment else None,
             "total_requested_amount": float(payment.total_requested_amount) if payment and payment.total_requested_amount is not None else None,
+            "approved_amount": float(payment.approved_amount) if payment and payment.approved_amount is not None else None,
             "payment_qr_code_path": payment.payment_qr_code_path if payment else None,
+            "payment_proof_file_path": payment.payment_proof_file_path if payment else None,
+            "payment_approval_status": payment.approval_status if payment else None,
+            "payment_approval_stage": payment.approval_stage if payment else None,
+            "payment_approval_stage_label": payment.approval_stage_label if payment else None,
+            "payment_approval_step": payment.approval_step if payment else None,
+            "payment_approval_total_steps": payment.approval_total_steps if payment else None,
+            "payment_next_approver_role": payment.next_approver_role if payment else None,
         })
     return rows
 

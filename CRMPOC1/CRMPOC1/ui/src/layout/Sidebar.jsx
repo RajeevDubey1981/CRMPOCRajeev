@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useAuth } from "../auth/AuthContext.jsx";
 import { NavLink } from "react-router-dom";
-import { isIndcoolServiceRole, isOperationsAdminRole, isPartnerAdminRole, isSystemAdminRole } from "../utils/roles.js";
+import { isIndcoolServiceRole, isOperationsAdminRole, isSystemAdminRole } from "../utils/roles.js";
 
 /** w-64 (16rem) reduced by 40% → 9.6rem */
 const SIDEBAR_WIDTH_CLASS = "w-[9.6rem] min-w-[9.6rem]";
@@ -17,11 +17,11 @@ const NAV = [
       { to: "/admin/roles", label: "Roles", module: "roles" },
       { to: "/admin/permissions", label: "Permissions", module: "roles" },
       { to: "/admin/payments", label: "Payment History", systemAdminOnly: true },
-      { to: "/admin/partner-registrations", label: "Partner Registrations", partnerAdminOnly: true },
     ],
   },
   { to: "/complaints", label: "Complaints", module: "complaints" },
   { to: "/services", label: "Service Requests", module: "services" },
+  { to: "/partner-registrations", label: "Partner Registrations", module: "partner_registrations" },
   { to: "/services/my-units", label: "My Assigned Units", engineerOnly: true },
   { to: "/items", label: "Item Masters", module: "items" },
   { to: "/couriers", label: "Courier Masters", module: "couriers" },
@@ -102,13 +102,13 @@ export default function Sidebar({ collapsed, mobileOpen = false, onNavigate }) {
   const isIndcoolService = isIndcoolServiceRole(role);
   const isCourierAdmin = isOperationsAdminRole(role);
 
-  const isPartnerAdmin = isPartnerAdminRole(user?.role);
   const isSystemAdmin = isSystemAdminRole(user?.role);
 
   const permissions = Array.isArray(user?.permissions) ? user.permissions : [];
   const hasPermissionPayload = permissions.length > 0;
   function canView(module) {
     if (!module) return false;
+    if (isSystemAdmin) return true;
     return permissions.some((permission) => permission.module === module && permission.can_view);
   }
 
@@ -117,8 +117,7 @@ export default function Sidebar({ collapsed, mobileOpen = false, onNavigate }) {
     if (item.engineerOnly) return isEngineer;
     if (item.operationsOnly) return isCourierAdmin;
     if (item.systemAdminOnly) return isSystemAdmin;
-    if (item.partnerAdminOnly) return isPartnerAdmin;
-    if (item.adminOnly) return isSystemAdmin || isPartnerAdmin;
+    if (item.adminOnly) return isSystemAdmin;
     if (!item.module) return isSystemAdmin;
     if (!hasPermissionPayload) return false;
     return canView(item.module);

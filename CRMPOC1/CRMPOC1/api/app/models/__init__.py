@@ -10,6 +10,7 @@ from app.models.call import Call
 from app.models.claim import Claim, ClaimPhoto
 from app.models.serial_history import SerialHistoryEvent
 from app.models.payment import PaymentTransaction
+from app.models.payment_approval import PaymentApprovalLog
 from app.models.service import (
     ServiceRequest,
     ServiceStatusLog,
@@ -45,6 +46,7 @@ __all__ = [
     "Complaint", "ComplaintStatusLog",
     "InstallationRequest",
     "PaymentTransaction",
+    "PaymentApprovalLog",
     "ServiceRequest", "ServiceStatusLog", "ServiceAssignment", "ServiceObservation",
     "ServiceApproval", "ServiceCompletion", "ServiceDocument", "ServiceDocumentRule",
     "ServicePaymentRequest", "ServiceNotification",

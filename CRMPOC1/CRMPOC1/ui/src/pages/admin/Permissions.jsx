@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 
 import { rolesApi } from "../../api/admin.js";
+import { moduleLabel, normalizePermissionModules } from "../../utils/permissionModules.js";
 
 const FLAGS = ["can_view", "can_create", "can_edit", "can_delete", "can_export"];
 const FLAG_LABELS = { can_view: "V", can_create: "C", can_edit: "E", can_delete: "D", can_export: "X" };
@@ -26,7 +27,7 @@ export default function Permissions() {
   useEffect(() => {
     Promise.all([rolesApi.modules(), rolesApi.matrix()])
       .then(([m, x]) => {
-        setModules(m.modules || []);
+        setModules(normalizePermissionModules(m.modules || []));
         setSubModulesByModule(m.sub_modules || {});
         setMatrix(x);
       })
@@ -38,7 +39,7 @@ export default function Permissions() {
       <tr key={`${module}|${sub_module ?? ""}`} className={isSub ? "bg-slate-50/40" : ""}>
         <td className={`px-3 py-2 ${isSub ? "pl-8 text-slate-600" : "font-medium text-slate-700"}`}>
           {isSub ? <span className="text-slate-400">↳ </span> : null}
-          {label}
+          {moduleLabel(label)}
         </td>
         {matrix.map((row) => {
           const perm = findPerm(row.permissions, module, sub_module);

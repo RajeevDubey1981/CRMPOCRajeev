@@ -5,7 +5,7 @@ import Modal from "../../components/Modal.jsx";
 import StatusBadge from "../../components/StatusBadge.jsx";
 import { installationsApi } from "../../api/installations.js";
 import { useAuth } from "../../auth/AuthContext.jsx";
-import { isOperationsAdminRole, isServiceTeamRole } from "../../utils/roles.js";
+import { isOperationsAdminRole, isServiceTeamRole, isSystemAdminRole } from "../../utils/roles.js";
 import { usesStructuredInstallationWorkflow, getInstallationWorkflowStepOptions, getCurrentInstallationWorkflowStep } from "../../utils/installationWorkflowSteps.js";
 import InstallationStatusEdit from "./InstallationStatusEdit.jsx";
 import InstallationCallCenterWorkflow from "./InstallationCallCenterWorkflow.jsx";
@@ -59,6 +59,7 @@ export default function InstallationDetail() {
   const { user } = useAuth();
   const role = (user?.role || "").toLowerCase();
   const isAdminLike = isOperationsAdminRole(role);
+  const isPaymentAdmin = isSystemAdminRole(role);
   const isServiceTeam = isServiceTeamRole(role);
   const isEngineer = role === "engineer";
   const [installation, setInstallation] = useState(null);
@@ -341,6 +342,7 @@ export default function InstallationDetail() {
         <InstallationCallCenterWorkflow
           installation={installation}
           isAdminLike={isAdminLike}
+          isPaymentAdmin={isPaymentAdmin}
           isServiceTeam={isServiceTeam}
           isEngineer={isEngineer}
           userId={user?.id}

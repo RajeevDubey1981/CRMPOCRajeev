@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     cors_origins: str = "http://localhost:5173"
     app_public_url: str = ""
     partner_agreement_otp_channel: str = "email"
+    payment_approval_steps: int = 3
 
     email_enabled: bool = False
     smtp_host: str = "smtp.gmail.com"

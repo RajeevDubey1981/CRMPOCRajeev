@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Literal
 
@@ -115,7 +115,7 @@ class PartnerRegistrationUpdate(BaseModel):
     cin_no: str | None = Field(default=None, max_length=30)
     aadhaar_no: str | None = Field(default=None, max_length=20)
     gem_seller_id: str | None = Field(default=None, max_length=100)
-    year_of_establishment: int | None = Field(default=None, ge=1800, le=2100)
+    year_of_establishment: date | None = None
     annual_turnover: Decimal | None = Field(default=None, ge=0)
     operating_states: str | None = None
     product_categories: str | None = None
@@ -173,7 +173,7 @@ class PartnerRegistrationOut(BaseModel):
     cin_no: str | None = None
     aadhaar_no: str | None = None
     gem_seller_id: str | None = None
-    year_of_establishment: int | None = None
+    year_of_establishment: date | None = None
     annual_turnover: Decimal | None = None
     operating_states: str | None = None
     product_categories: str | None = None

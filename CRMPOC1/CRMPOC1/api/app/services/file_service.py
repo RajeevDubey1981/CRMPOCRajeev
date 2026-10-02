@@ -33,12 +33,13 @@ def to_public_upload_path(path: str | None) -> str | None:
     return normalized
 
 
-def _safe_ext(filename: str) -> str:
+def _safe_ext(filename: str, allowed_ext: set[str] | None = None) -> str:
+    allowed = allowed_ext or ALLOWED_EXT
     name = os.path.basename((filename or "").replace("\\", "/"))
     if "\x00" in name or name.count(".") > 2:
         return ""
     ext = os.path.splitext(name)[1].lower()
-    return ext if ext in ALLOWED_EXT else ""
+    return ext if ext in allowed else ""
 
 
 def _validate_file_signature(contents: bytes, extension: str) -> None:
@@ -64,22 +65,33 @@ def _validate_file_signature(contents: bytes, extension: str) -> None:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid Office document")
 
 
-def _validate_upload(file: UploadFile) -> str:
-    extension = _safe_ext(file.filename)
-    if not extension or file.content_type not in ALLOWED_MIME:
+def _validate_upload(
+    file: UploadFile,
+    allowed_ext: set[str] | None = None,
+    allowed_mime: set[str] | None = None,
+) -> str:
+    extension = _safe_ext(file.filename, allowed_ext)
+    allowed_content_types = allowed_mime or ALLOWED_MIME
+    if not extension or file.content_type not in allowed_content_types:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Unsupported or unsafe file type")
     return extension
 
 
-async def save_upload(file: UploadFile, module: str) -> str:
+async def save_upload(
+    file: UploadFile,
+    module: str,
+    allowed_ext: set[str] | None = None,
+    allowed_mime: set[str] | None = None,
+    max_bytes: int = MAX_BYTES,
+) -> str:
     """Validate and persist an uploaded file under /uploads/{module}/{YYYY}/{MM}/.
 
     Returns the public URL path under /uploads/.
     """
-    extension = _validate_upload(file)
+    extension = _validate_upload(file, allowed_ext=allowed_ext, allowed_mime=allowed_mime)
 
     contents = await file.read()
-    if len(contents) > MAX_BYTES:
+    if len(contents) > max_bytes:
         raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, "File exceeds 2MB limit")
     if not contents:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Empty file")

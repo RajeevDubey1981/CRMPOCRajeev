@@ -51,6 +51,7 @@ function CustomerDocumentList({ documents }) {
 export default function InstallationCallCenterWorkflow({
   installation,
   isAdminLike,
+  isPaymentAdmin = false,
   isServiceTeam = false,
   isEngineer,
   userId,
@@ -209,6 +210,7 @@ export default function InstallationCallCenterWorkflow({
             engineerSiteRemarks={installation.engineer_site_remarks}
             isEngineer={isEngineer}
             isAdminLike={false}
+            isPaymentAdmin={false}
             userId={userId}
             showAdminVerify={false}
             workflowSteps={workflowSteps}
@@ -222,6 +224,7 @@ export default function InstallationCallCenterWorkflow({
             installation={installation}
             isEngineer={isEngineer}
             isAdminLike={false}
+            isPaymentAdmin={false}
             userId={userId}
             workflowSteps={workflowSteps}
             onUpdated={onUpdated}
@@ -279,6 +282,7 @@ export default function InstallationCallCenterWorkflow({
           installation={installation}
           isEngineer={false}
           isAdminLike={isAdminLike}
+          isPaymentAdmin={isPaymentAdmin}
           userId={userId}
           workflowSteps={workflowSteps}
           onUpdated={onUpdated}
@@ -498,6 +502,7 @@ export default function InstallationCallCenterWorkflow({
           engineerSiteRemarks={installation.engineer_site_remarks}
           isEngineer={isEngineer}
           isAdminLike={isAdminLike}
+          isPaymentAdmin={isPaymentAdmin}
           userId={userId}
           showAdminVerify={isAdminLike}
           workflowSteps={workflowSteps}
@@ -512,6 +517,7 @@ export default function InstallationCallCenterWorkflow({
           installation={installation}
           isEngineer={isEngineer}
           isAdminLike={isAdminLike}
+          isPaymentAdmin={isPaymentAdmin}
           userId={userId}
           workflowSteps={workflowSteps}
           onUpdated={onUpdated}

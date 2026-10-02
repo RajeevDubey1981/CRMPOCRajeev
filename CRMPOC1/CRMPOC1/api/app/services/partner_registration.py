@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import secrets
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from urllib.parse import urljoin
 
 from sqlalchemy import func, select
@@ -19,7 +19,7 @@ FORM_STATUSES = ("Invite Sent", "In Progress", "Submitted")
 
 FORM_STEP_DEFINITIONS = (
     {"step": 1, "title": "Partner Category", "fields": ("partner_type", "business_type")},
-    {"step": 2, "title": "Firm Details", "fields": ("name", "gem_seller_id")},
+    {"step": 2, "title": "Firm Details", "fields": ("name",)},
     {"step": 3, "title": "Contact Person", "fields": ("contact_person_name", "contact_designation", "mobile", "email")},
     {"step": 4, "title": "Address", "fields": ("firm_address", "city", "state", "pincode")},
     {"step": 5, "title": "Tax Registration", "fields": ("gst_no", "pan_no", "aadhaar_no")},
@@ -74,13 +74,7 @@ SHOP_PHOTO_FIELDS = (
 )
 CSD_REQUIRED_SHOP_PHOTO_COUNT = 5
 DEFAULT_REQUIRED_SHOP_PHOTO_COUNT = 1
-GEM_SELLER_ID_REQUIRED_FOR = frozenset({
-    "Gem Partner",
-    "Distributor",
-    "Service Partner",
-    "Retailer",
-    "Partner",
-})
+GEM_SELLER_ID_REQUIRED_FOR = frozenset({"Gem Partner"})
 
 
 def required_shop_photo_count(partner_type: str | None) -> int:
@@ -90,7 +84,8 @@ def required_shop_photo_count(partner_type: str | None) -> int:
 
 
 def gem_seller_id_required(partner_type: str | None) -> bool:
-    return (partner_type or "").strip() in GEM_SELLER_ID_REQUIRED_FOR
+    normalized = (partner_type or "").strip().casefold()
+    return normalized in {partner_type.casefold() for partner_type in GEM_SELLER_ID_REQUIRED_FOR}
 
 
 def is_partner_admin(role: str | None) -> bool:
@@ -103,6 +98,24 @@ def can_invite_partner(role: str | None) -> bool:
 
 def _now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _parse_optional_date(value) -> date | None:
+    if value in (None, ""):
+        return None
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return None
+        try:
+            return date.fromisoformat(text[:10])
+        except ValueError as exc:
+            raise ValueError("Year of Establishment must be a valid date") from exc
+    raise ValueError("Year of Establishment must be a valid date")
 
 
 def generate_registration_no(db: Session) -> str:
@@ -150,8 +163,8 @@ def _step_fields_required_fields(step: int, row: PartnerRegistration) -> list[st
     if definition is None:
         return []
     fields = list(definition["fields"])
-    if step == 2 and not gem_seller_id_required(row.partner_type):
-        fields = [f for f in fields if f != "gem_seller_id"]
+    if step == 2 and gem_seller_id_required(row.partner_type):
+        fields.append("gem_seller_id")
     return fields
 
 
@@ -293,6 +306,10 @@ def apply_step_fields(row: PartnerRegistration, step: int, data: dict) -> None:
     for field, value in data.items():
         if field not in allowed:
             continue
+        if field == "gem_seller_id" and not gem_seller_id_required(row.partner_type):
+            continue
+        if field == "year_of_establishment":
+            value = _parse_optional_date(value)
         if field == "email" and value is not None:
             value = str(value).strip().lower()
         if field == "gst_no" and value is not None:
@@ -302,6 +319,9 @@ def apply_step_fields(row: PartnerRegistration, step: int, data: dict) -> None:
         if isinstance(value, str):
             value = value.strip() or None
         setattr(row, field, value)
+
+    if step in {1, 2} and not gem_seller_id_required(row.partner_type):
+        row.gem_seller_id = None
 
     if row.form_started_at is None:
         row.form_started_at = _now()

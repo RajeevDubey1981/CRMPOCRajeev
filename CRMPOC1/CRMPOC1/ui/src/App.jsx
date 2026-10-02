@@ -1,4 +1,4 @@
-import { Navigate, Route, Routes } from "react-router-dom";
+import { Navigate, Route, Routes, useParams } from "react-router-dom";
 
 import { useAuth } from "./auth/AuthContext.jsx";
 import ProtectedRoute from "./auth/ProtectedRoute.jsx";
@@ -53,19 +53,11 @@ import PartnerRegistrationList from "./pages/partners/PartnerRegistrationList.js
 import PartnerRegistrationReview from "./pages/partners/PartnerRegistrationReview.jsx";
 import PartnerRegistrationPublic from "./pages/partners/PartnerRegistrationPublic.jsx";
 import PartnerAgreementSign from "./pages/partners/PartnerAgreementSign.jsx";
-import { isOperationsAdminRole, isPartnerAdminRole, isSystemAdminRole } from "./utils/roles.js";
+import { isOperationsAdminRole, isSystemAdminRole } from "./utils/roles.js";
 
 function OperationsAdminRoute({ children }) {
   const { user } = useAuth();
   if (!isOperationsAdminRole(user?.role)) {
-    return <Navigate to="/dashboard" replace />;
-  }
-  return children;
-}
-
-function PartnerAdminRoute({ children }) {
-  const { user } = useAuth();
-  if (!isPartnerAdminRole(user?.role)) {
     return <Navigate to="/dashboard" replace />;
   }
   return children;
@@ -81,6 +73,9 @@ function SystemAdminRoute({ children }) {
 
 function PermissionRoute({ module, action = "can_view", children }) {
   const { user } = useAuth();
+  if (isSystemAdminRole(user?.role)) {
+    return children;
+  }
   const permissions = Array.isArray(user?.permissions) ? user.permissions : [];
   const allowed = permissions.some((permission) => permission.module === module && permission[action]);
   if (!allowed) {
@@ -103,6 +98,11 @@ function DashboardRoute() {
     return <VendorDashboard />;
   }
   return <Dashboard />;
+}
+
+function LegacyPartnerRegistrationReviewRedirect() {
+  const { id } = useParams();
+  return <Navigate to={`/partner-registrations/${id}/review`} replace />;
 }
 
 export default function App() {
@@ -131,12 +131,14 @@ export default function App() {
         <Route path="/admin/roles" element={<SystemAdminRoute><RoleList /></SystemAdminRoute>} />
         <Route path="/admin/permissions" element={<SystemAdminRoute><Permissions /></SystemAdminRoute>} />
         <Route path="/admin/payments" element={<SystemAdminRoute><PaymentHistory /></SystemAdminRoute>} />
-        <Route path="/admin/partner-registrations" element={<PartnerAdminRoute><PartnerRegistrationList /></PartnerAdminRoute>} />
-        <Route path="/admin/partner-registrations/:id/review" element={<PartnerAdminRoute><PartnerRegistrationReview /></PartnerAdminRoute>} />
+        <Route path="/admin/partner-registrations" element={<Navigate to="/partner-registrations" replace />} />
+        <Route path="/admin/partner-registrations/:id/review" element={<LegacyPartnerRegistrationReviewRedirect />} />
         <Route path="/complaints" element={<PermissionRoute module="complaints"><ComplaintList /></PermissionRoute>} />
         <Route path="/complaints/new" element={<PermissionRoute module="complaints" action="can_create"><ComplaintCreate /></PermissionRoute>} />
         <Route path="/complaints/:id" element={<PermissionRoute module="complaints"><ComplaintDetail /></PermissionRoute>} />
         <Route path="/services" element={<PermissionRoute module="services"><ServiceRequestList /></PermissionRoute>} />
+        <Route path="/partner-registrations" element={<PermissionRoute module="partner_registrations"><PartnerRegistrationList /></PermissionRoute>} />
+        <Route path="/partner-registrations/:id/review" element={<PermissionRoute module="partner_registrations"><PartnerRegistrationReview /></PermissionRoute>} />
         <Route path="/services/my-units" element={<EngineerAssignedUnits />} />
         <Route path="/services/new" element={<PermissionRoute module="services" action="can_create"><ServiceRequestCreate /></PermissionRoute>} />
         <Route path="/services/:id" element={<PermissionRoute module="services"><ServiceRequestDetail /></PermissionRoute>} />

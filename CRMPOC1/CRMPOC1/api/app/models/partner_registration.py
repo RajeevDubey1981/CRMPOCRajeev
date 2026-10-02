@@ -1,7 +1,7 @@
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, Numeric, String, Text
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, Numeric, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 
@@ -39,7 +39,7 @@ class PartnerRegistration(Base, TimestampMixin):
     cin_no: Mapped[str | None] = mapped_column(String(30), nullable=True)
     aadhaar_no: Mapped[str | None] = mapped_column(String(20), nullable=True)
     gem_seller_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    year_of_establishment: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    year_of_establishment: Mapped[date | None] = mapped_column(Date, nullable=True)
     annual_turnover: Mapped[Decimal | None] = mapped_column(Numeric(14, 2), nullable=True)
     operating_states: Mapped[str | None] = mapped_column(Text, nullable=True)
     product_categories: Mapped[str | None] = mapped_column(Text, nullable=True)

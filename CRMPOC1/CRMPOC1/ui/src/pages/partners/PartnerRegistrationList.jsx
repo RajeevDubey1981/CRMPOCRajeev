@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { partnerRegistrationsApi } from "../../api/partnerRegistrations.js";
+import { useAuth } from "../../auth/AuthContext.jsx";
 import Modal from "../../components/Modal.jsx";
 import Pagination from "../../components/Pagination.jsx";
 
@@ -33,6 +34,17 @@ const ONBOARDING_COLORS = {
 };
 
 const fieldClass = "w-full rounded-md border border-slate-300 px-3 py-2 text-sm";
+const FORM_STEP_NAMES = {
+  1: "Partner Category",
+  2: "Firm Details",
+  3: "Contact Person",
+  4: "Address",
+  5: "Tax Registration",
+  6: "Bank Details",
+  7: "Operations",
+  8: "Documents",
+  9: "Declaration",
+};
 
 function fmtDateTime(value) {
   if (!value) return "—";
@@ -86,6 +98,10 @@ function ProgressBar({ percent }) {
   );
 }
 
+function formStepName(step) {
+  return FORM_STEP_NAMES[Number(step)] || "Not started";
+}
+
 function DetailField({ label, value }) {
   return (
     <div>
@@ -105,6 +121,13 @@ const EMPTY_INVITE = {
 
 export default function PartnerRegistrationList() {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const permission = (Array.isArray(user?.permissions) ? user.permissions : [])
+    .find((item) => item.module === "partner_registrations");
+  const isSystemAdmin = ["admin", "incool"].includes((user?.role || "").trim().toLowerCase());
+  const canCreate = isSystemAdmin || Boolean(permission?.can_create);
+  const canEdit = isSystemAdmin || Boolean(permission?.can_edit);
+  const canDelete = isSystemAdmin || Boolean(permission?.can_delete);
   const [meta, setMeta] = useState({ partner_types: [], onboarding_statuses: [], form_statuses: [] });
   const [data, setData] = useState({ items: [], total: 0 });
   const [loading, setLoading] = useState(false);
@@ -159,7 +182,7 @@ export default function PartnerRegistrationList() {
 
   async function openDetail(row) {
     if (row.form_status === "Submitted") {
-      navigate(`/admin/partner-registrations/${row.id}/review`);
+      navigate(`/partner-registrations/${row.id}/review`);
       return;
     }
     setDetailLoading(true);
@@ -291,13 +314,15 @@ export default function PartnerRegistrationList() {
             Send onboarding invites to partners. Track how much of the form each partner has completed.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => { setInviteOpen(true); setInviteResult(null); setInviteError(""); }}
-          className="rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700"
-        >
-          Send onboarding invite
-        </button>
+        {canCreate && (
+          <button
+            type="button"
+            onClick={() => { setInviteOpen(true); setInviteResult(null); setInviteError(""); }}
+            className="rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700"
+          >
+            Send onboarding invite
+          </button>
+        )}
       </div>
 
       {err && (
@@ -379,7 +404,7 @@ export default function PartnerRegistrationList() {
                 </td>
                 <td className="px-4 py-3">
                   <ProgressBar percent={row.completion_percent} />
-                  <div className="mt-1 text-xs text-slate-500">Step {row.current_form_step} of 9</div>
+                  <div className="mt-1 text-xs text-slate-500">{formStepName(row.current_form_step)}</div>
                 </td>
                 <td className="px-4 py-3"><FormStatusBadge value={row.form_status} /></td>
                 <td className="px-4 py-3">
@@ -398,30 +423,36 @@ export default function PartnerRegistrationList() {
                 </td>
                 <td className="px-4 py-3">
                   <div className="flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      disabled={Boolean(actionBusy) || row.form_status === "Submitted"}
-                      onClick={() => openEditRegistration(row)}
-                      className="text-xs font-medium text-slate-700 underline disabled:text-slate-400 disabled:no-underline"
-                    >
-                      Edit
-                    </button>
-                    <button
-                      type="button"
-                      disabled={Boolean(actionBusy) || row.onboarding_status === "Cancelled"}
-                      onClick={() => setPendingResend(row)}
-                      className="text-xs font-medium text-sky-700 underline disabled:text-slate-400 disabled:no-underline"
-                    >
-                      {actionBusy === `email-${row.id}` ? "Sending..." : "Resend email"}
-                    </button>
-                    <button
-                      type="button"
-                      disabled={Boolean(actionBusy)}
-                      onClick={() => setPendingDelete(row)}
-                      className="text-xs font-medium text-rose-700 underline disabled:text-slate-400 disabled:no-underline"
-                    >
-                      {actionBusy === `delete-${row.id}` ? "Deleting..." : "Delete"}
-                    </button>
+                    {canEdit && (
+                      <>
+                        <button
+                          type="button"
+                          disabled={Boolean(actionBusy) || row.form_status === "Submitted"}
+                          onClick={() => openEditRegistration(row)}
+                          className="text-xs font-medium text-slate-700 underline disabled:text-slate-400 disabled:no-underline"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          type="button"
+                          disabled={Boolean(actionBusy) || row.onboarding_status === "Cancelled"}
+                          onClick={() => setPendingResend(row)}
+                          className="text-xs font-medium text-sky-700 underline disabled:text-slate-400 disabled:no-underline"
+                        >
+                          {actionBusy === `email-${row.id}` ? "Sending..." : "Resend email"}
+                        </button>
+                      </>
+                    )}
+                    {canDelete && (
+                      <button
+                        type="button"
+                        disabled={Boolean(actionBusy)}
+                        onClick={() => setPendingDelete(row)}
+                        className="text-xs font-medium text-rose-700 underline disabled:text-slate-400 disabled:no-underline"
+                      >
+                        {actionBusy === `delete-${row.id}` ? "Deleting..." : "Delete"}
+                      </button>
+                    )}
                   </div>
                 </td>
               </tr>
@@ -584,7 +615,7 @@ export default function PartnerRegistrationList() {
 
               {detail.form_status !== "Submitted" ? (
                 <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-                  Partner has completed {detail.completion_percent}% of the form (step {detail.current_form_step} of 9).
+                  Partner has completed {detail.completion_percent}% of the form. Current step: {formStepName(detail.current_form_step)}.
                   Share the registration link if they have not started yet.
                 </div>
               ) : null}

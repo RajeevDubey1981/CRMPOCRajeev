@@ -50,7 +50,16 @@ export const servicesApi = {
     if (body.reject) formData.append("reject", "true");
     return api.post(`/api/services/${id}/payment-request/cancel`, formData).then((r) => r.data);
   },
-  approvePayment: (id, body) => api.post(`/api/services/${id}/payment-approval`, body).then((r) => r.data),
+  approvePayment: (id, body = {}) => {
+    const formData = new FormData();
+    if (body.unit_id != null) formData.append("unit_id", String(body.unit_id));
+    if (body.approved_amount != null) formData.append("approved_amount", String(body.approved_amount));
+    if (body.payment_type) formData.append("payment_type", body.payment_type);
+    if (body.remarks) formData.append("remarks", body.remarks);
+    if (body.decision) formData.append("decision", body.decision);
+    if (body.proof_document) formData.append("proof_document", body.proof_document);
+    return api.post(`/api/services/${id}/payment-approval`, formData).then((r) => r.data);
+  },
   updatePaymentAmount: (id, body) => api.patch(`/api/services/${id}/payment-amount`, body).then((r) => r.data),
   close: (id, body = {}) => {
     const formData = new FormData();

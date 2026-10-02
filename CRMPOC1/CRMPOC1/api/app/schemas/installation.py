@@ -135,6 +135,22 @@ class InstallationCompletionProofOut(BaseModel):
     file_path: str | None = None
 
 
+class PaymentApprovalLogOut(BaseModel):
+    id: int
+    module: str
+    entity_id: int
+    stage_key: str
+    stage_label: str
+    stage_level: int
+    total_stages: int
+    decision: str
+    approved_by_user_id: int | None = None
+    approved_by_name: str | None = None
+    approver_role: str | None = None
+    remarks: str | None = None
+    created_at: datetime
+
+
 class InstallationOut(BaseModel):
     id: int
     source: str = "vendor"
@@ -173,6 +189,13 @@ class InstallationOut(BaseModel):
     payment_recorded_at: datetime | None = None
     payment_recorded_by: int | None = None
     payment_recorded_by_name: str | None = None
+    payment_approval_status: str | None = None
+    payment_approval_stage: str | None = None
+    payment_approval_stage_label: str | None = None
+    payment_approval_step: int | None = None
+    payment_approval_total_steps: int | None = None
+    payment_next_approver_role: str | None = None
+    payment_approval_history: list[PaymentApprovalLogOut] = Field(default_factory=list)
     complaint_id: int | None = None
     complaint_no: str | None = None
     document_upload_url: str | None = None

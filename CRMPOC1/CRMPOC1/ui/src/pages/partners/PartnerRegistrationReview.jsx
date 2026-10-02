@@ -3,6 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 
 import { api } from "../../api/client.js";
 import { partnerRegistrationsApi } from "../../api/partnerRegistrations.js";
+import { useAuth } from "../../auth/AuthContext.jsx";
 import PartnerOnboardingStepper from "../../components/partners/PartnerOnboardingStepper.jsx";
 import { PARTNER_DOCUMENTS, buildShopPhotoDocuments } from "./partnerFormConstants.js";
 
@@ -86,7 +87,6 @@ function EditableReviewField({ label, fieldKey, value, onChange }) {
       <input
         type={inputTypeForField(fieldKey)}
         value={value || ""}
-        min={fieldKey === "year_of_establishment" ? "1800" : undefined}
         step={fieldKey === "annual_turnover" ? "0.01" : undefined}
         onChange={(event) => onChange(fieldKey, event.target.value)}
         className={`${fieldClass} mt-1`}
@@ -123,7 +123,7 @@ const COMPARISON_ROWS = [
 
 const REVIEW_STEPS = [
   { title: "Partner Category", fields: [["Partner Type", "partner_type"], ["Business Type", "business_type"]] },
-  { title: "Firm Details", fields: [["Firm / Company Name", "name"], ["Year Established", "year_of_establishment"], ["Annual Turnover", "annual_turnover"], ["GeM Seller ID", "gem_seller_id"]] },
+  { title: "Firm Details", fields: [["Firm / Company Name", "name"], ["Date of Establishment", "year_of_establishment"], ["Annual Turnover", "annual_turnover"], ["GeM Seller ID", "gem_seller_id"]] },
   { title: "Contact Person", fields: [["Contact Person", "contact_person_name"], ["Designation", "contact_designation"], ["Mobile", "mobile"], ["Alternate Mobile", "alternate_mobile"], ["Email", "email"], ["Website", "website"]] },
   { title: "Address", fields: [["Complete Address", "firm_address"], ["City", "city"], ["District", "district"], ["State", "state"], ["Pincode", "pincode"]] },
   { title: "Tax Registration", fields: [["GSTIN", "gst_no"], ["PAN", "pan_no"], ["Aadhaar", "aadhaar_no"], ["Udyam / MSME No.", "udyam_no"], ["CIN", "cin_no"]] },
@@ -140,7 +140,18 @@ const SELECT_OPTIONS = {
   business_type: BUSINESS_TYPE_OPTIONS,
 };
 const TEXTAREA_FIELDS = new Set(["firm_address", "operating_states", "product_categories", "remarks"]);
-const NUMBER_FIELDS = new Set(["year_of_establishment", "annual_turnover"]);
+const NUMBER_FIELDS = new Set(["annual_turnover"]);
+
+function gemSellerIdRequired(partnerType) {
+  return (partnerType || "").trim() === "Gem Partner";
+}
+
+function reviewStepFields(step, detail) {
+  if (step.title !== "Firm Details" || gemSellerIdRequired(detail?.partner_type)) {
+    return step.fields;
+  }
+  return step.fields.filter(([, key]) => key !== "gem_seller_id");
+}
 
 function normalize(value) {
   return String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
@@ -149,6 +160,7 @@ function normalize(value) {
 function inputTypeForField(key) {
   if (key === "email") return "email";
   if (key === "website") return "url";
+  if (key === "year_of_establishment") return "date";
   if (key.includes("mobile") || key === "pincode" || key === "account_number" || key === "aadhaar_no") return "tel";
   if (NUMBER_FIELDS.has(key)) return "number";
   return "text";
@@ -162,6 +174,11 @@ function toDraftValue(value) {
 export default function PartnerRegistrationReview() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const permission = (Array.isArray(user?.permissions) ? user.permissions : [])
+    .find((item) => item.module === "partner_registrations");
+  const isSystemAdmin = ["admin", "incool"].includes((user?.role || "").trim().toLowerCase());
+  const canEditPartnerRegistration = isSystemAdmin || Boolean(permission?.can_edit);
 
   const [detail, setDetail] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -215,7 +232,7 @@ export default function PartnerRegistrationReview() {
 
   function startReviewEdit() {
     const draft = {};
-    REVIEW_STEPS[reviewStep].fields.forEach(([, key]) => {
+    reviewStepFields(REVIEW_STEPS[reviewStep], detail).forEach(([, key]) => {
       draft[key] = toDraftValue(detail[key]);
     });
     setReviewDraft(draft);
@@ -227,7 +244,7 @@ export default function PartnerRegistrationReview() {
   }
 
   function buildReviewPayload() {
-    return REVIEW_STEPS[reviewStep].fields.reduce((payload, [, key]) => {
+    return reviewStepFields(REVIEW_STEPS[reviewStep], detail).reduce((payload, [, key]) => {
       const value = reviewDraft[key];
       if (key === "declaration_accepted") {
         payload[key] = Boolean(value);
@@ -295,7 +312,7 @@ export default function PartnerRegistrationReview() {
     try {
       await partnerRegistrationsApi.reject(id, { admin_remark: adminRemark || null });
       setConfirmReject(false);
-      navigate("/admin/partner-registrations");
+      navigate("/partner-registrations");
     } catch (error) {
       setErr(error.response?.data?.detail || "Failed to reject registration");
     } finally {
@@ -338,7 +355,7 @@ export default function PartnerRegistrationReview() {
         <div>
           <button
             type="button"
-            onClick={() => navigate("/admin/partner-registrations")}
+            onClick={() => navigate("/partner-registrations")}
             className="text-xs font-medium text-sky-700 underline"
           >
             &larr; Back to partner registrations
@@ -418,7 +435,7 @@ export default function PartnerRegistrationReview() {
           </div>
           <div className="flex flex-wrap items-center justify-end gap-2">
             <div className="text-sm font-medium text-slate-500">Step {reviewStep + 1} of {REVIEW_STEPS.length}</div>
-            {reviewStep !== 7 && (
+            {canEditPartnerRegistration && reviewStep !== 7 && (
               editingReview ? (
                 <>
                   <button
@@ -495,7 +512,7 @@ export default function PartnerRegistrationReview() {
             </div>
           ) : editingReview ? (
             <div className="mt-3 grid grid-cols-1 gap-4 text-sm md:grid-cols-2">
-              {REVIEW_STEPS[reviewStep].fields.map(([label, key]) => (
+              {reviewStepFields(REVIEW_STEPS[reviewStep], detail).map(([label, key]) => (
                 <EditableReviewField
                   key={key}
                   label={label}
@@ -507,7 +524,7 @@ export default function PartnerRegistrationReview() {
             </div>
           ) : (
             <div className="mt-3 grid grid-cols-1 gap-4 text-sm md:grid-cols-2">
-              {REVIEW_STEPS[reviewStep].fields.map(([label, key]) => (
+              {reviewStepFields(REVIEW_STEPS[reviewStep], detail).map(([label, key]) => (
                 <DetailField
                   key={key}
                   label={label}
@@ -546,7 +563,7 @@ export default function PartnerRegistrationReview() {
           </div>
           <button
             type="button"
-            disabled={gstBusy || !detail.gst_no}
+            disabled={gstBusy || !detail.gst_no || !canEditPartnerRegistration}
             onClick={validateGst}
             className="shrink-0 rounded-md bg-emerald-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
           >
@@ -647,7 +664,7 @@ export default function PartnerRegistrationReview() {
         </div>
       )}
 
-      {canDecide && (
+      {canEditPartnerRegistration && canDecide && (
         <div className="rounded-lg border border-slate-200 bg-white p-4">
           <label className="mb-1 block text-sm font-medium text-slate-700">Admin remark</label>
           <textarea
