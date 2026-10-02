@@ -461,7 +461,7 @@ export default function ComplaintList() {
               ].map((h) => (
                 <th
                   key={h}
-                  className="sticky top-0 z-10 bg-slate-50 px-3 py-2.5 align-bottom font-semibold leading-snug text-slate-600 shadow-[0_1px_0_0_#e2e8f0]"
+                  className="sticky -top-6 z-20 bg-slate-800 px-3 py-3 align-bottom text-[13px] font-bold leading-snug text-white shadow-[0_3px_6px_-1px_rgba(15,23,42,0.45)]"
                 >
                   {h}
                 </th>
