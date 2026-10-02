@@ -127,7 +127,7 @@ export default function ServiceRequestList() {
       {err && <div className="rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-700">{err}</div>}
 
       <div className="overflow-hidden rounded-lg bg-white shadow-sm">
-        <div className="overflow-x-auto">
+        <div className="crm-scroll">
           <table className="min-w-full text-sm">
             <thead className="bg-slate-50 text-left text-slate-600">
               <tr>

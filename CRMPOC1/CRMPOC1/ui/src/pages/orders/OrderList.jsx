@@ -244,7 +244,7 @@ export default function OrderList() {
         <div className="rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-700">{err}</div>
       )}
 
-      <div className="overflow-x-auto rounded-lg bg-white shadow-sm">
+      <div className="crm-scroll rounded-lg bg-white shadow-sm">
         <table className="w-full min-w-[1040px] text-sm">
           <thead className="bg-slate-100 text-left text-slate-700">
             <tr>

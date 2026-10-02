@@ -223,7 +223,7 @@ export default function CallList() {
 
       {err && <div className="rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-700">{err}</div>}
 
-      <div className="overflow-x-auto rounded-lg bg-white shadow-sm">
+      <div className="crm-scroll rounded-lg bg-white shadow-sm">
         <table className="min-w-full text-sm">
           <thead className="border-b border-slate-200 bg-slate-50">
             <tr>

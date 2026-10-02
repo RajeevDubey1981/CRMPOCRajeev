@@ -358,7 +358,7 @@ export default function VendorDashboard() {
         </div>
 
         {/* Table */}
-        <div className="overflow-x-auto">
+        <div className="crm-scroll">
           <table className="min-w-full text-xs">
             <thead className="border-b-2 border-slate-200 bg-slate-50">
               <tr>

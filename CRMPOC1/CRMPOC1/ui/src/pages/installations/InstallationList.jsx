@@ -367,7 +367,7 @@ export default function InstallationList() {
         </div>
       )}
 
-      <div className="overflow-x-auto rounded-lg bg-white shadow-sm">
+      <div className="crm-scroll rounded-lg bg-white shadow-sm">
         <table className="min-w-full text-sm">
           <thead className="bg-slate-100 text-left text-slate-700">
             <tr>

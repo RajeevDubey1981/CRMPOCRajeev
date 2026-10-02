@@ -35,3 +35,21 @@ th {
     -webkit-overflow-scrolling: touch;
   }
 }
+
+/* List tables: the box scrolls (both ways) and the navy heading row stays pinned */
+.crm-scroll {
+  max-height: calc(100dvh - 9rem);
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.crm-scroll > table > thead th {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background-color: #1e3a78 !important;
+  color: #fff !important;
+  box-shadow: 0 3px 6px -1px rgba(15, 23, 42, 0.45);
+}
+.crm-scroll > table > thead th * {
+  color: inherit !important;
+}

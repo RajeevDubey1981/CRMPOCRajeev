@@ -649,7 +649,7 @@ export default function Dashboard() {
       {gridErr && <div className="rounded bg-rose-50 px-3 py-2 text-sm text-rose-700">{gridErr}</div>}
 
       {/* Complaint Grid */}
-      <div className="overflow-x-auto rounded bg-white shadow-sm">
+      <div className="crm-scroll rounded bg-white shadow-sm">
         <table className="w-full min-w-[1320px] text-xs">
           <thead className="border-b-2 border-slate-200 bg-slate-50">
             <tr>

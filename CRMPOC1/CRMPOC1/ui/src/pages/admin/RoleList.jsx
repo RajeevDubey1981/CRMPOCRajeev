@@ -75,7 +75,7 @@ function PermissionMatrix({ modules, subModulesByModule, permissions, onChange, 
   }
 
   return (
-    <div className="overflow-x-auto">
+    <div className="crm-scroll">
       <table className="min-w-full text-sm">
         <thead className="bg-slate-100 text-left text-slate-700">
           <tr>
