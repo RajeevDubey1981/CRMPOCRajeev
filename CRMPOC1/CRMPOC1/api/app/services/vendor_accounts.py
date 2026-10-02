@@ -1,6 +1,6 @@
 import secrets
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models.user import User
@@ -49,22 +49,41 @@ def _next_partner_code(db: Session, prefix: str) -> str:
     return f"{code_prefix}{max_num + 1:03d}"
 
 
-def ensure_vendor_for_user(db: Session, user: User) -> Vendor | None:
+def _normalized_email(value: str | None) -> str:
+    return (value or "").strip().lower()
+
+
+def _vendor_by_email(db: Session, email: str | None) -> Vendor | None:
+    normalized = _normalized_email(email)
+    if not normalized:
+        return None
+    return db.scalar(
+        select(Vendor)
+        .where(func.lower(func.trim(Vendor.email)) == normalized)
+        .order_by(Vendor.deleted_at.is_(None).desc(), Vendor.id.desc())
+    )
+
+
+def _touch_vendor_from_user(vendor: Vendor, user: User) -> Vendor:
+    vendor.deleted_at = None
+    if not vendor.is_active:
+        vendor.is_active = True
+    if not vendor.contact_name:
+        vendor.contact_name = user.name
+    return vendor
+
+
+def ensure_vendor_for_user(db: Session, user: User, *, create_if_missing: bool = True) -> Vendor | None:
+    """Ensure a vendor master row exists for a vendor-role user (create path only)."""
     if (user.role or "").lower() != "vendor":
         return None
 
-    vendor = db.scalar(
-        select(Vendor).where(
-            Vendor.email == user.email,
-        )
-    )
+    vendor = _vendor_by_email(db, user.email)
     if vendor is not None:
-        vendor.deleted_at = None
-        if not vendor.is_active:
-            vendor.is_active = True
-        if not vendor.contact_name:
-            vendor.contact_name = user.name
-        return vendor
+        return _touch_vendor_from_user(vendor, user)
+
+    if not create_if_missing:
+        return None
 
     vendor = Vendor(
         vendor_code=_next_vendor_code(db),
@@ -77,6 +96,51 @@ def ensure_vendor_for_user(db: Session, user: User) -> Vendor | None:
     db.add(vendor)
     db.flush()
     return vendor
+
+
+def vendor_master_for_user(db: Session, user: User) -> Vendor | None:
+    if (user.role or "").lower() != "vendor":
+        return None
+    return _vendor_by_email(db, user.email)
+
+
+def sync_vendor_for_user_email_update(
+    db: Session,
+    user: User,
+    previous_email: str | None,
+) -> Vendor | None:
+    """Keep vendor master in sync when an existing vendor user's email changes.
+
+    Never creates a new vendor row. Updates the vendor that matched the previous
+    email, or reuses an existing vendor that already has the new email.
+    """
+    if (user.role or "").lower() != "vendor":
+        return None
+
+    new_email = (user.email or "").strip()
+    if not new_email:
+        return None
+
+    old_norm = _normalized_email(previous_email)
+    new_norm = _normalized_email(new_email)
+    if old_norm == new_norm:
+        vendor = _vendor_by_email(db, new_email)
+        return _touch_vendor_from_user(vendor, user) if vendor else None
+
+    vendor_at_new = _vendor_by_email(db, new_email)
+    vendor_at_old = _vendor_by_email(db, previous_email) if old_norm else None
+
+    if vendor_at_old is not None and vendor_at_new is not None and vendor_at_old.id != vendor_at_new.id:
+        return _touch_vendor_from_user(vendor_at_new, user)
+
+    if vendor_at_old is not None:
+        vendor_at_old.email = new_email
+        return _touch_vendor_from_user(vendor_at_old, user)
+
+    if vendor_at_new is not None:
+        return _touch_vendor_from_user(vendor_at_new, user)
+
+    return None
 
 
 def ensure_partner_account(db: Session, registration: PartnerRegistration) -> Vendor:

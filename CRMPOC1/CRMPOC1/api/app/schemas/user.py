@@ -33,6 +33,8 @@ class UserOut(BaseModel):
     is_active: bool
     created_at: datetime | None = None
     updated_at: datetime | None = None
+    vendor_id: int | None = None
+    vendor_code: str | None = None
 
     class Config:
         from_attributes = True

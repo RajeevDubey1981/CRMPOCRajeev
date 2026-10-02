@@ -5,6 +5,12 @@ from email.message import EmailMessage
 from pathlib import Path
 
 from app.config import settings
+from app.services.email_send_log import (
+    EMAIL_STATUS_FAILED,
+    EMAIL_STATUS_SENT,
+    EMAIL_STATUS_SKIPPED,
+    record_email_send,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -35,14 +41,40 @@ def _from_address() -> str:
     return from_email
 
 
-def send_email(to: str, subject: str, html_body: str, text_body: str | None = None) -> bool:
+def send_email(
+    to: str,
+    subject: str,
+    html_body: str,
+    text_body: str | None = None,
+    *,
+    template: str | None = None,
+) -> bool:
     recipient = (to or "").strip()
+    resolved_subject = (subject or "").strip() or "Notification from Indcool"
+    from_addr = _from_address()
+
     if not recipient:
         logger.warning("send_email skipped: empty recipient")
+        record_email_send(
+            to_email="",
+            subject=resolved_subject,
+            status=EMAIL_STATUS_SKIPPED,
+            from_email=from_addr,
+            template=template,
+            skip_reason="empty_recipient",
+        )
         return False
 
     if not settings.email_enabled:
-        logger.info("email skipped (EMAIL_ENABLED=false): to=%s subject=%s", recipient, subject)
+        logger.info("email skipped (EMAIL_ENABLED=false): to=%s subject=%s", recipient, resolved_subject)
+        record_email_send(
+            to_email=recipient,
+            subject=resolved_subject,
+            status=EMAIL_STATUS_SKIPPED,
+            from_email=from_addr,
+            template=template,
+            skip_reason="email_disabled",
+        )
         return False
 
     smtp_user = (settings.smtp_user or "").strip()
@@ -50,14 +82,32 @@ def send_email(to: str, subject: str, html_body: str, text_body: str | None = No
     smtp_from = (settings.smtp_from or smtp_user).strip()
     if not smtp_from:
         logger.error("email failed: SMTP_FROM (or SMTP_USER) must be set when EMAIL_ENABLED=true")
+        record_email_send(
+            to_email=recipient,
+            subject=resolved_subject,
+            status=EMAIL_STATUS_FAILED,
+            from_email=from_addr,
+            template=template,
+            skip_reason="smtp_config",
+            error_message="SMTP_FROM (or SMTP_USER) must be set when EMAIL_ENABLED=true",
+        )
         return False
     if settings.smtp_use_auth and (not smtp_user or not smtp_password):
         logger.error("email failed: SMTP_USER and SMTP_PASSWORD required when SMTP_USE_AUTH=true")
+        record_email_send(
+            to_email=recipient,
+            subject=resolved_subject,
+            status=EMAIL_STATUS_FAILED,
+            from_email=from_addr,
+            template=template,
+            skip_reason="smtp_config",
+            error_message="SMTP_USER and SMTP_PASSWORD required when SMTP_USE_AUTH=true",
+        )
         return False
 
     message = EmailMessage()
-    message["Subject"] = subject
-    message["From"] = _from_address()
+    message["Subject"] = resolved_subject
+    message["From"] = from_addr
     message["To"] = recipient
     if text_body:
         message.set_content(text_body)
@@ -74,10 +124,25 @@ def send_email(to: str, subject: str, html_body: str, text_body: str | None = No
             if settings.smtp_use_auth:
                 smtp.login(smtp_user, smtp_password)
             smtp.send_message(message)
-        logger.info("email sent: to=%s subject=%s", recipient, subject)
+        logger.info("email sent: to=%s subject=%s", recipient, resolved_subject)
+        record_email_send(
+            to_email=recipient,
+            subject=resolved_subject,
+            status=EMAIL_STATUS_SENT,
+            from_email=from_addr,
+            template=template,
+        )
         return True
-    except Exception:
-        logger.exception("email failed: to=%s subject=%s", recipient, subject)
+    except Exception as exc:
+        logger.exception("email failed: to=%s subject=%s", recipient, resolved_subject)
+        record_email_send(
+            to_email=recipient,
+            subject=resolved_subject,
+            status=EMAIL_STATUS_FAILED,
+            from_email=from_addr,
+            template=template,
+            error_message=f"{type(exc).__name__}: {exc}",
+        )
         return False
 
 
@@ -90,7 +155,7 @@ def send_template_email(
     html_body = _substitute_template(_load_template(template), context)
     resolved_subject = subject or context.get("subject") or "Notification from Indcool"
     text_body = context.get("text_body")
-    return send_email(to, resolved_subject, html_body, text_body=text_body)
+    return send_email(to, resolved_subject, html_body, text_body=text_body, template=template)
 
 
 def send_partner_registration_invite_email(

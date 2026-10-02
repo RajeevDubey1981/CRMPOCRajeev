@@ -12,8 +12,8 @@ export default function Login() {
   const { user, login, loading } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const [email, setEmail] = useState("admin@indcool.com");
-  const [password, setPassword] = useState("admin123");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState("");
 
   if (user) {
@@ -49,6 +49,8 @@ export default function Login() {
           <label className="mb-1 block text-sm font-medium text-slate-700">Email</label>
           <input
             type="email"
+            name="email"
+            autoComplete="username"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required
@@ -59,6 +61,8 @@ export default function Login() {
           <label className="mb-1 block text-sm font-medium text-slate-700">Password</label>
           <input
             type="password"
+            name="password"
+            autoComplete="current-password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required
@@ -72,9 +76,6 @@ export default function Login() {
         >
           {loading ? "Signing in…" : "Sign in"}
         </button>
-        <div className="text-center text-xs text-slate-400">
-          default: admin@indcool.com / admin123
-        </div>
       </form>
     </div>
   );
