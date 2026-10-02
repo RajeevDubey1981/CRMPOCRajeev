@@ -405,14 +405,14 @@ if result.returncode != 0:
     ssh_run(client, f"cat > /tmp/indcool_migrate.py <<'PY'\n{remote_migrate}\nPY")
     print(ssh_run(client, f"sudo -u www-data {remote_api}/venv/bin/python /tmp/indcool_migrate.py"))
 
-    print("\n=== Production seed (safe bootstrap + Product Details masters) ===")
-    seed_flag = "" if seed_demo_data else " --master-data"
+    print("\n=== Production seed (roles + masters; no admin bootstrap) ===")
+    seed_flag = "--no-admin" if seed_demo_data else "--master-data --no-admin"
     print(ssh_run(
         client,
         f"sudo -u www-data bash -lc 'cd {remote_api} && "
         f"export $(grep -E ^DATABASE_BACKEND= .env | xargs) "
         f"$(grep -E ^MYSQL_DATABASE_URL= .env | xargs) && "
-        f"venv/bin/python -m app.seed{seed_flag}'",
+        f"venv/bin/python -m app.seed {seed_flag}'",
     ))
 
 

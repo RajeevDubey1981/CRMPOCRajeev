@@ -4,7 +4,13 @@ import { Link, useParams } from "react-router-dom";
 import Modal from "../../components/Modal.jsx";
 import StatusBadge from "../../components/StatusBadge.jsx";
 import { useAuth } from "../../auth/AuthContext.jsx";
-import { isOperationsAdminRole, isServiceTeamRole } from "../../utils/roles.js";
+import {
+  canAssignServiceDeskUser,
+  canViewAllServiceRequests,
+  isOperationsAdminRole,
+  isServiceDeskRole,
+  isServiceTeamRole,
+} from "../../utils/roles.js";
 import { servicesApi } from "../../api/services.js";
 import { installationsApi } from "../../api/installations.js";
 import ServiceUnitAssignmentPanel from "./ServiceUnitAssignmentPanel.jsx";
@@ -132,6 +138,9 @@ export default function ServiceRequestDetail() {
   const [customerOptions, setCustomerOptions] = useState([]);
   const [selectedCustomerKey, setSelectedCustomerKey] = useState("");
   const [assignForm, setAssignForm] = useState({ assignee_type: "engineer", assignee_id: "", remarks: "" });
+  const [serviceUsers, setServiceUsers] = useState([]);
+  const [serviceDeskAssignForm, setServiceDeskAssignForm] = useState({ service_user_id: "", remarks: "" });
+  const [returnToManagerRemarks, setReturnToManagerRemarks] = useState("");
   const [serialNo, setSerialNo] = useState("");
   const [observation, setObservation] = useState({ problem_found: "", observation: "", recommended_action: "", parts_required: "", estimated_service_charge: "", estimated_parts_charge: "", remarks: "" });
   const [approval, setApproval] = useState({ decision: "Approve", remarks: "" });
@@ -173,6 +182,7 @@ export default function ServiceRequestDetail() {
   useEffect(() => {
     load();
     installationsApi.engineerAssignmentOptions().then(setEngineers).catch(() => setEngineers([]));
+    servicesApi.serviceUsers().then(setServiceUsers).catch(() => setServiceUsers([]));
     servicesApi.vendors().then(setVendors).catch(() => null);
   }, [id]);
 
@@ -304,6 +314,9 @@ export default function ServiceRequestDetail() {
     engineers
   ), [engineers]);
   const roleIsServiceTeam = isServiceTeamRole(role);
+  const roleIsServiceDesk = isServiceDeskRole(role);
+  const roleCanViewAllServices = canViewAllServiceRequests(role);
+  const canAssignServiceDesk = canAssignServiceDeskUser(role);
   const roleIsAdminLike = isOperationsAdminRole(role);
   const roleIsEngineer = role === "engineer";
   const roleIsVendor = role === "vendor";
@@ -523,6 +536,76 @@ export default function ServiceRequestDetail() {
         </div>
       </div>
 
+      {(canAssignServiceDesk || roleIsServiceDesk) && (
+        <section className="rounded-lg border border-violet-200 bg-violet-50 p-4 shadow-sm">
+          <h2 className="text-sm font-semibold text-violet-900">Assignment (service desk)</h2>
+          <p className="mt-1 text-xs text-violet-800">
+            Assign this request to a Service user. Service users only see requests assigned to them.
+          </p>
+          <div className="mt-3 text-sm text-slate-800">
+            <span className="font-medium text-slate-600">Currently assigned:</span>{" "}
+            {service.assigned_service_user_name || "Unassigned"}
+          </div>
+          {canAssignServiceDesk && (
+            <div className="mt-3 grid gap-3 md:grid-cols-[1fr_2fr_auto]">
+              <select
+                value={serviceDeskAssignForm.service_user_id}
+                onChange={(e) => setServiceDeskAssignForm((current) => ({ ...current, service_user_id: e.target.value }))}
+                className="rounded-md border border-violet-300 bg-white px-3 py-2 text-sm"
+              >
+                <option value="">Select service user</option>
+                {serviceUsers.map((option) => (
+                  <option key={option.id} value={option.id}>
+                    {option.name} ({option.email})
+                  </option>
+                ))}
+              </select>
+              <input
+                value={serviceDeskAssignForm.remarks}
+                onChange={(e) => setServiceDeskAssignForm((current) => ({ ...current, remarks: e.target.value }))}
+                placeholder="Assignment remarks (optional)"
+                className="rounded-md border border-violet-300 bg-white px-3 py-2 text-sm"
+              />
+              <button
+                type="button"
+                disabled={busy || !serviceDeskAssignForm.service_user_id}
+                onClick={() => run(
+                  () => servicesApi.assignServiceUser(service.id, {
+                    service_user_id: Number(serviceDeskAssignForm.service_user_id),
+                    remarks: serviceDeskAssignForm.remarks || null,
+                  }),
+                  { successMessage: "Service user assigned." },
+                )}
+                className="rounded-md bg-violet-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+              >
+                Assign service user
+              </button>
+            </div>
+          )}
+          {roleIsServiceDesk && service.assigned_service_user_id === user?.id && (
+            <div className="mt-3 flex flex-wrap items-end gap-2">
+              <input
+                value={returnToManagerRemarks}
+                onChange={(e) => setReturnToManagerRemarks(e.target.value)}
+                placeholder="Reason for returning to manager (optional)"
+                className="min-w-[240px] flex-1 rounded-md border border-violet-300 bg-white px-3 py-2 text-sm"
+              />
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => run(
+                  () => servicesApi.returnToServiceManager(service.id, { remarks: returnToManagerRemarks || null }),
+                  { successMessage: "Request returned to Service Manager." },
+                )}
+                className="rounded-md border border-violet-400 bg-white px-4 py-2 text-sm text-violet-900 disabled:opacity-50"
+              >
+                Return to service manager
+              </button>
+            </div>
+          )}
+        </section>
+      )}
+
       {canEditWorkflow && (
         <section className="rounded-lg border border-amber-200 bg-amber-50 p-4 shadow-sm">
           <div className="text-sm font-semibold text-amber-900">Admin workflow control</div>
@@ -606,6 +689,7 @@ export default function ServiceRequestDetail() {
           <Field label="Serial" value={service.serial_no} />
           <Field label="Warranty" value={service.warranty_status} />
           <Field label="Service Type" value={service.service_type} />
+          <Field label="Service user" value={service.assigned_service_user_name} />
           <Field label="Engineer" value={assignedEngineerDisplay} />
           <Field label="Vendor" value={service.assigned_vendor_name} />
           {isServiceTeam && service.completion_code ? (
@@ -844,7 +928,7 @@ export default function ServiceRequestDetail() {
                       Cancel the current assignment before assigning again, or ask an admin to reset the workflow from this step.
                     </div>
                   )}
-                  {isServiceTeam && <>
+                  {roleCanViewAllServices && <>
                     <select value={assignForm.assignee_id} onChange={(e) => setAssignForm((current) => ({ ...current, assignee_id: e.target.value }))} disabled={assignmentLocked} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-100 disabled:text-slate-500">
                       <option value="">Select engineer</option>
                       {activeAssigneeOptions.map((option) => (

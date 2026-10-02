@@ -5,6 +5,7 @@ import Pagination from "../../components/Pagination.jsx";
 import StatusBadge from "../../components/StatusBadge.jsx";
 import { servicesApi } from "../../api/services.js";
 import { useAuth } from "../../auth/AuthContext.jsx";
+import { canViewAllServiceRequests } from "../../utils/roles.js";
 
 const SUMMARY_TONES = [
   ["new_requests", "New", "bg-amber-500"],
@@ -19,11 +20,13 @@ export default function ServiceRequestList() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const isEngineer = (user?.role || "").toLowerCase() === "engineer";
+  const canFilterByServiceUser = canViewAllServiceRequests(user?.role);
   const [summary, setSummary] = useState(null);
   const [data, setData] = useState({ items: [], total: 0 });
+  const [serviceUsers, setServiceUsers] = useState([]);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
-  const [filters, setFilters] = useState({ search: "", status: "", service_type: "" });
+  const [filters, setFilters] = useState({ search: "", status: "", service_type: "", service_user: "" });
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState(20);
 
@@ -31,13 +34,29 @@ export default function ServiceRequestList() {
     servicesApi.summary().then(setSummary).catch(() => null);
   }, []);
 
-  const params = useMemo(() => ({
-    page,
-    per_page: perPage,
-    search: filters.search || undefined,
-    status: filters.status || undefined,
-    service_type: filters.service_type || undefined,
-  }), [page, perPage, filters]);
+  useEffect(() => {
+    if (!canFilterByServiceUser) return;
+    servicesApi.serviceUsers().then(setServiceUsers).catch(() => setServiceUsers([]));
+  }, [canFilterByServiceUser]);
+
+  const params = useMemo(() => {
+    const base = {
+      page,
+      per_page: perPage,
+      search: filters.search || undefined,
+      status: filters.status || undefined,
+      service_type: filters.service_type || undefined,
+    };
+    if (!canFilterByServiceUser || !filters.service_user) {
+      return base;
+    }
+    if (filters.service_user === "unassigned") {
+      return { ...base, service_user_unassigned: true };
+    }
+    return { ...base, service_user_id: Number(filters.service_user) };
+  }, [page, perPage, filters, canFilterByServiceUser]);
+
+  const tableColumnCount = canFilterByServiceUser ? 13 : 12;
 
   useEffect(() => {
     let active = true;
@@ -79,7 +98,7 @@ export default function ServiceRequestList() {
       )}
 
       <div className="rounded-lg bg-white p-4 shadow-sm">
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+        <div className={`grid grid-cols-1 gap-3 ${canFilterByServiceUser ? "md:grid-cols-2 xl:grid-cols-4" : "md:grid-cols-3"}`}>
           <input value={filters.search} onChange={(e) => patch("search", e.target.value)} placeholder="Request no / customer / mobile / serial" className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
           <select value={filters.status} onChange={(e) => patch("status", e.target.value)} className="rounded-md border border-slate-300 px-3 py-2 text-sm">
             <option value="">All statuses</option>
@@ -93,6 +112,15 @@ export default function ServiceRequestList() {
             <option value="Warranty Service">Warranty Service</option>
             <option value="Paid Service">Paid Service</option>
           </select>
+          {canFilterByServiceUser && (
+            <select value={filters.service_user} onChange={(e) => patch("service_user", e.target.value)} className="rounded-md border border-slate-300 px-3 py-2 text-sm">
+              <option value="">All service users</option>
+              <option value="unassigned">Unassigned (no service user)</option>
+              {serviceUsers.map((option) => (
+                <option key={option.id} value={option.id}>{option.name}</option>
+              ))}
+            </select>
+          )}
         </div>
       </div>
 
@@ -103,14 +131,18 @@ export default function ServiceRequestList() {
           <table className="min-w-full text-sm">
             <thead className="bg-slate-50 text-left text-slate-600">
               <tr>
-                {["Request No","Complaint","Customer","Mobile","Order","Serial","Status","Service Type","Warranty","Engineer","Vendor","Documents"].map((heading) => (
+                {[
+                  "Request No", "Complaint", "Customer", "Mobile", "Order", "Serial", "Status",
+                  ...(canFilterByServiceUser ? ["Service user"] : []),
+                  "Service Type", "Warranty", "Engineer", "Vendor", "Documents",
+                ].map((heading) => (
                   <th key={heading} className="whitespace-nowrap px-4 py-3 font-semibold">{heading}</th>
                 ))}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {loading && <tr><td colSpan={12} className="px-4 py-10 text-center text-slate-400">Loading...</td></tr>}
-              {!loading && data.items.length === 0 && <tr><td colSpan={12} className="px-4 py-10 text-center text-slate-400">No service requests found.</td></tr>}
+              {loading && <tr><td colSpan={tableColumnCount} className="px-4 py-10 text-center text-slate-400">Loading...</td></tr>}
+              {!loading && data.items.length === 0 && <tr><td colSpan={tableColumnCount} className="px-4 py-10 text-center text-slate-400">No service requests found.</td></tr>}
               {!loading && data.items.map((row) => (
                 <tr key={row.id} onClick={() => navigate(`/services/${row.id}`)} className="cursor-pointer hover:bg-sky-50/50">
                   <td className="px-4 py-3 font-mono text-brand-700">{row.request_no}</td>
@@ -132,6 +164,9 @@ export default function ServiceRequestList() {
                   <td className="px-4 py-3">{row.order_no || "—"}</td>
                   <td className="px-4 py-3">{row.serial_no || "—"}</td>
                   <td className="px-4 py-3"><StatusBadge value={row.status} /></td>
+                  {canFilterByServiceUser && (
+                    <td className="px-4 py-3 text-slate-700">{row.assigned_service_user_name || "—"}</td>
+                  )}
                   <td className="px-4 py-3">{row.service_type || "—"}</td>
                   <td className="px-4 py-3">{row.warranty_status || "—"}</td>
                   <td className="px-4 py-3">{row.assigned_engineer_name || "—"}</td>

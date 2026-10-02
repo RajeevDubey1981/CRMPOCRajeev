@@ -209,7 +209,17 @@ DEFAULT_ROLES = [
     },
     {
         "name": "service",
-        "description": "Indcool Service team (legacy role name) — full operations access (no system admin menu)",
+        "description": "Service desk user — works only on service requests assigned to them",
+        "perms": {
+            "complaints": ALL, "installations": ALL, "orders": ALL, "vendors": ALL,
+            "items": ALL, "couriers": ALL, "calls": ALL, "claims": ALL,
+            "services": ALL, "dashboard": ALL,
+            "users": NONE, "roles": NONE,
+        },
+    },
+    {
+        "name": "service_manager",
+        "description": "Service Manager — full service operations access and assign service desk users",
         "perms": {
             "complaints": ALL, "installations": ALL, "orders": ALL, "vendors": ALL,
             "items": ALL, "couriers": ALL, "calls": ALL, "claims": ALL,
@@ -231,16 +241,14 @@ DEFAULT_ROLES = [
 
 
 def seed_admin(db) -> None:
+    """Ensure admin user exists. Never overwrites an existing admin password (deploy-safe)."""
     existing = db.scalar(select(User).where(User.email == settings.seed_admin_email))
     if existing:
-        if not verify_password(settings.seed_admin_password, existing.password_hash):
-            existing.password_hash = hash_password(settings.seed_admin_password)
-            existing.is_active = True
+        existing.is_active = True
+        if settings.seed_admin_name:
             existing.name = settings.seed_admin_name
-            db.commit()
-            print(f"[seed] admin password reset: {settings.seed_admin_email} / {settings.seed_admin_password}")
-        else:
-            print(f"[seed] admin already exists: {settings.seed_admin_email}")
+        db.commit()
+        print(f"[seed] admin already exists (password unchanged): {settings.seed_admin_email}")
         return
     admin = User(
         name=settings.seed_admin_name,
@@ -797,7 +805,12 @@ def main() -> None:
     parser.add_argument(
         "--master-data",
         action="store_true",
-        help="Seed roles/admin and non-demo master data such as Product Details dropdown values.",
+        help="Seed roles and non-demo master data such as Product Details dropdown values.",
+    )
+    parser.add_argument(
+        "--no-admin",
+        action="store_true",
+        help="Do not create or update the bootstrap admin user (use on production deploy).",
     )
     args = parser.parse_args()
 
@@ -810,7 +823,8 @@ def main() -> None:
     ensure_partner_registration_email_controls()
     with SessionLocal() as db:
         seed_roles(db)
-        seed_admin(db)
+        if not args.no_admin:
+            seed_admin(db)
         if args.minimal:
             return
         if args.master_data:

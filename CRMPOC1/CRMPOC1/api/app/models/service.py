@@ -33,6 +33,7 @@ class ServiceRequest(Base, TimestampMixin, SoftDeleteMixin):
     service_type: Mapped[str | None] = mapped_column(String(50), nullable=True, index=True)
     warranty_status: Mapped[str | None] = mapped_column(String(50), nullable=True)
     assigned_engineer_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
+    assigned_service_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
     assigned_vendor_id: Mapped[int | None] = mapped_column(ForeignKey("vendors.id"), nullable=True, index=True)
     requires_documents: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     ask_for_documents: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)

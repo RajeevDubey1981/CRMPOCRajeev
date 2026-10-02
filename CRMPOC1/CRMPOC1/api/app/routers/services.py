@@ -38,6 +38,8 @@ from app.schemas.service import (
     ServiceAssignUnitsIn,
     ServiceAssignmentIn,
     ServiceAssignmentOut,
+    ServiceDeskReturnIn,
+    ServiceDeskUserAssignIn,
     ServiceBulkApprovalIn,
     ServiceBulkObservationsIn,
     ServiceBulkSerialVerifyIn,
@@ -84,7 +86,16 @@ from app.services.workflow_notifications import (
     notify_engineer_service_assigned,
     notify_vendor_service_assigned,
 )
-from app.services.role_access import is_operations_admin, is_service_team
+from app.services.role_access import is_operations_admin, is_service_team, role_key
+from app.services.service_access import (
+    SERVICE_DESK_ROLES,
+    can_assign_service_desk_user,
+    can_manage_field_assignments,
+    can_view_all_service_requests,
+    is_service_desk_user,
+    is_service_operations_member,
+    service_operations_can_work,
+)
 from app.services.file_service import save_upload, to_public_upload_path
 from app.services.service_completion_code import clear_completion_code, issue_completion_code, validate_engineer_completion_code
 from app.services.service_documents import (
@@ -261,8 +272,14 @@ def _engineer_assigned_service_ids(db: Session, engineer_id: int):
 
 
 def _service_visible_to_user(db: Session, service: ServiceRequest, user: User) -> bool:
-    if _is_service_team(user) or _is_call_center(user):
+    if _is_call_center(user):
         return True
+    if is_service_operations_member(user):
+        if can_view_all_service_requests(user):
+            return True
+        if is_service_desk_user(user):
+            return service.assigned_service_user_id == user.id
+        return False
     if _is_engineer(user):
         if service.assigned_engineer_id == user.id:
             return True
@@ -291,6 +308,22 @@ def _load_visible_service(db: Session, service_id: int, user: User) -> ServiceRe
     if not _service_visible_to_user(db, service, user):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Service request not found")
     return service
+
+
+def _require_service_team_work(user: User, service: ServiceRequest) -> None:
+    if not is_service_operations_member(user):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Your role cannot perform this action")
+    if not service_operations_can_work(service, user):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "This service request is not assigned to you")
+
+
+def _require_active_service_desk_user(db: Session, user_id: int) -> User:
+    target = db.get(User, user_id)
+    if target is None or target.deleted_at is not None or not target.is_active:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Selected service user is not active")
+    if role_key(target.role) not in SERVICE_DESK_ROLES:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Selected user must have the Service role")
+    return target
 
 
 def _count_service_documents(db: Session, service_id: int) -> int:
@@ -661,6 +694,8 @@ def _hydrate_service(db: Session, service: ServiceRequest) -> ServiceOut:
         warranty_status=service.warranty_status,
         assigned_engineer_id=service.assigned_engineer_id,
         assigned_engineer_name=_user_name(db, service.assigned_engineer_id),
+        assigned_service_user_id=service.assigned_service_user_id,
+        assigned_service_user_name=_user_name(db, service.assigned_service_user_id),
         assigned_vendor_id=service.assigned_vendor_id,
         assigned_vendor_name=_vendor_name(db, service.assigned_vendor_id),
         requires_documents=service.requires_documents,
@@ -693,6 +728,8 @@ def service_summary(db: Session = Depends(get_db), user: User = Depends(get_curr
     stmt = select(ServiceRequest).where(ServiceRequest.deleted_at.is_(None))
     if _is_engineer(user):
         stmt = stmt.where(engineer_visible_service_filter(user.id))
+    elif is_service_desk_user(user):
+        stmt = stmt.where(ServiceRequest.assigned_service_user_id == user.id)
     elif _is_vendor(user):
         vendor = _active_vendor_for_user(db, user)
         if vendor is None:
@@ -707,7 +744,7 @@ def service_summary(db: Session = Depends(get_db), user: User = Depends(get_curr
             ServiceRequest.assigned_vendor_id.is_(None),
         ).subquery()
     )
-    if _is_engineer(user) or _is_vendor(user):
+    if _is_engineer(user) or _is_vendor(user) or is_service_desk_user(user):
         unassigned = 0
     else:
         unassigned = db.scalar(unassigned_stmt) or 0
@@ -735,6 +772,8 @@ def list_services(
     service_type: str | None = None,
     engineer_id: int | None = None,
     vendor_id: int | None = None,
+    service_user_id: int | None = None,
+    service_user_unassigned: bool = False,
     date_from: date | None = None,
     date_to: date | None = None,
     db: Session = Depends(get_db),
@@ -743,6 +782,8 @@ def list_services(
     stmt = select(ServiceRequest).where(ServiceRequest.deleted_at.is_(None))
     if _is_engineer(user):
         stmt = stmt.where(engineer_visible_service_filter(user.id))
+    elif is_service_desk_user(user):
+        stmt = stmt.where(ServiceRequest.assigned_service_user_id == user.id)
     elif not (_is_service_team(user) or _is_call_center(user)):
         return ServiceListResponse(items=[], total=0, page=page, per_page=per_page)
     if status_filter:
@@ -753,6 +794,11 @@ def list_services(
         stmt = stmt.where(ServiceRequest.assigned_engineer_id == engineer_id)
     if vendor_id:
         stmt = stmt.where(ServiceRequest.assigned_vendor_id == vendor_id)
+    if can_view_all_service_requests(user):
+        if service_user_unassigned:
+            stmt = stmt.where(ServiceRequest.assigned_service_user_id.is_(None))
+        elif service_user_id is not None:
+            stmt = stmt.where(ServiceRequest.assigned_service_user_id == service_user_id)
     if date_from:
         stmt = stmt.where(ServiceRequest.request_date >= date_from)
     if date_to:
@@ -786,6 +832,7 @@ def list_services(
                 service_type=row.service_type,
                 warranty_status=row.warranty_status,
                 assigned_engineer_name=_user_name(db, row.assigned_engineer_id),
+                assigned_service_user_name=_user_name(db, row.assigned_service_user_id),
                 assigned_vendor_name=_vendor_name(db, row.assigned_vendor_id),
                 requires_documents=row.requires_documents,
                 document_count=_count_service_documents(db, row.id),
@@ -985,7 +1032,11 @@ def get_service(service_id: int, db: Session = Depends(get_db), user: User = Dep
 @router.put("/{service_id}", response_model=ServiceOut)
 def update_service(service_id: int, body: ServiceUpdate, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     service = _load_visible_service(db, service_id, user)
-    if not (_is_service_team(user) or (_is_call_center(user) and service.created_by == user.id)):
+    if _is_call_center(user) and service.created_by == user.id:
+        pass
+    elif is_service_operations_member(user):
+        _require_service_team_work(user, service)
+    else:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Your role cannot update this service request")
     for field, value in body.model_dump(exclude_unset=True).items():
         setattr(service, field, value)
@@ -997,8 +1048,7 @@ def update_service(service_id: int, body: ServiceUpdate, db: Session = Depends(g
 @router.post("/{service_id}/identify-customer", response_model=ServiceOut)
 def identify_customer(service_id: int, body: ServiceIdentifyCustomer, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     service = _load_visible_service(db, service_id, user)
-    if not _is_service_team(user):
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only Indcool Service can identify customer context")
+    _require_service_team_work(user, service)
     order = db.get(Order, body.order_id) if body.order_id else None
     item = db.get(OrderItem, body.order_item_id) if body.order_item_id else None
     if item and order is None:
@@ -1272,8 +1322,8 @@ def assign_service(
     user: User = Depends(get_current_user),
 ):
     service = _load_visible_service(db, service_id, user)
-    if not _is_service_team(user):
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only Indcool Service can assign requests")
+    if not can_manage_field_assignments(user):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only Service Manager or Admin can assign engineers/vendors")
     active_assignment = db.scalar(
         select(ServiceAssignment)
         .where(ServiceAssignment.service_request_id == service.id, ServiceAssignment.is_active == True)
@@ -1348,11 +1398,93 @@ def assign_service(
     return _hydrate_service(db, service)
 
 
+@router.get("/lookup/service-users")
+def service_user_lookup(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    if not can_assign_service_desk_user(user):
+        return []
+    rows = db.scalars(
+        select(User)
+        .where(
+            User.deleted_at.is_(None),
+            User.is_active == True,
+            func.lower(User.role).in_(list(SERVICE_DESK_ROLES)),
+        )
+        .order_by(User.name)
+    ).all()
+    return [{"id": row.id, "name": row.name, "email": row.email, "phone": row.phone} for row in rows]
+
+
+@router.post("/{service_id}/assign-service-user", response_model=ServiceOut)
+def assign_service_desk_user(
+    service_id: int,
+    body: ServiceDeskUserAssignIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    service = _load_visible_service(db, service_id, user)
+    if not can_assign_service_desk_user(user):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only Admin or Service Manager can assign service users")
+    target = _require_active_service_desk_user(db, body.service_user_id)
+    old_status = service.status
+    previous_id = service.assigned_service_user_id
+    service.assigned_service_user_id = target.id
+    if service.status == "New":
+        service.status = "Service Team Review"
+        service.status_date = _now()
+    _log_status(
+        db,
+        service,
+        action="Service User Assigned",
+        user=user,
+        old_status=old_status,
+        new_status=service.status,
+        remarks=body.remarks,
+        metadata={
+            "service_user_id": target.id,
+            "previous_service_user_id": previous_id,
+        },
+    )
+    db.commit()
+    db.refresh(service)
+    return _hydrate_service(db, service)
+
+
+@router.post("/{service_id}/return-to-service-manager", response_model=ServiceOut)
+def return_service_to_manager(
+    service_id: int,
+    body: ServiceDeskReturnIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    service = _load_visible_service(db, service_id, user)
+    if not is_service_desk_user(user):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only Service users can return requests to the manager")
+    if service.assigned_service_user_id != user.id:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "This service request is not assigned to you")
+    old_status = service.status
+    service.assigned_service_user_id = None
+    if service.status not in {"Closed", "Payment Completed"}:
+        service.status = "Service Team Review"
+        service.status_date = _now()
+    _log_status(
+        db,
+        service,
+        action="Returned to Service Manager",
+        user=user,
+        old_status=old_status,
+        new_status=service.status,
+        remarks=body.remarks,
+    )
+    db.commit()
+    db.refresh(service)
+    return _hydrate_service(db, service)
+
+
 @router.post("/{service_id}/assignment-cancel", response_model=ServiceOut)
 def cancel_assignment(service_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     service = _load_visible_service(db, service_id, user)
     vendor = _active_vendor_for_user(db, user) if _is_vendor(user) else None
-    if not _is_service_team(user):
+    if not can_manage_field_assignments(user):
         if _is_engineer(user):
             if not _engineer_can_work_on_service(db, service, user):
                 raise HTTPException(status.HTTP_403_FORBIDDEN, "This request is not assigned to you")
