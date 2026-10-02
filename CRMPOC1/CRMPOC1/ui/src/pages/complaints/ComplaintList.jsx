@@ -75,8 +75,23 @@ function FilterField({ label, value, onChange, placeholder, type = "text" }) {
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className="w-full rounded border border-slate-300 px-2.5 py-1.5 text-sm text-slate-700 focus:border-brand-500 focus:outline-none"
+        className="w-full rounded border border-slate-300 px-2.5 py-1.5 text-base text-slate-700 focus:border-brand-500 focus:outline-none sm:text-sm"
       />
+    </div>
+  );
+}
+
+function CellLabel({ children }) {
+  return (
+    <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">{children}</span>
+  );
+}
+
+function CardRow({ label, children }) {
+  return (
+    <div className="min-w-0">
+      <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">{label}</dt>
+      <dd className="break-words text-slate-800">{children}</dd>
     </div>
   );
 }
@@ -249,6 +264,63 @@ export default function ComplaintList() {
       }))
     : [];
 
+  function shownActionFor(c) {
+    // For legacy-imported rows where last_action_taken was stored as
+    // "Legacy import", treat that as "no previous action" so that
+    // the button shows the normal default (Ask for Invoice).
+    const lastAction = c.last_action_taken === "Legacy import" ? null : c.last_action_taken;
+    const defaultAct = DEFAULT_ACTION[c.query_type] || "Ask for Invoice";
+    return lastAction || defaultAct;
+  }
+
+  function renderActionButtons(c, shownAction, big) {
+    const size = big ? "min-h-[40px] px-3 py-2 text-sm" : "px-2 py-0.5 text-xs";
+    return (
+      <>
+        <button
+          title="View"
+          onClick={() => setViewTarget(c)}
+          className={big
+            ? "min-h-[40px] rounded border border-slate-300 px-3 py-2 text-sm text-slate-700 hover:text-brand-600"
+            : "rounded p-1 text-slate-500 hover:text-brand-600"}
+        >
+          {big ? "👁 View" : "👁"}
+        </button>
+        {canEditComplaints && (
+          <button
+            title="Edit"
+            onClick={() => setEditTarget(c)}
+            className={`rounded border border-slate-300 text-slate-700 hover:bg-slate-50 ${size}`}
+          >
+            Edit
+          </button>
+        )}
+        <button
+          title="Delete"
+          onClick={() => setConfirmDelete(c)}
+          className={`rounded border border-rose-300 text-rose-700 hover:bg-rose-50 ${size}`}
+        >
+          Delete
+        </button>
+        {canEditComplaints && (c.query_type || "").toLowerCase() === "service" && c.customer_email && (
+          <button
+            title="Email the customer document upload link"
+            onClick={() => sendUploadLink(c)}
+            className={`rounded border border-sky-300 text-sky-800 hover:bg-sky-50 ${size}`}
+          >
+            {c.document_link_sent ? "Resend link" : "Send link"}
+          </button>
+        )}
+        <button
+          onClick={() => { setActionTarget(c); setActionType(shownAction); }}
+          className={`inline-block rounded border font-medium leading-snug transition-opacity hover:opacity-80 ${big ? "min-h-[40px] px-3 py-2 text-sm" : "px-2.5 py-1 text-xs"} ${ACTION_STYLE[shownAction] || "bg-slate-100 text-slate-600 border-slate-200"}`}
+        >
+          {shownAction}
+        </button>
+      </>
+    );
+  }
+
   return (
     <div className="space-y-4">
 
@@ -316,7 +388,7 @@ export default function ComplaintList() {
               <select
                 value={filters.status}
                 onChange={(e) => patch("status", e.target.value)}
-                className="w-full rounded border border-slate-300 px-2.5 py-1.5 text-sm text-slate-700"
+                className="w-full rounded border border-slate-300 px-2.5 py-1.5 text-base text-slate-700 sm:text-sm"
               >
                 <option value="">-- Select --</option>
                 {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
@@ -330,7 +402,7 @@ export default function ComplaintList() {
               <select
                 value={filters.source}
                 onChange={(e) => patch("source", e.target.value)}
-                className="w-full rounded border border-slate-300 px-2.5 py-1.5 text-sm text-slate-700"
+                className="w-full rounded border border-slate-300 px-2.5 py-1.5 text-base text-slate-700 sm:text-sm"
               >
                 <option value="">-- Select --</option>
                 <option value="callcenter">callcenter</option>
@@ -362,19 +434,35 @@ export default function ComplaintList() {
         <div className="rounded bg-rose-50 px-3 py-2 text-sm text-rose-700">{err}</div>
       )}
 
-      {/* ── Table ── */}
-      <div className="overflow-x-auto rounded bg-white shadow-sm">
-        <table className="w-full min-w-[1280px] text-xs">
-          <thead className="border-b-2 border-slate-200 bg-slate-50 text-left">
-          <tr>
+      {/* ── Table (wide screens): every field visible, no sideways scrolling ── */}
+      <div className="hidden rounded bg-white shadow-sm xl:block">
+        <table className="w-full table-fixed text-xs">
+          <colgroup>
+            <col style={{ width: "13%" }} />
+            <col style={{ width: "14%" }} />
+            <col style={{ width: "13%" }} />
+            <col style={{ width: "13%" }} />
+            <col style={{ width: "15%" }} />
+            <col style={{ width: "10%" }} />
+            <col style={{ width: "8%" }} />
+            <col style={{ width: "14%" }} />
+          </colgroup>
+          <thead className="text-left">
+            <tr>
               {[
-                "Id", "Ref No", "Customer Name", "Status", "Query Type",
-                "Linked Request", "Remark", "Assigned Engineer", "Mobile", "Model Details",
-                "Action", // move action column next to model details
-                "Problem Description", "Status Date", "Email",
-                "Customer Address", "Created By", "Created At",
+                "Id / Ref No",
+                "Customer Name / Mobile / Email",
+                "Status / Status Date",
+                "Query Type / Linked Request",
+                "Model Details / Problem Description / Remark",
+                "Assigned Engineer / Customer Address",
+                "Created By / Created At",
+                "Action",
               ].map((h) => (
-                <th key={h} className="whitespace-nowrap px-3 py-2.5 font-semibold text-slate-600">
+                <th
+                  key={h}
+                  className="sticky top-0 z-10 bg-slate-50 px-3 py-2.5 align-bottom font-semibold leading-snug text-slate-600 shadow-[0_1px_0_0_#e2e8f0]"
+                >
                   {h}
                 </th>
               ))}
@@ -383,26 +471,22 @@ export default function ComplaintList() {
           <tbody className="divide-y divide-slate-100">
             {loading && (
               <tr>
-                <td colSpan={17} className="py-10 text-center text-slate-400">Loading…</td>
+                <td colSpan={8} className="py-10 text-center text-slate-400">Loading…</td>
               </tr>
             )}
             {!loading && data.items.length === 0 && (
               <tr>
-                <td colSpan={17} className="py-10 text-center text-slate-400">No complaints found.</td>
+                <td colSpan={8} className="py-10 text-center text-slate-400">No complaints found.</td>
               </tr>
             )}
             {!loading && data.items.map((c) => {
-              // For legacy-imported rows where last_action_taken was stored as
-              // "Legacy import", treat that as "no previous action" so that
-              // the button shows the normal default (Ask for Invoice).
-              const lastAction = c.last_action_taken === "Legacy import" ? null : c.last_action_taken;
-              const defaultAct = DEFAULT_ACTION[c.query_type] || "Ask for Invoice";
-              const shownAction = lastAction || defaultAct;
-
+              const shownAction = shownActionFor(c);
               return (
-                <tr key={c.id} className="transition-colors hover:bg-sky-50/40">
-                  <td className="w-14 whitespace-nowrap px-3 py-2 font-medium tabular-nums text-slate-700">{c.id}</td>
-                  <td className="min-w-[10.5rem] whitespace-nowrap px-3 py-2">
+                <tr key={c.id} className="align-top transition-colors hover:bg-sky-50/40">
+                  <td className="space-y-1 px-3 py-2">
+                    <div className="font-medium tabular-nums text-slate-700">
+                      <CellLabel>Id</CellLabel> {c.id}
+                    </div>
                     <ReferenceChip
                       label={c.comp_no}
                       title={`Complaint ${c.comp_no}`}
@@ -410,84 +494,98 @@ export default function ComplaintList() {
                       onClick={() => setViewTarget(c)}
                     />
                   </td>
-                  <td className="max-w-[110px] truncate px-3 py-2" title={c.customer_name}>
-                    {c.customer_name || "—"}
+                  <td className="space-y-1 break-words px-3 py-2">
+                    <div className="font-medium text-slate-800">{c.customer_name || "—"}</div>
+                    <div className="tabular-nums"><CellLabel>Mobile</CellLabel> {c.customer_mobile || "—"}</div>
+                    <div className="break-all"><CellLabel>Email</CellLabel> {c.customer_email || "—"}</div>
                   </td>
-                  <td className="min-w-[11rem] whitespace-nowrap px-3 py-2 align-middle">
+                  <td className="space-y-1 px-3 py-2">
                     <StatusBadge value={getComplaintWorkflowStatus(c) || c.status} />
+                    <div><CellLabel>Status date</CellLabel> {fmtDate(c.status_date)}</div>
                   </td>
-                  <td className="px-3 py-2">{c.query_type || "—"}</td>
-                  <td className="min-w-[10.5rem] whitespace-nowrap px-3 py-2">
-                    <LinkedRequestCell complaint={c} />
-                  </td>
-                  <td className="max-w-[120px] truncate px-3 py-2" title={c.remark || ""}>
-                    {trunc(c.remark)}
-                  </td>
-                  <td className="whitespace-nowrap px-3 py-2">{c.assigned_engineer_name || "—"}</td>
-                  <td className="whitespace-nowrap px-3 py-2 tabular-nums">{c.customer_mobile}</td>
-                  <td className="max-w-[110px] truncate px-3 py-2" title={c.model_details || ""}>
-                    {trunc(c.model_details, 22)}
-                  </td>
-                  {/* Action column moved to immediately follow Model Details */}
-                  <td className="min-w-[12rem] whitespace-nowrap px-3 py-2 align-middle">
-                    <div className="flex flex-nowrap items-center gap-1">
-                      <button
-                        title="View"
-                        onClick={() => setViewTarget(c)}
-                        className="rounded p-1 text-slate-500 hover:text-brand-600"
-                      >
-                        👁
-                      </button>
-                      {canEditComplaints && (
-                        <button
-                          title="Edit"
-                          onClick={() => setEditTarget(c)}
-                          className="rounded border border-slate-300 px-2 py-0.5 text-xs text-slate-700 hover:bg-slate-50"
-                        >
-                          Edit
-                        </button>
-                      )}
-                      <button
-                        title="Delete"
-                        onClick={() => setConfirmDelete(c)}
-                        className="rounded border border-rose-300 px-2 py-0.5 text-xs text-rose-700 hover:bg-rose-50"
-                      >
-                        Delete
-                      </button>
-                      {canEditComplaints && (c.query_type || "").toLowerCase() === "service" && c.customer_email && (
-                        <button
-                          title="Email the customer document upload link"
-                          onClick={() => sendUploadLink(c)}
-                          className="rounded border border-sky-300 px-2 py-0.5 text-xs text-sky-800 hover:bg-sky-50"
-                        >
-                          {c.document_link_sent ? "Resend link" : "Send link"}
-                        </button>
-                      )}
-                      <button
-                        onClick={() => { setActionTarget(c); setActionType(shownAction); }}
-                        className={`inline-block whitespace-nowrap rounded border px-2.5 py-1 text-xs font-medium leading-snug transition-opacity hover:opacity-80 ${ACTION_STYLE[shownAction] || "bg-slate-100 text-slate-600 border-slate-200"}`}
-                      >
-                        {shownAction}
-                      </button>
+                  <td className="space-y-1 px-3 py-2">
+                    <div><CellLabel>Type</CellLabel> {c.query_type || "—"}</div>
+                    <div>
+                      <CellLabel>Linked</CellLabel>{" "}
+                      <LinkedRequestCell complaint={c} />
                     </div>
                   </td>
-                  <td className="max-w-[120px] truncate px-3 py-2" title={c.problem_description || ""}>
-                    {trunc(c.problem_description)}
+                  <td className="space-y-1 break-words px-3 py-2">
+                    <div><CellLabel>Model</CellLabel> {c.model_details || "—"}</div>
+                    <div><CellLabel>Problem</CellLabel> {c.problem_description || "—"}</div>
+                    <div><CellLabel>Remark</CellLabel> {c.remark || "—"}</div>
                   </td>
-                  <td className="whitespace-nowrap px-3 py-2">{fmtDate(c.status_date)}</td>
-                  <td className="max-w-[120px] truncate px-3 py-2" title={c.customer_email || ""}>
-                    {c.customer_email || "—"}
+                  <td className="space-y-1 break-words px-3 py-2">
+                    <div><CellLabel>Engineer</CellLabel> {c.assigned_engineer_name || "—"}</div>
+                    <div><CellLabel>Address</CellLabel> {c.customer_address || "—"}</div>
                   </td>
-                  <td className="max-w-[120px] truncate px-3 py-2" title={c.customer_address || ""}>
-                    {trunc(c.customer_address)}
+                  <td className="space-y-1 break-words px-3 py-2">
+                    <div><CellLabel>By</CellLabel> {c.created_by_name || "—"}</div>
+                    <div><CellLabel>At</CellLabel> {fmtDate(c.created_at)}</div>
                   </td>
-                  <td className="px-3 py-2">{c.created_by_name || "—"}</td>
-                  <td className="whitespace-nowrap px-3 py-2">{fmtDate(c.created_at)}</td>
+                  <td className="px-3 py-2">
+                    <div className="flex flex-wrap items-center gap-1">{renderActionButtons(c, shownAction, false)}</div>
+                  </td>
                 </tr>
               );
             })}
           </tbody>
         </table>
+      </div>
+
+      {/* ── Cards (phones, tablets, small laptops): same fields, same buttons ── */}
+      <div className="space-y-3 xl:hidden">
+        {loading && (
+          <div className="rounded bg-white py-10 text-center text-slate-400 shadow-sm">Loading…</div>
+        )}
+        {!loading && data.items.length === 0 && (
+          <div className="rounded bg-white py-10 text-center text-slate-400 shadow-sm">No complaints found.</div>
+        )}
+        {!loading && data.items.map((c) => {
+          const shownAction = shownActionFor(c);
+          return (
+            <div key={c.id} className="rounded-lg bg-white p-3 shadow-sm">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-medium tabular-nums text-slate-500">Id {c.id}</span>
+                  <ReferenceChip
+                    label={c.comp_no}
+                    title={`Complaint ${c.comp_no}`}
+                    asButton
+                    onClick={() => setViewTarget(c)}
+                  />
+                </div>
+                <StatusBadge value={getComplaintWorkflowStatus(c) || c.status} />
+              </div>
+              <dl className="mt-3 grid grid-cols-1 gap-x-4 gap-y-2 text-sm sm:grid-cols-2">
+                <CardRow label="Customer Name">{c.customer_name || "—"}</CardRow>
+                <CardRow label="Mobile">
+                  {c.customer_mobile ? (
+                    <a href={`tel:${c.customer_mobile}`} className="text-brand-700 underline">{c.customer_mobile}</a>
+                  ) : "—"}
+                </CardRow>
+                <CardRow label="Email">
+                  {c.customer_email ? (
+                    <a href={`mailto:${c.customer_email}`} className="break-all text-brand-700 underline">{c.customer_email}</a>
+                  ) : "—"}
+                </CardRow>
+                <CardRow label="Query Type">{c.query_type || "—"}</CardRow>
+                <CardRow label="Linked Request"><LinkedRequestCell complaint={c} /></CardRow>
+                <CardRow label="Status Date">{fmtDate(c.status_date)}</CardRow>
+                <CardRow label="Model Details">{c.model_details || "—"}</CardRow>
+                <CardRow label="Problem Description">{c.problem_description || "—"}</CardRow>
+                <CardRow label="Remark">{c.remark || "—"}</CardRow>
+                <CardRow label="Assigned Engineer">{c.assigned_engineer_name || "—"}</CardRow>
+                <CardRow label="Customer Address">{c.customer_address || "—"}</CardRow>
+                <CardRow label="Created By">{c.created_by_name || "—"}</CardRow>
+                <CardRow label="Created At">{fmtDate(c.created_at)}</CardRow>
+              </dl>
+              <div className="mt-3 flex flex-wrap gap-2 border-t border-slate-100 pt-3">
+                {renderActionButtons(c, shownAction, true)}
+              </div>
+            </div>
+          );
+        })}
       </div>
 
       {/* ── Table Footer ── */}
