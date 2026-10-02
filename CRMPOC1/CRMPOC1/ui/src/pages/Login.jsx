@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Navigate, useLocation, useNavigate } from "react-router-dom";
 
 import { useAuth } from "../auth/AuthContext.jsx";
+import LoginScene from "../components/LoginScene.jsx";
 
 function defaultPathForRole(role) {
   if (role === "vendor") return "/vendor-dashboard";
@@ -33,66 +34,51 @@ export default function Login() {
   }
 
   return (
-    <div className="flex min-h-full flex-col bg-indcool-teal md:flex-row">
-      <div className="flex flex-col justify-between bg-indcool-navy px-6 py-6 text-white md:w-1/2 md:px-12 md:py-10">
+    <LoginScene>
+      <form
+        onSubmit={handleSubmit}
+        className="w-full space-y-2.5 rounded-xl bg-white p-4 shadow-2xl"
+      >
         <div>
-          <div className="text-5xl font-black leading-none tracking-tight md:text-7xl">
-            IND<span className="text-sky-300">cool</span>
+          <div className="text-[26px] font-black leading-none tracking-tight text-indcool-navy">
+            IND<span className="text-indcool-blue">cool</span>
           </div>
-          <p className="mt-2 text-xs text-white/85 md:text-sm">Made in India. Made for Indians.</p>
+          <p className="mt-0.5 text-[11px] text-slate-500">Made in India. Made for Indians.</p>
         </div>
-        <div className="my-8 text-xl font-bold leading-snug md:my-0 md:text-3xl">
-          Service and operations,
-          <br />
-          all in one place.
-        </div>
-        <p className="text-xs text-white/80 md:text-sm">INDcool CRM</p>
-      </div>
-      <div className="flex flex-1 items-center justify-center p-4 md:p-8">
-        <form
-          onSubmit={handleSubmit}
-          className="w-full max-w-sm space-y-4 rounded-xl bg-white p-6 shadow-lg md:p-8"
+        <h1 className="text-sm font-bold text-indcool-navy">Welcome to INDcool</h1>
+        {error && (
+          <div className="rounded-md bg-rose-50 px-3 py-1.5 text-xs text-rose-700">{error}</div>
+        )}
+        <input
+          type="email"
+          name="email"
+          aria-label="Email"
+          placeholder="Email"
+          autoComplete="username"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          required
+          className="w-full rounded-md border border-slate-300 px-2.5 py-1.5 text-base focus:border-indcool-navy focus:outline-none focus:ring-1 focus:ring-indcool-navy md:text-[13px]"
+        />
+        <input
+          type="password"
+          name="password"
+          aria-label="Password"
+          placeholder="Password"
+          autoComplete="current-password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          required
+          className="w-full rounded-md border border-slate-300 px-2.5 py-1.5 text-base focus:border-indcool-navy focus:outline-none focus:ring-1 focus:ring-indcool-navy md:text-[13px]"
+        />
+        <button
+          type="submit"
+          disabled={loading}
+          className="w-full rounded-md bg-indcool-navy px-4 py-2 text-[13px] font-bold text-white hover:bg-indcool-blue disabled:opacity-50"
         >
-          <div>
-            <h1 className="text-2xl font-bold text-indcool-navy">Welcome to INDcool</h1>
-            <p className="text-sm text-slate-500">Sign in to continue</p>
-          </div>
-          {error && (
-            <div className="rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</div>
-          )}
-          <div>
-            <label className="mb-1 block text-sm font-bold text-slate-700">Email</label>
-            <input
-              type="email"
-              name="email"
-              autoComplete="username"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              className="w-full rounded-md border border-slate-300 px-3 py-2 text-base focus:border-indcool-navy focus:outline-none focus:ring-1 focus:ring-indcool-navy sm:text-sm"
-            />
-          </div>
-          <div>
-            <label className="mb-1 block text-sm font-bold text-slate-700">Password</label>
-            <input
-              type="password"
-              name="password"
-              autoComplete="current-password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              className="w-full rounded-md border border-slate-300 px-3 py-2 text-base focus:border-indcool-navy focus:outline-none focus:ring-1 focus:ring-indcool-navy sm:text-sm"
-            />
-          </div>
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full rounded-md bg-indcool-navy px-4 py-2.5 font-bold text-white hover:bg-indcool-blue disabled:opacity-50"
-          >
-            {loading ? "Signing in…" : "Sign in"}
-          </button>
-        </form>
-      </div>
-    </div>
+          {loading ? "Signing in…" : "Sign in"}
+        </button>
+      </form>
+    </LoginScene>
   );
 }
