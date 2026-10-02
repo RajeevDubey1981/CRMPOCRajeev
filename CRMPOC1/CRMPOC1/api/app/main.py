@@ -74,6 +74,10 @@ def ensure_runtime_masters() -> None:
     with SessionLocal() as db:
         ensure_complaint_model_masters(db)
 
+    from app.services.email_bounce import start_bounce_watcher
+
+    start_bounce_watcher()
+
 
 @app.get("/health")
 def health():

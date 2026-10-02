@@ -485,6 +485,8 @@ class ServiceOut(BaseModel):
     units: list[ServiceRequestUnitOut] = []
     required_document_types: list[str] = []
     customer_documents_approved: bool = False
+    email_bounced: bool = False
+    email_bounce_reason: str | None = None
 
 
 class ServiceListItem(BaseModel):
@@ -506,6 +508,8 @@ class ServiceListItem(BaseModel):
     complaint_id: int | None = None
     complaint_no: str | None = None
     created_at: datetime
+    email_bounced: bool = False
+    email_bounce_reason: str | None = None
 
 
 class ServiceListResponse(BaseModel):

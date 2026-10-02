@@ -73,6 +73,7 @@ from app.schemas.service import (
     ServiceVerifyOrderIn,
     EngineerAssignedUnitGroup,
 )
+from app.services.email_bounce import bounce_info, bounced_map
 from app.services.engineer_service_scope import engineer_visible_service_filter
 from app.services.email_service import (
     send_document_upload_link_email,
@@ -720,6 +721,8 @@ def _hydrate_service(db: Session, service: ServiceRequest) -> ServiceOut:
         units=[ServiceRequestUnitOut(**row) for row in build_unit_rows(db, service.id)],
         required_document_types=customer_document_types(db, service),
         customer_documents_approved=customer_documents_approved(db, service),
+        email_bounced=bounce_info(db, service.customer_email)[0],
+        email_bounce_reason=bounce_info(db, service.customer_email)[1],
     )
 
 
@@ -816,6 +819,7 @@ def list_services(
     total = db.scalar(select(func.count()).select_from(stmt.subquery())) or 0
     rows = db.scalars(stmt.order_by(desc(ServiceRequest.created_at)).offset((page - 1) * per_page).limit(per_page)).all()
     items: list[ServiceListItem] = []
+    flagged = bounced_map(db, [r.customer_email for r in rows])
     for row in rows:
         order = db.get(Order, row.order_id) if row.order_id else None
         complaint = db.get(Complaint, row.complaint_id) if row.complaint_id else None
@@ -839,6 +843,8 @@ def list_services(
                 complaint_id=row.complaint_id,
                 complaint_no=complaint.comp_no if complaint else None,
                 created_at=row.created_at,
+                email_bounced=(row.customer_email or "").strip().lower() in flagged,
+                email_bounce_reason=flagged.get((row.customer_email or "").strip().lower()),
             )
         )
     return ServiceListResponse(items=items, total=total, page=page, per_page=per_page)

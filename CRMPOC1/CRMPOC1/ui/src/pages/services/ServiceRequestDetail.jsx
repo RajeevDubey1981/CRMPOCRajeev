@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { BOUNCED_BUTTON, BounceBanner } from "../../components/EmailBounceNotice.jsx";
 import { Link, useParams } from "react-router-dom";
 
 import Modal from "../../components/Modal.jsx";
@@ -677,6 +678,10 @@ export default function ServiceRequestDetail() {
       {err && <div className="rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-700">{err}</div>}
       {successMsg && <div className="rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{successMsg}</div>}
 
+      {service.email_bounced && (
+        <BounceBanner email={service.customer_email} reason={service.email_bounce_reason} />
+      )}
+
       <section className="rounded-lg bg-white p-6 shadow-sm">
         <h2 className="mb-4 text-sm font-medium text-slate-700">Request details</h2>
         <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
@@ -757,16 +762,17 @@ export default function ServiceRequestDetail() {
                 <button
                   type="button"
                   onClick={() => {
-                    if (!window.confirm("Are you sure you want to send the email again?")) return;
+                    const warn = service.email_bounced ? `The last email to ${service.customer_email} BOUNCED. Please correct the email address first.\n\n` : "";
+                    if (!window.confirm(`${warn}Are you sure you want to send the email again?`)) return;
                     run(
                       () => servicesApi.resendDocuments(service.id),
                       { successMessage: `Upload link email resent to ${service.customer_email || "customer"}.` },
                     );
                   }}
                   disabled={busy || !service.customer_email}
-                  className="rounded-md bg-sky-700 px-3 py-2 text-xs font-medium text-white disabled:opacity-50"
+                  className={`rounded-md px-3 py-2 text-xs font-medium text-white disabled:opacity-50 ${service.email_bounced ? "border " + BOUNCED_BUTTON : "bg-sky-700"}`}
                 >
-                  Resend email to customer
+                  {service.email_bounced ? "Email bounced - fix & resend" : "Resend email to customer"}
                 </button>
               </div>
             </div>

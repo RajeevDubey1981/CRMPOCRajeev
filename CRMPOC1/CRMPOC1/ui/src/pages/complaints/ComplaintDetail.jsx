@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { BOUNCED_BUTTON, BounceBanner } from "../../components/EmailBounceNotice.jsx";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
 import StatusBadge from "../../components/StatusBadge.jsx";
@@ -398,6 +399,10 @@ export default function ComplaintDetail() {
 
       {err && <div className="rounded-md bg-rose-50 px-4 py-3 text-sm text-rose-700">{formatApiError(err)}</div>}
 
+      {complaint.email_bounced && (
+        <BounceBanner email={complaint.customer_email} reason={complaint.email_bounce_reason} />
+      )}
+
       <section className="rounded-lg bg-white p-6 shadow-sm">
         <h2 className="mb-4 text-sm font-medium text-slate-700">Customer and complaint details</h2>
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -759,13 +764,14 @@ export default function ComplaintDetail() {
                   <button
                     onClick={() => {
                       const alreadySent = Boolean(linkedService?.document_request_sent_at);
+                      if (complaint.email_bounced && !window.confirm(`The last email to ${complaint.customer_email} BOUNCED. Please correct the email address first.\n\nSend the link anyway?`)) return;
                       if (alreadySent && !window.confirm("The customer upload link was already sent. Do you want to send it again?")) return;
                       run(() => complaintsApi.requestCustomerUploadLink(id, alreadySent));
                     }}
                     disabled={busy}
-                    className="rounded-md bg-sky-700 px-3 py-2 text-sm text-white disabled:opacity-50"
+                    className={`rounded-md px-3 py-2 text-sm text-white disabled:opacity-50 ${complaint.email_bounced ? "border " + BOUNCED_BUTTON : "bg-sky-700"}`}
                   >
-                    Send Customer Upload Link
+                    {complaint.email_bounced ? "Email bounced - fix & resend" : "Send Customer Upload Link"}
                   </button>
                 </div>
               )}

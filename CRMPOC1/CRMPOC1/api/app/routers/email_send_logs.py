@@ -9,6 +9,8 @@ from app.deps import get_current_user
 from app.models.email_send_log import EmailSendLog
 from app.models.user import User
 from app.schemas.email_send_log import EmailSendLogListResponse, EmailSendLogOut, EmailSendLogSummary
+from app.models.email_bounce import EmailBounce
+from app.services.email_bounce import poll_bounces_once
 from app.services.email_send_log import email_send_summary
 from app.services.role_access import is_system_admin
 
@@ -62,3 +64,28 @@ def list_send_logs(
         page=page,
         per_page=per_page,
     )
+
+
+@router.post("/check-bounces")
+def check_bounces_now(user: User = Depends(get_current_user)):
+    """Read the sending mailbox for delivery-failure reports right now (system admin only)."""
+    _require_system_admin(user)
+    try:
+        new = poll_bounces_once()
+    except Exception as exc:  # network / login problems are shown, not hidden
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, f"Could not read the mailbox: {type(exc).__name__}: {exc}")
+    return {"new_bounces": new}
+
+
+@router.get("/bounces")
+def list_bounces(
+    limit: int = Query(50, ge=1, le=200),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_system_admin(user)
+    rows = db.scalars(select(EmailBounce).order_by(desc(EmailBounce.created_at)).limit(limit)).all()
+    return [
+        {"id": r.id, "to_email": r.to_email, "reason": r.reason, "status_code": r.status_code, "source": r.source, "at": r.created_at}
+        for r in rows
+    ]

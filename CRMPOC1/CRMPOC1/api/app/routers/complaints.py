@@ -45,6 +45,7 @@ from app.schemas.complaint import (
     ComplaintStatusUpdate,
     ComplaintUpdate,
 )
+from app.services.email_bounce import bounce_info, bounced_map
 from app.services.email_service import (
     send_complaint_created_email,
     send_document_upload_link_email,
@@ -294,6 +295,20 @@ def _order_link_fields(db: Session, complaint: Complaint) -> dict[str, int | str
     return {"order_id": order.id, "order_no": order.order_no}
 
 
+def _bounce_fields(db: Session, email_address: str | None) -> dict:
+    bounced, reason = bounce_info(db, email_address)
+    return {"email_bounced": bounced, "email_bounce_reason": reason}
+
+
+def _with_bounce_flags(db: Session, items: list[ComplaintListItem]) -> list[ComplaintListItem]:
+    flagged = bounced_map(db, [i.customer_email for i in items])
+    for i in items:
+        reason = flagged.get((i.customer_email or "").strip().lower())
+        i.email_bounced = reason is not None
+        i.email_bounce_reason = reason
+    return items
+
+
 def _hydrate(db: Session, c: Complaint) -> dict:
     engineer_name = None
     if c.assigned_engineer:
@@ -313,6 +328,7 @@ def _hydrate(db: Session, c: Complaint) -> dict:
         )},
         "assigned_engineer_name": engineer_name,
         "created_by_name": created_by_name,
+        **_bounce_fields(db, c.customer_email),
         **_order_link_fields(db, c),
     }
 
@@ -770,7 +786,7 @@ def list_complaints(
         linked_installations = _linked_installation_map(db, rows)
 
     return ComplaintListResponse(
-        items=[
+        items=_with_bounce_flags(db, [
             _list_row(
                 db, c,
                 call_counts.get(c.id, 0),
@@ -782,7 +798,7 @@ def list_complaints(
                 *(linked_installations.get(c.id) or (None, None)),
             )
             for c in rows
-        ],
+        ]),
         total=total,
         page=page,
         per_page=per_page,

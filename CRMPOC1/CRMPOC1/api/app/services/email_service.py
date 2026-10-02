@@ -5,6 +5,7 @@ from email.message import EmailMessage
 from pathlib import Path
 
 from app.config import settings
+from app.services.email_bounce import record_bounce
 from app.services.email_send_log import (
     EMAIL_STATUS_FAILED,
     EMAIL_STATUS_SENT,
@@ -135,6 +136,10 @@ def send_email(
         return True
     except Exception as exc:
         logger.exception("email failed: to=%s subject=%s", recipient, resolved_subject)
+        if isinstance(exc, smtplib.SMTPRecipientsRefused):
+            for refused, (code, reply) in exc.recipients.items():
+                reply_text = reply.decode("utf-8", "replace") if isinstance(reply, bytes) else str(reply)
+                record_bounce(refused, status_code=str(code), diagnostic=reply_text, source="smtp")
         record_email_send(
             to_email=recipient,
             subject=resolved_subject,

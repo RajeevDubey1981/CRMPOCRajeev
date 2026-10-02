@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { BounceBadge } from "../../components/EmailBounceNotice.jsx";
 import { Link, useNavigate } from "react-router-dom";
 
 import Pagination from "../../components/Pagination.jsx";
@@ -159,7 +160,10 @@ export default function ServiceRequestList() {
                       <span className="text-slate-400">—</span>
                     )}
                   </td>
-                  <td className="px-4 py-3">{row.customer_name}</td>
+                  <td className="px-4 py-3">
+                    {row.customer_name}
+                    {row.email_bounced && <div className="mt-1"><BounceBadge reason={row.email_bounce_reason} /></div>}
+                  </td>
                   <td className="px-4 py-3">{row.customer_mobile}</td>
                   <td className="px-4 py-3">{row.order_no || "—"}</td>
                   <td className="px-4 py-3">{row.serial_no || "—"}</td>

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { BounceBadge } from "../components/EmailBounceNotice.jsx";
 import { Link, useNavigate } from "react-router-dom";
 import {
   Bar, BarChart, CartesianGrid, Cell,
@@ -461,7 +462,14 @@ export default function Dashboard() {
       case "status_date":
         return <span className="whitespace-nowrap">{fmtDate(c.status_date)}</span>;
       case "customer_email":
-        return <span className="max-w-[120px] truncate" title={c.customer_email || ""}>{c.customer_email || "—"}</span>;
+        return c.email_bounced ? (
+          <span className="flex flex-col gap-0.5">
+            <span className="max-w-[120px] truncate font-bold text-red-700" title={c.customer_email || ""}>{c.customer_email}</span>
+            <BounceBadge reason={c.email_bounce_reason} />
+          </span>
+        ) : (
+          <span className="max-w-[120px] truncate" title={c.customer_email || ""}>{c.customer_email || "—"}</span>
+        );
       case "customer_address":
         return <span className="max-w-[120px] truncate" title={c.customer_address || ""}>{trunc(c.customer_address)}</span>;
       case "created_by_name":
@@ -687,7 +695,7 @@ export default function Dashboard() {
               <tr><td colSpan={visibleColumns.length} className="py-10 text-center text-slate-400">No complaints found.</td></tr>
             )}
             {!loading && !isEngineer && complaints.items.map((c) => (
-              <tr key={c.id} className="transition-colors hover:bg-sky-50/40">
+              <tr key={c.id} className={`transition-colors ${c.email_bounced ? "bg-red-50 hover:bg-red-100/70" : "hover:bg-sky-50/40"}`}>
                 {visibleColumns.map((column) => (
                   <td key={column.key} className={`px-3 py-2 ${GRID_COLUMN_CELL_CLASS[column.key] || ""}`}>
                     {renderCell(column, c)}

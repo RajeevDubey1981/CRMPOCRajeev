@@ -31,6 +31,12 @@ class Settings(BaseSettings):
     smtp_from_name: str = "Indcool"
     smtp_use_tls: bool = True
     smtp_use_auth: bool = True
+    # Bounce detection: reads delivery-failure reports from the sending mailbox (read only)
+    bounce_check_enabled: bool = True
+    imap_host: str = "imap.gmail.com"
+    imap_port: int = 993
+    bounce_poll_seconds: int = 120
+    bounce_lookback_days: int = 3
 
     whatsapp_enabled: bool = False
     wa_phone_number_id: str = ""

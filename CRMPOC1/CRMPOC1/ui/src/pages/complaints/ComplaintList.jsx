@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { BOUNCED_BUTTON, BounceBadge } from "../../components/EmailBounceNotice.jsx";
 import { Link, useNavigate } from "react-router-dom";
 import {
   Bar, BarChart, CartesianGrid, Cell,
@@ -203,9 +204,12 @@ export default function ComplaintList() {
 
   async function sendUploadLink(c) {
     const alreadySent = Boolean(c.document_link_sent);
-    const message = alreadySent
+    const bounceNote = c.email_bounced
+      ? `WARNING: the last email to ${c.customer_email} BOUNCED (${c.email_bounce_reason || "not delivered"}).\nPlease correct the email address first (Edit).\n\n`
+      : "";
+    const message = bounceNote + (alreadySent
       ? `The customer upload link was already sent for ${c.comp_no}.\n\nDo you want to send it again to ${c.customer_email}?`
-      : `Send the customer upload link for ${c.comp_no} to ${c.customer_email}?`;
+      : `Send the customer upload link for ${c.comp_no} to ${c.customer_email}?`);
     if (!window.confirm(message)) return;
     try {
       await complaintsApi.requestCustomerUploadLink(c.id, alreadySent);
@@ -305,11 +309,11 @@ export default function ComplaintList() {
         </button>
         {canEditComplaints && (c.query_type || "").toLowerCase() === "service" && c.customer_email && (
           <button
-            title="Email the customer document upload link"
+            title={c.email_bounced ? `Email bounced: ${c.email_bounce_reason || "not delivered"}. Correct the email first.` : "Email the customer document upload link"}
             onClick={() => sendUploadLink(c)}
-            className={`rounded border border-sky-300 text-sky-800 hover:bg-sky-50 ${size}`}
+            className={`rounded border font-medium ${c.email_bounced ? BOUNCED_BUTTON : "border-sky-300 text-sky-800 hover:bg-sky-50"} ${size}`}
           >
-            {c.document_link_sent ? "Resend link" : "Send link"}
+            {c.email_bounced ? "Email bounced - fix & resend" : c.document_link_sent ? "Resend link" : "Send link"}
           </button>
         )}
         <button
@@ -483,7 +487,7 @@ export default function ComplaintList() {
             {!loading && data.items.map((c) => {
               const shownAction = shownActionFor(c);
               return (
-                <tr key={c.id} className="align-top transition-colors hover:bg-sky-50/40">
+                <tr key={c.id} className={`align-top transition-colors ${c.email_bounced ? "bg-red-50 hover:bg-red-100/70" : "hover:bg-sky-50/40"}`}>
                   <td className="space-y-1 px-3 py-2">
                     <div className="font-medium tabular-nums text-slate-700">
                       <CellLabel>Id</CellLabel> {c.id}
@@ -498,7 +502,11 @@ export default function ComplaintList() {
                   <td className="space-y-1 break-words px-3 py-2">
                     <div className="font-medium text-slate-800">{c.customer_name || "—"}</div>
                     <div className="tabular-nums"><CellLabel>Mobile</CellLabel> {c.customer_mobile || "—"}</div>
-                    <div className="break-all"><CellLabel>Email</CellLabel> {c.customer_email || "—"}</div>
+                    <div className={`break-all ${c.email_bounced ? "font-bold text-red-700" : ""}`}><CellLabel>Email</CellLabel> {c.customer_email || "—"}</div>
+                    {c.email_bounced && <BounceBadge reason={c.email_bounce_reason} />}
+                    {c.email_bounced && c.email_bounce_reason && (
+                      <div className="text-[11px] leading-snug text-red-700">{c.email_bounce_reason.split(". Server said")[0]}</div>
+                    )}
                   </td>
                   <td className="space-y-1 px-3 py-2">
                     <StatusBadge value={getComplaintWorkflowStatus(c) || c.status} />
@@ -545,7 +553,7 @@ export default function ComplaintList() {
         {!loading && data.items.map((c) => {
           const shownAction = shownActionFor(c);
           return (
-            <div key={c.id} className="rounded-lg bg-white p-3 shadow-sm">
+            <div key={c.id} className={`rounded-lg p-3 shadow-sm ${c.email_bounced ? "border border-red-300 bg-red-50" : "bg-white"}`}>
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
                   <span className="text-xs font-medium tabular-nums text-slate-500">Id {c.id}</span>
@@ -567,8 +575,9 @@ export default function ComplaintList() {
                 </CardRow>
                 <CardRow label="Email">
                   {c.customer_email ? (
-                    <a href={`mailto:${c.customer_email}`} className="break-all text-brand-700 underline">{c.customer_email}</a>
+                    <a href={`mailto:${c.customer_email}`} className={`break-all underline ${c.email_bounced ? "font-bold text-red-700" : "text-brand-700"}`}>{c.customer_email}</a>
                   ) : "—"}
+                  {c.email_bounced && <BounceBadge reason={c.email_bounce_reason} className="ml-2" />}
                 </CardRow>
                 <CardRow label="Query Type">{c.query_type || "—"}</CardRow>
                 <CardRow label="Linked Request"><LinkedRequestCell complaint={c} /></CardRow>

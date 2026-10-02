@@ -93,6 +93,8 @@ class ComplaintOut(BaseModel):
     source: str
     created_at: datetime
     updated_at: datetime
+    email_bounced: bool = False
+    email_bounce_reason: str | None = None
 
     class Config:
         from_attributes = True
@@ -126,6 +128,8 @@ class ComplaintListItem(BaseModel):
     service_request_status: str | None = None
     installation_request_id: int | None = None
     installation_request_status: str | None = None
+    email_bounced: bool = False
+    email_bounce_reason: str | None = None
 
 
 class ComplaintListResponse(BaseModel):
