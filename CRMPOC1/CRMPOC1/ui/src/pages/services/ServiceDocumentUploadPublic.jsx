@@ -137,7 +137,7 @@ export default function ServiceDocumentUploadPublic() {
       <div className="mx-auto w-full max-w-3xl rounded-2xl bg-white p-4 shadow-lg sm:rounded-3xl sm:p-6 md:p-8">
         <div className="mb-5 sm:mb-6">
           <div className="text-xs font-medium uppercase tracking-[0.15em] text-sky-700 sm:text-sm sm:tracking-[0.2em]">
-            Indcool Service Support
+            INDcool Service Support
           </div>
           <h1 className="mt-2 text-2xl font-bold leading-tight text-slate-900 sm:text-3xl">
             Upload Customer Documents
@@ -186,7 +186,7 @@ export default function ServiceDocumentUploadPublic() {
             <p className="mt-1.5 text-xs leading-relaxed text-slate-500">
               {context.serial_no_locked
                 ? "This serial number is linked to your service request and will be used during order verification."
-                : "If your serial number is from a previous Indcool order, enter it here. We will verify only that unit instead of all items on the order."}
+                : "If your serial number is from a previous INDcool order, enter it here. We will verify only that unit instead of all items on the order."}
             </p>
           </label>
 

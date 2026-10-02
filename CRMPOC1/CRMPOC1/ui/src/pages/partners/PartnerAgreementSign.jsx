@@ -195,7 +195,7 @@ export default function PartnerAgreementSign() {
     <div className="min-h-screen bg-slate-100 py-6 sm:py-10">
       <div className="mx-auto max-w-3xl px-4">
         <div className="mb-5 text-center">
-          <div className="text-xs font-semibold uppercase tracking-widest text-sky-700">Indcool Partner Onboarding</div>
+          <div className="text-xs font-semibold uppercase tracking-widest text-sky-700">INDcool Partner Onboarding</div>
           <h1 className="mt-2 text-2xl font-bold text-slate-900">Digital Agreement Signing</h1>
           <p className="mt-1 text-sm text-slate-600">Verified via {otpChannelLabel(context.otp_channel)}</p>
         </div>

@@ -11,6 +11,7 @@ import StatusBadge from "../../components/StatusBadge.jsx";
 import ComplaintQuickViewModal from "../../components/complaints/ComplaintQuickViewModal.jsx";
 import LinkedRequestCell from "../../components/complaints/LinkedRequestCell.jsx";
 import ReferenceChip from "../../components/complaints/ReferenceChip.jsx";
+import PageLoader from "../../components/PageLoader.jsx";
 import { complaintsApi } from "../../api/complaints.js";
 import { api } from "../../api/client.js";
 import { useAuth } from "../../auth/AuthContext.jsx";
@@ -41,11 +42,11 @@ const DEFAULT_ACTION = {
 };
 
 const STAT_CARDS = [
-  { key: "pending",       label: "Pending",       bg: "bg-amber-400",   ring: "ring-amber-300",  filter: "Pending"       },
-  { key: "resolved",      label: "Resolved",      bg: "bg-emerald-600", ring: "ring-emerald-400", filter: "Resolved"      },
-  { key: "under_process", label: "Under Process", bg: "bg-sky-400",     ring: "ring-sky-300",    filter: "Under Process" },
-  { key: "rejected",      label: "Rejected",      bg: "bg-rose-600",    ring: "ring-rose-400",   filter: "Rejected"      },
-  { key: "in_process",    label: "In Process",    bg: "bg-slate-500",   ring: "ring-slate-400",  filter: "In Process"    },
+  { key: "pending",       label: "Pending",       edge: "border-t-[#E0A415]",   ring: "ring-amber-300",  filter: "Pending"       },
+  { key: "resolved",      label: "Resolved",      edge: "border-t-[#1D9E75]", ring: "ring-emerald-400", filter: "Resolved"      },
+  { key: "under_process", label: "Under Process", edge: "border-t-[#378ADD]",     ring: "ring-sky-300",    filter: "Under Process" },
+  { key: "rejected",      label: "Rejected",      edge: "border-t-[#D64545]",    ring: "ring-rose-400",   filter: "Rejected"      },
+  { key: "in_process",    label: "In Process",    edge: "border-t-[#1E3A78]",   ring: "ring-slate-400",  filter: "In Process"    },
 ];
 
 const CHART_FILL = {
@@ -343,14 +344,14 @@ export default function ComplaintList() {
           <div
             key={card.key}
             onClick={() => clickStatCard(card.filter)}
-            className={`flex-1 min-w-[130px] cursor-pointer overflow-hidden rounded shadow transition-transform hover:-translate-y-0.5 hover:shadow-md ${card.bg} ${filters.status === card.filter ? `ring-2 ring-offset-1 ${card.ring}` : ""}`}
+            className={`min-w-[130px] flex-1 cursor-pointer overflow-hidden rounded-lg border-t-4 bg-white shadow transition-transform hover:-translate-y-0.5 hover:shadow-md ${card.edge} ${filters.status === card.filter ? `ring-2 ring-offset-1 ${card.ring}` : ""}`}
           >
-            <div className="bg-black/10 px-3 py-2 text-xs font-semibold text-white/90">
+            <div className="px-3 pt-2 text-xs font-semibold text-slate-500">
               {card.label}
             </div>
-            <div className="px-3 py-3">
-              <p className="text-2xl font-bold text-white">{summary?.[card.key] ?? "—"}</p>
-              <p className="mt-0.5 text-xs text-white/70">Complaints</p>
+            <div className="px-3 pb-3 pt-1">
+              <p className="text-2xl font-bold text-indcool-navy">{summary?.[card.key] ?? "—"}</p>
+              <p className="mt-0.5 text-xs text-slate-400">Complaints</p>
             </div>
           </div>
         ))}
@@ -461,7 +462,7 @@ export default function ComplaintList() {
               ].map((h) => (
                 <th
                   key={h}
-                  className="sticky -top-6 z-20 bg-slate-800 px-3 py-3 align-bottom text-[13px] font-bold leading-snug text-white shadow-[0_3px_6px_-1px_rgba(15,23,42,0.45)]"
+                  className="sticky -top-6 z-20 bg-indcool-navy px-3 py-3 align-bottom text-[13px] font-bold leading-snug text-white shadow-[0_3px_6px_-1px_rgba(15,23,42,0.45)]"
                 >
                   {h}
                 </th>
@@ -471,7 +472,7 @@ export default function ComplaintList() {
           <tbody className="divide-y divide-slate-100">
             {loading && (
               <tr>
-                <td colSpan={8} className="py-10 text-center text-slate-400">Loading…</td>
+                <td colSpan={8}><PageLoader /></td>
               </tr>
             )}
             {!loading && data.items.length === 0 && (
@@ -536,7 +537,7 @@ export default function ComplaintList() {
       {/* ── Cards (phones, tablets, small laptops): same fields, same buttons ── */}
       <div className="space-y-3 xl:hidden">
         {loading && (
-          <div className="rounded bg-white py-10 text-center text-slate-400 shadow-sm">Loading…</div>
+          <div className="rounded bg-white shadow-sm"><PageLoader /></div>
         )}
         {!loading && data.items.length === 0 && (
           <div className="rounded bg-white py-10 text-center text-slate-400 shadow-sm">No complaints found.</div>

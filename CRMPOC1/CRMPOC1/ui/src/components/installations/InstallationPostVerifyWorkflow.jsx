@@ -527,7 +527,7 @@ export default function InstallationPostVerifyWorkflow({
           done={false}
           borderClass="border-emerald-200"
           bgClass="bg-emerald-50"
-          summary="Engineer completion is waiting for Admin/Indcool approval before payment."
+          summary="Engineer completion is waiting for Admin/INDcool approval before payment."
         >
           <p className="text-xs text-emerald-800">
             Review installation date, work report, and proof for each serial below. Add optional approval remarks or
