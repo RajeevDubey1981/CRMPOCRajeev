@@ -8,6 +8,8 @@ from app.config import settings
 from app.release_build import RELEASE_BUILD
 from app.services.input_security import sanitize_json
 from app.routers import auth, calls, claims, complaints, couriers, dashboard, email_send_logs, installation_callcenter, installations, item_master, market, orders, partner_agreements_public, partner_registrations, partner_registrations_public, pending_actions, projects, roles, serials, services, users
+from app.routers import sarvam_api
+from app.routers import site_api
 
 app = FastAPI(title="Indcool CRM API", version="0.1.0")
 settings.resolved_upload_dir.mkdir(parents=True, exist_ok=True)
@@ -57,6 +59,8 @@ app.include_router(partner_registrations.router)
 app.include_router(partner_registrations_public.router)
 app.include_router(partner_agreements_public.router)
 app.include_router(email_send_logs.router)
+app.include_router(sarvam_api.router)
+app.include_router(site_api.router)
 app.mount("/uploads", StaticFiles(directory=str(settings.resolved_upload_dir)), name="uploads")
 
 
