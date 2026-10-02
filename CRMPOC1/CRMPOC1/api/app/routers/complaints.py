@@ -109,6 +109,28 @@ def _sync_linked_service_engineer(db: Session, complaint: Complaint) -> None:
         service.status_date = datetime.now(timezone.utc)
 
 
+# complaint field -> linked service request field, kept in sync when staff correct customer details
+# (e.g. an email the voice agent misheard) so later service emails go to the right person.
+_COMPLAINT_TO_SERVICE_CONTACT_FIELDS = {
+    "customer_name": "customer_name",
+    "customer_mobile": "customer_mobile",
+    "customer_email": "customer_email",
+    "customer_address": "customer_address",
+    "model_details": "model_details",
+    "problem_description": "problem_description",
+    "remark": "additional_remarks",
+}
+
+
+def _sync_linked_service_contact(db: Session, complaint: Complaint, changed_fields) -> None:
+    service = _find_linked_service_request(db, complaint.id)
+    if service is None:
+        return
+    for complaint_field, service_field in _COMPLAINT_TO_SERVICE_CONTACT_FIELDS.items():
+        if complaint_field in changed_fields:
+            setattr(service, service_field, getattr(complaint, complaint_field))
+
+
 def _sync_linked_installation_engineer(db: Session, complaint: Complaint) -> None:
     if not complaint.assigned_engineer:
         return
@@ -1355,6 +1377,7 @@ def update_complaint(
 
     for field, value in data.items():
         setattr(c, field, value)
+    _sync_linked_service_contact(db, c, data.keys())
 
     if assigned_engineer is not None:
         c.assigned_engineer = assigned_engineer
