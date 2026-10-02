@@ -632,7 +632,7 @@ def _queue_complaint_confirmation_email(
         background_tasks.add_task(
             send_service_request_acknowledgment_email,
             complaint.customer_email,
-            service.request_no,
+            complaint.comp_no,
         )
         return
     background_tasks.add_task(
