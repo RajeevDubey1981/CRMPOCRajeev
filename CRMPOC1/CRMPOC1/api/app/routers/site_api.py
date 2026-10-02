@@ -15,7 +15,7 @@ from app.models.complaint import Complaint, ComplaintStatusLog
 from app.routers.complaints import _generate_access_code, _generate_comp_no
 from app.routers.sarvam_api import _mobile10, _ok, _track_complaint
 from app.services.complaint_whatsapp import send_complaint_registered_whatsapp
-from app.services.email_service import send_complaint_created_email
+from app.services.complaint_intake import link_and_sync, send_confirmation_email
 from app.services.file_service import save_upload
 
 router = APIRouter(prefix="/api/site", tags=["website"])
@@ -82,6 +82,8 @@ async def site_register(
     db.flush()
     db.add(ComplaintStatusLog(complaint_id=c.id, old_status=None, new_status="Pending",
                               changed_by=None, remark="Created from website indcool.in"))
+    linked_service = link_and_sync(db, c)
+    service_request_no = linked_service.request_no if linked_service is not None else None
     db.commit()
     db.refresh(c)
     try:
@@ -90,8 +92,9 @@ async def site_register(
     except Exception:
         pass
     try:
-        threading.Thread(target=send_complaint_created_email,
-                         args=(email, name, c.comp_no, qtype, c.status, m, problem), daemon=True).start()
+        threading.Thread(target=send_confirmation_email,
+                         args=(email, name, c.comp_no, qtype, c.status, m, problem, service_request_no),
+                         daemon=True).start()
     except Exception:
         pass
     return _ok("Registered successfully", {"comp_no": c.comp_no, "comp_date": str(c.comp_date),

@@ -22,7 +22,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.services.complaint_whatsapp import send_complaint_registered_whatsapp
-from app.services.email_service import send_complaint_created_email
+from app.services.complaint_intake import link_and_sync, send_confirmation_email
 from app.models.complaint import Complaint, ComplaintStatusLog
 from app.routers.complaints import _generate_access_code, _generate_comp_no
 
@@ -158,6 +158,8 @@ def register_complaint(data: dict = Body(...), db: Session = Depends(get_db)):
         complaint_id=complaint.id, old_status=None, new_status="Pending",
         changed_by=None, remark="Complaint created from Sarvam call",
     ))
+    linked_service = link_and_sync(db, complaint)
+    service_request_no = linked_service.request_no if linked_service is not None else None
     db.commit()
     db.refresh(complaint)
     try:
@@ -170,8 +172,8 @@ def register_complaint(data: dict = Body(...), db: Session = Depends(get_db)):
         pass
     try:
         threading.Thread(
-            target=send_complaint_created_email,
-            args=(email, name, complaint.comp_no, qtype, complaint.status, mobile, problem),
+            target=send_confirmation_email,
+            args=(email, name, complaint.comp_no, qtype, complaint.status, mobile, problem, service_request_no),
             daemon=True,
         ).start()
     except Exception:
