@@ -52,12 +52,16 @@ def send_confirmation_email(
     problem,
     service_request_no=None,
 ) -> bool:
-    """Same choice the CRM makes: service acknowledgment for Service, otherwise 'complaint created'."""
+    """Same choice the CRM makes: service acknowledgment for Service, otherwise 'complaint created'.
+
+    The ticket number shown to the customer is always the complaint REFERENCE number (comp_no, IDC_...),
+    the same number WhatsApp sends and the voice agent reads out - not the internal SRV_ number.
+    """
     if not (to_email or "").strip():
         return False
     try:
         if service_request_no:
-            return send_service_request_acknowledgment_email(to_email, service_request_no)
+            return send_service_request_acknowledgment_email(to_email, comp_no)
         return send_complaint_created_email(
             to_email, customer_name, comp_no, query_type, status, customer_mobile, problem
         )
