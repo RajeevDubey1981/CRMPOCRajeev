@@ -1311,13 +1311,13 @@ def request_customer_documents(
 ):
     complaint = _load_visible(db, user, complaint_id)
     # resend=true (sent by the UI only after the user confirms "send again?") may bypass the
-    # "link already sent" lock for everyone except call center, who stay locked as before.
+    # "link already sent" lock for roles that have the complaints.can_edit permission.
     existing_service = _find_linked_service_request(db, complaint.id)
     is_resend = bool(
         resend
         and existing_service is not None
         and existing_service.document_request_sent_at is not None
-        and (user.role or "").strip().lower() not in {"callcenter", "call center"}
+        and can_act_on(db, user, "complaints", "can_edit", complaint.query_type)
     )
     if not is_resend:
         _assert_callcenter_can_edit(db, user, complaint)
@@ -1374,7 +1374,8 @@ def update_complaint(
     c = _load_visible(db, user, complaint_id)
     if not can_act_on(db, user, "complaints", "can_edit", c.query_type):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Your role cannot edit this complaint")
-    _assert_callcenter_can_edit(db, user, c)
+    # Editing follows the role permissions (complaints.can_edit, checked above). It is no longer blocked
+    # once the upload link is sent, so a misheard email can be corrected and the link resent.
 
     data = body.model_dump(exclude_unset=True)
     # Block changing query_type to a type the user has no create/edit perm on.

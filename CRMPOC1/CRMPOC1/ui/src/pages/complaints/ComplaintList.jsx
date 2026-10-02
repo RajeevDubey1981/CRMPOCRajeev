@@ -438,7 +438,7 @@ export default function ComplaintList() {
                       >
                         👁
                       </button>
-                      {canEditComplaints && !c.document_link_sent && (
+                      {canEditComplaints && (
                         <button
                           title="Edit"
                           onClick={() => setEditTarget(c)}
@@ -454,7 +454,7 @@ export default function ComplaintList() {
                       >
                         Delete
                       </button>
-                      {!isCallcenter && (c.query_type || "").toLowerCase() === "service" && c.customer_email && (
+                      {canEditComplaints && (c.query_type || "").toLowerCase() === "service" && c.customer_email && (
                         <button
                           title="Email the customer document upload link"
                           onClick={() => sendUploadLink(c)}
@@ -526,7 +526,7 @@ export default function ComplaintList() {
         open={!!viewTarget}
         onClose={() => setViewTarget(null)}
         isAdminLike={isAdminLike}
-        canEdit={canEditComplaints && !data.items.find((item) => item.id === viewTarget?.id)?.document_link_sent}
+        canEdit={canEditComplaints}
         isCallcenter={isCallcenter}
         onEdit={(c) => { setEditTarget(c); setViewTarget(null); }}
         onDelete={(c) => { setConfirmDelete(c); setViewTarget(null); }}

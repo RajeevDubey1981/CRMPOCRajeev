@@ -303,10 +303,6 @@ export default function ComplaintDetail() {
     Boolean(linkedService?.document_request_sent_at)
     || (isInstallationComplaint && installationDocumentsSent)
   );
-  const complaintEditLocked = Boolean(
-    linkedService?.document_request_sent_at
-    || (isInstallationComplaint && installationDocumentsSent)
-  );
   const hasOrderLink = Boolean(complaint.order_id || complaint.order_item_id);
   const canManageInstallationDocuments = isAdminLike || isCallcenter;
   const showLinkOrderSection = canLinkCustomerOrder && !isCallcenter && (!isInstallationComplaint || installationDocumentsSent) && (!hasOrderLink || showOrderLink);
@@ -345,7 +341,7 @@ export default function ComplaintDetail() {
           </h1>
         </div>
         <div className="flex flex-wrap gap-2">
-          {canEditComplaint && !complaintEditLocked && (
+          {canEditComplaint && (
             <>
               <button
                 type="button"
