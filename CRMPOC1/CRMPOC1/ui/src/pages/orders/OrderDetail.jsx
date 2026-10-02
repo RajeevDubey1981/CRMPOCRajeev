@@ -1445,7 +1445,7 @@ export default function OrderDetail() {
             {order.status !== "Delivered"
               ? `Installation requests can be raised only when the order is Delivered (current status: ${order.status}).`
               : !(order.oem_bill_no || "").trim()
-                ? "OEM Bill No must be entered on this order before installation requests can be raised (typically set by Indcool/admin)."
+                ? "OEM Bill No must be entered on this order before installation requests can be raised (typically set by INDcool/admin)."
                 : "Installation request submission is not available for your role on this order."}
           </div>
         )}

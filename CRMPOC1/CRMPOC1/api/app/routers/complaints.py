@@ -109,6 +109,28 @@ def _sync_linked_service_engineer(db: Session, complaint: Complaint) -> None:
         service.status_date = datetime.now(timezone.utc)
 
 
+# complaint field -> linked service request field, kept in sync when staff correct customer details
+# (e.g. an email the voice agent misheard) so later service emails go to the right person.
+_COMPLAINT_TO_SERVICE_CONTACT_FIELDS = {
+    "customer_name": "customer_name",
+    "customer_mobile": "customer_mobile",
+    "customer_email": "customer_email",
+    "customer_address": "customer_address",
+    "model_details": "model_details",
+    "problem_description": "problem_description",
+    "remark": "additional_remarks",
+}
+
+
+def _sync_linked_service_contact(db: Session, complaint: Complaint, changed_fields) -> None:
+    service = _find_linked_service_request(db, complaint.id)
+    if service is None:
+        return
+    for complaint_field, service_field in _COMPLAINT_TO_SERVICE_CONTACT_FIELDS.items():
+        if complaint_field in changed_fields:
+            setattr(service, service_field, getattr(complaint, complaint_field))
+
+
 def _sync_linked_installation_engineer(db: Session, complaint: Complaint) -> None:
     if not complaint.assigned_engineer:
         return
@@ -632,7 +654,7 @@ def _queue_complaint_confirmation_email(
         background_tasks.add_task(
             send_service_request_acknowledgment_email,
             complaint.customer_email,
-            service.request_no,
+            complaint.comp_no,
         )
         return
     background_tasks.add_task(
@@ -1283,17 +1305,31 @@ def ensure_linked_service_request(
 def request_customer_documents(
     complaint_id: int,
     background_tasks: BackgroundTasks,
+    resend: bool = Query(False),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
     complaint = _load_visible(db, user, complaint_id)
-    _assert_callcenter_can_edit(db, user, complaint)
+    # resend=true (sent by the UI only after the user confirms "send again?") may bypass the
+    # "link already sent" lock for roles that have the complaints.can_edit permission.
+    existing_service = _find_linked_service_request(db, complaint.id)
+    is_resend = bool(
+        resend
+        and existing_service is not None
+        and existing_service.document_request_sent_at is not None
+        and can_act_on(db, user, "complaints", "can_edit", complaint.query_type)
+    )
+    if not is_resend:
+        _assert_callcenter_can_edit(db, user, complaint)
     if (complaint.query_type or "").lower() != "service":
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Customer upload links are only available for Service complaints")
     if not complaint.customer_email:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Customer email is required before generating upload link")
     service = _ensure_service_request_for_complaint(db, complaint, user)
-    service.document_access_token = _generate_service_access_token()
+    service.customer_email = complaint.customer_email
+    if not is_resend or not service.document_access_token:
+        # first send: fresh token (unchanged behaviour); resend keeps the link the customer already has
+        service.document_access_token = _generate_service_access_token()
     service.ask_for_documents = True
     service.document_request_sent_at = datetime.now(timezone.utc)
     db.add(
@@ -1302,7 +1338,7 @@ def request_customer_documents(
             old_status=complaint.status,
             new_status=complaint.status,
             changed_by=user.id,
-            remark="Customer document upload link generated",
+            remark="Customer document upload link re-sent" if is_resend else "Customer document upload link generated",
             action_taken="Request Sent",
         )
     )
@@ -1338,7 +1374,8 @@ def update_complaint(
     c = _load_visible(db, user, complaint_id)
     if not can_act_on(db, user, "complaints", "can_edit", c.query_type):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Your role cannot edit this complaint")
-    _assert_callcenter_can_edit(db, user, c)
+    # Editing follows the role permissions (complaints.can_edit, checked above). It is no longer blocked
+    # once the upload link is sent, so a misheard email can be corrected and the link resent.
 
     data = body.model_dump(exclude_unset=True)
     # Block changing query_type to a type the user has no create/edit perm on.
@@ -1355,6 +1392,7 @@ def update_complaint(
 
     for field, value in data.items():
         setattr(c, field, value)
+    _sync_linked_service_contact(db, c, data.keys())
 
     if assigned_engineer is not None:
         c.assigned_engineer = assigned_engineer

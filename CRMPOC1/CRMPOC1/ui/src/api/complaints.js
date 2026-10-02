@@ -22,7 +22,8 @@ export const complaintsApi = {
   searchCustomers: (params) => api.get("/api/complaints/customers/search", { params }).then((r) => r.data),
   linkCustomer: (id, body) => api.post(`/api/complaints/${id}/link-customer`, body).then((r) => r.data),
   ensureServiceRequest: (id) => api.post(`/api/complaints/${id}/service-request`).then((r) => r.data),
-  requestCustomerUploadLink: (id) => api.post(`/api/complaints/${id}/documents/request-link`).then((r) => r.data),
+  requestCustomerUploadLink: (id, resend = false) =>
+    api.post(`/api/complaints/${id}/documents/request-link`, null, { params: resend ? { resend: true } : undefined }).then((r) => r.data),
   exportUrl: (params) => {
     const u = new URL("/api/complaints/export", api.defaults.baseURL);
     Object.entries(params || {}).forEach(([k, v]) => {

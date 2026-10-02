@@ -270,8 +270,8 @@ export default function EngineerUnitWorkflowPanel({
       const notInOrder = Boolean(updatedUnit?.serial_not_in_order);
       return {
         successMessage: notInOrder
-          ? `Serial ${serialNo} submitted for Admin/Indcool review. It was not found in order records — admin will verify and decide.`
-          : `Serial ${serialNo} submitted for Admin/Indcool review.`,
+          ? `Serial ${serialNo} submitted for Admin/INDcool review. It was not found in order records — admin will verify and decide.`
+          : `Serial ${serialNo} submitted for Admin/INDcool review.`,
       };
     });
   }
@@ -582,7 +582,7 @@ export default function EngineerUnitWorkflowPanel({
         <div className="flex flex-col items-end gap-1">
           <span className="text-xs text-amber-700">
             {unit.serial_not_in_order
-              ? "Awaiting Admin/Indcool review — serial not in order records"
+              ? "Awaiting Admin/INDcool review — serial not in order records"
               : "Awaiting admin serial review"}
           </span>
           <button
@@ -826,7 +826,7 @@ export default function EngineerUnitWorkflowPanel({
         <div className="space-y-3">
           {unit.observation_id && !readOnly && (
             <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-              Observation is pending Admin/Indcool approval. You can still edit and resubmit it.
+              Observation is pending Admin/INDcool approval. You can still edit and resubmit it.
             </div>
           )}
           <div>
@@ -932,8 +932,8 @@ export default function EngineerUnitWorkflowPanel({
         <div className="space-y-3">
           <p className="text-sm text-slate-600">
             {isChange
-              ? "Enter the correct serial number. It will be submitted again for Admin/Indcool approval."
-              : "Enter the serial number. It will be submitted to Admin/Indcool for approval. If the serial is not on the order, Admin/Indcool will review and decide."}
+              ? "Enter the correct serial number. It will be submitted again for Admin/INDcool approval."
+              : "Enter the serial number. It will be submitted to Admin/INDcool for approval. If the serial is not on the order, Admin/INDcool will review and decide."}
           </p>
           <input
             value={serialInputs[unit.id] || ""}
@@ -1682,8 +1682,8 @@ export default function EngineerUnitWorkflowPanel({
       {isEngineer && unitsWithUnknownSerial.length > 0 && (
         <div className="rounded-md border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
           {unitsWithUnknownSerial.length === 1
-            ? `Serial ${unitsWithUnknownSerial[0].serial_no} was submitted for Admin/Indcool review because it was not found in order records. You will be notified when admin decides.`
-            : `${unitsWithUnknownSerial.length} serial(s) were submitted for Admin/Indcool review because they were not found in order records.`}
+            ? `Serial ${unitsWithUnknownSerial[0].serial_no} was submitted for Admin/INDcool review because it was not found in order records. You will be notified when admin decides.`
+            : `${unitsWithUnknownSerial.length} serial(s) were submitted for Admin/INDcool review because they were not found in order records.`}
         </div>
       )}
 

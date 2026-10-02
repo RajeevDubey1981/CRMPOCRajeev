@@ -100,7 +100,7 @@ export default function ItemMasterCreate() {
               value={form.brand}
               onChange={(e) => set("brand", e.target.value)}
               className={fieldClass}
-              placeholder="e.g. Indcool"
+              placeholder="e.g. INDcool"
             />
           </div>
           <div>

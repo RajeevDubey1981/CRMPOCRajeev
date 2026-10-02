@@ -76,7 +76,7 @@ export default function Layout() {
   }
 
   return (
-    <div className="flex h-screen min-w-0 overflow-hidden">
+    <div className="flex h-screen min-w-0 overflow-hidden" style={{ height: "100dvh" }}>
       {mobileSidebarOpen && (
         <button
           type="button"

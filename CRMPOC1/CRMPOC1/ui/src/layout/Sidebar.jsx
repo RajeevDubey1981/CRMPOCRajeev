@@ -59,8 +59,8 @@ function LeafLink({ to, label, disabled, onNavigate }) {
       className={({ isActive }) =>
         `block rounded-md px-2 py-1.5 text-xs leading-snug transition ${
           isActive
-            ? "bg-brand-600 text-white"
-            : "text-slate-200 hover:bg-slate-700 hover:text-white"
+            ? "bg-indcool-blue font-semibold text-white"
+            : "text-slate-200 hover:bg-indcool-blue/60 hover:text-white"
         }`
       }
     >
@@ -76,13 +76,13 @@ function Group({ label, children, defaultOpen = false, onNavigate }) {
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="flex w-full items-center justify-between rounded-md px-2 py-1.5 text-xs font-medium leading-snug text-slate-100 hover:bg-slate-700"
+        className="flex w-full items-center justify-between rounded-md px-2 py-1.5 text-xs font-medium leading-snug text-slate-100 hover:bg-indcool-blue/60"
       >
         <span>{label}</span>
         <span className="text-xs">{open ? "▾" : "▸"}</span>
       </button>
       {open && (
-        <div className="ml-2 space-y-1 border-l border-slate-600 pl-2">
+        <div className="ml-2 space-y-1 border-l border-indcool-blue pl-2">
           {children.map((child) => (
             <LeafLink key={child.label} to={child.to} label={child.label} onNavigate={onNavigate} />
           ))}
@@ -138,15 +138,15 @@ export default function Sidebar({ collapsed, mobileOpen = false, onNavigate }) {
 
   return (
     <aside
-      className={`fixed inset-y-0 left-0 z-40 h-full max-w-[85vw] overflow-x-hidden overflow-y-auto bg-slate-800 shadow-xl transition-transform duration-200 md:relative md:z-auto md:max-w-none md:shrink-0 md:shadow-none md:transition-[width,min-width] ${SIDEBAR_WIDTH_CLASS} ${
+      className={`fixed inset-y-0 left-0 z-40 h-full max-w-[85vw] overflow-x-hidden overflow-y-auto bg-indcool-navy shadow-xl transition-transform duration-200 md:relative md:z-auto md:max-w-none md:shrink-0 md:shadow-none md:transition-[width,min-width] ${SIDEBAR_WIDTH_CLASS} ${
         mobileOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
       } ${
         collapsed ? "md:w-0 md:min-w-0 md:max-w-0 md:overflow-hidden md:border-0" : ""
       }`}
     >
       <div className="px-2.5 py-4">
-        <div className="text-sm font-bold tracking-wide text-white leading-tight">Indcool CRM</div>
-        <div className="text-[10px] leading-snug text-slate-400">Service & Operations</div>
+        <div className="text-base font-black tracking-wide text-white leading-tight">INDcool CRM</div>
+        <div className="text-[10px] leading-snug text-slate-200">Service and operations</div>
       </div>
       <nav className="space-y-0.5 px-2 pb-6">
         {filteredNav.map((item) =>

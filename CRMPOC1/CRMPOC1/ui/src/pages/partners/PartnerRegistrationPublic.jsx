@@ -295,7 +295,7 @@ export default function PartnerRegistrationPublic() {
     <div className="min-h-screen bg-slate-100 py-6 sm:py-10">
       <div className="mx-auto max-w-3xl space-y-5 px-4">
         <div className="rounded-2xl border border-sky-200 bg-white p-5 shadow-sm">
-          <div className="text-xs font-semibold uppercase tracking-widest text-sky-700">Indcool Partner Registration</div>
+          <div className="text-xs font-semibold uppercase tracking-widest text-sky-700">INDcool Partner Registration</div>
           <h1 className="mt-2 text-2xl font-bold text-slate-900">Partner Onboarding Form</h1>
           <p className="mt-1 text-sm text-slate-600">
             Registration No: <span className="font-mono">{context.registration_no}</span>
@@ -597,7 +597,7 @@ export default function PartnerRegistrationPublic() {
                     className="mt-1"
                   />
                   <span>
-                    I declare that all information and documents provided are true and correct. I authorize Indcool
+                    I declare that all information and documents provided are true and correct. I authorize INDcool
                     to verify these details for GeM partner onboarding.
                   </span>
                 </label>

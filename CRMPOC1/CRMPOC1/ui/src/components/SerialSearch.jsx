@@ -96,7 +96,7 @@ export default function SerialSearch() {
           onChange={(e) => setInput(e.target.value)}
           onFocus={() => input && setShowSuggestions(true)}
           onKeyDown={handleKeyDown}
-          className="flex-1 rounded border border-slate-300 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+          className="flex-1 rounded border border-slate-300 bg-white px-3 py-2 text-base focus:border-blue-500 focus:outline-none sm:text-sm"
         />
         {input && (
           <button

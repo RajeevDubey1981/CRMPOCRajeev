@@ -481,7 +481,7 @@ export default function ServiceRequestDetail() {
     }
     if (completionSubmitted && !completionPendingApproval) return null;
     if (service?.status === "Pending Service Approval") {
-      return "Waiting for Indcool/Admin service approval (Approval section above).";
+      return "Waiting for INDcool/Admin service approval (Approval section above).";
     }
     if (["Approved for Service", "Service In Progress"].includes(service?.status) && roleIsServiceTeam && !roleIsEngineer && !roleIsVendor) {
       return "Service is approved. The assigned engineer must mark completion here (happy code + proof). Admin cannot complete on behalf of engineer.";
@@ -1176,7 +1176,7 @@ export default function ServiceRequestDetail() {
             <div className="space-y-3">
               {completionPendingApproval && (isEngineer || isVendor) && (
                 <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-                  <div className="font-medium">Waiting for Indcool/Admin completion approval</div>
+                  <div className="font-medium">Waiting for INDcool/Admin completion approval</div>
                   <p className="mt-1 text-amber-800">
                     Your completion and proof are saved. An admin must approve before status becomes Service Completed and you can raise payment.
                   </p>

@@ -22,6 +22,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.services.complaint_whatsapp import send_complaint_registered_whatsapp
+from app.services.complaint_intake import link_and_sync, send_confirmation_email
 from app.models.complaint import Complaint, ComplaintStatusLog
 from app.routers.complaints import _generate_access_code, _generate_comp_no
 
@@ -72,6 +73,26 @@ def _query_type(raw: Optional[str]) -> str:
     return "Others"
 
 
+# Words that clearly describe a product fault. Used only to rescue a genuine repair request that the
+# voice agent labelled with an unrecognised category (which _query_type() maps to "Others").
+_FAULT_HINTS = (
+    "not cooling", "cooling", "not working", "stopped working", "not start", "not turn", "not switch",
+    "repair", "breakdown", "break down", "broken", "leak", "noise", "fault", "defect", "damage",
+    "compressor", "error code", "warranty", "gas", "not heating", "tripping", "service",
+)
+
+
+def _refine_type(qtype: str, problem: Optional[str], remark: Optional[str]) -> str:
+    """If the category came out as 'Others' but the problem text is clearly a fault, treat it as Service.
+    Never overrides Installation / Sales / Service."""
+    if qtype != "Others":
+        return qtype
+    text = ((problem or "") + " " + (remark or "")).lower()
+    if any(h in text for h in _FAULT_HINTS):
+        return "Service"
+    return qtype
+
+
 def _ok(message: str, data: dict) -> dict:
     return {"success": True, "message": message, "data": data}
 
@@ -106,6 +127,7 @@ def register_complaint(data: dict = Body(...), db: Session = Depends(get_db)):
     email = _pick(data, "customer_email", "email")
     address = _pick(data, "customer_address", "cost_add", "address", "cust_add")
     remark = _pick(data, "remark", "remarks", "summary")
+    qtype = _refine_type(qtype, problem, remark)
     if not email or not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email):
         raise HTTPException(status_code=422, detail="A valid customer email address is required. Ask the customer for it and confirm it.")
     gem_order = _pick(data, "gem_order_id", "gem_order", "order_id")
@@ -157,12 +179,22 @@ def register_complaint(data: dict = Body(...), db: Session = Depends(get_db)):
         complaint_id=complaint.id, old_status=None, new_status="Pending",
         changed_by=None, remark="Complaint created from Sarvam call",
     ))
+    linked_service = link_and_sync(db, complaint)
+    service_request_no = linked_service.request_no if linked_service is not None else None
     db.commit()
     db.refresh(complaint)
     try:
         threading.Thread(
             target=send_complaint_registered_whatsapp,
             args=(mobile, name, qtype, complaint.comp_no, problem),
+            daemon=True,
+        ).start()
+    except Exception:
+        pass
+    try:
+        threading.Thread(
+            target=send_confirmation_email,
+            args=(email, name, complaint.comp_no, qtype, complaint.status, mobile, problem, service_request_no),
             daemon=True,
         ).start()
     except Exception:
