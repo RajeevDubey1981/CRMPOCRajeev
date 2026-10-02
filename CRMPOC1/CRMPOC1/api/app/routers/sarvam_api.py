@@ -22,6 +22,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.services.complaint_whatsapp import send_complaint_registered_whatsapp
+from app.services.email_service import send_complaint_created_email
 from app.models.complaint import Complaint, ComplaintStatusLog
 from app.routers.complaints import _generate_access_code, _generate_comp_no
 
@@ -163,6 +164,14 @@ def register_complaint(data: dict = Body(...), db: Session = Depends(get_db)):
         threading.Thread(
             target=send_complaint_registered_whatsapp,
             args=(mobile, name, qtype, complaint.comp_no, problem),
+            daemon=True,
+        ).start()
+    except Exception:
+        pass
+    try:
+        threading.Thread(
+            target=send_complaint_created_email,
+            args=(email, name, complaint.comp_no, qtype, complaint.status, mobile, problem),
             daemon=True,
         ).start()
     except Exception:
