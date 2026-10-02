@@ -82,15 +82,78 @@ _FAULT_HINTS = (
 )
 
 
-def _refine_type(qtype: str, problem: Optional[str], remark: Optional[str]) -> str:
-    """If the category came out as 'Others' but the problem text is clearly a fault, treat it as Service.
+_SALES_RE = re.compile(
+    r"\b(buy|buying|purchase|price|prices|pricing|quotation|quote|discount|offer|emi|dealer|dealership|"
+    r"distributor|franchise|showroom|bulk|kharid\w*|khareed\w*|lena hai|lene hai|daam|new ac|new split|"
+    r"new fridge|new refrigerator|naya ac|naya fridge|want to order|how much)\b",
+    re.I,
+)
+_INSTALL_RE = re.compile(r"\b(install|installation|installed|fitting|mounting|demo|lagwa\w*|lagana|lagvana|uninstall)\b", re.I)
+
+
+def _refine_type(qtype: str, problem: Optional[str], remark: Optional[str], extra: Optional[str] = None) -> str:
+    """If the category came out as 'Others', look at what the caller actually said and pick the interest:
+    Installation, Sales (buying / price / dealer ...) or Service (a product fault).
     Never overrides Installation / Sales / Service."""
     if qtype != "Others":
         return qtype
-    text = ((problem or "") + " " + (remark or "")).lower()
+    text = ((problem or "") + " " + (remark or "") + " " + (extra or "")).lower()
+    if _INSTALL_RE.search(text):
+        return "Installation"
+    if _SALES_RE.search(text):
+        return "Sales"
     if any(h in text for h in _FAULT_HINTS):
         return "Service"
     return qtype
+
+
+def _int_or_none(raw: Optional[str]) -> Optional[int]:
+    try:
+        return int(float(str(raw).strip())) if raw not in (None, "") else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _log_call(db: Session, complaint: Complaint, qtype: str, name: str, mobile: str, email: Optional[str],
+              summary: Optional[str], interest_line: str, duration: Optional[int]) -> None:
+    """Add the Sarvam conversation to the CRM call log. Sales and Installation leads get a follow-up for tomorrow.
+    Never blocks the registration: any problem is only logged."""
+    try:
+        with db.begin_nested():
+            from app.models.call import Call
+            from app.routers.calls import _generate_ref_no
+            from app.services.pending_action_sync import sync_call_pending_actions
+
+            now = datetime.now(timezone.utc)
+            follow = qtype in ("Sales", "Installation")
+            notes = "Sarvam voice agent call (" + qtype + "), complaint " + complaint.comp_no + "."
+            if interest_line:
+                notes += " " + interest_line
+            if summary:
+                notes += " Summary: " + summary
+            call = Call(
+                ref_no=_generate_ref_no(db),
+                customer_name=name,
+                customer_email=email,
+                phone=mobile,
+                call_type="Inbound",
+                status="Completed",
+                priority="High" if follow else "Medium",
+                call_datetime=now,
+                duration_secs=duration,
+                followup_date=(now + timedelta(days=1)) if follow else None,
+                notes=notes[:4000],
+                follow_up_notes=("Call back the customer about this " + qtype.lower() + " enquiry.") if follow else None,
+                follow_up_status="Pending" if follow else None,
+                complaint_id=complaint.id,
+            )
+            db.add(call)
+            db.flush()
+            sync_call_pending_actions(db, call)
+    except Exception:
+        import logging
+
+        logging.getLogger(__name__).exception("could not log the Sarvam call in the call log")
 
 
 def _ok(message: str, data: dict) -> dict:
@@ -127,7 +190,30 @@ def register_complaint(data: dict = Body(...), db: Session = Depends(get_db)):
     email = _pick(data, "customer_email", "email")
     address = _pick(data, "customer_address", "cost_add", "address", "cust_add")
     remark = _pick(data, "remark", "remarks", "summary")
-    qtype = _refine_type(qtype, problem, remark)
+    interest = _pick(data, "interest", "product_interest", "interested_in", "product")
+    capacity = _pick(data, "capacity", "tonnage", "size")
+    budget = _pick(data, "budget", "price_range")
+    city = _pick(data, "city", "location", "area")
+    preferred = _pick(data, "preferred_time", "callback_time", "best_time")
+    call_summary = _pick(data, "call_summary", "conversation_summary", "transcript_summary")
+    duration = _int_or_none(_pick(data, "call_duration", "duration", "duration_secs"))
+    qtype = _refine_type(qtype, problem, remark, " ".join(x for x in (interest, call_summary) if x))
+    if not model and (interest or capacity):
+        model = " ".join(x for x in (interest, capacity) if x)[:255]
+    interest_bits = []
+    if interest:
+        interest_bits.append("Interest: " + interest)
+    if capacity:
+        interest_bits.append("Capacity: " + capacity)
+    if budget:
+        interest_bits.append("Budget: " + budget)
+    if city:
+        interest_bits.append("City: " + city)
+    if preferred:
+        interest_bits.append("Preferred call time: " + preferred)
+    interest_line = " | ".join(interest_bits)
+    if not problem and qtype in ("Sales", "Installation") and (interest or call_summary):
+        problem = ("Sales enquiry: " if qtype == "Sales" else "Installation request: ") + (interest or call_summary)
     if not email or not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email):
         raise HTTPException(status_code=422, detail="A valid customer email address is required. Ask the customer for it and confirm it.")
     gem_order = _pick(data, "gem_order_id", "gem_order", "order_id")
@@ -139,6 +225,8 @@ def register_complaint(data: dict = Body(...), db: Session = Depends(get_db)):
         extra.append("PI No: " + pi_no)
     if extra:
         remark = ((remark + " | ") if remark else "") + " | ".join(extra)
+    if interest_line:
+        remark = ((remark + " | ") if remark else "") + interest_line
     sms = (_pick(data, "smsreq", "send_sms") or "").lower() in ("1", "true", "yes", "y")
 
     # Duplicate guard: same mobile + type + problem in the last 10 minutes returns the existing record.
@@ -180,6 +268,7 @@ def register_complaint(data: dict = Body(...), db: Session = Depends(get_db)):
         changed_by=None, remark="Complaint created from Sarvam call",
     ))
     linked_service = link_and_sync(db, complaint)
+    _log_call(db, complaint, qtype, name, mobile, email, call_summary or remark, interest_line, duration)
     service_request_no = linked_service.request_no if linked_service is not None else None
     db.commit()
     db.refresh(complaint)
