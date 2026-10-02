@@ -1305,17 +1305,31 @@ def ensure_linked_service_request(
 def request_customer_documents(
     complaint_id: int,
     background_tasks: BackgroundTasks,
+    resend: bool = Query(False),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
     complaint = _load_visible(db, user, complaint_id)
-    _assert_callcenter_can_edit(db, user, complaint)
+    # resend=true (sent by the UI only after the user confirms "send again?") may bypass the
+    # "link already sent" lock for everyone except call center, who stay locked as before.
+    existing_service = _find_linked_service_request(db, complaint.id)
+    is_resend = bool(
+        resend
+        and existing_service is not None
+        and existing_service.document_request_sent_at is not None
+        and (user.role or "").strip().lower() not in {"callcenter", "call center"}
+    )
+    if not is_resend:
+        _assert_callcenter_can_edit(db, user, complaint)
     if (complaint.query_type or "").lower() != "service":
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Customer upload links are only available for Service complaints")
     if not complaint.customer_email:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Customer email is required before generating upload link")
     service = _ensure_service_request_for_complaint(db, complaint, user)
-    service.document_access_token = _generate_service_access_token()
+    service.customer_email = complaint.customer_email
+    if not is_resend or not service.document_access_token:
+        # first send: fresh token (unchanged behaviour); resend keeps the link the customer already has
+        service.document_access_token = _generate_service_access_token()
     service.ask_for_documents = True
     service.document_request_sent_at = datetime.now(timezone.utc)
     db.add(
@@ -1324,7 +1338,7 @@ def request_customer_documents(
             old_status=complaint.status,
             new_status=complaint.status,
             changed_by=user.id,
-            remark="Customer document upload link generated",
+            remark="Customer document upload link re-sent" if is_resend else "Customer document upload link generated",
             action_taken="Request Sent",
         )
     )

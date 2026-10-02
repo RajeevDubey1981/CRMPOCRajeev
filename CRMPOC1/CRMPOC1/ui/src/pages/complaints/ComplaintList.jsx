@@ -185,6 +185,21 @@ export default function ComplaintList() {
     }
   }
 
+  async function sendUploadLink(c) {
+    const alreadySent = Boolean(c.document_link_sent);
+    const message = alreadySent
+      ? `The customer upload link was already sent for ${c.comp_no}.\n\nDo you want to send it again to ${c.customer_email}?`
+      : `Send the customer upload link for ${c.comp_no} to ${c.customer_email}?`;
+    if (!window.confirm(message)) return;
+    try {
+      await complaintsApi.requestCustomerUploadLink(c.id, alreadySent);
+      alert(`Upload link email ${alreadySent ? "resent" : "sent"} to ${c.customer_email}.`);
+      load();
+    } catch (e) {
+      alert(e.response?.data?.detail || "Failed to send the upload link");
+    }
+  }
+
   async function doDelete() {
     if (!confirmDelete) return;
     try {
@@ -439,6 +454,15 @@ export default function ComplaintList() {
                       >
                         Delete
                       </button>
+                      {!isCallcenter && (c.query_type || "").toLowerCase() === "service" && c.customer_email && (
+                        <button
+                          title="Email the customer document upload link"
+                          onClick={() => sendUploadLink(c)}
+                          className="rounded border border-sky-300 px-2 py-0.5 text-xs text-sky-800 hover:bg-sky-50"
+                        >
+                          {c.document_link_sent ? "Resend link" : "Send link"}
+                        </button>
+                      )}
                       <button
                         onClick={() => { setActionTarget(c); setActionType(shownAction); }}
                         className={`inline-block whitespace-nowrap rounded border px-2.5 py-1 text-xs font-medium leading-snug transition-opacity hover:opacity-80 ${ACTION_STYLE[shownAction] || "bg-slate-100 text-slate-600 border-slate-200"}`}

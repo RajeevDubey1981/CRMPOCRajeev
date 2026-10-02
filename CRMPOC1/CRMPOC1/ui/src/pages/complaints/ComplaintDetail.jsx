@@ -761,7 +761,11 @@ export default function ComplaintDetail() {
                     {linkedService?.service_request_id ? "Refresh Service Workflow" : "Create Service Workflow"}
                   </button>
                   <button
-                    onClick={() => run(() => complaintsApi.requestCustomerUploadLink(id))}
+                    onClick={() => {
+                      const alreadySent = Boolean(linkedService?.document_request_sent_at);
+                      if (alreadySent && !window.confirm("The customer upload link was already sent. Do you want to send it again?")) return;
+                      run(() => complaintsApi.requestCustomerUploadLink(id, alreadySent));
+                    }}
                     disabled={busy}
                     className="rounded-md bg-sky-700 px-3 py-2 text-sm text-white disabled:opacity-50"
                   >
