@@ -188,7 +188,7 @@ def list_pending_actions(db: Session, user: User, limit: int = 15) -> tuple[int,
                 UserPendingAction.recipient_user_id == user.id,
                 UserPendingAction.is_active.is_(True),
             )
-            .order_by(UserPendingAction.occurred_at.desc())
+            .order_by(UserPendingAction.is_read.asc(), UserPendingAction.occurred_at.desc())
             .limit(limit)
         )
     )

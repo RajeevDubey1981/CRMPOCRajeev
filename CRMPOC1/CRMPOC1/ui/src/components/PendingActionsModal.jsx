@@ -106,7 +106,7 @@ export default function PendingActionsModal({
 }) {
   const navigate = useNavigate();
   const [filter, setFilter] = useState("all");
-  const [onlyUnread, setOnlyUnread] = useState(false);
+  const [onlyUnread, setOnlyUnread] = useState(true);
   const [leaving, setLeaving] = useState(() => new Set());
   const [picked, setPicked] = useState(() => new Set());
   const [handled, setHandled] = useState(0);
@@ -119,9 +119,10 @@ export default function PendingActionsModal({
   useEffect(() => {
     if (!open) return undefined;
     setFilter("all");
-    setOnlyUnread(false);
+    setOnlyUnread(true);
     setHandled(0);
     setPicked(new Set());
+    setLeaving(new Set());
     const onKey = (e) => {
       if (e.key === "Escape") closeRef.current?.();
     };
@@ -138,15 +139,16 @@ export default function PendingActionsModal({
     () => items.map((item) => ({ ...item, priority: HIGH_PRIORITY.test(item.message || ""), text: (item.message || "").replace(HIGH_PRIORITY, "") })),
     [items],
   );
+  const base = useMemo(() => (onlyUnread ? rows.filter((r) => !r.is_read) : rows), [rows, onlyUnread]);
   const counts = useMemo(() => {
-    const c = { all: rows.length, pri: rows.filter((r) => r.priority).length };
-    rows.forEach((r) => {
+    const c = { all: base.length, pri: base.filter((r) => r.priority).length };
+    base.forEach((r) => {
       c[r.module] = (c[r.module] || 0) + 1;
     });
     return c;
-  }, [rows]);
+  }, [base]);
   const unreadLoaded = rows.filter((r) => !r.is_read).length;
-  const modules = [...new Set(rows.map((r) => r.module))];
+  const modules = [...new Set(base.map((r) => r.module))];
 
   const visible = rows.filter((r) => {
     if (filter === "pri" && !r.priority) return false;
