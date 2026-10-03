@@ -78,3 +78,55 @@
 @media (prefers-reduced-motion: reduce) {
   .ls-drift, .ls-spin, .ls-tr, .ls-ex, .ls-ring, .ls-typing rect, .ls-bub, [class*="k-"] { animation: none !important; }
 }
+
+/* ---- click / tap reactions ---- */
+.ls-fx { position: absolute; left: 0; top: 0; width: 100%; height: 100%; pointer-events: none; z-index: 4; }
+.ls-it { pointer-events: auto; cursor: pointer; transition: transform 0.18s; }
+.ls-it:hover { transform: translateY(-4px) scale(1.05); }
+.ls-it.ls-hit { animation: ls-hop 0.6s cubic-bezier(0.3, 1.6, 0.5, 1); }
+@keyframes ls-hop {
+  0% { transform: translateY(0); }
+  35% { transform: translateY(-18px) scale(1.08); }
+  70% { transform: translateY(2px); }
+  100% { transform: translateY(0); }
+}
+.ls-fp { pointer-events: auto; cursor: pointer; transition: opacity 0.2s; }
+.ls-fp:hover { opacity: 0.85; }
+.ls-par { display: block; transition: transform 0.25s ease-out; }
+.ls-pop .ls-drift { animation-play-state: paused; }
+.ls-pop .ls-spinme { animation: ls-popspin 0.9s cubic-bezier(0.2, 0.8, 0.2, 1); }
+@keyframes ls-popspin {
+  0% { transform: scale(1) rotate(0); }
+  40% { transform: scale(1.5) rotate(200deg); }
+  100% { transform: scale(1) rotate(360deg); }
+}
+.ls-glow { position: absolute; border: 2px solid #9fd3ff; border-radius: 50%; pointer-events: none; animation: ls-glowring 0.8s ease-out forwards; }
+@keyframes ls-glowring {
+  0% { opacity: 0.9; transform: scale(0.4); }
+  100% { opacity: 0; transform: scale(1.8); }
+}
+.ls-say {
+  position: absolute; background: #fff; color: #1e3a78; font-size: 11.5px; font-weight: 700; padding: 6px 11px; border-radius: 10px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35); white-space: nowrap; opacity: 0; transform: scale(0.7); transition: 0.18s; z-index: 7;
+}
+.ls-say.ls-on { opacity: 1; transform: scale(1); }
+.ls-tagname {
+  position: absolute; background: #b8d828; color: #1e3a78; font-weight: 900; font-size: 11px; padding: 3px 8px; border-radius: 999px;
+  white-space: nowrap; opacity: 0; transform: translateY(6px); transition: 0.2s; z-index: 6;
+}
+.ls-tagname.ls-on { opacity: 1; transform: none; }
+.ls-rip { position: absolute; width: 30px; height: 30px; margin: -15px 0 0 -15px; border: 2px solid #9fd3ff; border-radius: 50%; animation: ls-ripple 0.9s ease-out forwards; }
+@keyframes ls-ripple {
+  0% { opacity: 0.9; transform: scale(0.3); }
+  100% { opacity: 0; transform: scale(7); }
+}
+.ls-snow { position: absolute; width: 22px; height: 22px; margin: -11px 0 0 -11px; color: #cfe8ff; animation: ls-snowburst 0.9s ease-out forwards; }
+.ls-snow svg { display: block; overflow: visible; }
+@keyframes ls-snowburst {
+  0% { opacity: 1; transform: translate(0, 0) rotate(0) scale(0.5); }
+  100% { opacity: 0; transform: translate(var(--x), var(--y)) rotate(200deg) scale(1.1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ls-it.ls-hit, .ls-pop .ls-spinme, .ls-glow, .ls-rip, .ls-snow { animation: none !important; }
+  .ls-par { transition: none; }
+}
