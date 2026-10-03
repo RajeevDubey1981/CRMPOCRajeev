@@ -108,7 +108,7 @@ export default function PendingActionsModal({
   const [filter, setFilter] = useState("all");
   const [onlyUnread, setOnlyUnread] = useState(false);
   const [leaving, setLeaving] = useState(() => new Set());
-  const [bulk, setBulk] = useState(false);
+  const [picked, setPicked] = useState(() => new Set());
   const [handled, setHandled] = useState(0);
   const shownTotal = useCountUp(total);
   // The parent passes a new onClose function on every render; keep it in a ref so the popup does not
@@ -121,6 +121,7 @@ export default function PendingActionsModal({
     setFilter("all");
     setOnlyUnread(false);
     setHandled(0);
+    setPicked(new Set());
     const onKey = (e) => {
       if (e.key === "Escape") closeRef.current?.();
     };
@@ -153,18 +154,20 @@ export default function PendingActionsModal({
     if (onlyUnread && r.is_read) return false;
     return true;
   });
-  const visibleUnread = visible.filter((r) => !r.is_read).length;
-  const allRead = bulk || (visible.length > 0 && visibleUnread === 0);
   const groups = ["pri", "today", "yesterday", "earlier"]
     .map((g) => ({ key: g, list: visible.filter((r) => (g === "pri" ? r.priority : !r.priority && dayGroup(r.occurred_at) === g)) }))
     .filter((g) => g.list.length);
 
   if (!open) return null;
 
-  function markOne(item) {
+  function toggle(item) {
     if (item.is_read) return;
-    setHandled((h) => h + 1);
-    onMarkRead?.([item.id]);
+    setPicked((s) => {
+      const next = new Set(s);
+      if (next.has(item.id)) next.delete(item.id);
+      else next.add(item.id);
+      return next;
+    });
   }
 
   function openAction(item) {
@@ -177,15 +180,12 @@ export default function PendingActionsModal({
     }, 260);
   }
 
-  function markAll() {
-    const ids = visible.filter((r) => !r.is_read).map((r) => r.id);
+  function proceed() {
+    const ids = [...picked].filter((id) => rows.some((r) => r.id === id && !r.is_read));
     if (!ids.length) return;
-    setBulk(true);
-    setTimeout(() => {
-      setHandled((h) => h + ids.length);
-      onMarkRead?.(ids);
-      setBulk(false);
-    }, ids.length * 45 + 300);
+    setHandled((h) => h + ids.length);
+    setPicked(new Set());
+    onMarkRead?.(ids);
   }
 
   let n = 0;
@@ -228,13 +228,6 @@ export default function PendingActionsModal({
           <label className="pa-switch"><input type="checkbox" checked={onlyUnread} onChange={(e) => setOnlyUnread(e.target.checked)} />Unread only</label>
         </div>
 
-        <label className={`pa-all${allRead ? " done" : ""}`}>
-          <input type="checkbox" checked={allRead} onChange={() => !allRead && markAll()} />
-          <span className="pa-box"><Icon name="check" /></span>
-          <span className="pa-all-t">Mark all read</span>
-          <span className="pa-all-n">{allRead ? "Everything here is read" : `${visibleUnread} unread in this view`}</span>
-        </label>
-
         <div className="pa-list">
           {rows.length === 0 && (
             <div className="pa-empty">
@@ -254,7 +247,7 @@ export default function PendingActionsModal({
               <div className={`pa-gh${g.key === "pri" ? " pri" : ""}`}>{g.key === "pri" && <Icon name="flag" />}{GROUP_TITLES[g.key]}</div>
               {g.list.map((item) => {
                 const i = n++;
-                const cls = ["pa-card", item.priority && "pri", item.is_read && "read", leaving.has(item.id) && "gone", bulk && !item.is_read && "bulk"].filter(Boolean).join(" ");
+                const cls = ["pa-card", item.priority && "pri", item.is_read && "read", leaving.has(item.id) && "gone", picked.has(item.id) && "picked"].filter(Boolean).join(" ");
                 return (
                   <div key={item.id} className={cls} style={{ "--i": Math.min(i, 14) }}>
                     <div className="pa-tile">
@@ -272,7 +265,11 @@ export default function PendingActionsModal({
                       {item.entity_status && <span className="pa-st">Status: {item.entity_status}</span>}
                     </div>
                     <div className="pa-ac">
-                      <button type="button" className="pa-ok" onClick={() => markOne(item)} title={item.is_read ? "Already read" : "Mark as read"} aria-label="Mark as read"><Icon name="check" /></button>
+                      <label className={`pa-pick${item.is_read ? " is-read" : ""}`} title={item.is_read ? "Already read" : "Tick to mark as read"}>
+                        <input type="checkbox" checked={item.is_read || picked.has(item.id)} disabled={item.is_read} onChange={() => toggle(item)} />
+                        <span className="pa-box"><Icon name="check" /></span>
+                        <span className="pa-pick-t">{item.is_read ? "Read" : "Mark read"}</span>
+                      </label>
                       <button type="button" className="pa-go" onClick={() => openAction(item)}>{item.action_label}<Icon name="arrow" /></button>
                     </div>
                   </div>
@@ -287,6 +284,9 @@ export default function PendingActionsModal({
           {canLoadMore && (
             <button type="button" className="pa-btn" onClick={onLoadMore} disabled={loadingMore}>{loadingMore ? "Loading..." : "Load more"}</button>
           )}
+          <button type="button" className="pa-btn pa-mark" onClick={proceed} disabled={picked.size === 0}>
+            <Icon name="check" />{picked.size ? `Proceed (${picked.size} ticked)` : "Tick items to proceed"}
+          </button>
         </div>
       </div>
     </div>
