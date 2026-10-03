@@ -45,8 +45,9 @@ class Settings(BaseSettings):
     wa_verify_token: str = ""
     wa_template_name: str = "otp_verification"
     wa_template_language: str = "en_US"
-    wa_happy_code_template: str = "service_happy_code"
+    wa_happy_code_template: str = "service_happy_code_otp"
     wa_happy_code_language: str = "en_US"
+    wa_visit_confirmed_template: str = "service_visit_confirmed"
 
     seed_admin_email: str = "admin@indcool.com"
     seed_admin_password: str = "admin123"

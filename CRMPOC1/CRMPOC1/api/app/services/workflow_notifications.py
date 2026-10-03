@@ -25,7 +25,7 @@ from app.services.email_service import (
     send_service_rejection_document_request_email,
     send_template_email,
 )
-from app.services.service_whatsapp import send_service_happy_code_whatsapp
+from app.services.service_whatsapp import send_service_happy_code_messages
 from app.services.service_documents import (
     build_public_upload_url,
     customer_document_types,
@@ -171,7 +171,7 @@ def notify_customer_happy_code(
     if service.customer_mobile:
         _queue(
             background_tasks,
-            send_service_happy_code_whatsapp,
+            send_service_happy_code_messages,
             service.customer_mobile,
             customer_name=(service.customer_name or "").strip() or None,
             service_code=str(service.id),

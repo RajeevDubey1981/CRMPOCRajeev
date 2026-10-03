@@ -15,7 +15,7 @@ def _enable(monkeypatch):
     monkeypatch.setattr(settings, "wa_access_token", "Bearer TESTTOKEN")
 
 
-def test_payload_has_three_body_variables(monkeypatch):
+def test_payload_is_authentication_template_with_code_in_body_and_button(monkeypatch):
     _enable(monkeypatch)
     seen = {}
 
@@ -32,18 +32,19 @@ def test_payload_has_three_body_variables(monkeypatch):
     assert seen["headers"]["Authorization"] == "Bearer TESTTOKEN"
     body = seen["json"]
     assert body["to"] == "919876543210"
-    assert body["template"]["name"] == "service_happy_code"
+    assert body["template"]["name"] == "service_happy_code_otp"
     assert body["template"]["language"]["code"] == "en_US"
-    params = [p["text"] for p in body["template"]["components"][0]["parameters"]]
-    assert params == ["Amit Sharma", "1407", "482913"]
+    comps = body["template"]["components"]
+    assert comps[0] == {"type": "body", "parameters": [{"type": "text", "text": "482913"}]}
+    assert comps[1] == {"type": "button", "sub_type": "url", "index": "0", "parameters": [{"type": "text", "text": "482913"}]}
 
 
-def test_missing_name_falls_back_and_disabled_or_no_mobile_skips(monkeypatch):
+def test_missing_name_is_fine_and_disabled_or_no_mobile_skips(monkeypatch):
     _enable(monkeypatch)
     calls = []
     monkeypatch.setattr(service_whatsapp.requests, "post", lambda *a, **k: calls.append(k["json"]) or _Resp())
     assert service_whatsapp.send_service_happy_code_whatsapp("9876543210", customer_name=None, service_code="9", completion_code="123456")
-    assert calls[-1]["template"]["components"][0]["parameters"][0]["text"] == "Sir/Ma'am"
+    assert calls[-1]["template"]["components"][0]["parameters"][0]["text"] == "123456"
 
     assert service_whatsapp.send_service_happy_code_whatsapp("", customer_name="A", service_code="9", completion_code="1") is False
     monkeypatch.setattr(settings, "whatsapp_enabled", False)
@@ -61,7 +62,7 @@ def test_rejection_does_not_raise(monkeypatch):
 def test_assignment_sends_both_email_and_whatsapp(monkeypatch):
     emails, whats = [], []
     monkeypatch.setattr(workflow_notifications, "send_service_happy_code_email", lambda to, **k: emails.append((to, k)))
-    monkeypatch.setattr(workflow_notifications, "send_service_happy_code_whatsapp", lambda mobile, **k: whats.append((mobile, k)))
+    monkeypatch.setattr(workflow_notifications, "send_service_happy_code_messages", lambda mobile, **k: whats.append((mobile, k)))
     svc = SimpleNamespace(id=1407, customer_email="c@example.com", customer_mobile="9876543210", customer_name="Amit")
     workflow_notifications.notify_customer_happy_code(None, svc, completion_code="482913")
     assert emails == [("c@example.com", {"service_id": 1407, "completion_code": "482913"})]
@@ -74,3 +75,28 @@ def test_assignment_sends_both_email_and_whatsapp(monkeypatch):
     emails.clear(); whats.clear()
     workflow_notifications.notify_customer_happy_code(None, SimpleNamespace(id=3, customer_email="x@y.com", customer_mobile=None, customer_name="B"), completion_code="222222")
     assert emails and not whats
+
+
+def test_visit_confirmation_then_code_are_sent_in_order(monkeypatch):
+    _enable(monkeypatch)
+    sent = []
+    monkeypatch.setattr(service_whatsapp.requests, "post", lambda url, json=None, **k: sent.append(json) or _Resp())
+    service_whatsapp.send_service_happy_code_messages(
+        "9876543210", customer_name="Amit Sharma", service_code="1407", completion_code="482913"
+    )
+    assert [m["template"]["name"] for m in sent] == ["service_visit_confirmed", "service_happy_code_otp"]
+    assert [p["text"] for p in sent[0]["template"]["components"][0]["parameters"]] == ["Amit Sharma", "1407"]
+    assert sent[1]["template"]["components"][0]["parameters"][0]["text"] == "482913"
+
+
+def test_code_still_sent_when_confirmation_template_is_rejected(monkeypatch):
+    _enable(monkeypatch)
+    sent = []
+
+    def fake_post(url, json=None, **k):
+        sent.append(json["template"]["name"])
+        return _Resp(ok=json["template"]["name"] != "service_visit_confirmed", status_code=400, text="template not approved")
+
+    monkeypatch.setattr(service_whatsapp.requests, "post", fake_post)
+    service_whatsapp.send_service_happy_code_messages("9876543210", customer_name="A", service_code="9", completion_code="123456")
+    assert sent == ["service_visit_confirmed", "service_happy_code_otp"]
