@@ -4,6 +4,7 @@ import { Link, useNavigate } from "react-router-dom";
 import Modal from "../../components/Modal.jsx";
 import Pagination from "../../components/Pagination.jsx";
 import OrderSearchBar from "../../components/orders/OrderSearchBar.jsx";
+import ParcelClicks from "../../components/ParcelClicks.jsx";
 import { ordersApi } from "../../api/orders.js";
 import { useAuth } from "../../auth/AuthContext.jsx";
 
@@ -194,6 +195,7 @@ export default function OrderList() {
 
   return (
     <div className="space-y-4">
+      <ParcelClicks />
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-semibold text-slate-800">Order List</h1>
         <div className="flex gap-2">
