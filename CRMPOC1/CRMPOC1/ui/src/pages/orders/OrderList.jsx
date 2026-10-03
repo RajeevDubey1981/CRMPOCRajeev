@@ -4,7 +4,8 @@ import { Link, useNavigate } from "react-router-dom";
 import Modal from "../../components/Modal.jsx";
 import Pagination from "../../components/Pagination.jsx";
 import OrderSearchBar from "../../components/orders/OrderSearchBar.jsx";
-import ParcelClicks from "../../components/ParcelClicks.jsx";
+import ParcelIntro from "../../components/ParcelIntro.jsx";
+import { packOrder } from "../../components/parcelPack.js";
 import { ordersApi } from "../../api/orders.js";
 import { useAuth } from "../../auth/AuthContext.jsx";
 
@@ -101,6 +102,7 @@ function DeleteIcon() {
 
 export default function OrderList() {
   const navigate = useNavigate();
+  const openOrder = (o) => packOrder(o.order_no || `Order ${o.id}`, () => navigate(`/orders/${o.id}`));
   const { user } = useAuth();
   const orderPermission = (Array.isArray(user?.permissions) ? user.permissions : [])
     .find((permission) => permission.module === "orders");
@@ -195,7 +197,7 @@ export default function OrderList() {
 
   return (
     <div className="space-y-4">
-      <ParcelClicks />
+      <ParcelIntro />
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-semibold text-slate-800">Order List</h1>
         <div className="flex gap-2">
@@ -277,7 +279,14 @@ export default function OrderList() {
               </tr>
             )}
             {!loading && data.items.map((o) => (
-              <tr key={o.id} className="hover:bg-slate-50">
+              <tr
+                key={o.id}
+                className="cursor-pointer hover:bg-slate-50"
+                onClick={(e) => {
+                  if (e.target.closest("a, button, input, select, textarea")) return;
+                  openOrder(o);
+                }}
+              >
                 {(() => {
                   const orderDocumentUrl = buildFileUrl(o.order_file_path);
                   return (
@@ -319,7 +328,7 @@ export default function OrderList() {
                     )}
                     <button
                       title="View"
-                      onClick={() => navigate(`/orders/${o.id}`)}
+                      onClick={() => openOrder(o)}
                       className="rounded p-1 text-slate-600 hover:bg-slate-100"
                     >
                       <ViewIcon />
@@ -327,7 +336,7 @@ export default function OrderList() {
                     {canEditOrders && (
                       <button
                         title="Edit"
-                        onClick={() => navigate(`/orders/${o.id}`)}
+                        onClick={() => openOrder(o)}
                         className="rounded p-1 text-slate-600 hover:bg-slate-100"
                       >
                         <EditIcon />
