@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Outlet } from "react-router-dom";
 
 import { fetchPendingActions, markPendingActionsRead } from "../api/pendingActions.js";
@@ -28,6 +28,8 @@ export default function Layout() {
   const [pendingTotal, setPendingTotal] = useState(0);
   const [modalOpen, setModalOpen] = useState(false);
   const [loadingPending, setLoadingPending] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const pendingLimit = useRef(15);
 
   function toggle() {
     if (window.matchMedia?.("(max-width: 767px)").matches) {
@@ -43,11 +45,12 @@ export default function Layout() {
     }
   }
 
-  const loadPendingActions = useCallback(async (autoOpen = false) => {
+  const loadPendingActions = useCallback(async (autoOpen = false, limit = pendingLimit.current) => {
     if (!user) return;
     setLoadingPending(true);
     try {
-      const data = await fetchPendingActions(15);
+      pendingLimit.current = limit;
+      const data = await fetchPendingActions(limit);
       setPendingItems(data.items || []);
       setPendingTotal(data.total || 0);
       if (autoOpen && (data.total || 0) > 0) {
@@ -64,6 +67,15 @@ export default function Layout() {
   useEffect(() => {
     loadPendingActions(true);
   }, [loadPendingActions]);
+
+  async function handleLoadMore() {
+    setLoadingMore(true);
+    try {
+      await loadPendingActions(false, Math.min(pendingLimit.current + 15, 100));
+    } finally {
+      setLoadingMore(false);
+    }
+  }
 
   async function handleMarkRead(ids) {
     if (!ids?.length) return;
@@ -113,6 +125,9 @@ export default function Layout() {
         items={pendingItems}
         total={pendingTotal}
         onMarkRead={handleMarkRead}
+        onLoadMore={handleLoadMore}
+        loadingMore={loadingMore}
+        canLoadMore={pendingItems.length >= pendingLimit.current && pendingLimit.current < 100}
       />
     </div>
   );

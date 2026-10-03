@@ -22,7 +22,7 @@ def _ensure_backfilled(db: Session) -> None:
 
 @router.get("", response_model=PendingActionsResponse)
 def get_pending_actions(
-    limit: int = Query(15, ge=1, le=15),
+    limit: int = Query(15, ge=1, le=100),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
