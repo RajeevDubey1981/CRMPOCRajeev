@@ -19,6 +19,9 @@ MODULES = (
     "partner_registrations",
     "payments",     # Payment History page (view only)
     "email_logs",   # email send logs and bounced addresses (view only)
+    "store_receiving",  # Store: receive goods with a GRN (create = scan and submit)
+    "store_approval",   # Store: approve and post a GRN (edit = approve)
+    "store_stock",      # Store: stock on hand and the ledger
 )
 
 # Modules with sub-module scoping. A sub_module=None permission row means

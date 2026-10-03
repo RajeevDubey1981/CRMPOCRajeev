@@ -131,6 +131,7 @@ def ensure_partner_registration_email_controls() -> None:
 ALL = (True, True, True, True, True)
 RO = (True, False, False, False, True)
 NONE = (False, False, False, False, False)
+RO_VIEW = (True, False, False, False, False)
 
 DEFAULT_ROLES = [
     {
@@ -140,6 +141,7 @@ DEFAULT_ROLES = [
             "complaints": ALL, "installations": ALL, "orders": ALL, "vendors": ALL,
             "items": ALL, "couriers": ALL, "calls": ALL, "claims": ALL,
             "users": ALL, "roles": ALL, "dashboard": ALL, "services": ALL,
+            "store_receiving": ALL, "store_approval": ALL, "store_stock": ALL,
         },
     },
     {
@@ -153,6 +155,31 @@ DEFAULT_ROLES = [
             "roles": NONE,
             "payments": (True, False, False, False, False),
             "email_logs": (True, False, False, False, False),
+            "store_receiving": ALL, "store_approval": ALL, "store_stock": ALL,
+        },
+    },
+    {
+        "name": "store_keeper",
+        "description": "Store Keeper - receives goods with a GRN and sees stock; cannot approve",
+        "perms": {
+            "complaints": NONE, "installations": NONE, "orders": RO_VIEW, "vendors": NONE,
+            "items": RO_VIEW, "couriers": NONE, "calls": NONE, "claims": NONE,
+            "users": NONE, "roles": NONE, "dashboard": RO_VIEW, "services": NONE,
+            "store_receiving": (True, True, True, False, False),
+            "store_approval": NONE,
+            "store_stock": RO_VIEW,
+        },
+    },
+    {
+        "name": "store_manager",
+        "description": "Store Manager - approves and posts GRNs, reads stock and exports reports",
+        "perms": {
+            "complaints": NONE, "installations": NONE, "orders": RO_VIEW, "vendors": NONE,
+            "items": RO_VIEW, "couriers": NONE, "calls": NONE, "claims": NONE,
+            "users": NONE, "roles": NONE, "dashboard": RO_VIEW, "services": RO_VIEW,
+            "store_receiving": (True, True, True, False, True),
+            "store_approval": (True, False, True, False, False),
+            "store_stock": (True, False, False, False, True),
         },
     },
     {
