@@ -46,20 +46,6 @@ def _post_template(recipient: str, template: str, components: list, what: str) -
         return False
 
 
-def send_service_visit_confirmed_whatsapp(to_mobile: str | None, *, customer_name: str | None, service_code: str) -> bool:
-    """Utility template 'service_visit_confirmed' (2 body variables: name, service reference). Same facts as the email."""
-    recipient = _normalize_indian_mobile(to_mobile)
-    if not recipient or not settings.whatsapp_enabled:
-        return False
-    params = [_clean(customer_name, 60) if customer_name else "Sir/Ma'am", _clean(service_code, 40)]
-    return _post_template(
-        recipient,
-        (settings.wa_visit_confirmed_template or "service_visit_confirmed").strip(),
-        [{"type": "body", "parameters": [{"type": "text", "text": p} for p in params]}],
-        "visit confirmation",
-    )
-
-
 def send_service_happy_code_whatsapp(
     to_mobile: str | None,
     *,
@@ -67,11 +53,12 @@ def send_service_happy_code_whatsapp(
     service_code: str,
     completion_code: str,
 ) -> bool:
-    """Send the happy (completion) code on WhatsApp with the approved Authentication template 'service_happy_code_otp'.
+    """Send the Happy Code on WhatsApp with the approved Authentication template 'service_happy_code_otp'.
 
-    The template text is fixed by Meta ("<code> is your verification code.") and has a Copy code button, so the
-    code is the only variable (body + button). Mirrors the happy-code email. Never raises: a failed WhatsApp send is
-    logged and the email still goes out.
+    Meta fixes the wording of authentication templates ("<code> is your verification code.", Copy code button), so
+    no service details can be added: the message carries only the code. It is linked to the service request because
+    it is that request's completion code, which the engineer must enter on that request. The service request id is
+    logged for tracing. Never raises: a failed WhatsApp send is logged and the email still goes out.
     """
     recipient = _normalize_indian_mobile(to_mobile)
     if not recipient or not settings.whatsapp_enabled:
@@ -84,22 +71,5 @@ def send_service_happy_code_whatsapp(
             {"type": "body", "parameters": [{"type": "text", "text": code}]},
             {"type": "button", "sub_type": "url", "index": "0", "parameters": [{"type": "text", "text": code}]},
         ],
-        "happy code",
-    )
-
-
-def send_service_happy_code_messages(
-    to_mobile: str | None,
-    *,
-    customer_name: str | None,
-    service_code: str,
-    completion_code: str,
-) -> None:
-    """Same as the happy-code email: first the visit confirmation (service reference, 24-48 h visit), then the code.
-
-    Each message is independent, so if one template is not approved yet the other still goes out.
-    """
-    send_service_visit_confirmed_whatsapp(to_mobile, customer_name=customer_name, service_code=service_code)
-    send_service_happy_code_whatsapp(
-        to_mobile, customer_name=customer_name, service_code=service_code, completion_code=completion_code
+        f"happy code (service request {service_code})",
     )

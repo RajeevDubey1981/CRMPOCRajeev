@@ -417,14 +417,15 @@ def send_service_happy_code_email(
 ) -> bool:
     service_code = str(service_id)
     from_name = (settings.smtp_from_name or "").strip() or "INDcool Service Team"
-    subject = f"INDcool Service Code {service_code} — Completion Code {completion_code}"
+    subject = f"INDcool Service Code {service_code} — Happy Code {completion_code}"
     text_body = (
         "Dear Sir/Ma'am,\n\n"
         "Greetings from INDcool!\n\n"
+        "An INDcool Service Engineer has been assigned to your service request. "
         f"INDcool Service Code is {service_code}. "
-        f"Completion Code is {completion_code}.\n\n"
+        f"Your Happy Code is {completion_code}.\n\n"
         "Our Service Engineer will report to you within the next 24-48 Hours.\n\n"
-        "Please share the Completion Code with our engineer when they visit, so we can verify the visit.\n\n"
+        "Please give this Happy Code to our engineer only at the end, once your service request has been completed, so we can verify the visit.\n\n"
         f"TEAM INDcool\nToll-Free: {TOLL_FREE_NUMBER}\n\n"
         f"For assistance, contact {HELPDESK_EMAIL}.\n\n"
         f"Thank you,\n{from_name}"

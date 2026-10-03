@@ -62,7 +62,7 @@ def test_rejection_does_not_raise(monkeypatch):
 def test_assignment_sends_both_email_and_whatsapp(monkeypatch):
     emails, whats = [], []
     monkeypatch.setattr(workflow_notifications, "send_service_happy_code_email", lambda to, **k: emails.append((to, k)))
-    monkeypatch.setattr(workflow_notifications, "send_service_happy_code_messages", lambda mobile, **k: whats.append((mobile, k)))
+    monkeypatch.setattr(workflow_notifications, "send_service_happy_code_whatsapp", lambda mobile, **k: whats.append((mobile, k)))
     svc = SimpleNamespace(id=1407, customer_email="c@example.com", customer_mobile="9876543210", customer_name="Amit")
     workflow_notifications.notify_customer_happy_code(None, svc, completion_code="482913")
     assert emails == [("c@example.com", {"service_id": 1407, "completion_code": "482913"})]
@@ -77,26 +77,14 @@ def test_assignment_sends_both_email_and_whatsapp(monkeypatch):
     assert emails and not whats
 
 
-def test_visit_confirmation_then_code_are_sent_in_order(monkeypatch):
-    _enable(monkeypatch)
-    sent = []
-    monkeypatch.setattr(service_whatsapp.requests, "post", lambda url, json=None, **k: sent.append(json) or _Resp())
-    service_whatsapp.send_service_happy_code_messages(
-        "9876543210", customer_name="Amit Sharma", service_code="1407", completion_code="482913"
-    )
-    assert [m["template"]["name"] for m in sent] == ["service_visit_confirmed", "service_happy_code_otp"]
-    assert [p["text"] for p in sent[0]["template"]["components"][0]["parameters"]] == ["Amit Sharma", "1407"]
-    assert sent[1]["template"]["components"][0]["parameters"][0]["text"] == "482913"
+def test_happy_code_email_wording(monkeypatch):
+    from app.services import email_service
 
-
-def test_code_still_sent_when_confirmation_template_is_rejected(monkeypatch):
-    _enable(monkeypatch)
-    sent = []
-
-    def fake_post(url, json=None, **k):
-        sent.append(json["template"]["name"])
-        return _Resp(ok=json["template"]["name"] != "service_visit_confirmed", status_code=400, text="template not approved")
-
-    monkeypatch.setattr(service_whatsapp.requests, "post", fake_post)
-    service_whatsapp.send_service_happy_code_messages("9876543210", customer_name="A", service_code="9", completion_code="123456")
-    assert sent == ["service_visit_confirmed", "service_happy_code_otp"]
+    seen = {}
+    monkeypatch.setattr(email_service, "send_template_email", lambda **k: seen.update(k) or True)
+    email_service.send_service_happy_code_email("c@example.com", service_id=1407, completion_code="482913")
+    assert "Happy Code 482913" in seen["subject"]
+    body = seen["context"]["text_body"]
+    assert "Your Happy Code is 482913" in body
+    assert "only at the end, once your service request has been completed" in body
+    assert "Completion Code" not in body
