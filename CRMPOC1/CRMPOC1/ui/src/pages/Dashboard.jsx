@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import PriorityBadge from "../components/complaints/PriorityBadge.jsx";
 import { BounceBadge } from "../components/EmailBounceNotice.jsx";
 import { Link, useNavigate } from "react-router-dom";
 import {
@@ -148,7 +149,7 @@ export default function Dashboard() {
   const [gridErr, setGridErr]       = useState("");
   const [filters, setFilters]       = useState({
     id: "", comp_no: "", customer_name: "", status: "",
-    query_type: "", service_type: "", mobile: "", source: "", date_from: "", date_to: "",
+    query_type: "", service_type: "", mobile: "", source: "", date_from: "", date_to: "", priority: "",
   });
   const [page, setPage]     = useState(1);
   const [perPage, setPerPage] = useState(20);
@@ -261,6 +262,7 @@ export default function Dashboard() {
       status:   filters.status   || undefined,
       query_type: filters.query_type || undefined,
       source:   filters.source   || undefined,
+      priority: filters.priority || undefined,
       date_from:filters.date_from || undefined,
       date_to:  filters.date_to  || undefined,
     };
@@ -275,8 +277,16 @@ export default function Dashboard() {
   useEffect(() => { loadGrid(); /* eslint-disable-next-line */ }, [params]);
 
   function patch(k, v) { setFilters(f => ({ ...f, [k]: v })); setPage(1); }
+  async function togglePriority(c) {
+    try {
+      await complaintsApi.setPriority(c.id, c.priority === "High" ? "Normal" : "High");
+      loadGrid();
+    } catch (e) {
+      alert(e.response?.data?.detail || "Could not change the priority");
+    }
+  }
   function resetFilters() {
-    setFilters({ id: "", comp_no: "", customer_name: "", status: "", query_type: "", service_type: "", mobile: "", source: "", date_from: "", date_to: "" });
+    setFilters({ id: "", comp_no: "", customer_name: "", status: "", query_type: "", service_type: "", mobile: "", source: "", date_from: "", date_to: "", priority: "" });
     setPage(1);
   }
 
@@ -390,12 +400,15 @@ export default function Dashboard() {
       case "comp_no":
         return complaint?.comp_no
           ? (
-            <ReferenceChip
-              label={complaint.comp_no}
-              title={`Complaint ${complaint.comp_no}`}
-              asButton
-              onClick={(e) => { e.stopPropagation(); setViewTarget(complaint); }}
-            />
+            <span className="flex flex-col items-start gap-1">
+              <ReferenceChip
+                label={complaint.comp_no}
+                title={`Complaint ${complaint.comp_no}`}
+                asButton
+                onClick={(e) => { e.stopPropagation(); setViewTarget(complaint); }}
+              />
+              {complaint.priority === "High" && <PriorityBadge at={complaint.priority_at} />}
+            </span>
           )
           : "—";
       case "customer_name":
@@ -424,12 +437,15 @@ export default function Dashboard() {
         return <span className="font-medium text-slate-700">{c.id}</span>;
       case "comp_no":
         return (
-          <ReferenceChip
-            label={c.comp_no}
-            title={`Complaint ${c.comp_no}`}
-            asButton
-            onClick={() => setViewTarget(c)}
-          />
+          <span className="flex flex-col items-start gap-1">
+            <ReferenceChip
+              label={c.comp_no}
+              title={`Complaint ${c.comp_no}`}
+              asButton
+              onClick={() => setViewTarget(c)}
+            />
+            {c.priority === "High" && <PriorityBadge at={c.priority_at} />}
+          </span>
         );
       case "customer_name":
         return <span className="max-w-[110px] truncate" title={c.customer_name}>{c.customer_name || "—"}</span>;
@@ -441,13 +457,25 @@ export default function Dashboard() {
         return <LinkedRequestCell complaint={c} plainInstallationLink={isCallcenter} />;
       case "workflow_action":
         return (
-          <button
-            type="button"
-            onClick={() => handleWorkflowAction(c)}
-            className={`inline-block whitespace-nowrap rounded border px-2.5 py-1 text-xs font-medium leading-snug hover:opacity-80 ${WORKFLOW_ACTION_STYLE[workflowAction] || "bg-slate-100 text-slate-600 border-slate-200"}`}
-          >
-            {workflowAction}
-          </button>
+          <span className="flex flex-col items-start gap-1">
+            <button
+              type="button"
+              onClick={() => handleWorkflowAction(c)}
+              className={`inline-block whitespace-nowrap rounded border px-2.5 py-1 text-xs font-medium leading-snug hover:opacity-80 ${WORKFLOW_ACTION_STYLE[workflowAction] || "bg-slate-100 text-slate-600 border-slate-200"}`}
+            >
+              {workflowAction}
+            </button>
+            {(isCallcenter || isAdminLike) && (
+              <button
+                type="button"
+                title={c.priority === "High" ? "Remove the high priority mark" : "Mark as HIGH priority: it will blink and be shown first"}
+                onClick={() => togglePriority(c)}
+                className={`whitespace-nowrap rounded border px-2 py-0.5 text-[11px] font-medium ${c.priority === "High" ? "border-orange-600 bg-orange-100 text-orange-800 hover:bg-orange-200" : "border-orange-300 text-orange-700 hover:bg-orange-50"}`}
+              >
+                {c.priority === "High" ? "Clear priority" : "Mark priority"}
+              </button>
+            )}
+          </span>
         );
       case "remark":
         return <span className="max-w-[120px] truncate" title={c.remark || ""}>{trunc(c.remark)}</span>;
@@ -555,6 +583,20 @@ export default function Dashboard() {
                 </div>
               </div>
             ))}
+            <div
+              onClick={() => patch("priority", filters.priority === "High" ? "" : "High")}
+              title="Click to show only the high priority complaints (click again to show all)"
+              className={`flex-1 min-w-[130px] cursor-pointer overflow-hidden rounded bg-orange-600 shadow transition-transform hover:-translate-y-0.5 hover:shadow-md ${filters.priority === "High" ? "ring-2 ring-offset-1 ring-white/50" : ""}`}
+            >
+              <div className="flex items-center gap-2 bg-black/10 px-3 py-2 text-xs font-semibold text-white/90">
+                {(complaints.high_priority_total || 0) > 0 && <span className="prio-dot" />}
+                High Priority
+              </div>
+              <div className="px-3 py-3">
+                <p className="text-2xl font-bold text-white">{complaints.high_priority_total || 0}</p>
+                <p className="mt-0.5 text-xs text-white/70">Complaints</p>
+              </div>
+            </div>
           </div>
           )}
 
@@ -618,6 +660,16 @@ export default function Dashboard() {
               {QUERY_TYPES.map(s => <option key={s} value={s}>{s}</option>)}
             </select>
           </Field>
+          {/* Priority */}
+          {!isEngineer && (
+            <Field label="Priority">
+              <select value={filters.priority} onChange={e => patch("priority", e.target.value)}>
+                <option value="">-- All --</option>
+                <option value="High">High priority</option>
+                <option value="Normal">Normal</option>
+              </select>
+            </Field>
+          )}
           {isEngineer && (
             <Field label="Service Type">
               <select value={filters.service_type} onChange={e => patch("service_type", e.target.value)}>
@@ -695,7 +747,7 @@ export default function Dashboard() {
               <tr><td colSpan={visibleColumns.length} className="py-10 text-center text-slate-400">No complaints found.</td></tr>
             )}
             {!loading && !isEngineer && complaints.items.map((c) => (
-              <tr key={c.id} className={`transition-colors ${c.email_bounced ? "bg-red-50 hover:bg-red-100/70" : "hover:bg-sky-50/40"}`}>
+              <tr key={c.id} className={`transition-colors ${c.email_bounced ? "bg-red-50 hover:bg-red-100/70" : "hover:bg-sky-50/40"} ${c.priority === "High" ? "prio-row" : ""}`}>
                 {visibleColumns.map((column) => (
                   <td key={column.key} className={`px-3 py-2 ${GRID_COLUMN_CELL_CLASS[column.key] || ""}`}>
                     {renderCell(column, c)}

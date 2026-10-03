@@ -6,6 +6,7 @@ from pydantic import BaseModel, EmailStr, Field, field_validator
 QUERY_TYPES = ("Service", "Installation", "Sales", "Others")
 STATUSES = ("Pending", "Under Process", "In Process", "Resolved", "Rejected")
 ACTIONS = ("Ask for Invoice", "Request Sent", "Documents Received")
+PRIORITIES = ("Normal", "High")
 
 
 class ComplaintCreate(BaseModel):
@@ -19,6 +20,7 @@ class ComplaintCreate(BaseModel):
     query_type: Literal[QUERY_TYPES] | None = None  # type: ignore[valid-type]
     remark: str | None = None
     send_sms: bool = True
+    priority: Literal[PRIORITIES] = "Normal"  # type: ignore[valid-type]
 
     @field_validator("customer_mobile")
     @classmethod
@@ -40,6 +42,11 @@ class ComplaintUpdate(BaseModel):
     remark: str | None = None
     status: Literal[STATUSES] | None = None  # type: ignore[valid-type]
     assigned_engineer: int | None = None
+    priority: Literal[PRIORITIES] | None = None  # type: ignore[valid-type]
+
+
+class ComplaintPriorityIn(BaseModel):
+    priority: Literal[PRIORITIES]  # type: ignore[valid-type]
 
 
 class ComplaintLinkCustomer(BaseModel):
@@ -95,6 +102,9 @@ class ComplaintOut(BaseModel):
     updated_at: datetime
     email_bounced: bool = False
     email_bounce_reason: str | None = None
+    priority: str = "Normal"
+    priority_at: datetime | None = None
+    priority_by_name: str | None = None
 
     class Config:
         from_attributes = True
@@ -130,6 +140,8 @@ class ComplaintListItem(BaseModel):
     installation_request_status: str | None = None
     email_bounced: bool = False
     email_bounce_reason: str | None = None
+    priority: str = "Normal"
+    priority_at: datetime | None = None
 
 
 class ComplaintListResponse(BaseModel):
@@ -137,6 +149,7 @@ class ComplaintListResponse(BaseModel):
     total: int
     page: int
     per_page: int
+    high_priority_total: int = 0
 
 
 class ComplaintModelOption(BaseModel):

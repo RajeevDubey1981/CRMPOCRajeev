@@ -33,6 +33,10 @@ class Complaint(Base, TimestampMixin, SoftDeleteMixin):
     order_item_id: Mapped[int | None] = mapped_column(ForeignKey("order_items.id"), nullable=True, index=True)
     serial_no: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
     source: Mapped[str] = mapped_column(String(50), default="callcenter", nullable=False)
+    # "High" complaints are marked by the call centre / service team, blink in the list and are shown first.
+    priority: Mapped[str] = mapped_column(String(10), default="Normal", server_default="Normal", nullable=False, index=True)
+    priority_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    priority_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
 
 
 class ComplaintStatusLog(Base):

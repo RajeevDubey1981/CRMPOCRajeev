@@ -6,6 +6,8 @@ export const complaintsApi = {
   create: (body) => api.post("/api/complaints", body).then((r) => r.data),
   update: (id, body) => api.put(`/api/complaints/${id}`, body).then((r) => r.data),
   remove: (id) => api.delete(`/api/complaints/${id}`),
+  setPriority: (id, priority) => api.put(`/api/complaints/${id}/priority`, { priority }).then((r) => r.data),
+  setPriority: (id, priority) => api.put(`/api/complaints/${id}/priority`, { priority }).then((r) => r.data),
   updateStatus: (id, formData) =>
     api.put(`/api/complaints/${id}/status`, formData, {
       headers: { "Content-Type": "multipart/form-data" },

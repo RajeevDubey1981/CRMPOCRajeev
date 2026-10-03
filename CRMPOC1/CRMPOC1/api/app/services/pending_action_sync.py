@@ -103,7 +103,7 @@ def sync_complaint_pending_actions(db: Session, complaint: Complaint) -> None:
             entity_id=complaint.id,
             action_type="triage_complaint",
             title=title,
-            message=f"Complaint is {complaint.status}. Review and take action.",
+            message=("HIGH PRIORITY - " if (getattr(complaint, "priority", "Normal") == "High") else "") + f"Complaint is {complaint.status}. Review and take action.",
             action_label="Open complaint",
             href=href,
             entity_status=complaint.status,

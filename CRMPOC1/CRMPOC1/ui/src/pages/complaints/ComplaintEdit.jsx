@@ -19,6 +19,7 @@ export default function ComplaintEdit({ complaint, onClose, onSaved }) {
     problem_description: complaint.problem_description || "",
     remark: complaint.remark || "",
     status: complaint.status || "Pending",
+    priority: complaint.priority || "Normal",
   });
   const [busy, setBusy] = useState(false);
   const [submitErr, setSubmitErr] = useState("");
@@ -52,6 +53,7 @@ export default function ComplaintEdit({ complaint, onClose, onSaved }) {
         problem_description: form.problem_description.trim() || null,
         remark: form.remark.trim() || null,
         status: form.status,
+        priority: form.priority,
       };
       await complaintsApi.update(complaint.id, body);
       onSaved?.();
@@ -120,6 +122,17 @@ export default function ComplaintEdit({ complaint, onClose, onSaved }) {
             <label className={labelClass}>Status</label>
             <select value={form.status} onChange={(e) => set("status", e.target.value)} className={fieldClass}>
               {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className={labelClass}>Priority</label>
+            <select
+              value={form.priority}
+              onChange={(e) => set("priority", e.target.value)}
+              className={`${fieldClass} ${form.priority === "High" ? "border-orange-500 bg-orange-50 font-semibold text-orange-800" : ""}`}
+            >
+              <option value="Normal">Normal</option>
+              <option value="High">HIGH priority (blinks and is shown first)</option>
             </select>
           </div>
         </div>

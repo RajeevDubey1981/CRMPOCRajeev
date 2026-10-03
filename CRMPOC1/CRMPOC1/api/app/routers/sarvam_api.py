@@ -185,6 +185,7 @@ def register_complaint(data: dict = Body(...), db: Session = Depends(get_db)):
     if not mobile:
         raise HTTPException(status_code=422, detail="A valid 10-digit Indian mobile number is required")
     qtype = _query_type(_pick(data, "query_type", "querytype", "type", "category", "query"))
+    high_priority = (_pick(data, "priority", "urgency") or "").strip().lower() in ("high", "urgent", "emergency", "critical", "1", "true", "yes")
     problem = _pick(data, "problem_description", "problem", "prob", "issue", "description", "query_desc")
     model = _pick(data, "model_details", "model_det", "model")
     email = _pick(data, "customer_email", "email")
@@ -260,6 +261,8 @@ def register_complaint(data: dict = Body(...), db: Session = Depends(get_db)):
         status="Pending",
         created_by=None,
         source="callcenter",
+        priority="High" if high_priority else "Normal",
+        priority_at=datetime.now(timezone.utc) if high_priority else None,
     )
     db.add(complaint)
     db.flush()

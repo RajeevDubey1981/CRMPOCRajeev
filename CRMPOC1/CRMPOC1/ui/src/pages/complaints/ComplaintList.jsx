@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import PriorityBadge from "../../components/complaints/PriorityBadge.jsx";
 import { BOUNCED_BUTTON, BounceBadge } from "../../components/EmailBounceNotice.jsx";
 import { Link, useNavigate } from "react-router-dom";
 import {
@@ -129,7 +130,7 @@ export default function ComplaintList() {
   const [err, setErr]                   = useState("");
   const [filters, setFilters]           = useState({
     id: "", comp_no: "", customer_name: "", status: "",
-    mobile: "", source: "", date_from: "", date_to: "",
+    mobile: "", source: "", date_from: "", date_to: "", priority: "",
   });
   const [page, setPage]                 = useState(1);
   const [perPage, setPerPage]           = useState(20);
@@ -157,6 +158,7 @@ export default function ComplaintList() {
       search: searchParts.length ? searchParts.join(" ") : undefined,
       status: filters.status || undefined,
       source: filters.source || undefined,
+      priority: filters.priority || undefined,
       date_from: filters.date_from || undefined,
       date_to: filters.date_to || undefined,
     };
@@ -182,7 +184,7 @@ export default function ComplaintList() {
   }
 
   function resetFilters() {
-    setFilters({ id: "", comp_no: "", customer_name: "", status: "", mobile: "", source: "", date_from: "", date_to: "" });
+    setFilters({ id: "", comp_no: "", customer_name: "", status: "", mobile: "", source: "", date_from: "", date_to: "", priority: "" });
     setPage(1);
   }
 
@@ -217,6 +219,16 @@ export default function ComplaintList() {
       load();
     } catch (e) {
       alert(e.response?.data?.detail || "Failed to send the upload link");
+    }
+  }
+
+  async function togglePriority(c) {
+    const next = c.priority === "High" ? "Normal" : "High";
+    try {
+      await complaintsApi.setPriority(c.id, next);
+      load();
+    } catch (e) {
+      alert(e.response?.data?.detail || "Could not change the priority");
     }
   }
 
@@ -300,6 +312,15 @@ export default function ComplaintList() {
             Edit
           </button>
         )}
+        {canEditComplaints && (
+          <button
+            title={c.priority === "High" ? "Remove the high priority mark" : "Mark as HIGH priority: it will blink and be shown first"}
+            onClick={() => togglePriority(c)}
+            className={`rounded border font-medium ${c.priority === "High" ? "border-orange-600 bg-orange-100 text-orange-800 hover:bg-orange-200" : "border-orange-300 text-orange-700 hover:bg-orange-50"} ${size}`}
+          >
+            {c.priority === "High" ? "Clear priority" : "Mark priority"}
+          </button>
+        )}
         <button
           title="Delete"
           onClick={() => setConfirmDelete(c)}
@@ -340,6 +361,20 @@ export default function ComplaintList() {
           <span>/</span>
           <span>Complaints</span>
         </nav>
+        <div
+          onClick={() => patch("priority", filters.priority === "High" ? "" : "High")}
+          title="Click to show only the high priority complaints (click again to show all)"
+          className={`min-w-[130px] flex-1 cursor-pointer overflow-hidden rounded-lg border-t-4 border-orange-500 bg-white shadow transition-transform hover:-translate-y-0.5 hover:shadow-md ${filters.priority === "High" ? "ring-2 ring-orange-400 ring-offset-1" : ""}`}
+        >
+          <div className="px-3 py-2">
+            <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-orange-700">
+              {(data.high_priority_total || 0) > 0 && <span className="prio-dot-orange" />}
+              High Priority
+            </div>
+            <div className="text-2xl font-bold text-slate-800">{data.high_priority_total || 0}</div>
+            <div className="text-xs text-slate-400">Complaints</div>
+          </div>
+        </div>
       </div>
 
       {/* ── Stat Cards ── */}
@@ -415,6 +450,20 @@ export default function ComplaintList() {
                 <option value="public">Public User</option>
               </select>
             </div>
+            <div>
+              <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-orange-700">
+                Priority
+              </label>
+              <select
+                value={filters.priority}
+                onChange={(e) => patch("priority", e.target.value)}
+                className="w-full rounded border border-slate-300 px-2.5 py-1.5 text-base text-slate-700 sm:text-sm"
+              >
+                <option value="">-- All --</option>
+                <option value="High">High priority</option>
+                <option value="Normal">Normal</option>
+              </select>
+            </div>
             <FilterField label="Created Date (From)" value={filters.date_from} onChange={(v) => patch("date_from", v)} placeholder="" type="date" />
             <FilterField label="Created Date (To)" value={filters.date_to} onChange={(v) => patch("date_to", v)} placeholder="" type="date" />
           </div>
@@ -487,7 +536,7 @@ export default function ComplaintList() {
             {!loading && data.items.map((c) => {
               const shownAction = shownActionFor(c);
               return (
-                <tr key={c.id} className={`align-top transition-colors ${c.email_bounced ? "bg-red-50 hover:bg-red-100/70" : "hover:bg-sky-50/40"}`}>
+                <tr key={c.id} className={`align-top transition-colors ${c.email_bounced ? "bg-red-50 hover:bg-red-100/70" : "hover:bg-sky-50/40"} ${c.priority === "High" ? "prio-row" : ""}`}>
                   <td className="space-y-1 px-3 py-2">
                     <div className="font-medium tabular-nums text-slate-700">
                       <CellLabel>Id</CellLabel> {c.id}
@@ -498,6 +547,7 @@ export default function ComplaintList() {
                       asButton
                       onClick={() => setViewTarget(c)}
                     />
+                    {c.priority === "High" && <div><PriorityBadge at={c.priority_at} /></div>}
                   </td>
                   <td className="space-y-1 break-words px-3 py-2">
                     <div className="font-medium text-slate-800">{c.customer_name || "—"}</div>
@@ -553,7 +603,7 @@ export default function ComplaintList() {
         {!loading && data.items.map((c) => {
           const shownAction = shownActionFor(c);
           return (
-            <div key={c.id} className={`rounded-lg p-3 shadow-sm ${c.email_bounced ? "border border-red-300 bg-red-50" : "bg-white"}`}>
+            <div key={c.id} className={`rounded-lg p-3 shadow-sm ${c.email_bounced ? "border border-red-300 bg-red-50" : "bg-white"} ${c.priority === "High" ? "prio-card" : ""}`}>
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
                   <span className="text-xs font-medium tabular-nums text-slate-500">Id {c.id}</span>
@@ -564,7 +614,10 @@ export default function ComplaintList() {
                     onClick={() => setViewTarget(c)}
                   />
                 </div>
-                <StatusBadge value={getComplaintWorkflowStatus(c) || c.status} />
+                <div className="flex flex-wrap items-center gap-2">
+                  {c.priority === "High" && <PriorityBadge at={c.priority_at} />}
+                  <StatusBadge value={getComplaintWorkflowStatus(c) || c.status} />
+                </div>
               </div>
               <dl className="mt-3 grid grid-cols-1 gap-x-4 gap-y-2 text-sm sm:grid-cols-2">
                 <CardRow label="Customer Name">{c.customer_name || "—"}</CardRow>

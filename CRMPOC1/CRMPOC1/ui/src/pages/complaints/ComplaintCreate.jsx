@@ -35,6 +35,7 @@ export default function ComplaintCreate() {
     query_type: "Service",
     remark: "",
     send_sms: true,
+    priority: "Normal",
   });
 
   useEffect(() => {
@@ -243,6 +244,17 @@ export default function ComplaintCreate() {
             <label className={labelClass}>Query Type</label>
             <select value={form.query_type} onChange={(e) => set("query_type", e.target.value)} className={fieldClass}>
               {QUERY_TYPES.map((q) => <option key={q} value={q}>{q}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className={labelClass}>Priority</label>
+            <select
+              value={form.priority}
+              onChange={(e) => set("priority", e.target.value)}
+              className={`${fieldClass} ${form.priority === "High" ? "border-orange-500 bg-orange-50 font-semibold text-orange-800" : ""}`}
+            >
+              <option value="Normal">Normal</option>
+              <option value="High">HIGH priority (blinks and is shown first)</option>
             </select>
           </div>
           <div>
