@@ -1,3 +1,4 @@
+import { hasPermission } from "../../utils/permissions.js";
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
@@ -47,6 +48,8 @@ function isEngineerEditable(row) {
 }
 
 export default function InstallationList() {
+  const { user: permUser } = useAuth();
+  const canDeletePerm = hasPermission(permUser, "installations", "can_delete");
   const navigate = useNavigate();
   const { user } = useAuth();
   const isEngineer = user?.role === "engineer";
@@ -510,7 +513,7 @@ export default function InstallationList() {
                                           Reject
                                         </button>
                                       )}
-                                      {!isEngineer && (
+                                      {!isEngineer && canDeletePerm && (
                                         <button
                                           title="Delete"
                                           onClick={(event) => {

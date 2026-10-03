@@ -1,3 +1,5 @@
+import { hasPermission } from "../../utils/permissions.js";
+import { useAuth } from "../../auth/AuthContext.jsx";
 import { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 
@@ -18,6 +20,8 @@ function Field({ label, value, full = false }) {
 }
 
 export default function CourierDetail() {
+  const { user: permUser } = useAuth();
+  const canDeletePerm = hasPermission(permUser, "couriers", "can_delete");
   const location = useLocation();
   const navigate = useNavigate();
   const { id } = useParams();
@@ -126,12 +130,14 @@ export default function CourierDetail() {
           >
             ✏️ Edit
           </button>
+{canDeletePerm && (
           <button
             onClick={() => setConfirmDelete(true)}
             className="rounded-md border border-rose-300 px-4 py-2 text-sm font-medium text-rose-700 hover:bg-rose-50"
           >
             🗑 Delete
           </button>
+)}
         </div>
       </div>
 

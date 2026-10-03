@@ -1,3 +1,4 @@
+import { hasPermission } from "../utils/permissions.js";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
@@ -57,6 +58,8 @@ function sortRows(rows, key, dir) {
 }
 
 export default function VendorDashboard() {
+  const { user: permUser } = useAuth();
+  const canDeletePerm = hasPermission(permUser, "orders", "can_delete");
   const navigate    = useNavigate();
   const batchRef    = useRef(null);
   const { user } = useAuth();
@@ -340,12 +343,14 @@ export default function VendorDashboard() {
                   ✏️ Edit Status
                 </button>
                 <div className="border-t border-slate-100" />
+{canDeletePerm && (
                 <button
                   onClick={() => { setBatchOpen(false); setConfirmBatchDel(true); }}
                   className="flex w-full items-center gap-2 px-3 py-2.5 text-sm text-rose-600 hover:bg-rose-50"
                 >
                   🗑 Delete Selected
                 </button>
+)}
               </div>
             )}
           </div>

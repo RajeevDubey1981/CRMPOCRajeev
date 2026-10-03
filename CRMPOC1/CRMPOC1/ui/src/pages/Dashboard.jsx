@@ -1,3 +1,4 @@
+import { hasPermission } from "../utils/permissions.js";
 import { useEffect, useMemo, useRef, useState } from "react";
 import PriorityBadge from "../components/complaints/PriorityBadge.jsx";
 import { BounceBadge } from "../components/EmailBounceNotice.jsx";
@@ -127,6 +128,7 @@ const GRID_COLUMN_CELL_CLASS = {
 /* ─── component ─────────────────────────────────────────────────── */
 
 export default function Dashboard() {
+  const { user: permUser } = useAuth();
   const navigate = useNavigate();
   const dashboardRef = useRef(null);
   const { user } = useAuth();
@@ -513,8 +515,10 @@ export default function Dashboard() {
               <>
                 <button title="Edit" onClick={() => setEditTarget(c)}
                   className="rounded border border-slate-300 px-2 py-0.5 text-xs text-slate-700 hover:bg-slate-50">Edit</button>
+{hasPermission(permUser, "complaints", "can_delete", c.query_type) && (
                 <button title="Delete" onClick={() => setConfirmDelete(c)}
                   className="rounded border border-rose-300 px-2 py-0.5 text-xs text-rose-700 hover:bg-rose-50">Delete</button>
+)}
               </>
             )}
           </div>

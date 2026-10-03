@@ -1,3 +1,5 @@
+import { hasPermission } from "../../utils/permissions.js";
+import { useAuth } from "../../auth/AuthContext.jsx";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
@@ -28,6 +30,8 @@ function fmtDateTime(s) {
 }
 
 export default function ClaimList() {
+  const { user: permUser } = useAuth();
+  const canDeletePerm = hasPermission(permUser, "claims", "can_delete");
   const navigate = useNavigate();
   const [data, setData] = useState({ items: [], total: 0 });
   const [loading, setLoading] = useState(false);
@@ -215,6 +219,7 @@ export default function ClaimList() {
                     >
                       ✏️
                     </button>
+{canDeletePerm && (
                     <button
                       title="Delete"
                       onClick={() => setConfirmDelete(c)}
@@ -222,6 +227,7 @@ export default function ClaimList() {
                     >
                       🗑
                     </button>
+)}
                   </div>
                 </td>
               </tr>

@@ -1,3 +1,5 @@
+import { hasPermission } from "../../utils/permissions.js";
+import { useAuth } from "../../auth/AuthContext.jsx";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 
@@ -11,6 +13,8 @@ function fmtDate(s) {
 }
 
 export default function CourierList() {
+  const { user: permUser } = useAuth();
+  const canDeletePerm = hasPermission(permUser, "couriers", "can_delete");
   const navigate = useNavigate();
   const location = useLocation();
   const [data, setData] = useState({ items: [], total: 0 });
@@ -157,11 +161,13 @@ export default function CourierList() {
                       onClick={() => navigate(`/couriers/${c.id}?edit=1`)}
                       className="rounded p-1 text-slate-600 hover:bg-slate-100"
                     >✏️</button>
+{canDeletePerm && (
                     <button
                       title="Delete"
                       onClick={() => setConfirmDelete(c)}
                       className="rounded p-1 text-rose-600 hover:bg-rose-50"
                     >🗑</button>
+)}
                   </div>
                 </td>
               </tr>

@@ -1,3 +1,4 @@
+import { hasPermission } from "../../utils/permissions.js";
 import { useEffect, useState } from "react";
 import PriorityBadge from "../../components/complaints/PriorityBadge.jsx";
 import { BOUNCED_BUTTON, BounceBanner } from "../../components/EmailBounceNotice.jsx";
@@ -36,6 +37,7 @@ function Field({ label, value, mono = false, full = false }) {
 }
 
 export default function ComplaintDetail() {
+  const { user: permUser } = useAuth();
   const navigate = useNavigate();
   const { id } = useParams();
   const { user } = useAuth();
@@ -373,6 +375,7 @@ export default function ComplaintDetail() {
                   Reject
                 </button>
               )}
+{hasPermission(permUser, "complaints", "can_delete", complaint?.query_type) && (
               <button
                 type="button"
                 onClick={() => setConfirmDelete(true)}
@@ -381,6 +384,7 @@ export default function ComplaintDetail() {
               >
                 Delete
               </button>
+)}
             </>
           )}
           {!callcenterLocked && (

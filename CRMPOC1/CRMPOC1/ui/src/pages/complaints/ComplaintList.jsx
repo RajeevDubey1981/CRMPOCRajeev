@@ -1,3 +1,4 @@
+import { hasPermission } from "../../utils/permissions.js";
 import { useEffect, useMemo, useState } from "react";
 import PriorityBadge from "../../components/complaints/PriorityBadge.jsx";
 import { BOUNCED_BUTTON, BounceBadge } from "../../components/EmailBounceNotice.jsx";
@@ -100,6 +101,7 @@ function CardRow({ label, children }) {
 }
 
 export default function ComplaintList() {
+  const { user: permUser } = useAuth();
   const navigate = useNavigate();
   const { user } = useAuth();
   const rawRole = user?.role || "";
@@ -321,6 +323,7 @@ export default function ComplaintList() {
             {c.priority === "High" ? "Clear priority" : "Mark priority"}
           </button>
         )}
+{hasPermission(permUser, "complaints", "can_delete", c.query_type) && (
         <button
           title="Delete"
           onClick={() => setConfirmDelete(c)}
@@ -328,6 +331,7 @@ export default function ComplaintList() {
         >
           Delete
         </button>
+)}
         {canEditComplaints && (c.query_type || "").toLowerCase() === "service" && c.customer_email && (
           <button
             title={c.email_bounced ? `Email bounced: ${c.email_bounce_reason || "not delivered"}. Correct the email first.` : "Email the customer document upload link"}
