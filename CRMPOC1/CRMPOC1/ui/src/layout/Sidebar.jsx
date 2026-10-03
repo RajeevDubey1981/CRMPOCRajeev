@@ -29,6 +29,14 @@ const NAV = [
   { to: "/installations", label: "Installation Requests", module: "installations" },
   { to: "/claims", label: "Claims", module: "claims" },
   {
+    label: "Store",
+    children: [
+      { to: "/store/grns", label: "Receive (GRN)", module: "store_receiving" },
+      { to: "/store/grns?status=Pending%20Approval", label: "Approvals", module: "store_approval" },
+      { to: "/store/stock", label: "Stock and ledger", module: "store_stock" },
+    ],
+  },
+  {
     label: "Market Admin",
     systemAdminOnly: true,
     children: [

@@ -8,6 +8,9 @@ export const MODULE_LABELS = {
   payments: "Payment History (view only)",
   email_logs: "Email logs & bounces (view only)",
   users: "Users (a Sub Admin: normal users only)",
+  store_receiving: "Store: Receive goods (GRN). Create = scan and submit",
+  store_approval: "Store: Approve GRN. Edit = approve and post",
+  store_stock: "Store: Stock and ledger",
 };
 
 export function normalizePermissionModules(modules = []) {
