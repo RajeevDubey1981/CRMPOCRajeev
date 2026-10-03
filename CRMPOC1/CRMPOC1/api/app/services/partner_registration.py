@@ -119,8 +119,15 @@ def _parse_optional_date(value) -> date | None:
 
 
 def generate_registration_no(db: Session) -> str:
-    count = db.scalar(select(func.count()).select_from(PartnerRegistration)) or 0
-    return f"GEM-PART-{count + 1:05d}"
+    # Continue from the highest number in use. Counting rows breaks as soon as a registration is deleted
+    # (7 rows left, GEM-PART-00008 still exists, next number would collide).
+    highest = 0
+    for number in db.scalars(select(PartnerRegistration.registration_no)):
+        try:
+            highest = max(highest, int(str(number).rsplit("-", 1)[1]))
+        except (ValueError, IndexError):
+            continue
+    return f"GEM-PART-{highest + 1:05d}"
 
 
 def generate_access_token() -> str:
