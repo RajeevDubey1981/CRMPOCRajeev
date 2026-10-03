@@ -153,6 +153,8 @@ export default function PendingActionsModal({
     if (onlyUnread && r.is_read) return false;
     return true;
   });
+  const visibleUnread = visible.filter((r) => !r.is_read).length;
+  const allRead = bulk || (visible.length > 0 && visibleUnread === 0);
   const groups = ["pri", "today", "yesterday", "earlier"]
     .map((g) => ({ key: g, list: visible.filter((r) => (g === "pri" ? r.priority : !r.priority && dayGroup(r.occurred_at) === g)) }))
     .filter((g) => g.list.length);
@@ -226,6 +228,13 @@ export default function PendingActionsModal({
           <label className="pa-switch"><input type="checkbox" checked={onlyUnread} onChange={(e) => setOnlyUnread(e.target.checked)} />Unread only</label>
         </div>
 
+        <label className={`pa-all${allRead ? " done" : ""}`}>
+          <input type="checkbox" checked={allRead} onChange={() => !allRead && markAll()} />
+          <span className="pa-box"><Icon name="check" /></span>
+          <span className="pa-all-t">Mark all read</span>
+          <span className="pa-all-n">{allRead ? "Everything here is read" : `${visibleUnread} unread in this view`}</span>
+        </label>
+
         <div className="pa-list">
           {rows.length === 0 && (
             <div className="pa-empty">
@@ -274,11 +283,10 @@ export default function PendingActionsModal({
         </div>
 
         <div className="pa-foot">
-          <span className="pa-hint">Showing {rows.length} of {total.toLocaleString("en-IN")} unread</span>
+          <span className="pa-hint">{rows.length} shown, {total.toLocaleString("en-IN")} unread in total</span>
           {canLoadMore && (
             <button type="button" className="pa-btn" onClick={onLoadMore} disabled={loadingMore}>{loadingMore ? "Loading..." : "Load more"}</button>
           )}
-          <button type="button" className="pa-btn pa-mark" onClick={markAll} disabled={bulk || visible.every((r) => r.is_read)}><Icon name="checks" />Mark all read</button>
         </div>
       </div>
     </div>
