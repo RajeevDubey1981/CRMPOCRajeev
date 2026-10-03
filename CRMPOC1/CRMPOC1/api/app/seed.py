@@ -143,6 +143,19 @@ DEFAULT_ROLES = [
         },
     },
     {
+        "name": "sub_admin",
+        "description": "Sub Admin - works like Admin but cannot change roles/permissions or manage Admin accounts",
+        "perms": {
+            "complaints": ALL, "installations": ALL, "orders": ALL, "vendors": ALL,
+            "items": ALL, "couriers": ALL, "calls": ALL, "claims": ALL,
+            "dashboard": ALL, "services": ALL, "partner_registrations": ALL,
+            "users": (True, True, True, False, False),
+            "roles": NONE,
+            "payments": (True, False, False, False, False),
+            "email_logs": (True, False, False, False, False),
+        },
+    },
+    {
         "name": "callcenter",
         "description": "Call Center — create/view complaints, log calls",
         "perms": {

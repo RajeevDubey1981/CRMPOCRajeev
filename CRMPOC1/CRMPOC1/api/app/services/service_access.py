@@ -14,6 +14,7 @@ SERVICE_VIEW_ALL_ROLES = frozenset({
     "indcool",
     "indcool service",
     "service_manager",
+    "sub_admin",
 })
 LEGACY_SERVICE_OPS_ROLES = frozenset({
     "admin",
@@ -23,6 +24,7 @@ LEGACY_SERVICE_OPS_ROLES = frozenset({
     "indcool_service",
     "service",
     "service_manager",
+    "sub_admin",
 })
 
 
@@ -32,7 +34,7 @@ def is_service_desk_user(user: User) -> bool:
 
 def is_service_manager(user: User) -> bool:
     key = role_key(user.role)
-    return key in SERVICE_MANAGER_ROLES or is_system_admin(user)
+    return key in SERVICE_MANAGER_ROLES or key == "sub_admin" or is_system_admin(user)
 
 
 def can_view_all_service_requests(user: User) -> bool:

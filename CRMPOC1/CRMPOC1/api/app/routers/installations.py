@@ -542,7 +542,7 @@ def payment_history(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    if not is_system_admin(user):
+    if not (is_system_admin(user) or can_act_on(db, user, "payments", "can_view", None)):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Your role cannot view payment history")
 
     if search:

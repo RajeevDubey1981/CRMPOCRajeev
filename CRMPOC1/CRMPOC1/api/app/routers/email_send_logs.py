@@ -12,14 +12,17 @@ from app.schemas.email_send_log import EmailSendLogListResponse, EmailSendLogOut
 from app.models.email_bounce import EmailBounce
 from app.services.email_bounce import poll_bounces_once
 from app.services.email_send_log import email_send_summary
+from app.services.permissions import can_act_on
 from app.services.role_access import is_system_admin
 
 router = APIRouter(prefix="/api/email-send-logs", tags=["email-send-logs"])
 
 
-def _require_system_admin(user: User) -> None:
-    if not is_system_admin(user):
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only system administrators can view email send logs")
+def _require_log_access(db: Session, user: User) -> None:
+    """System admins always; any other role only when the role table gives it email_logs -> view (Sub Admin)."""
+    if is_system_admin(user) or can_act_on(db, user, "email_logs", "can_view", None):
+        return
+    raise HTTPException(status.HTTP_403_FORBIDDEN, "Your role cannot view email send logs")
 
 
 @router.get("/summary", response_model=EmailSendLogSummary)
@@ -29,7 +32,7 @@ def send_summary(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    _require_system_admin(user)
+    _require_log_access(db, user)
     summary = email_send_summary(db, date_from=date_from, date_to=date_to)
     return EmailSendLogSummary(
         **summary,
@@ -46,7 +49,7 @@ def list_send_logs(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    _require_system_admin(user)
+    _require_log_access(db, user)
     filters = []
     if status_filter:
         filters.append(EmailSendLog.status == status_filter)
@@ -67,9 +70,9 @@ def list_send_logs(
 
 
 @router.post("/check-bounces")
-def check_bounces_now(user: User = Depends(get_current_user)):
+def check_bounces_now(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     """Read the sending mailbox for delivery-failure reports right now (system admin only)."""
-    _require_system_admin(user)
+    _require_log_access(db, user)
     try:
         new = poll_bounces_once()
     except Exception as exc:  # network / login problems are shown, not hidden
@@ -83,7 +86,7 @@ def list_bounces(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    _require_system_admin(user)
+    _require_log_access(db, user)
     rows = db.scalars(select(EmailBounce).order_by(desc(EmailBounce.created_at)).limit(limit)).all()
     return [
         {"id": r.id, "to_email": r.to_email, "reason": r.reason, "status_code": r.status_code, "source": r.source, "at": r.created_at}

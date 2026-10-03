@@ -191,6 +191,12 @@ export default function UserList() {
   useEffect(() => { load(); /* eslint-disable-next-line */ }, [params]);
 
   const isAdmin = me?.role === "admin";
+  const isSubAdmin = (me?.role || "").toLowerCase() === "sub_admin";
+  const canManageUsers = isAdmin || isSubAdmin;
+  // A Sub Admin works with normal users only: Admin / Sub Admin accounts and roles are Admin-only (the server checks too).
+  const PROTECTED_ROLES = ["admin", "incool", "sub_admin"];
+  const assignableRoles = isAdmin ? roles : roles.filter((r) => !PROTECTED_ROLES.includes((r.name || "").toLowerCase()));
+  const canTouch = (u) => isAdmin || (isSubAdmin && !PROTECTED_ROLES.includes((u.role || "").toLowerCase()));
 
   async function doCreate(body) {
     setBusy(true);
@@ -226,7 +232,7 @@ export default function UserList() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-semibold text-slate-800">Users</h1>
-        {isAdmin && (
+        {canManageUsers && (
           <button
             onClick={() => setCreating(true)}
             className="rounded-md bg-brand-600 px-3 py-2 text-sm font-medium text-white hover:bg-brand-700"
@@ -299,7 +305,7 @@ export default function UserList() {
                 </td>
                 <td className="px-3 py-2 text-xs text-slate-500">{fmtDate(u.created_at)}</td>
                 <td className="px-3 py-2 text-right">
-                  {isAdmin && (
+                  {canManageUsers && canTouch(u) && (
                     <div className="flex justify-end gap-1">
                       <button onClick={() => setEditing(u)} className="rounded p-1 text-slate-600 hover:bg-slate-100" title="Edit">✏️</button>
                       <button onClick={() => setResetting(u)} className="rounded p-1 text-slate-600 hover:bg-slate-100" title="Reset password">🔑</button>
@@ -324,7 +330,7 @@ export default function UserList() {
 
       <Modal open={creating} onClose={() => setCreating(false)} title="New user" maxWidth="max-w-2xl">
         <UserForm
-          roles={roles}
+          roles={assignableRoles}
           busy={busy}
           onCancel={() => setCreating(false)}
           onSubmit={doCreate}
@@ -335,7 +341,7 @@ export default function UserList() {
         {editing && (
           <UserForm
             initial={editing}
-            roles={roles}
+            roles={assignableRoles}
             busy={busy}
             onCancel={() => setEditing(null)}
             onSubmit={doEdit}

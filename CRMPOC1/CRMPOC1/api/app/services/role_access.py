@@ -12,8 +12,13 @@ OPERATIONS_ADMIN_ROLES = frozenset({
     "indcool_service",
     "service",
     "service_manager",
+    "sub_admin",
 })
 SYSTEM_ADMIN_ROLES = frozenset({"admin", "incool"})
+# Sub Admin: does the daily admin work (operations) but is NOT a system admin: it cannot change roles or
+# permissions, approve payments, or create / edit Admin and Sub Admin accounts.
+SUB_ADMIN_ROLE = "sub_admin"
+PROTECTED_USER_ROLES = frozenset({"admin", "incool", "sub_admin"})
 SERVICE_TEAM_ROLES = OPERATIONS_ADMIN_ROLES
 
 
@@ -39,3 +44,7 @@ def is_operations_admin(user: User) -> bool:
 
 def is_system_admin(user: User) -> bool:
     return role_key(user.role) in SYSTEM_ADMIN_ROLES
+
+
+def is_sub_admin(user: User) -> bool:
+    return role_key(user.role) == SUB_ADMIN_ROLE

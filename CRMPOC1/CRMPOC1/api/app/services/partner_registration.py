@@ -12,7 +12,7 @@ from app.models.partner_registration import PartnerRegistration
 from app.schemas.partner_registration import DOCUMENT_FIELDS, ONBOARDING_STEPS, OnboardingStepOut, PartnerRegistrationOut
 from app.services.file_service import to_public_upload_path
 
-PARTNER_ADMIN_ROLES = frozenset({"admin", "incool", "indcool"})
+PARTNER_ADMIN_ROLES = frozenset({"admin", "incool", "indcool", "sub_admin"})
 PARTNER_INVITE_ROLES = PARTNER_ADMIN_ROLES | frozenset({"sales"})
 
 FORM_STATUSES = ("Invite Sent", "In Progress", "Submitted")

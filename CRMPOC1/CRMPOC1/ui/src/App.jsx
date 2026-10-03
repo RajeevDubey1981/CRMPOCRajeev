@@ -53,7 +53,7 @@ import PartnerRegistrationList from "./pages/partners/PartnerRegistrationList.js
 import PartnerRegistrationReview from "./pages/partners/PartnerRegistrationReview.jsx";
 import PartnerRegistrationPublic from "./pages/partners/PartnerRegistrationPublic.jsx";
 import PartnerAgreementSign from "./pages/partners/PartnerAgreementSign.jsx";
-import { isOperationsAdminRole, isSystemAdminRole } from "./utils/roles.js";
+import { isOperationsAdminRole, isSubAdminRole, isSystemAdminRole } from "./utils/roles.js";
 
 function OperationsAdminRoute({ children }) {
   const { user } = useAuth();
@@ -66,6 +66,15 @@ function OperationsAdminRoute({ children }) {
 function SystemAdminRoute({ children }) {
   const { user } = useAuth();
   if (!isSystemAdminRole(user?.role)) {
+    return <Navigate to="/dashboard" replace />;
+  }
+  return children;
+}
+
+// Users page: Admin, and Sub Admin (which may only manage normal users - the server enforces that).
+function UserAdminRoute({ children }) {
+  const { user } = useAuth();
+  if (!isSystemAdminRole(user?.role) && !isSubAdminRole(user?.role)) {
     return <Navigate to="/dashboard" replace />;
   }
   return children;
@@ -127,10 +136,10 @@ export default function App() {
         <Route path="/calls/pending-follow-ups" element={<PermissionRoute module="calls"><PendingFollowUps /></PermissionRoute>} />
         <Route path="/calls/calendar" element={<PermissionRoute module="calls"><Calendar /></PermissionRoute>} />
         <Route path="/calls/:id" element={<PermissionRoute module="calls"><CallDetail /></PermissionRoute>} />
-        <Route path="/admin/users" element={<SystemAdminRoute><UserList /></SystemAdminRoute>} />
+        <Route path="/admin/users" element={<UserAdminRoute><UserList /></UserAdminRoute>} />
         <Route path="/admin/roles" element={<SystemAdminRoute><RoleList /></SystemAdminRoute>} />
         <Route path="/admin/permissions" element={<SystemAdminRoute><Permissions /></SystemAdminRoute>} />
-        <Route path="/admin/payments" element={<SystemAdminRoute><PaymentHistory /></SystemAdminRoute>} />
+        <Route path="/admin/payments" element={<PermissionRoute module="payments"><PaymentHistory /></PermissionRoute>} />
         <Route path="/admin/partner-registrations" element={<Navigate to="/partner-registrations" replace />} />
         <Route path="/admin/partner-registrations/:id/review" element={<LegacyPartnerRegistrationReviewRedirect />} />
         <Route path="/complaints" element={<PermissionRoute module="complaints"><ComplaintList /></PermissionRoute>} />

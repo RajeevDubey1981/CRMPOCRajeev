@@ -12,9 +12,13 @@ export function isServiceDeskRole(role) {
   return key === "service" || key === "indcool_service";
 }
 
+export function isSubAdminRole(role) {
+  return roleKey(role) === "sub_admin";
+}
+
 export function isServiceManagerRole(role) {
   const key = roleKey(role);
-  return key === "service_manager" || key === "admin";
+  return key === "service_manager" || key === "admin" || key === "sub_admin";
 }
 
 export function isSystemAdminRole(role) {
@@ -24,7 +28,7 @@ export function isSystemAdminRole(role) {
 
 export function isPartnerAdminRole(role) {
   const key = roleKey(role);
-  return key === "admin" || key === "incool" || key === "indcool";
+  return key === "admin" || key === "incool" || key === "indcool" || key === "sub_admin";
 }
 
 export function canViewAllServiceRequests(role) {
@@ -35,6 +39,7 @@ export function canViewAllServiceRequests(role) {
     || key === "indcool"
     || key === "indcool service"
     || key === "service_manager"
+    || key === "sub_admin"
   );
 }
 

@@ -41,7 +41,7 @@ def _complaint_users(db: Session, complaint: Complaint) -> list[User]:
             User.is_active.is_(True),
             User.deleted_at.is_(None),
             func.lower(func.trim(User.role)).in_(
-                {"admin", "incool", "indcool", "indcool service", "indcool_service", "service", "callcenter", "sales"}
+                {"admin", "incool", "indcool", "indcool service", "indcool_service", "service", "callcenter", "sales", "sub_admin"}
             ),
         )
     ).all()

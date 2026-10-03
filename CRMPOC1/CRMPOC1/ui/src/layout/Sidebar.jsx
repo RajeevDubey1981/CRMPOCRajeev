@@ -11,12 +11,11 @@ const NAV = [
   { to: "/vendor-dashboard", label: "Vendor Dashboard", vendorOnly: true },
   {
     label: "Admin",
-    adminOnly: true,
     children: [
       { to: "/admin/users", label: "Users", module: "users" },
       { to: "/admin/roles", label: "Roles", module: "roles" },
       { to: "/admin/permissions", label: "Permissions", module: "roles" },
-      { to: "/admin/payments", label: "Payment History", systemAdminOnly: true },
+      { to: "/admin/payments", label: "Payment History", module: "payments" },
     ],
   },
   { to: "/complaints", label: "Complaints", module: "complaints" },
@@ -118,6 +117,7 @@ export default function Sidebar({ collapsed, mobileOpen = false, onNavigate }) {
     if (item.operationsOnly) return isCourierAdmin;
     if (item.systemAdminOnly) return isSystemAdmin;
     if (item.adminOnly) return isSystemAdmin;
+    if (item.children) return true; // a group shows when at least one of its pages does (filtered below)
     if (!item.module) return isSystemAdmin;
     if (!hasPermissionPayload) return false;
     return canView(item.module);

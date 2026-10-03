@@ -440,6 +440,7 @@ def _is_complaint_editor_role(user: User) -> bool:
         "indcool",
         "indcool service",
         "indcool_service",
+        "sub_admin",
     }
 
 
