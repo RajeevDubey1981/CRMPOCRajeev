@@ -54,6 +54,13 @@ import GrnForm from "./pages/store/GrnForm.jsx";
 import StockPage from "./pages/store/StockPage.jsx";
 import DispatchList from "./pages/store/DispatchList.jsx";
 import DispatchDetail from "./pages/store/DispatchDetail.jsx";
+import SupplierList from "./pages/accounts/SupplierList.jsx";
+import PoList from "./pages/accounts/PoList.jsx";
+import PoDetail from "./pages/accounts/PoDetail.jsx";
+import BomList from "./pages/accounts/BomList.jsx";
+import BomDetail from "./pages/accounts/BomDetail.jsx";
+import AssemblyList from "./pages/accounts/AssemblyList.jsx";
+import AssemblyDetail from "./pages/accounts/AssemblyDetail.jsx";
 import PartnerRegistrationList from "./pages/partners/PartnerRegistrationList.jsx";
 import PartnerRegistrationReview from "./pages/partners/PartnerRegistrationReview.jsx";
 import PartnerRegistrationPublic from "./pages/partners/PartnerRegistrationPublic.jsx";
@@ -175,6 +182,15 @@ export default function App() {
         <Route path="/store/stock" element={<PermissionRoute module="store_stock"><StockPage /></PermissionRoute>} />
         <Route path="/store/dispatch" element={<PermissionRoute module="store_dispatch"><DispatchList /></PermissionRoute>} />
         <Route path="/store/dispatch/:id" element={<PermissionRoute module="store_dispatch"><DispatchDetail /></PermissionRoute>} />
+        <Route path="/accounts/suppliers" element={<AnyPermissionRoute modules={["acc_purchase", "acc_po_approval"]}><SupplierList /></AnyPermissionRoute>} />
+        <Route path="/accounts/pos" element={<AnyPermissionRoute modules={["acc_purchase", "acc_po_approval"]}><PoList /></AnyPermissionRoute>} />
+        <Route path="/accounts/pos/new" element={<PermissionRoute module="acc_purchase" action="can_create"><PoDetail /></PermissionRoute>} />
+        <Route path="/accounts/pos/:id" element={<AnyPermissionRoute modules={["acc_purchase", "acc_po_approval"]}><PoDetail /></AnyPermissionRoute>} />
+        <Route path="/accounts/boms" element={<PermissionRoute module="acc_items"><BomList /></PermissionRoute>} />
+        <Route path="/accounts/boms/new" element={<PermissionRoute module="acc_items" action="can_create"><BomDetail /></PermissionRoute>} />
+        <Route path="/accounts/boms/:id" element={<PermissionRoute module="acc_items"><BomDetail /></PermissionRoute>} />
+        <Route path="/accounts/assembly" element={<PermissionRoute module="acc_assembly"><AssemblyList /></PermissionRoute>} />
+        <Route path="/accounts/assembly/:id" element={<PermissionRoute module="acc_assembly"><AssemblyDetail /></PermissionRoute>} />
         <Route path="/couriers" element={<OperationsAdminRoute><CourierList /></OperationsAdminRoute>} />
         <Route path="/couriers/new" element={<OperationsAdminRoute><CourierCreate /></OperationsAdminRoute>} />
         <Route path="/couriers/:id" element={<OperationsAdminRoute><CourierDetail /></OperationsAdminRoute>} />

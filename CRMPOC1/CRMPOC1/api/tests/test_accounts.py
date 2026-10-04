@@ -242,6 +242,14 @@ class AccountsTests(unittest.TestCase):
         self.assertEqual(self.c.get(f"/api/accounts/pos/{po['id']}").json()["status"], "Received")
         self.assertEqual(self.c.post(f"/api/accounts/pos/{po['id']}/cancel", json={"reason": "x"}).status_code, 409)
 
+    def test_stock_received_against_a_po_takes_the_po_rate_as_cost(self):
+        po = self.approved_po()
+        lines = [{"item_id": self.cmp.id, "stock_type": "Spare", "serial_no": "CMP-1"}]
+        self.assertEqual(self.receive(lines, po_id=po["id"]).status_code, 200)
+        db = self.Session()
+        self.assertEqual(str(db.scalar(select(StoreStock.unit_cost).where(StoreStock.serial_no == "CMP-1"))), "4000.00")
+        db.close()
+
     def test_grn_against_po_rejects_other_items_and_unapproved_pos(self):
         po = self.approved_po()
         wrong = self.receive([{"item_id": self.fan.id, "stock_type": "Spare", "qty": 2}], po_id=po["id"])

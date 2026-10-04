@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 
 import { useAuth } from "../../auth/AuthContext.jsx";
 import { hasPermission } from "../../utils/permissions.js";
 import { storeApi, storeError } from "../../api/store.js";
+import { accountsApi } from "../../api/accounts.js";
 import { GRN_BADGE, fmtDateTime } from "./GrnList.jsx";
 
 const fieldClass = "w-full rounded-md border border-slate-300 px-3 py-2 text-sm";
@@ -60,12 +61,13 @@ export function CameraScan({ onCode }) {
   return <video ref={videoRef} playsInline muted className="h-44 w-full rounded-md bg-slate-900 object-cover" />;
 }
 
-const EMPTY_HEAD = { source_type: "Purchase", supplier_name: "", reference_no: "", remarks: "" };
+const EMPTY_HEAD = { source_type: "Purchase", supplier_name: "", reference_no: "", remarks: "", po_id: "" };
 
 export default function GrnForm() {
   const { id } = useParams();
   const isNew = !id || id === "new";
   const navigate = useNavigate();
+  const location = useLocation();
   const { user } = useAuth();
   const canOverride = hasPermission(user, "store_receiving", "can_delete");
   const canCreate = hasPermission(user, "store_receiving", "can_create");
@@ -97,13 +99,22 @@ export default function GrnForm() {
 
   const editable = isNew ? canCreate : grn?.status === "Draft" && (grn.created_by === user?.id || canOverride);
 
+  const [openPos, setOpenPos] = useState([]);
+
+  useEffect(() => { if (location.state?.err) setErr(location.state.err); }, [location.state]);
   useEffect(() => { storeApi.meta().then(setMeta).catch(() => {}); }, []);
+  useEffect(() => { accountsApi.openPos().then(setOpenPos).catch(() => {}); }, []);
+
+  function pickPo(value) {
+    const po = openPos.find((p) => String(p.id) === String(value));
+    setHead((h) => ({ ...h, po_id: value, supplier_name: po && !h.supplier_name ? po.supplier_name || "" : h.supplier_name }));
+  }
 
   useEffect(() => {
     if (isNew) return;
     storeApi.getGrn(id).then((g) => {
       setGrn(g);
-      setHead({ source_type: g.source_type, supplier_name: g.supplier_name || "", reference_no: g.reference_no || "", remarks: g.remarks || "" });
+      setHead({ source_type: g.source_type, supplier_name: g.supplier_name || "", reference_no: g.reference_no || "", remarks: g.remarks || "", po_id: g.po_id ? String(g.po_id) : "" });
       setLines(g.lines.map((l) => ({ ...l, key: `l${l.id}`, via: "Saved" })));
     }).catch((e) => setErr(storeError(e, "Could not load this GRN")));
   }, [id, isNew]);
@@ -174,6 +185,7 @@ export default function GrnForm() {
     supplier_name: head.supplier_name || null,
     reference_no: head.reference_no || null,
     remarks: head.remarks || null,
+    po_id: head.po_id ? Number(head.po_id) : null,
     lines: lines.map((l) => ({
       item_id: l.item_id, stock_type: l.stock_type, serial_no: l.serial_no || null, serial_no_2: l.serial_no_2 || null,
       qty: Number(l.qty) || 1, unit_cost: l.unit_cost === "" || l.unit_cost == null ? null : Number(l.unit_cost),
@@ -185,7 +197,13 @@ export default function GrnForm() {
     setBusy(true); setErr(""); setNote("");
     try {
       let g = isNew ? await storeApi.createGrn(payload) : await storeApi.updateGrn(grn.id, payload);
-      if (thenSubmit) g = await storeApi.submitGrn(g.id);
+      if (thenSubmit) {
+        try { g = await storeApi.submitGrn(g.id); } catch (e2) {
+          const msg = `Saved as a draft, but it could not be submitted: ${storeError(e2, "submit failed")}`;
+          if (isNew) { navigate(`/store/grns/${g.id}`, { replace: true, state: { err: msg } }); return; }
+          setGrn(g); setLines(g.lines.map((l) => ({ ...l, key: `l${l.id}`, via: "Saved" }))); setErr(msg); return;
+        }
+      }
       if (isNew) { navigate(`/store/grns/${g.id}`, { replace: true }); return; }
       setGrn(g); setLines(g.lines.map((l) => ({ ...l, key: `l${l.id}`, via: "Saved" })));
       setNote(thenSubmit ? "Submitted. A manager must approve it before the stock changes." : "Draft saved.");
@@ -248,6 +266,19 @@ export default function GrnForm() {
             <input disabled={!editable} value={head.remarks} onChange={(e) => setHead({ ...head, remarks: e.target.value })} className={fieldClass} />
           </div>
         </div>
+        {head.source_type === "Purchase" && (openPos.length > 0 || head.po_id) && (
+          <div className="mt-3 md:w-1/2">
+            <label className={labelClass}>Against purchase order (optional)</label>
+            <select disabled={!editable} value={head.po_id} onChange={(e) => pickPo(e.target.value)} className={fieldClass}>
+              <option value="">Not against a purchase order</option>
+              {openPos.map((p) => <option key={p.id} value={p.id}>{p.po_no} - {p.supplier_name}</option>)}
+              {grn?.po_id && !openPos.find((p) => p.id === grn.po_id) && <option value={grn.po_id}>{grn.po_no}</option>}
+            </select>
+            {head.po_id && openPos.find((p) => String(p.id) === String(head.po_id)) && (
+              <p className="mt-1 text-xs text-slate-500">Still to receive: {openPos.find((p) => String(p.id) === String(head.po_id)).lines.map((l) => `${l.outstanding} x ${l.item_name}`).join(", ")}</p>
+            )}
+          </div>
+        )}
         {grn && (
           <p className="mt-3 text-xs text-slate-500">
             Created by {grn.created_by_name || "-"} on {fmtDateTime(grn.created_at)}

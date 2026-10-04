@@ -258,6 +258,10 @@ def approve_and_post(db: Session, grn: StoreGrn, user: User) -> StoreGrn:
         po = accounts_service.check_receipt(db, grn.po_id, lines, posting=True)
     now = _now()
     for ln in lines:
+        if po is not None and ln.unit_cost is None:
+            from app.services import accounts_service as _acc
+
+            ln.unit_cost = _acc.po_rate_for(db, po, ln.item_id)
         stock = StoreStock(
             item_id=ln.item_id,
             grn_line_id=ln.id,

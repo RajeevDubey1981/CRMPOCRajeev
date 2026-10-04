@@ -38,6 +38,15 @@ const NAV = [
     ],
   },
   {
+    label: "Accounts",
+    children: [
+      { to: "/accounts/pos", label: "Purchase orders", module: "acc_purchase" },
+      { to: "/accounts/suppliers", label: "Suppliers", module: "acc_purchase" },
+      { to: "/accounts/boms", label: "Items and BOM", module: "acc_items" },
+      { to: "/accounts/assembly", label: "Assembly", module: "acc_assembly" },
+    ],
+  },
+  {
     label: "Market Admin",
     systemAdminOnly: true,
     children: [

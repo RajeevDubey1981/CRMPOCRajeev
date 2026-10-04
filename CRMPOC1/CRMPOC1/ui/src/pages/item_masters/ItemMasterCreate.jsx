@@ -20,6 +20,9 @@ export default function ItemMasterCreate() {
     hsn_code: "",
     mrp: "",
     serial_count: "1",
+    source: "Buy",
+    item_type: "",
+    gst_rate: "",
     is_active: true,
   });
 
@@ -40,6 +43,9 @@ export default function ItemMasterCreate() {
         hsn_code: form.hsn_code || null,
         mrp: form.mrp !== "" ? parseFloat(form.mrp) : null,
         serial_count: form.serial_count !== "" ? parseInt(form.serial_count, 10) : 1,
+        source: form.source,
+        item_type: form.item_type || null,
+        gst_rate: form.gst_rate !== "" ? parseFloat(form.gst_rate) : null,
         is_active: form.is_active,
       };
       const created = await itemsApi.create(body);
@@ -145,6 +151,27 @@ export default function ItemMasterCreate() {
             <p className="mt-1 text-xs text-slate-500">
               How many serial numbers are captured per unit for this item code on orders.
             </p>
+          </div>
+          <div>
+            <label className={labelClass}>How we get it</label>
+            <select value={form.source} onChange={(e) => set("source", e.target.value)} className={fieldClass}>
+              <option value="Buy">Buy complete from OEM or supplier</option>
+              <option value="Make">Assemble from BOM</option>
+              <option value="Both">Both</option>
+            </select>
+          </div>
+          <div>
+            <label className={labelClass}>Item type</label>
+            <select value={form.item_type} onChange={(e) => set("item_type", e.target.value)} className={fieldClass}>
+              <option value="">Not set</option>
+              <option value="Finished good">Finished good</option>
+              <option value="Component">Component</option>
+              <option value="Spare">Spare</option>
+            </select>
+          </div>
+          <div>
+            <label className={labelClass}>GST rate (%)</label>
+            <input type="number" min="0" max="40" step="0.01" value={form.gst_rate} onChange={(e) => set("gst_rate", e.target.value)} className={fieldClass} placeholder="e.g. 18" />
           </div>
           <div className="flex items-center gap-2 pt-6">
             <input

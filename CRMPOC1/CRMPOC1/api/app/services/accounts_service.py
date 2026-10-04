@@ -675,6 +675,14 @@ def check_receipt(db: Session, po_id: int, grn_lines: list, *, posting: bool = F
     return po
 
 
+def po_rate_for(db: Session, po: PurchaseOrder, item_id: int) -> Decimal | None:
+    """The price we agreed on the PO, used as the cost of stock received against it when the GRN has none."""
+    for ln in po_lines(db, po):
+        if ln.item_id == item_id:
+            return Decimal(ln.rate)
+    return None
+
+
 def apply_receipt(db: Session, po: PurchaseOrder, grn_lines: list) -> None:
     wanted: dict[int, int] = {}
     for ln in grn_lines:
