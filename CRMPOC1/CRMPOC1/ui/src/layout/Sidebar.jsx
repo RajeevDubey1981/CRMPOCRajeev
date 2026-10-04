@@ -29,24 +29,6 @@ const NAV = [
   { to: "/installations", label: "Installation Requests", module: "installations" },
   { to: "/claims", label: "Claims", module: "claims" },
   {
-    label: "Store",
-    children: [
-      { to: "/store/grns", label: "Receive (GRN)", module: "store_receiving" },
-      { to: "/store/grns?status=Pending%20Approval", label: "Approvals", module: "store_approval" },
-      { to: "/store/dispatch", label: "Dispatch", module: "store_dispatch" },
-      { to: "/store/stock", label: "Stock and ledger", module: "store_stock" },
-    ],
-  },
-  {
-    label: "Accounts",
-    children: [
-      { to: "/accounts/pos", label: "Purchase orders", module: "acc_purchase" },
-      { to: "/accounts/suppliers", label: "Suppliers", module: "acc_purchase" },
-      { to: "/accounts/boms", label: "Items and BOM", module: "acc_items" },
-      { to: "/accounts/assembly", label: "Assembly", module: "acc_assembly" },
-    ],
-  },
-  {
     label: "Market Admin",
     systemAdminOnly: true,
     children: [

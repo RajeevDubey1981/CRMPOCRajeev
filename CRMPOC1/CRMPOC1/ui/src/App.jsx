@@ -49,18 +49,6 @@ import ServiceRequestCreate from "./pages/services/ServiceRequestCreate.jsx";
 import ServiceRequestDetail from "./pages/services/ServiceRequestDetail.jsx";
 import EngineerAssignedUnits from "./pages/services/EngineerAssignedUnits.jsx";
 import ServiceDocumentUploadPublic from "./pages/services/ServiceDocumentUploadPublic.jsx";
-import GrnList from "./pages/store/GrnList.jsx";
-import GrnForm from "./pages/store/GrnForm.jsx";
-import StockPage from "./pages/store/StockPage.jsx";
-import DispatchList from "./pages/store/DispatchList.jsx";
-import DispatchDetail from "./pages/store/DispatchDetail.jsx";
-import SupplierList from "./pages/accounts/SupplierList.jsx";
-import PoList from "./pages/accounts/PoList.jsx";
-import PoDetail from "./pages/accounts/PoDetail.jsx";
-import BomList from "./pages/accounts/BomList.jsx";
-import BomDetail from "./pages/accounts/BomDetail.jsx";
-import AssemblyList from "./pages/accounts/AssemblyList.jsx";
-import AssemblyDetail from "./pages/accounts/AssemblyDetail.jsx";
 import PartnerRegistrationList from "./pages/partners/PartnerRegistrationList.jsx";
 import PartnerRegistrationReview from "./pages/partners/PartnerRegistrationReview.jsx";
 import PartnerRegistrationPublic from "./pages/partners/PartnerRegistrationPublic.jsx";
@@ -102,16 +90,6 @@ function PermissionRoute({ module, action = "can_view", children }) {
   if (!allowed) {
     return <Navigate to="/dashboard" replace />;
   }
-  return children;
-}
-
-// Store pages open for anyone whose role can view at least one of the given modules.
-function AnyPermissionRoute({ modules, children }) {
-  const { user } = useAuth();
-  if (isSystemAdminRole(user?.role)) return children;
-  const permissions = Array.isArray(user?.permissions) ? user.permissions : [];
-  const allowed = permissions.some((permission) => modules.includes(permission.module) && permission.can_view);
-  if (!allowed) return <Navigate to="/dashboard" replace />;
   return children;
 }
 
@@ -176,21 +154,6 @@ export default function App() {
         <Route path="/items" element={<PermissionRoute module="items"><ItemMasterList /></PermissionRoute>} />
         <Route path="/items/new" element={<PermissionRoute module="items" action="can_create"><ItemMasterCreate /></PermissionRoute>} />
         <Route path="/items/:id" element={<PermissionRoute module="items"><ItemMasterDetail /></PermissionRoute>} />
-        <Route path="/store/grns" element={<AnyPermissionRoute modules={["store_receiving", "store_approval"]}><GrnList /></AnyPermissionRoute>} />
-        <Route path="/store/grns/new" element={<PermissionRoute module="store_receiving" action="can_create"><GrnForm /></PermissionRoute>} />
-        <Route path="/store/grns/:id" element={<AnyPermissionRoute modules={["store_receiving", "store_approval"]}><GrnForm /></AnyPermissionRoute>} />
-        <Route path="/store/stock" element={<PermissionRoute module="store_stock"><StockPage /></PermissionRoute>} />
-        <Route path="/store/dispatch" element={<PermissionRoute module="store_dispatch"><DispatchList /></PermissionRoute>} />
-        <Route path="/store/dispatch/:id" element={<PermissionRoute module="store_dispatch"><DispatchDetail /></PermissionRoute>} />
-        <Route path="/accounts/suppliers" element={<AnyPermissionRoute modules={["acc_purchase", "acc_po_approval"]}><SupplierList /></AnyPermissionRoute>} />
-        <Route path="/accounts/pos" element={<AnyPermissionRoute modules={["acc_purchase", "acc_po_approval"]}><PoList /></AnyPermissionRoute>} />
-        <Route path="/accounts/pos/new" element={<PermissionRoute module="acc_purchase" action="can_create"><PoDetail /></PermissionRoute>} />
-        <Route path="/accounts/pos/:id" element={<AnyPermissionRoute modules={["acc_purchase", "acc_po_approval"]}><PoDetail /></AnyPermissionRoute>} />
-        <Route path="/accounts/boms" element={<PermissionRoute module="acc_items"><BomList /></PermissionRoute>} />
-        <Route path="/accounts/boms/new" element={<PermissionRoute module="acc_items" action="can_create"><BomDetail /></PermissionRoute>} />
-        <Route path="/accounts/boms/:id" element={<PermissionRoute module="acc_items"><BomDetail /></PermissionRoute>} />
-        <Route path="/accounts/assembly" element={<PermissionRoute module="acc_assembly"><AssemblyList /></PermissionRoute>} />
-        <Route path="/accounts/assembly/:id" element={<PermissionRoute module="acc_assembly"><AssemblyDetail /></PermissionRoute>} />
         <Route path="/couriers" element={<OperationsAdminRoute><CourierList /></OperationsAdminRoute>} />
         <Route path="/couriers/new" element={<OperationsAdminRoute><CourierCreate /></OperationsAdminRoute>} />
         <Route path="/couriers/:id" element={<OperationsAdminRoute><CourierDetail /></OperationsAdminRoute>} />

@@ -19,14 +19,6 @@ MODULES = (
     "partner_registrations",
     "payments",     # Payment History page (view only)
     "email_logs",   # email send logs and bounced addresses (view only)
-    "store_receiving",  # Store: receive goods with a GRN (create = scan and submit)
-    "store_approval",   # Store: approve and post a GRN (edit = approve)
-    "store_stock",      # Store: stock on hand and the ledger
-    "store_dispatch",   # Store: reserve stock for orders and dispatch with the bill (edit = release a reservation)
-    "acc_items",        # Accounts: BOM and make-or-buy (create = draft a BOM, edit = activate it)
-    "acc_purchase",     # Accounts: suppliers and purchase orders (create = raise a PO)
-    "acc_po_approval",  # Accounts: approve a purchase order (edit = approve)
-    "acc_assembly",     # Accounts: assembly orders (create = plan, edit = complete with serials)
 )
 
 # Modules with sub-module scoping. A sub_module=None permission row means

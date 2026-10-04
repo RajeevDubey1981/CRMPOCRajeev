@@ -4,7 +4,6 @@ from typing import Literal
 from pydantic import BaseModel, EmailStr, Field
 
 ORDER_STATUSES = ("Pending", "Shipped", "In Transit", "Delivered", "Returned", "Cancelled")
-FULFILMENTS = ("Vendor", "Store")
 
 
 class OrderConsigneeAddressCreate(BaseModel):
@@ -82,7 +81,6 @@ class OrderCreate(BaseModel):
     vendor_bill_no: str | None = None
     vendor_bill_date: date | None = None
     status: Literal[ORDER_STATUSES] = "Pending"  # type: ignore[valid-type]
-    fulfilment: Literal[FULFILMENTS] = "Vendor"  # type: ignore[valid-type]
     expected_delivery_date: date | None = None
     items: list[OrderItemCreate] = []
     consignee_addresses: list[OrderConsigneeAddressCreate] = []
@@ -123,7 +121,6 @@ class OrderUpdate(BaseModel):
     vendor_bill_no: str | None = None
     vendor_bill_date: date | None = None
     status: Literal[ORDER_STATUSES] | None = None  # type: ignore[valid-type]
-    fulfilment: Literal[FULFILMENTS] | None = None  # type: ignore[valid-type]
     expected_delivery_date: date | None = None
     actual_delivery_date: date | None = None
     items: list[OrderItemUpdate] | None = None
@@ -149,7 +146,6 @@ class OrderOut(BaseModel):
     vendor_bill_no: str | None
     vendor_bill_date: date | None
     status: str
-    fulfilment: str = "Vendor"
     expected_delivery_date: date | None
     actual_delivery_date: date | None
     order_file_path: str | None = None

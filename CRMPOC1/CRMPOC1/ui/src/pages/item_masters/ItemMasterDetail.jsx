@@ -62,9 +62,6 @@ export default function ItemMasterDetail() {
       hsn_code: item.hsn_code || "",
       mrp: item.mrp !== null && item.mrp !== undefined ? String(item.mrp) : "",
       serial_count: String(item.serial_count ?? 1),
-      source: item.source || "Buy",
-      item_type: item.item_type || "",
-      gst_rate: item.gst_rate !== null && item.gst_rate !== undefined ? String(item.gst_rate) : "",
       is_active: item.is_active,
     });
     setSaveErr("");
@@ -88,9 +85,6 @@ export default function ItemMasterDetail() {
         hsn_code: editForm.hsn_code || null,
         mrp: editForm.mrp !== "" ? parseFloat(editForm.mrp) : null,
         serial_count: editForm.serial_count !== "" ? parseInt(editForm.serial_count, 10) : 1,
-        source: editForm.source,
-        item_type: editForm.item_type || null,
-        gst_rate: editForm.gst_rate !== "" ? parseFloat(editForm.gst_rate) : null,
         is_active: editForm.is_active,
       };
       const updated = await itemsApi.update(id, body);
@@ -172,9 +166,6 @@ export default function ItemMasterDetail() {
                   : "1 — Serial Number 1 only"
             }
           />
-          <Field label="How we get it" value={{ Buy: "Buy complete from OEM or supplier", Make: "Assemble from BOM", Both: "Both" }[item.source || "Buy"]} />
-          <Field label="Item type" value={item.item_type} />
-          <Field label="GST rate" value={item.gst_rate != null ? `${item.gst_rate}%` : null} />
           <Field label="Status" value={item.is_active ? "Active" : "Inactive"} />
           <Field label="Description" value={item.description} full />
           <Field label="Created At" value={fmt(item.created_at)} />
@@ -265,28 +256,7 @@ export default function ItemMasterDetail() {
                 <option value="2">2 — Serial Number 1 and 2</option>
               </select>
             </div>
-            <div>
-            <label className={labelClass}>How we get it</label>
-            <select value={editForm?.source || "Buy"} onChange={(e) => setField("source", e.target.value)} className={fieldClass}>
-              <option value="Buy">Buy complete from OEM or supplier</option>
-              <option value="Make">Assemble from BOM</option>
-              <option value="Both">Both</option>
-            </select>
-          </div>
-          <div>
-            <label className={labelClass}>Item type</label>
-            <select value={editForm?.item_type || ""} onChange={(e) => setField("item_type", e.target.value)} className={fieldClass}>
-              <option value="">Not set</option>
-              <option value="Finished good">Finished good</option>
-              <option value="Component">Component</option>
-              <option value="Spare">Spare</option>
-            </select>
-          </div>
-          <div>
-            <label className={labelClass}>GST rate (%)</label>
-            <input type="number" min="0" max="40" step="0.01" value={editForm?.gst_rate ?? ""} onChange={(e) => setField("gst_rate", e.target.value)} className={fieldClass} placeholder="e.g. 18" />
-          </div>
-          <div className="flex items-center gap-2 pt-6">
+            <div className="flex items-center gap-2 pt-6">
               <input
                 type="checkbox"
                 id="edit_is_active"
