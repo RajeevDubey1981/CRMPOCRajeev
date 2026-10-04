@@ -7,6 +7,7 @@ import Pagination from "../components/Pagination.jsx";
 import { ordersApi } from "../api/orders.js";
 import { api } from "../api/client.js";
 import { useAuth } from "../auth/AuthContext.jsx";
+import { BidStatCard, useVendorBids } from "../components/bids/VendorBidsPanel.jsx";
 
 const ORDER_STATUSES = ["Pending", "In Transit", "Delivered", "Returned"];
 
@@ -65,6 +66,7 @@ export default function VendorDashboard() {
   const { user } = useAuth();
   const role = user?.role?.toLowerCase?.() || "";
   const isVendor = role === "vendor";
+  const vendorBids = useVendorBids();
 
   const [summary, setSummary]               = useState(null);
   const [data, setData]                     = useState({ items: [], total: 0 });
@@ -270,6 +272,7 @@ export default function VendorDashboard() {
             </div>
           </div>
         ))}
+        {vendorBids.enabled && <BidStatCard bids={vendorBids.bids} />}
       </div>
 
       {/* ── Search + Action bar ── */}
