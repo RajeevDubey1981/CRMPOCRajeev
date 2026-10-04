@@ -139,7 +139,7 @@ DEFAULT_ROLES = [
         "perms": {
             "complaints": ALL, "installations": ALL, "orders": ALL, "vendors": ALL,
             "items": ALL, "couriers": ALL, "calls": ALL, "claims": ALL,
-            "users": ALL, "roles": ALL, "dashboard": ALL, "services": ALL,
+            "users": ALL, "roles": ALL, "dashboard": ALL, "services": ALL, "bids": ALL,
         },
     },
     {
@@ -189,6 +189,7 @@ DEFAULT_ROLES = [
         "perms": {
             "orders": (True, True, False, False, True),
             "services": (True, False, True, False, False),
+            "bids": (True, True, True, False, False),
             "dashboard": RO,
             "complaints": NONE, "installations": NONE, "vendors": NONE, "items": NONE,
             "couriers": NONE, "calls": NONE, "claims": NONE, "users": NONE, "roles": NONE,

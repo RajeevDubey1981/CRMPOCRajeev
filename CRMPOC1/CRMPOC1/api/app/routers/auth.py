@@ -15,6 +15,7 @@ from app.schemas.auth import (
 )
 from app.schemas.role import MODULES, SUB_MODULES
 from app.security import create_access_token, hash_password, verify_password
+from app.services.bid_access import synthetic_bid_permission
 from app.services.role_access import permission_role_name
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -50,6 +51,16 @@ def _user_out(db: Session, user: User) -> UserOut:
         for module, sub_module in _all_permission_keys()
         for permission in [by_key.get((module, sub_module))]
     ]
+    # Bids: managers come from the user's tick, vendors from the role card; nobody else gets the module.
+    bids_perm = synthetic_bid_permission(db, user)
+    for item in out.permissions:
+        if item.module == "bids" and item.sub_module is None:
+            flags = bids_perm or {}
+            item.can_view = flags.get("can_view", False)
+            item.can_create = flags.get("can_create", False)
+            item.can_edit = flags.get("can_edit", False)
+            item.can_delete = flags.get("can_delete", False)
+            item.can_export = flags.get("can_export", False)
     return out
 
 

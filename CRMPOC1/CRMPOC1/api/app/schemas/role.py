@@ -19,6 +19,7 @@ MODULES = (
     "partner_registrations",
     "payments",     # Payment History page (view only)
     "email_logs",   # email send logs and bounced addresses (view only)
+    "bids",         # Bid management; vendors only, the bid team comes from the user tick
 )
 
 # Modules with sub-module scoping. A sub_module=None permission row means

@@ -29,6 +29,17 @@ const NAV = [
   { to: "/installations", label: "Installation Requests", module: "installations" },
   { to: "/claims", label: "Claims", module: "claims" },
   {
+    label: "Bids",
+    children: [
+      { to: "/bids", label: "Bids", module: "bids", bidSide: "manager" },
+      { to: "/bids/allocation", label: "Allocation", module: "bids", bidSide: "manager" },
+      { to: "/bids/requests", label: "Vendor requests", module: "bids", bidSide: "manager" },
+      { to: "/bids/calendar", label: "Calendar", module: "bids" },
+      { to: "/bids", label: "My bids", module: "bids", bidSide: "vendor" },
+      { to: "/bids/request", label: "Request a bid", module: "bids", bidSide: "vendor" },
+    ],
+  },
+  {
     label: "Market Admin",
     systemAdminOnly: true,
     children: [
@@ -111,7 +122,12 @@ export default function Sidebar({ collapsed, mobileOpen = false, onNavigate }) {
     return permissions.some((permission) => permission.module === module && permission.can_view);
   }
 
+  // Bid managers get create + edit on the bids module, vendors only view + create (see /api/auth/me)
+  const bidsManager = permissions.some((p) => p.module === "bids" && p.can_view && p.can_edit);
+
   function canShow(item) {
+    if (item.bidSide === "manager" && !bidsManager) return false;
+    if (item.bidSide === "vendor" && bidsManager) return false;
     if (item.vendorOnly) return isVendor;
     if (item.engineerOnly) return isEngineer;
     if (item.operationsOnly) return isCourierAdmin;

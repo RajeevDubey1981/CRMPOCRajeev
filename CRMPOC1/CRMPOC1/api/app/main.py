@@ -7,7 +7,7 @@ from fastapi.staticfiles import StaticFiles
 from app.config import settings
 from app.release_build import RELEASE_BUILD
 from app.services.input_security import sanitize_json
-from app.routers import auth, calls, claims, complaints, couriers, dashboard, email_send_logs, installation_callcenter, installations, item_master, market, orders, partner_agreements_public, partner_registrations, partner_registrations_public, pending_actions, projects, roles, serials, services, users
+from app.routers import auth, bids, calls, claims, complaints, couriers, dashboard, email_send_logs, installation_callcenter, installations, item_master, market, orders, partner_agreements_public, partner_registrations, partner_registrations_public, pending_actions, projects, roles, serials, services, users
 from app.routers import sarvam_api
 from app.routers import site_api
 
@@ -59,6 +59,7 @@ app.include_router(partner_registrations.router)
 app.include_router(partner_registrations_public.router)
 app.include_router(partner_agreements_public.router)
 app.include_router(email_send_logs.router)
+app.include_router(bids.router)
 app.include_router(sarvam_api.router)
 app.include_router(site_api.router)
 app.mount("/uploads", StaticFiles(directory=str(settings.resolved_upload_dir)), name="uploads")
@@ -77,6 +78,10 @@ def ensure_runtime_masters() -> None:
     from app.services.email_bounce import start_bounce_watcher
 
     start_bounce_watcher()
+
+    from app.services.bid_service import start_bid_runner
+
+    start_bid_runner()
 
 
 @app.get("/health")

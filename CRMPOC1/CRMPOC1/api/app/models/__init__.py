@@ -29,6 +29,7 @@ from app.models.service import (
 from app.models.pending_action import UserPendingAction
 from app.models.partner_registration import PartnerRegistration
 from app.models.partner_agreement import PartnerAgreement
+from app.models.bid import Bid, BidEvent, BidRequest, BidReminder
 from app.models.email_bounce import EmailBounce
 from app.models.email_send_log import EmailSendLog
 from app.models.market import (
@@ -40,6 +41,7 @@ from app.models.market import (
 )
 
 __all__ = [
+    "Bid", "BidEvent", "BidRequest", "BidReminder",
     "User", "Role", "Permission",
     "ItemMaster", "Courier", "Vendor",
     "Order", "OrderItem",

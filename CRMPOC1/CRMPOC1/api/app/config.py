@@ -39,6 +39,13 @@ class Settings(BaseSettings):
     bounce_poll_seconds: int = 120
     bounce_lookback_days: int = 3
 
+    # Bid management
+    bid_confirm_days: int = 1  # a vendor must confirm within this many days of allocation
+    bid_submit_buffer_days: int = 1  # and submit this many days before the bid end date
+    bid_reminders_enabled: bool = True
+    bid_reminder_hour_ist: int = 9
+    bid_team_email: str = ""  # comma separated; empty means every user ticked as bid manager
+
     whatsapp_enabled: bool = False
     wa_phone_number_id: str = ""
     wa_access_token: str = ""

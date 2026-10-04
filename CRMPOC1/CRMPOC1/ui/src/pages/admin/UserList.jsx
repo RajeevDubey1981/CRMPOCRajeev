@@ -9,6 +9,8 @@ function fmtDate(s) {
   try { return new Date(s).toLocaleString(); } catch { return s; }
 }
 
+const BID_TICK_EXCLUDED = ["admin", "incool", "sub_admin", "vendor"];
+
 const fieldClass = "w-full rounded-md border border-slate-300 px-3 py-2 text-sm";
 const labelClass = "mb-1 block text-sm font-medium text-slate-700";
 
@@ -21,10 +23,13 @@ function UserForm({ initial, roles, busy, onCancel, onSubmit }) {
     phone: initial?.phone || "",
     password: "",
     is_active: initial?.is_active ?? true,
+    can_manage_bids: initial?.can_manage_bids ?? false,
   });
   const [err, setErr] = useState("");
 
   function set(field, value) { setForm((f) => ({ ...f, [field]: value })); }
+  // Admin, Sub Admin and Vendor never need the tick: admins already manage bids and vendors have their own side.
+  const bidTickApplies = !BID_TICK_EXCLUDED.includes((form.role || "").toLowerCase());
 
   async function submit(e) {
     e.preventDefault();
@@ -41,6 +46,7 @@ function UserForm({ initial, roles, busy, onCancel, onSubmit }) {
             role: form.role,
             phone: form.phone || null,
             is_active: form.is_active,
+            can_manage_bids: bidTickApplies && form.can_manage_bids,
           }
         : {
             name: form.name,
@@ -49,6 +55,7 @@ function UserForm({ initial, roles, busy, onCancel, onSubmit }) {
             role: form.role,
             phone: form.phone || null,
             is_active: form.is_active,
+            can_manage_bids: bidTickApplies && form.can_manage_bids,
           };
       await onSubmit(body);
     } catch (e) {
@@ -115,6 +122,15 @@ function UserForm({ initial, roles, busy, onCancel, onSubmit }) {
         <input type="checkbox" checked={form.is_active} onChange={(e) => set("is_active", e.target.checked)} className="h-4 w-4" />
         Active
       </label>
+      {bidTickApplies && (
+        <label className="flex items-start gap-2 text-sm text-slate-700">
+          <input type="checkbox" checked={form.can_manage_bids} onChange={(e) => set("can_manage_bids", e.target.checked)} className="mt-0.5 h-4 w-4" />
+          <span>
+            Can manage bids
+            <span className="block text-xs text-slate-500">Shows the Bids menu: enter bids, allocate them to vendors and answer vendor requests. Only an Admin or Sub Admin can override a locked bid.</span>
+          </span>
+        </label>
+      )}
       <div className="flex justify-end gap-2">
         <button type="button" onClick={onCancel} className="rounded-md border border-slate-300 px-3 py-2 text-sm">Cancel</button>
         <button type="submit" disabled={busy} className="rounded-md bg-brand-600 px-3 py-2 text-sm text-white hover:bg-brand-700 disabled:opacity-50">
@@ -294,7 +310,10 @@ export default function UserList() {
                 <td className="px-3 py-2 font-medium text-slate-700">{u.id}</td>
                 <td className="px-3 py-2">{u.name}</td>
                 <td className="px-3 py-2">{u.email}</td>
-                <td className="px-3 py-2"><span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs">{u.role}</span></td>
+                <td className="px-3 py-2">
+                  <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs">{u.role}</span>
+                  {u.can_manage_bids && <span className="ml-1 rounded-full bg-indigo-100 px-2 py-0.5 text-xs text-indigo-700" title="Can manage bids">Bids</span>}
+                </td>
                 <td className="px-3 py-2 font-mono text-xs">{u.phone || "—"}</td>
                 <td className="px-3 py-2">
                   {u.is_active ? (

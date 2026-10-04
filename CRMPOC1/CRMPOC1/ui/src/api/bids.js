@@ -1,0 +1,23 @@
+import { api } from "./client.js";
+
+export const bidsApi = {
+  meta: () => api.get("/api/bids/meta").then((r) => r.data),
+  detect: (text) => api.get("/api/bids/detect", { params: { text } }).then((r) => r.data),
+  vendors: () => api.get("/api/bids/vendors").then((r) => r.data),
+  list: (params) => api.get("/api/bids", { params }).then((r) => r.data),
+  get: (id) => api.get(`/api/bids/${id}`).then((r) => r.data),
+  create: (body) => api.post("/api/bids", body).then((r) => r.data),
+  update: (id, body) => api.put(`/api/bids/${id}`, body).then((r) => r.data),
+  allocate: (id, body) => api.post(`/api/bids/${id}/allocate`, body).then((r) => r.data),
+  release: (id, reason) => api.post(`/api/bids/${id}/release`, { reason }).then((r) => r.data),
+  confirm: (id) => api.post(`/api/bids/${id}/confirm`).then((r) => r.data),
+  decline: (id, reason) => api.post(`/api/bids/${id}/decline`, { reason }).then((r) => r.data),
+  submit: (id, reference) => api.post(`/api/bids/${id}/submit`, { reference }).then((r) => r.data),
+  result: (id, result, note) => api.post(`/api/bids/${id}/result`, { result, note }).then((r) => r.data),
+  lookup: (q) => api.get("/api/bids/lookup", { params: { q } }).then((r) => r.data),
+  requests: (params) => api.get("/api/bids/requests", { params }).then((r) => r.data),
+  requestCreate: (bid_number, note) => api.post("/api/bids/requests", { bid_number, note }).then((r) => r.data),
+  requestAllocate: (id) => api.post(`/api/bids/requests/${id}/allocate`).then((r) => r.data),
+  requestDecline: (id, note) => api.post(`/api/bids/requests/${id}/decline`, { note }).then((r) => r.data),
+  runRules: () => api.post("/api/bids/run-rules").then((r) => r.data),
+};

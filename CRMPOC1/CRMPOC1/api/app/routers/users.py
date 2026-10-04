@@ -53,6 +53,7 @@ def _user_out(db: Session, user: User) -> UserOut:
         role=user.role,
         phone=user.phone,
         is_active=user.is_active,
+        can_manage_bids=bool(user.can_manage_bids),
         created_at=user.created_at,
         updated_at=user.updated_at,
         vendor_id=vendor.id if vendor else None,
@@ -113,6 +114,7 @@ def create_user(
         role=body.role,
         phone=body.phone,
         is_active=body.is_active,
+        can_manage_bids=bool(body.can_manage_bids) and role_key(body.role) != "vendor",
     )
     db.add(user)
     db.flush()
@@ -149,8 +151,12 @@ def update_user(
             if existing:
                 raise HTTPException(status.HTTP_409_CONFLICT, "Email already in use")
 
+    if data.get("can_manage_bids") is None:
+        data.pop("can_manage_bids", None)
     for field, value in data.items():
         setattr(user, field, value)
+    if role_key(user.role) == "vendor":
+        user.can_manage_bids = False  # vendors use the vendor side of Bids, never the bid team side
     sync_vendor_for_user_email_update(db, user, previous_email)
     db.commit()
     db.refresh(user)

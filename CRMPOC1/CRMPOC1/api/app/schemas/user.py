@@ -10,6 +10,7 @@ class UserCreate(BaseModel):
     role: str = "callcenter"
     phone: str | None = None
     is_active: bool = True
+    can_manage_bids: bool = False
 
 
 class UserUpdate(BaseModel):
@@ -18,6 +19,7 @@ class UserUpdate(BaseModel):
     role: str | None = None
     phone: str | None = None
     is_active: bool | None = None
+    can_manage_bids: bool | None = None
 
 
 class ResetPasswordRequest(BaseModel):
@@ -31,6 +33,7 @@ class UserOut(BaseModel):
     role: str
     phone: str | None = None
     is_active: bool
+    can_manage_bids: bool = False
     created_at: datetime | None = None
     updated_at: datetime | None = None
     vendor_id: int | None = None

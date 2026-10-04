@@ -8,6 +8,7 @@ export const MODULE_LABELS = {
   payments: "Payment History (view only)",
   email_logs: "Email logs & bounces (view only)",
   users: "Users (a Sub Admin: normal users only)",
+  bids: "Bids (vendors only: the bid team is set by the tick on the user)",
 };
 
 export function normalizePermissionModules(modules = []) {
