@@ -174,44 +174,42 @@ export default function ScanSerialsModal({ open, onClose, scopeLabel, items, all
           </div>
         )}
 
-        <div className="max-h-72 overflow-auto rounded-md border border-slate-200">
-          <table className="min-w-full text-sm">
-            <thead className="bg-slate-50 text-left text-slate-600">
-              <tr><th className="px-3 py-2">#</th><th className="px-3 py-2">Item</th><th className="px-3 py-2">Serial 1</th><th className="px-3 py-2">Serial 2</th></tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {editable.map((it, idx) => {
-                const count = Number(it.serial_count ?? 1);
-                const s = slots[it.id] || { a: "", b: "" };
-                const cell = (k, orig) => {
-                  const isTarget = target && target.id === it.id && target.slot === k;
-                  const isNew = norm(s[k]) !== norm(orig);
-                  return (
-                    <div className="flex items-center gap-1">
-                      <input
-                        value={s[k]}
-                        onChange={(e) => setBox(it.id, k, e.target.value)}
-                        onFocus={() => setTarget({ id: it.id, slot: k })}
-                        placeholder="-"
-                        className={`w-44 rounded-md border px-2 py-1 font-mono text-xs ${isTarget ? "border-brand-500 ring-1 ring-brand-500" : isNew ? "border-emerald-400 bg-emerald-50" : "border-slate-300"}`}
-                      />
-                    </div>
-                  );
-                };
-                return (
-                  <tr key={it.id}>
-                    <td className="px-3 py-2 text-slate-500">{idx + 1}</td>
-                    <td className="px-3 py-2">{it.item_name || it.item_code}</td>
-                    <td className="px-3 py-2">{count >= 1 ? cell("a", it.serial_no) : <span className="text-slate-400">-</span>}</td>
-                    <td className="px-3 py-2">{count >= 2 ? cell("b", it.serial_no_2) : <span className="text-slate-400">-</span>}</td>
-                  </tr>
-                );
-              })}
-              {editable.length === 0 && (
-                <tr><td colSpan={4} className="px-3 py-4 text-center text-slate-500">There are no rows here that can take serial numbers.</td></tr>
-              )}
-            </tbody>
-          </table>
+        <div className="max-h-80 space-y-2 overflow-y-auto">
+          {editable.map((it, idx) => {
+            const count = Number(it.serial_count ?? 1);
+            const s = slots[it.id] || { a: "", b: "" };
+            const box = (k, orig, label) => {
+              const isTarget = target && target.id === it.id && target.slot === k;
+              const isNew = norm(s[k]) !== norm(orig);
+              return (
+                <label className="block text-xs text-slate-500">
+                  {label}
+                  <input
+                    value={s[k]}
+                    onChange={(e) => setBox(it.id, k, e.target.value)}
+                    onFocus={() => setTarget({ id: it.id, slot: k })}
+                    placeholder="-"
+                    className={`mt-1 w-full rounded-md border px-2 py-1.5 font-mono text-sm ${isTarget ? "border-brand-500 ring-1 ring-brand-500" : isNew ? "border-emerald-400 bg-emerald-50" : "border-slate-300"}`}
+                  />
+                </label>
+              );
+            };
+            return (
+              <div key={it.id} className="rounded-md border border-slate-200 p-2">
+                <div className="mb-1 text-sm text-slate-700">
+                  <span className="mr-2 text-slate-400">{idx + 1}</span>
+                  {it.item_name || it.item_code}
+                </div>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  {count >= 1 && box("a", it.serial_no, "Serial 1")}
+                  {count >= 2 && box("b", it.serial_no_2, "Serial 2")}
+                </div>
+              </div>
+            );
+          })}
+          {editable.length === 0 && (
+            <div className="rounded-md border border-slate-200 px-3 py-4 text-center text-sm text-slate-500">There are no rows here that can take serial numbers.</div>
+          )}
         </div>
 
         <div className="flex flex-wrap items-center justify-end gap-2">
