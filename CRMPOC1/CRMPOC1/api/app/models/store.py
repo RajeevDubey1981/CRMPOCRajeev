@@ -26,6 +26,7 @@ class StoreGrn(Base, TimestampMixin):
     supplier_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     reference_no: Mapped[str | None] = mapped_column(String(100), nullable=True)
     status: Mapped[str] = mapped_column(String(30), default="Draft", nullable=False, index=True)
+    po_id: Mapped[int | None] = mapped_column(ForeignKey("purchase_orders.id"), nullable=True, index=True)
     remarks: Mapped[str | None] = mapped_column(Text, nullable=True)
     reject_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)

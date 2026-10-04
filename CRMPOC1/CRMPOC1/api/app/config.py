@@ -50,6 +50,9 @@ class Settings(BaseSettings):
 
     # Store: the person who created a GRN cannot approve it (turn off only for a one-person store)
     store_maker_checker: bool = True
+    # Accounts: the state our GST registration is in (decides CGST+SGST or IGST) and whether a PO needs a second person
+    company_state: str = "Uttar Pradesh"
+    acc_maker_checker: bool = True
 
     # SMS India Hub (SMS needs a DLT-approved template; keep off until the account and DLT ids are set in .env)
     sms_enabled: bool = False

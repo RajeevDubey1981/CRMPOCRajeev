@@ -24,6 +24,7 @@ class GrnLineIn(BaseModel):
 
 class GrnIn(BaseModel):
     source_type: SourceType = "Purchase"
+    po_id: int | None = None
     supplier_name: str | None = Field(default=None, max_length=255)
     reference_no: str | None = Field(default=None, max_length=100)
     remarks: str | None = None
@@ -49,6 +50,8 @@ class GrnOut(BaseModel):
     id: int
     grn_no: str
     source_type: str
+    po_id: int | None = None
+    po_no: str | None = None
     supplier_name: str | None = None
     reference_no: str | None = None
     status: str

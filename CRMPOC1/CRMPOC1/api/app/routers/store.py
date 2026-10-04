@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.database import get_db
 from app.deps import get_current_user
+from app.models.accounts import PurchaseOrder
 from app.models.courier import Courier
 from app.models.item_master import ItemMaster
 from app.models.order import Order
@@ -96,10 +97,13 @@ def _hydrate(db: Session, grn: StoreGrn, user: User) -> GrnOut:
         and can_act_on(db, user, "store_approval", "can_edit", None)
         and store_service.can_user_approve_own(user, grn)
     )
+    po = db.get(PurchaseOrder, grn.po_id) if grn.po_id else None
     return GrnOut(
         id=grn.id,
         grn_no=grn.grn_no,
         source_type=grn.source_type,
+        po_id=grn.po_id,
+        po_no=po.po_no if po else None,
         supplier_name=grn.supplier_name,
         reference_no=grn.reference_no,
         status=grn.status,

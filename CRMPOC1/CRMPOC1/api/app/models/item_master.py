@@ -20,4 +20,8 @@ class ItemMaster(Base, TimestampMixin, SoftDeleteMixin):
     hsn_code: Mapped[str | None] = mapped_column(String(20), nullable=True)
     mrp: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
     serial_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
+    # How we get it: "Buy" a complete unit, "Make" it from a BOM, or "Both"
+    source: Mapped[str] = mapped_column(String(10), nullable=False, default="Buy", server_default="Buy")
+    item_type: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    gst_rate: Mapped[Decimal | None] = mapped_column(Numeric(5, 2), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")

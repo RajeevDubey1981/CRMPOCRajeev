@@ -143,13 +143,32 @@ def _check_header(source_type: str, reference_no: str | None, *, strict: bool) -
         _bad("Enter the bill, challan or LR number before submitting.")
 
 
+def _po_header(db: Session, payload) -> tuple[int | None, str | None]:
+    """A GRN can name the purchase order it is received against. Returns the PO id and a supplier name to fill in."""
+    if not getattr(payload, "po_id", None):
+        return None, None
+    from app.models.accounts import PurchaseOrder, Supplier
+
+    po = db.get(PurchaseOrder, payload.po_id)
+    if po is None:
+        _bad("Purchase order not found.", status.HTTP_404_NOT_FOUND)
+    if po.status not in ("Approved", "Part received"):
+        _bad(f"{po.po_no} is {po.status}. Goods can only be received against an approved purchase order.", status.HTTP_409_CONFLICT)
+    if payload.source_type != "Purchase":
+        _bad("Only a Purchase GRN can be received against a purchase order.")
+    sup = db.get(Supplier, po.supplier_id)
+    return po.id, (sup.name if sup else None)
+
+
 def create_grn(db: Session, user: User, payload) -> StoreGrn:
     _check_header(payload.source_type, payload.reference_no, strict=False)
     lines = validate_lines(db, payload.lines) if payload.lines else []
+    po_id, po_supplier = _po_header(db, payload)
     grn = StoreGrn(
         grn_no=next_grn_no(db),
         source_type=payload.source_type,
-        supplier_name=(payload.supplier_name or "").strip() or None,
+        po_id=po_id,
+        supplier_name=(payload.supplier_name or "").strip() or po_supplier,
         reference_no=(payload.reference_no or "").strip() or None,
         remarks=payload.remarks,
         status="Draft",
@@ -168,8 +187,10 @@ def update_draft(db: Session, grn: StoreGrn, payload) -> StoreGrn:
         _bad("Only a draft GRN can be edited.", status.HTTP_409_CONFLICT)
     _check_header(payload.source_type, payload.reference_no, strict=False)
     lines = validate_lines(db, payload.lines, grn_id=grn.id) if payload.lines else []
+    po_id, po_supplier = _po_header(db, payload)
     grn.source_type = payload.source_type
-    grn.supplier_name = (payload.supplier_name or "").strip() or None
+    grn.po_id = po_id
+    grn.supplier_name = (payload.supplier_name or "").strip() or po_supplier
     grn.reference_no = (payload.reference_no or "").strip() or None
     grn.remarks = payload.remarks
     for old in db.scalars(select(StoreGrnLine).where(StoreGrnLine.grn_id == grn.id)):
@@ -194,6 +215,10 @@ def submit_grn(db: Session, grn: StoreGrn) -> StoreGrn:
             why = serial_conflict(db, s, exclude_grn_id=grn.id)
             if why:
                 _bad(why, status.HTTP_409_CONFLICT)
+    if grn.po_id:
+        from app.services import accounts_service
+
+        accounts_service.check_receipt(db, grn.po_id, lines)
     grn.status = "Pending Approval"
     grn.submitted_at = _now()
     grn.reject_reason = None
@@ -226,6 +251,11 @@ def approve_and_post(db: Session, grn: StoreGrn, user: User) -> StoreGrn:
             why = serial_conflict(db, s, exclude_grn_id=grn.id)
             if why:
                 _bad(why, status.HTTP_409_CONFLICT)
+    po = None
+    if grn.po_id:
+        from app.services import accounts_service
+
+        po = accounts_service.check_receipt(db, grn.po_id, lines, posting=True)
     now = _now()
     for ln in lines:
         stock = StoreStock(
@@ -261,4 +291,8 @@ def approve_and_post(db: Session, grn: StoreGrn, user: User) -> StoreGrn:
     grn.approved_by = user.id
     grn.approved_at = now
     db.flush()
+    if po is not None:
+        from app.services import accounts_service
+
+        accounts_service.apply_receipt(db, po, lines)
     return grn

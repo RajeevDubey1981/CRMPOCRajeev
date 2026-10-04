@@ -35,6 +35,9 @@ def _to_out(item: ItemMaster) -> ItemMasterOut:
         hsn_code=item.hsn_code,
         mrp=float(item.mrp) if item.mrp is not None else None,
         serial_count=item.serial_count,
+        source=item.source or "Buy",
+        item_type=item.item_type,
+        gst_rate=float(item.gst_rate) if item.gst_rate is not None else None,
         is_active=item.is_active,
         created_at=item.created_at,
         updated_at=item.updated_at,
@@ -52,6 +55,9 @@ def _to_list_item(item: ItemMaster) -> ItemMasterListItem:
         hsn_code=item.hsn_code,
         mrp=float(item.mrp) if item.mrp is not None else None,
         serial_count=item.serial_count,
+        source=item.source or "Buy",
+        item_type=item.item_type,
+        gst_rate=float(item.gst_rate) if item.gst_rate is not None else None,
         is_active=item.is_active,
         created_at=item.created_at,
     )
@@ -218,6 +224,9 @@ def create_item(
         hsn_code=body.hsn_code,
         mrp=body.mrp,
         serial_count=body.serial_count,
+        source=body.source,
+        item_type=body.item_type,
+        gst_rate=body.gst_rate,
         is_active=body.is_active,
     )
     db.add(item)
