@@ -52,6 +52,8 @@ import ServiceDocumentUploadPublic from "./pages/services/ServiceDocumentUploadP
 import GrnList from "./pages/store/GrnList.jsx";
 import GrnForm from "./pages/store/GrnForm.jsx";
 import StockPage from "./pages/store/StockPage.jsx";
+import DispatchList from "./pages/store/DispatchList.jsx";
+import DispatchDetail from "./pages/store/DispatchDetail.jsx";
 import PartnerRegistrationList from "./pages/partners/PartnerRegistrationList.jsx";
 import PartnerRegistrationReview from "./pages/partners/PartnerRegistrationReview.jsx";
 import PartnerRegistrationPublic from "./pages/partners/PartnerRegistrationPublic.jsx";
@@ -171,6 +173,8 @@ export default function App() {
         <Route path="/store/grns/new" element={<PermissionRoute module="store_receiving" action="can_create"><GrnForm /></PermissionRoute>} />
         <Route path="/store/grns/:id" element={<AnyPermissionRoute modules={["store_receiving", "store_approval"]}><GrnForm /></AnyPermissionRoute>} />
         <Route path="/store/stock" element={<PermissionRoute module="store_stock"><StockPage /></PermissionRoute>} />
+        <Route path="/store/dispatch" element={<PermissionRoute module="store_dispatch"><DispatchList /></PermissionRoute>} />
+        <Route path="/store/dispatch/:id" element={<PermissionRoute module="store_dispatch"><DispatchDetail /></PermissionRoute>} />
         <Route path="/couriers" element={<OperationsAdminRoute><CourierList /></OperationsAdminRoute>} />
         <Route path="/couriers/new" element={<OperationsAdminRoute><CourierCreate /></OperationsAdminRoute>} />
         <Route path="/couriers/:id" element={<OperationsAdminRoute><CourierDetail /></OperationsAdminRoute>} />

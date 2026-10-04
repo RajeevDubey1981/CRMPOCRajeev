@@ -11,6 +11,7 @@ export const MODULE_LABELS = {
   store_receiving: "Store: Receive goods (GRN). Create = scan and submit",
   store_approval: "Store: Approve GRN. Edit = approve and post",
   store_stock: "Store: Stock and ledger",
+  store_dispatch: "Store: Reserve and dispatch orders. Create = reserve and dispatch, Edit = release reserved stock",
 };
 
 export function normalizePermissionModules(modules = []) {

@@ -15,6 +15,12 @@ export const storeApi = {
   stock: (params) => api.get("/api/store/stock", { params }).then((r) => r.data),
   stockUnits: (params) => api.get("/api/store/stock/units", { params }).then((r) => r.data),
   ledger: (params) => api.get("/api/store/ledger", { params }).then((r) => r.data),
+  lookupCouriers: () => api.get("/api/store/lookup/couriers").then((r) => r.data),
+  listOrders: (params) => api.get("/api/store/orders", { params }).then((r) => r.data),
+  getOrder: (id) => api.get(`/api/store/orders/${id}`).then((r) => r.data),
+  reserveOrder: (id) => api.post(`/api/store/orders/${id}/reserve`).then((r) => r.data),
+  releaseOrder: (id) => api.post(`/api/store/orders/${id}/release`).then((r) => r.data),
+  dispatchOrder: (id, body) => api.post(`/api/store/orders/${id}/dispatch`, body).then((r) => r.data),
 };
 
 export function storeError(e, fallback) {

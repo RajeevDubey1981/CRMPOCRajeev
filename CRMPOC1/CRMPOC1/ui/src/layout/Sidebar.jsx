@@ -33,6 +33,7 @@ const NAV = [
     children: [
       { to: "/store/grns", label: "Receive (GRN)", module: "store_receiving" },
       { to: "/store/grns?status=Pending%20Approval", label: "Approvals", module: "store_approval" },
+      { to: "/store/dispatch", label: "Dispatch", module: "store_dispatch" },
       { to: "/store/stock", label: "Stock and ledger", module: "store_stock" },
     ],
   },

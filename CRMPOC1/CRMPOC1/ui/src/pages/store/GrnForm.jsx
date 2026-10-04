@@ -10,7 +10,7 @@ const fieldClass = "w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
 const labelClass = "mb-1 block text-sm font-medium text-slate-700";
 const MODES = [["scanner", "Scanner"], ["camera", "Phone camera"], ["type", "Type it"]];
 
-function CameraScan({ onCode }) {
+export function CameraScan({ onCode }) {
   const videoRef = useRef(null);
   const last = useRef({ code: "", at: 0 });
   const [err, setErr] = useState("");
