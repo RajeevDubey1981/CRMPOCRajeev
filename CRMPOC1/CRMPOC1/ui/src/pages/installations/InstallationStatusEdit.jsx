@@ -148,7 +148,7 @@ export default function InstallationStatusEdit({ installation, onClose, onSaved,
         setBusy(false);
         return;
       }
-      if (shouldCollectPayment && form.payment_type === "UPI" && !qrFile && !installation.payment_qr_code_path) {
+      if (shouldCollectPayment && form.payment_type === "UPI" && !qrFile) {
         setSubmitErr("QR Code is required when payment type is UPI");
         setBusy(false);
         return;
@@ -345,10 +345,11 @@ export default function InstallationStatusEdit({ installation, onClose, onSaved,
                 </div>
               )}
               <div>
-                <label className={labelClass}>QR Code</label>
+                <label className={labelClass}>QR Code *</label>
                 <input
                   type="file"
                   accept=".pdf,.jpg,.jpeg,.png"
+                  required
                   onChange={(e) => setQrFile(e.target.files?.[0] || null)}
                   className="block w-full text-sm"
                 />

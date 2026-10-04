@@ -5,7 +5,7 @@ import Modal from "../../components/Modal.jsx";
 import StatusBadge from "../../components/StatusBadge.jsx";
 import { installationsApi } from "../../api/installations.js";
 import { useAuth } from "../../auth/AuthContext.jsx";
-import { isOperationsAdminRole, isServiceTeamRole, isSystemAdminRole } from "../../utils/roles.js";
+import { canAssignServiceDeskUser, isOperationsAdminRole, isServiceDeskRole, isServiceTeamRole, isSystemAdminRole } from "../../utils/roles.js";
 import { usesStructuredInstallationWorkflow, getInstallationWorkflowStepOptions, getCurrentInstallationWorkflowStep } from "../../utils/installationWorkflowSteps.js";
 import InstallationStatusEdit from "./InstallationStatusEdit.jsx";
 import InstallationCallCenterWorkflow from "./InstallationCallCenterWorkflow.jsx";
@@ -61,8 +61,13 @@ export default function InstallationDetail() {
   const isAdminLike = isOperationsAdminRole(role);
   const isPaymentAdmin = isSystemAdminRole(role);
   const isServiceTeam = isServiceTeamRole(role);
+  const roleIsServiceDesk = isServiceDeskRole(role);
+  const canAssignServiceDesk = canAssignServiceDeskUser(role);
   const isEngineer = role === "engineer";
   const [installation, setInstallation] = useState(null);
+  const [serviceUsers, setServiceUsers] = useState([]);
+  const [serviceDeskAssignForm, setServiceDeskAssignForm] = useState({ service_user_id: "", remarks: "" });
+  const [returnToManagerRemarks, setReturnToManagerRemarks] = useState("");
   const [err, setErr] = useState("");
   const [editing, setEditing] = useState(wantsEdit);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -82,6 +87,19 @@ export default function InstallationDetail() {
   useEffect(() => {
     load();
   }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!canAssignServiceDesk) return;
+    installationsApi.serviceUsers().then(setServiceUsers).catch(() => setServiceUsers([]));
+  }, [canAssignServiceDesk]);
+
+  useEffect(() => {
+    if (!installation?.assigned_service_user_id) return;
+    setServiceDeskAssignForm((current) => ({
+      ...current,
+      service_user_id: String(installation.assigned_service_user_id),
+    }));
+  }, [installation?.assigned_service_user_id]);
 
   useEffect(() => {
     if (!installation || !wantsEdit) return;
@@ -145,6 +163,44 @@ export default function InstallationDetail() {
       await load();
     } catch (e) {
       setErr(e.response?.data?.detail || "Failed to reset installation workflow");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function assignServiceUser() {
+    if (!serviceDeskAssignForm.service_user_id) return;
+    setBusy(true);
+    setErr("");
+    setSuccessMsg("");
+    try {
+      await installationsApi.assignServiceUser(installation.id, {
+        service_user_id: Number(serviceDeskAssignForm.service_user_id),
+        remarks: serviceDeskAssignForm.remarks || null,
+      });
+      setSuccessMsg("Service user assigned.");
+      setServiceDeskAssignForm((current) => ({ ...current, remarks: "" }));
+      await load();
+    } catch (e) {
+      setErr(e.response?.data?.detail || "Failed to assign service user");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function returnToServiceManager() {
+    setBusy(true);
+    setErr("");
+    setSuccessMsg("");
+    try {
+      await installationsApi.returnToServiceManager(installation.id, {
+        remarks: returnToManagerRemarks || null,
+      });
+      setSuccessMsg("Request returned to Service Manager.");
+      setReturnToManagerRemarks("");
+      await load();
+    } catch (e) {
+      setErr(e.response?.data?.detail || "Failed to return request to Service Manager");
     } finally {
       setBusy(false);
     }
@@ -243,6 +299,67 @@ export default function InstallationDetail() {
       {err && <div className="rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-700">{err}</div>}
       {successMsg && <div className="rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{successMsg}</div>}
 
+      {(canAssignServiceDesk || roleIsServiceDesk) && (
+        <section className="rounded-lg border border-violet-200 bg-violet-50 p-4 shadow-sm">
+          <h2 className="text-sm font-semibold text-violet-900">Assignment (service desk)</h2>
+          <p className="mt-1 text-xs text-violet-800">
+            Assign this installation request to a Service user. Service users only see installation requests assigned to them.
+          </p>
+          <div className="mt-3 text-sm text-slate-800">
+            <span className="font-medium text-slate-600">Currently assigned:</span>{" "}
+            {installation.assigned_service_user_name || "Unassigned"}
+          </div>
+          {canAssignServiceDesk && (
+            <div className="mt-3 grid gap-3 md:grid-cols-[1fr_2fr_auto]">
+              <select
+                value={serviceDeskAssignForm.service_user_id}
+                onChange={(e) => setServiceDeskAssignForm((current) => ({ ...current, service_user_id: e.target.value }))}
+                className="rounded-md border border-violet-300 bg-white px-3 py-2 text-sm"
+              >
+                <option value="">Select service user</option>
+                {serviceUsers.map((option) => (
+                  <option key={option.id} value={option.id}>
+                    {option.name} ({option.email})
+                  </option>
+                ))}
+              </select>
+              <input
+                value={serviceDeskAssignForm.remarks}
+                onChange={(e) => setServiceDeskAssignForm((current) => ({ ...current, remarks: e.target.value }))}
+                placeholder="Assignment remarks (optional)"
+                className="rounded-md border border-violet-300 bg-white px-3 py-2 text-sm"
+              />
+              <button
+                type="button"
+                disabled={busy || !serviceDeskAssignForm.service_user_id}
+                onClick={assignServiceUser}
+                className="rounded-md bg-violet-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+              >
+                Assign service user
+              </button>
+            </div>
+          )}
+          {roleIsServiceDesk && installation.assigned_service_user_id === user?.id && (
+            <div className="mt-3 flex flex-wrap items-end gap-2">
+              <input
+                value={returnToManagerRemarks}
+                onChange={(e) => setReturnToManagerRemarks(e.target.value)}
+                placeholder="Reason for returning to manager (optional)"
+                className="min-w-[240px] flex-1 rounded-md border border-violet-300 bg-white px-3 py-2 text-sm"
+              />
+              <button
+                type="button"
+                disabled={busy}
+                onClick={returnToServiceManager}
+                className="rounded-md border border-violet-400 bg-white px-4 py-2 text-sm text-violet-900 disabled:opacity-50"
+              >
+                Return to service manager
+              </button>
+            </div>
+          )}
+        </section>
+      )}
+
       {canEditWorkflow && (
         <section className="rounded-lg border border-amber-200 bg-amber-50 p-4 shadow-sm">
           <div className="text-sm font-semibold text-amber-900">Admin workflow control</div>
@@ -308,6 +425,7 @@ export default function InstallationDetail() {
           <Field label="Installation Date" value={fmtDate(installation.installation_date)} />
           <Field label="Status" value={installation.status} />
           <Field label="Assigned Engineer" value={installation.assigned_engineer_name} />
+          <Field label="Assigned Service User" value={installation.assigned_service_user_name} />
           <Field label="Address" value={installation.address} full />
           {installation.work_report && (
             <Field label="Work Report" value={installation.work_report} full />

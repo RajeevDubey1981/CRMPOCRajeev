@@ -503,10 +503,7 @@ export default function ServiceRequestDetail() {
   const paymentSubmitted = service?.status === "Payment Requested";
   const paymentCompleted = ["Payment Completed", "Closed"].includes(service?.status);
   const canApprovePayment = Boolean(roleIsServiceTeam && paymentSubmitted && latestPaymentRequest);
-  const latestPaymentFinalStage = latestPaymentRequest?.approval_status === "Approved"
-    || paymentCompleted
-    || roleIsPaymentAdmin
-    || latestPaymentRequest?.approval_stage === "admin"
+  const latestPaymentFinalStage = latestPaymentRequest?.approval_stage === "admin"
     || latestPaymentRequest?.approval_stage_label === "Admin";
   const latestPaymentProofRequired = canApprovePayment
     && roleIsPaymentAdmin

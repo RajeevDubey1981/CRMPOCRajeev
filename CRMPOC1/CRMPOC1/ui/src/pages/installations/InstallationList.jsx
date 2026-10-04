@@ -114,9 +114,17 @@ export default function InstallationList() {
     setSelectedIds(new Set());
   }
 
+  function isBulkWorkflowRowAllowed(row) {
+    return isBulkWorkflowEligibleRow(row, {
+      isAdminLike,
+      userId: user?.id,
+      userName: user?.name,
+    });
+  }
+
   function isRowSelectable(groupKey, row) {
     if (selectedGroupKey && selectedGroupKey !== groupKey) return false;
-    return isEngineer ? isEngineerEditable(row) : canAdminBulkAssign(row) || canAdminBulkEdit(row);
+    return isEngineer ? isBulkWorkflowRowAllowed(row) : canAdminBulkAssign(row) || canAdminBulkEdit(row);
   }
 
   function toggleSelected(groupKey, row) {
@@ -213,17 +221,25 @@ export default function InstallationList() {
 
   const canOpenBulkAssign = selectedRows.length > 0 && selectedRows.every((row) => canAdminBulkAssign(row));
   const canOpenBulkWorkflow = selectedRows.length > 1
-    && selectedRows.every((row) => isBulkWorkflowEligibleRow(row, {
-      isAdminLike,
-      userId: user?.id,
-      userName: user?.name,
-    }));
+    && selectedRows.every(isBulkWorkflowRowAllowed);
   const canOpenBulkEdit = !isEngineer
     && selectedRows.length > 0
     && selectedRows.every((row) => canAdminBulkEdit(row));
   const canOpenEngineerWorkflow = isEngineer
     && selectedRows.length === 1
-    && isEngineerEditable(selectedRows[0]);
+    && isBulkWorkflowRowAllowed(selectedRows[0]);
+
+  function bulkWorkflowDisabledReason() {
+    if (selectedRows.length <= 1) return "Select at least two eligible requests in the same item code group.";
+    if (selectedRows.some((row) => row.status === "Completed")) return "Completed requests are not eligible for bulk workflow.";
+    if (selectedRows.some((row) => (row.source || "vendor").toLowerCase() !== "vendor")) {
+      return "Bulk workflow is available only for vendor order installation requests.";
+    }
+    if (!isAdminLike && selectedRows.some((row) => !isBulkWorkflowRowAllowed(row))) {
+      return "All selected requests must be assigned to you for engineer bulk workflow.";
+    }
+    return "Selected requests are not eligible for bulk workflow.";
+  }
 
   function openInstallationWorkflow(row) {
     navigate(`/installations/${row.id}?edit=1`);
@@ -325,6 +341,7 @@ export default function InstallationList() {
               <button
                 onClick={openSelectedBulkWorkflow}
                 disabled={!canOpenBulkWorkflow}
+                title={!canOpenBulkWorkflow ? bulkWorkflowDisabledReason() : "Open bulk workflow"}
                 className="rounded-md bg-brand-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-50"
               >
                 Bulk workflow
@@ -343,6 +360,7 @@ export default function InstallationList() {
               <button
                 onClick={openSelectedBulkWorkflow}
                 disabled={!canOpenBulkWorkflow}
+                title={!canOpenBulkWorkflow ? bulkWorkflowDisabledReason() : "Open bulk workflow"}
                 className="rounded-md bg-brand-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-50"
               >
                 Bulk workflow
@@ -435,7 +453,7 @@ export default function InstallationList() {
                                 {!isEngineer && <th className="px-3 py-2">Settlement Raised By</th>}
                                 <th className="px-3 py-2">Assigned Date</th>
                                 <th className="px-3 py-2">Install Date</th>
-                                <th className="px-3 py-2 text-right">Actions</th>
+                                {!isEngineer && <th className="px-3 py-2 text-right">Actions</th>}
                               </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100">
@@ -475,30 +493,30 @@ export default function InstallationList() {
                                   {!isEngineer && <td className="px-3 py-2">{row.settlement_approved_by_name || "-"}</td>}
                                   <td className="px-3 py-2 text-xs">{fmtDate(row.request_date)}</td>
                                   <td className="px-3 py-2 text-xs">{fmtDate(row.installation_date)}</td>
-                                  <td className="px-3 py-2 text-right">
-                                    <div className="flex justify-end gap-1">
-                                      <button
-                                        title="View"
-                                        onClick={(event) => {
-                                          event.stopPropagation();
-                                          navigate(`/installations/${row.id}`);
-                                        }}
-                                        className="rounded p-1 text-slate-600 hover:bg-slate-100"
-                                      >
-                                        View
-                                      </button>
-                                      <button
-                                        title={editLabel(row)}
-                                        onClick={(event) => {
-                                          event.stopPropagation();
-                                          openInstallationWorkflow(row);
-                                        }}
-                                        disabled={isEngineer && !isEngineerEditable(row)}
-                                        className="rounded p-1 text-slate-600 hover:bg-slate-100"
-                                      >
-                                        {editLabel(row)}
-                                      </button>
-                                      {!isEngineer && row.status !== "Rejected" && (
+                                  {!isEngineer && (
+                                    <td className="px-3 py-2 text-right">
+                                      <div className="flex justify-end gap-1">
+                                        <button
+                                          title="View"
+                                          onClick={(event) => {
+                                            event.stopPropagation();
+                                            navigate(`/installations/${row.id}`);
+                                          }}
+                                          className="rounded p-1 text-slate-600 hover:bg-slate-100"
+                                        >
+                                          View
+                                        </button>
+                                        <button
+                                          title={editLabel(row)}
+                                          onClick={(event) => {
+                                            event.stopPropagation();
+                                            openInstallationWorkflow(row);
+                                          }}
+                                          className="rounded p-1 text-slate-600 hover:bg-slate-100"
+                                        >
+                                          {editLabel(row)}
+                                        </button>
+                                        {row.status !== "Rejected" && (
                                         <button
                                           title="Reject"
                                           onClick={(event) => {
@@ -510,7 +528,6 @@ export default function InstallationList() {
                                           Reject
                                         </button>
                                       )}
-                                      {!isEngineer && (
                                         <button
                                           title="Delete"
                                           onClick={(event) => {
@@ -521,8 +538,7 @@ export default function InstallationList() {
                                         >
                                           Delete
                                         </button>
-                                      )}
-                                      {!isEngineer && (row.status === "Submitted" || row.status === "Assigned") && (
+                                        {(row.status === "Submitted" || row.status === "Assigned") && (
                                         <button
                                           title="Cancel submission"
                                           onClick={(event) => {
@@ -535,8 +551,9 @@ export default function InstallationList() {
                                           {cancelBusyId === row.id ? "..." : "Cancel"}
                                         </button>
                                       )}
-                                    </div>
-                                  </td>
+                                      </div>
+                                    </td>
+                                  )}
                                 </tr>
                               ))}
                             </tbody>

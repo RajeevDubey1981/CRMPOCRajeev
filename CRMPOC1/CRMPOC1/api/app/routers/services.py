@@ -2851,6 +2851,18 @@ def admin_update_service_payment_amount(
     if "approved_amount" in data and data["approved_amount"] is not None:
         latest_payment.processed_at = _now()
         latest_payment.processed_by_user_id = user.id
+        if latest_payment.payment_transaction_id:
+            transaction = db.get(PaymentTransaction, latest_payment.payment_transaction_id)
+            if transaction is not None:
+                transaction.total_amount = data["approved_amount"]
+                if data.get("payment_type"):
+                    transaction.payment_type = data["payment_type"]
+                transaction.recorded_by_user_id = user.id
+                transaction.recorded_at = _now()
+    elif latest_payment.payment_transaction_id and data.get("payment_type"):
+        transaction = db.get(PaymentTransaction, latest_payment.payment_transaction_id)
+        if transaction is not None:
+            transaction.payment_type = data["payment_type"]
     db.commit()
     db.refresh(service)
     return _hydrate_service(db, service)

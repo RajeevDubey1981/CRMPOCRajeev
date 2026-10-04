@@ -27,6 +27,7 @@ class InstallationRequest(Base, TimestampMixin):
         DateTime(timezone=True), server_default=func.now(), nullable=False, index=True
     )
     assigned_engineer: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    assigned_service_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
     status: Mapped[str] = mapped_column(String(50), default="Pending", nullable=False, index=True)
     installation_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     work_report: Mapped[str | None] = mapped_column(Text, nullable=True)

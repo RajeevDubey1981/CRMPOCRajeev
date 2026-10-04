@@ -621,18 +621,44 @@ export default function OrderDetail() {
   }
 
   function installationForItem(item) {
-    const byOrderItem = installations.find((inst) => inst.order_item_id === item.id);
-    if (byOrderItem) return byOrderItem;
+    const chooseCurrentInstallation = (matches) => {
+      if (!matches.length) return null;
+      const statusRank = {
+        "Completed": 90,
+        "Settlement Approved": 85,
+        "Settlement Pending": 80,
+        "Payment Pending": 75,
+        "Installation Completed": 70,
+        "Completion Pending Approval": 65,
+        "Serial Pending Verification": 60,
+        "In Progress": 50,
+        "Assigned": 40,
+        "Submitted": 30,
+        "Order Verified": 20,
+        "Admin Review Document": 15,
+        "Document Requested": 10,
+        "Pending": 5,
+      };
+      return [...matches].sort((a, b) => {
+        const rankDiff = (statusRank[b.status] || 0) - (statusRank[a.status] || 0);
+        if (rankDiff) return rankDiff;
+        return new Date(b.request_date || 0) - new Date(a.request_date || 0);
+      })[0];
+    };
+
+    const byOrderItem = installations.filter((inst) => inst.order_item_id === item.id);
+    const currentByOrderItem = chooseCurrentInstallation(byOrderItem);
+    if (currentByOrderItem) return currentByOrderItem;
 
     const itemSerials = new Set(
       [item.serial_no, item.serial_no_2].filter(Boolean).map(normalizeSerial),
     );
     if (itemSerials.size === 0) return null;
 
-    return installations.find((inst) => {
+    return chooseCurrentInstallation(installations.filter((inst) => {
       const instSerials = [inst.serial_no, inst.serial_no_2].filter(Boolean).map(normalizeSerial);
       return instSerials.some((serial) => itemSerials.has(serial));
-    }) || null;
+    }));
   }
 
   function installationStatusLabel(item, inst) {
@@ -679,6 +705,27 @@ export default function OrderDetail() {
     });
   }
 
+  function selectedSerialPairError(selection = selectedSerials) {
+    const keys = Array.from(selection);
+    if (!keys.length) return "";
+    const selectedItems = keys
+      .map((key) => {
+        const [itemIdStr, slot] = key.split("-");
+        const item = (order?.items || []).find((candidate) => String(candidate.id) === itemIdStr);
+        return item ? { item, slot } : null;
+      })
+      .filter(Boolean);
+    if (!selectedItems.some(({ item }) => Number(item.serial_count ?? 1) >= 2)) return "";
+
+    for (let index = 0; index < selectedItems.length; index += 2) {
+      const pair = selectedItems.slice(index, index + 2);
+      if (pair.length !== 2 || new Set(pair.map(({ slot }) => slot)).size !== 2) {
+        return "Select one Serial 1 and one Serial 2 for each installation unit.";
+      }
+    }
+    return "";
+  }
+
   async function submitSelectedSerials() {
     if (selectedSerials.size === 0) {
       setSubmitErr("Please select at least one serial number");
@@ -690,6 +737,11 @@ export default function OrderDetail() {
     }
     if (selectedSubmitItemCodes.size > 1) {
       setSubmitErr("Select serials from only one item code at a time.");
+      return;
+    }
+    const pairError = selectedSerialPairError();
+    if (pairError) {
+      setSubmitErr(pairError);
       return;
     }
 
@@ -942,6 +994,7 @@ export default function OrderDetail() {
     return codes;
   }, new Set());
   const selectedSubmitItemCode = selectedSubmitItemCodes.size === 1 ? Array.from(selectedSubmitItemCodes)[0] : null;
+  const selectedSubmitPairError = selectedSerialPairError();
 
   return (
     <div className="space-y-5">
@@ -1422,7 +1475,9 @@ export default function OrderDetail() {
           <div className="mt-4 space-y-2">
             <div className="flex items-center justify-between">
               <span className="text-sm text-slate-600">
-                {selectedSerials.size > 0 ? (
+                {selectedSubmitPairError ? (
+                  <span className="font-semibold text-rose-600">{selectedSubmitPairError}</span>
+                ) : selectedSerials.size > 0 ? (
                   <span className="font-semibold text-brand-600">
                     {selectedSerials.size} serial(s) selected{selectedSubmitItemCode ? ` for item code ${selectedSubmitItemCode}` : ""}
                   </span>
@@ -1432,7 +1487,7 @@ export default function OrderDetail() {
               </span>
               <button
                 onClick={submitSelectedSerials}
-                disabled={submitting || selectedSerials.size === 0 || selectedSubmitItemCodes.size > 1}
+                disabled={submitting || selectedSerials.size === 0 || selectedSubmitItemCodes.size > 1 || Boolean(selectedSubmitPairError)}
                 className="rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {submitting ? "Submitting..." : `Submit (${selectedSerials.size})`}

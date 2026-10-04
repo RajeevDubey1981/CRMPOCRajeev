@@ -324,14 +324,50 @@ def iter_api_files() -> list[Path]:
 
 def ssh_run(client, cmd: str, *, timeout: int = 600) -> str:
     print(f"  remote$ {cmd[:180]}{'...' if len(cmd) > 180 else ''}", flush=True)
-    _, stdout, stderr = client.exec_command(cmd, get_pty=True, timeout=timeout)
-    stdout.channel.settimeout(timeout)
+    _stdin, stdout, stderr = client.exec_command(cmd, get_pty=True, timeout=timeout)
+    channel = stdout.channel
+    channel.settimeout(1)
+    deadline = time.monotonic() + timeout
+    out_chunks: list[str] = []
+    err_chunks: list[str] = []
+
     try:
-        out = stdout.read().decode("utf-8", "replace")
-        err = stderr.read().decode("utf-8", "replace")
-        status_code = stdout.channel.recv_exit_status()
+        while True:
+            while channel.recv_ready():
+                text = channel.recv(65535).decode("utf-8", "replace")
+                out_chunks.append(text)
+                print(text, end="", flush=True)
+            while channel.recv_stderr_ready():
+                text = channel.recv_stderr(65535).decode("utf-8", "replace")
+                err_chunks.append(text)
+                print(text, end="", flush=True)
+
+            if channel.exit_status_ready():
+                break
+            if time.monotonic() > deadline:
+                channel.close()
+                partial = "".join(out_chunks + err_chunks).strip()
+                raise TimeoutError(
+                    f"Remote command timed out after {timeout}s:\n{cmd}"
+                    + (f"\n\nPartial output:\n{partial}" if partial else "")
+                )
+            time.sleep(0.2)
+
+        status_code = channel.recv_exit_status()
+        while channel.recv_ready():
+            text = channel.recv(65535).decode("utf-8", "replace")
+            out_chunks.append(text)
+            print(text, end="", flush=True)
+        while channel.recv_stderr_ready():
+            text = channel.recv_stderr(65535).decode("utf-8", "replace")
+            err_chunks.append(text)
+            print(text, end="", flush=True)
     except socket.timeout as exc:
+        channel.close()
         raise TimeoutError(f"Remote command timed out after {timeout}s:\n{cmd}") from exc
+
+    out = "".join(out_chunks)
+    err = "".join(err_chunks)
     if err.strip():
         out += "\nSTDERR: " + err
     if status_code != 0:
@@ -349,6 +385,7 @@ def deploy_api_remote(sftp, client, remote_api: str) -> None:
     print("\n=== Deploy API to production ===")
     files = iter_api_files()
     print(f"  {len(files)} files")
+    ssh_run(client, f"sudo mkdir -p {remote_api}/alembic/versions && sudo rm -f {remote_api}/alembic/versions/*.py")
     for idx, local in enumerate(files, start=1):
         rel = local.relative_to(API_DIR).as_posix()
         remote = f"{remote_api}/{rel}"

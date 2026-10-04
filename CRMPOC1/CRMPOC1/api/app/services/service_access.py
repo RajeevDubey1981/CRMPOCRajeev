@@ -7,13 +7,14 @@ from app.models.user import User
 from app.services.role_access import is_system_admin, role_key
 
 SERVICE_DESK_ROLES = frozenset({"service", "indcool_service"})
-SERVICE_MANAGER_ROLES = frozenset({"service_manager"})
+SERVICE_MANAGER_ROLES = frozenset({"service_manager", "sub_admin"})
 SERVICE_VIEW_ALL_ROLES = frozenset({
     "admin",
     "incool",
     "indcool",
     "indcool service",
     "service_manager",
+    "sub_admin",
 })
 LEGACY_SERVICE_OPS_ROLES = frozenset({
     "admin",
@@ -23,6 +24,7 @@ LEGACY_SERVICE_OPS_ROLES = frozenset({
     "indcool_service",
     "service",
     "service_manager",
+    "sub_admin",
 })
 
 

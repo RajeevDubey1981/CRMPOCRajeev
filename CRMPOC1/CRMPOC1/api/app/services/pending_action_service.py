@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models.pending_action import UserPendingAction
@@ -49,26 +50,41 @@ def upsert_pending_action(
         )
     )
     if row is None:
-        row = UserPendingAction(
-            recipient_user_id=recipient_user_id,
-            recipient_vendor_id=recipient_vendor_id,
-            module=module,
-            entity_id=entity_id,
-            entity_ref=entity_ref,
-            action_type=action_type,
-            title=title,
-            message=message,
-            action_label=action_label,
-            href=href,
-            entity_status=entity_status,
-            occurred_at=occurred,
-            is_active=True,
-            is_read=False,
-            read_at=None,
-            resolved_at=None,
-        )
-        db.add(row)
-        return row
+        try:
+            with db.begin_nested():
+                row = UserPendingAction(
+                    recipient_user_id=recipient_user_id,
+                    recipient_vendor_id=recipient_vendor_id,
+                    module=module,
+                    entity_id=entity_id,
+                    entity_ref=entity_ref,
+                    action_type=action_type,
+                    title=title,
+                    message=message,
+                    action_label=action_label,
+                    href=href,
+                    entity_status=entity_status,
+                    occurred_at=occurred,
+                    is_active=True,
+                    is_read=False,
+                    read_at=None,
+                    resolved_at=None,
+                )
+                db.add(row)
+                db.flush([row])
+            return row
+        except IntegrityError:
+            row = db.scalar(
+                select(UserPendingAction).where(
+                    UserPendingAction.recipient_user_id == recipient_user_id,
+                    UserPendingAction.module == module,
+                    UserPendingAction.entity_id == entity_id,
+                    UserPendingAction.entity_ref == entity_ref,
+                    UserPendingAction.action_type == action_type,
+                )
+            )
+        if row is None:
+            raise
 
     row.recipient_vendor_id = recipient_vendor_id
     row.title = title
@@ -78,6 +94,8 @@ def upsert_pending_action(
     row.entity_status = entity_status
     row.occurred_at = occurred
     row.is_active = True
+    row.is_read = False
+    row.read_at = None
     row.resolved_at = None
     return row
 

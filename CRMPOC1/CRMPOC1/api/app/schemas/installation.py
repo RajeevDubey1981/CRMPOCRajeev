@@ -24,6 +24,15 @@ class InstallationStatusUpdate(BaseModel):
     status: str | None = None
 
 
+class InstallationServiceUserAssignIn(BaseModel):
+    service_user_id: int
+    remarks: str | None = None
+
+
+class InstallationServiceUserReturnIn(BaseModel):
+    remarks: str | None = None
+
+
 class AdminInstallationPaymentUpdate(BaseModel):
     payment_amount_requested: float | None = None
     payment_amount_paid: float | None = None
@@ -57,7 +66,10 @@ class InstallationListItem(BaseModel):
     installation_date: datetime | None
     assigned_engineer: int | None = None
     assigned_engineer_name: str | None
+    assigned_service_user_id: int | None = None
+    assigned_service_user_name: str | None = None
     settlement_approved_by_name: str | None
+    admin_approval_remark: str | None = None
     payment_amount_requested: float | None = None
     payment_type_requested: str | None = None
     payment_qr_code_path: str | None = None
@@ -151,6 +163,19 @@ class PaymentApprovalLogOut(BaseModel):
     created_at: datetime
 
 
+class InstallationEngineerSerialOut(BaseModel):
+    id: int
+    line_no: int
+    serial_no: str
+    serial_no_2: str | None = None
+    observation: str | None = None
+    unit_status: str | None = None
+    verification_status: str
+    admin_remark: str | None = None
+    verified_at: datetime | None = None
+    submitted_at: datetime | None = None
+
+
 class InstallationOut(BaseModel):
     id: int
     source: str = "vendor"
@@ -169,6 +194,8 @@ class InstallationOut(BaseModel):
     request_date: datetime
     assigned_engineer: int | None
     assigned_engineer_name: str | None
+    assigned_service_user_id: int | None = None
+    assigned_service_user_name: str | None = None
     status: str
     installation_date: datetime | None
     work_report: str | None
@@ -209,6 +236,7 @@ class InstallationOut(BaseModel):
     admin_approved_at: datetime | None = None
     engineer_site_remarks: str | None = None
     engineer_serials_submitted_at: datetime | None = None
+    engineer_serials: list[InstallationEngineerSerialOut] = Field(default_factory=list)
     parent_installation_id: int | None = None
     created_at: datetime
     updated_at: datetime
@@ -266,19 +294,6 @@ class InstallationEngineerSerialSubmitRequest(BaseModel):
     status: str | None = None
     site_remarks: str | None = None
     serials: list[InstallationEngineerSerialLine]
-
-
-class InstallationEngineerSerialOut(BaseModel):
-    id: int
-    line_no: int
-    serial_no: str
-    serial_no_2: str | None = None
-    observation: str | None = None
-    unit_status: str | None = None
-    verification_status: str
-    admin_remark: str | None = None
-    verified_at: datetime | None = None
-    submitted_at: datetime | None = None
 
 
 class InstallationEngineerSerialVerifyLine(BaseModel):

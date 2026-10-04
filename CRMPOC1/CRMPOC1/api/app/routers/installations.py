@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.deps import get_current_user
-from app.models.installation import InstallationRequest
+from app.models.installation import InstallationEngineerSerial, InstallationRequest
 from app.models.complaint import Complaint
 from app.models.order import Order, OrderItem
 from app.models.payment import PaymentTransaction
@@ -20,6 +20,7 @@ from app.schemas.installation import (
     BulkAssignRequest,
     BulkCancelRequest,
     InstallationEngineerAssignmentOption,
+    InstallationEngineerSerialOut,
     InstallationCreate,
     InstallationBulkUpdateRequest,
     InstallationListItem,
@@ -28,6 +29,8 @@ from app.schemas.installation import (
     InstallationPaymentHistoryGroupItem,
     InstallationPaymentHistoryResponse,
     InstallationPaymentHistoryRequestItem,
+    InstallationServiceUserAssignIn,
+    InstallationServiceUserReturnIn,
     InstallationStatusUpdate,
     AdminInstallationPaymentUpdate,
     PaymentApprovalLogOut,
@@ -35,6 +38,11 @@ from app.schemas.installation import (
 from app.services.engineer_assignment import get_engineer_assignment_options
 from app.services.file_service import read_upload_bytes, save_upload, to_public_upload_path
 from app.services.role_access import is_operations_admin, is_system_admin
+from app.services.service_access import (
+    SERVICE_DESK_ROLES,
+    can_assign_service_desk_user,
+    is_service_desk_user,
+)
 from app.services.installation_workflow import (
     callcenter_can_assign_engineer,
     document_upload_url,
@@ -70,7 +78,7 @@ STATUSES = [
     "Pending", "Document Requested", "Admin Review Document", "Order Verified",
     "Submitted", "Assigned", "In Progress", "Serial Pending Verification",
     "Completion Pending Approval", "Installation Completed", "Payment Pending", "Completed", "Settlement Pending", "Settlement Approved",
-    "Returned", "Rejected",
+    "Service Team Review", "Returned", "Rejected",
 ]
 
 PAYMENT_TYPES = {"Cash", "UPI"}
@@ -168,6 +176,10 @@ def _list_row(
     if inst.assigned_engineer:
         u = db.get(User, inst.assigned_engineer)
         engineer_name = u.name if u else None
+    service_user_name = None
+    if inst.assigned_service_user_id:
+        u = db.get(User, inst.assigned_service_user_id)
+        service_user_name = u.name if u else None
     approved_by_name = None
     if inst.settlement_approved_by:
         u = db.get(User, inst.settlement_approved_by)
@@ -203,7 +215,10 @@ def _list_row(
         installation_date=inst.installation_date,
         assigned_engineer=inst.assigned_engineer,
         assigned_engineer_name=engineer_name,
+        assigned_service_user_id=inst.assigned_service_user_id,
+        assigned_service_user_name=service_user_name,
         settlement_approved_by_name=approved_by_name,
+        admin_approval_remark=inst.admin_approval_remark,
         payment_amount_requested=float(inst.payment_amount_requested) if inst.payment_amount_requested is not None else None,
         payment_type_requested=inst.payment_type_requested,
         payment_qr_code_path=_payment_qr_view_url(inst),
@@ -219,6 +234,10 @@ def _hydrate(db: Session, inst: InstallationRequest) -> dict:
     if inst.assigned_engineer:
         u = db.get(User, inst.assigned_engineer)
         engineer_name = u.name if u else None
+    service_user_name = None
+    if inst.assigned_service_user_id:
+        u = db.get(User, inst.assigned_service_user_id)
+        service_user_name = u.name if u else None
     approved_by_name = None
     if inst.settlement_approved_by:
         u = db.get(User, inst.settlement_approved_by)
@@ -266,7 +285,7 @@ def _hydrate(db: Session, inst: InstallationRequest) -> dict:
             "id", "source", "customer_name", "contact_number", "customer_email", "address",
             "order_id", "order_item_id", "product_name",
             "serial_no", "serial_no_2",
-            "request_date", "assigned_engineer", "status", "installation_date",
+            "request_date", "assigned_engineer", "assigned_service_user_id", "status", "installation_date",
             "work_report", "work_report_file_path", "settlement_approved_by",
             "payment_type_requested", "payment_qr_code_path", "payment_qr_code_filename", "payment_proof_file_path", "payment_requested_at",
             "payment_type_paid", "payment_recorded_at", "payment_recorded_by",
@@ -288,9 +307,29 @@ def _hydrate(db: Session, inst: InstallationRequest) -> dict:
         "payment_qr_code_path": _payment_qr_view_url(inst),
         "payment_qr_code_filename": inst.payment_qr_code_filename,
         "payment_proof_file_path": to_public_upload_path(inst.payment_proof_file_path),
+        "engineer_serials": [
+            InstallationEngineerSerialOut(
+                id=row.id,
+                line_no=row.line_no,
+                serial_no=row.serial_no,
+                serial_no_2=row.serial_no_2,
+                observation=row.observation,
+                unit_status=row.unit_status,
+                verification_status=row.verification_status,
+                admin_remark=row.admin_remark,
+                verified_at=row.verified_at,
+                submitted_at=row.submitted_at,
+            )
+            for row in db.scalars(
+                select(InstallationEngineerSerial)
+                .where(InstallationEngineerSerial.installation_request_id == inst.id)
+                .order_by(InstallationEngineerSerial.line_no, InstallationEngineerSerial.id)
+            ).all()
+        ],
         "order_no": order_no,
         "vendor_name": vendor_name,
         "assigned_engineer_name": engineer_name,
+        "assigned_service_user_name": service_user_name,
         "settlement_approved_by_name": approved_by_name,
         "payment_recorded_by_name": payment_recorded_by_name,
         "payment_approval_history": [
@@ -349,7 +388,7 @@ def _apply_payment_transition(
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Payment Amount cannot be negative")
         if normalized_payment_type is None:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Payment Type is required when status is Completed")
-        if normalized_payment_type == "UPI" and not payment_qr_code_blob and not inst.payment_qr_code_blob and not inst.payment_qr_code_path:
+        if normalized_payment_type == "UPI" and not payment_qr_code_blob:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "QR Code is required when payment type is UPI")
 
         inst.payment_amount_requested = requested_amount
@@ -377,8 +416,6 @@ def _apply_payment_transition(
         effective_type = normalized_payment_type or inst.payment_type_requested
         if effective_type is None:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Payment Type is required to complete payment")
-        if effective_type == "UPI" and not payment_qr_code_blob and not inst.payment_qr_code_blob and not inst.payment_qr_code_path:
-            raise HTTPException(status.HTTP_400_BAD_REQUEST, "QR Code is required when payment type is UPI")
 
         inst.payment_amount_requested = effective_amount
         inst.payment_amount_paid = effective_amount
@@ -472,6 +509,8 @@ def list_installations(
     # Engineers only ever see installation requests assigned to them.
     if user.role == "engineer":
         stmt = stmt.where(InstallationRequest.assigned_engineer == user.id)
+    elif is_service_desk_user(user):
+        stmt = stmt.where(InstallationRequest.assigned_service_user_id == user.id)
 
     if order_id is not None:
         item_ids_subq = select(OrderItem.id).where(OrderItem.order_id == order_id)
@@ -681,6 +720,25 @@ def engineer_assignment_options(
     ):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Your role cannot view engineer assignment options")
     return get_engineer_assignment_options(db)
+
+
+@router.get("/lookup/service-users")
+def installation_service_user_lookup(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    if not can_assign_service_desk_user(user):
+        return []
+    rows = db.scalars(
+        select(User)
+        .where(
+            User.deleted_at.is_(None),
+            User.is_active == True,
+            func.lower(User.role).in_(list(SERVICE_DESK_ROLES)),
+        )
+        .order_by(User.name)
+    ).all()
+    return [{"id": row.id, "name": row.name, "email": row.email, "phone": row.phone} for row in rows]
 
 
 @router.post("", response_model=InstallationOut, status_code=status.HTTP_201_CREATED)
@@ -964,7 +1022,83 @@ def _load_visible(db: Session, user: User, inst_id: int) -> InstallationRequest:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Installation request not found")
     if user.role == "engineer" and inst.assigned_engineer != user.id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Installation request not found")
+    if is_service_desk_user(user) and inst.assigned_service_user_id != user.id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Installation request not found")
     return inst
+
+
+def _require_active_installation_service_user(db: Session, service_user_id: int) -> User:
+    target = db.get(User, service_user_id)
+    if (
+        target is None
+        or target.deleted_at is not None
+        or not target.is_active
+        or (target.role or "").strip().lower() not in SERVICE_DESK_ROLES
+    ):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Selected service user is not active")
+    return target
+
+
+@router.post("/{installation_id}/assign-service-user", response_model=InstallationOut)
+def assign_installation_service_user(
+    installation_id: int,
+    body: InstallationServiceUserAssignIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    inst = _load_visible(db, user, installation_id)
+    if not can_assign_service_desk_user(user):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only Admin or Service Manager can assign service users")
+    if inst.status in {"Completed", "Settlement Approved", "Rejected"}:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Closed installation requests cannot be assigned to a service user")
+    target = _require_active_installation_service_user(db, body.service_user_id)
+    old_status = inst.status
+    previous_id = inst.assigned_service_user_id
+    inst.assigned_service_user_id = target.id
+    log_installation_action(
+        db,
+        inst,
+        action="Service User Assigned",
+        user=user,
+        old_status=old_status,
+        new_status=inst.status,
+        remarks=body.remarks,
+        metadata={
+            "service_user_id": target.id,
+            "previous_service_user_id": previous_id,
+        },
+    )
+    db.commit()
+    db.refresh(inst)
+    return InstallationOut(**_hydrate(db, inst))
+
+
+@router.post("/{installation_id}/return-to-service-manager", response_model=InstallationOut)
+def return_installation_to_service_manager(
+    installation_id: int,
+    body: InstallationServiceUserReturnIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    inst = _load_visible(db, user, installation_id)
+    if not is_service_desk_user(user):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only Service users can return requests to the manager")
+    if inst.assigned_service_user_id != user.id:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "This installation request is not assigned to you")
+    old_status = inst.status
+    inst.assigned_service_user_id = None
+    log_installation_action(
+        db,
+        inst,
+        action="Returned to Service Manager",
+        user=user,
+        old_status=old_status,
+        new_status=inst.status,
+        remarks=body.remarks,
+    )
+    db.commit()
+    db.refresh(inst)
+    return InstallationOut(**_hydrate(db, inst))
 
 
 @router.get("/{installation_id}", response_model=InstallationOut)
@@ -1049,6 +1183,18 @@ def admin_update_installation_payment_amount(
     if "payment_amount_paid" in data and data["payment_amount_paid"] is not None:
         inst.payment_recorded_at = datetime.now(timezone.utc)
         inst.payment_recorded_by = user.id
+        if inst.payment_transaction_id:
+            transaction = db.get(PaymentTransaction, inst.payment_transaction_id)
+            if transaction is not None:
+                transaction.total_amount = data["payment_amount_paid"]
+                if data.get("payment_type_paid"):
+                    transaction.payment_type = data["payment_type_paid"]
+                transaction.recorded_by_user_id = user.id
+                transaction.recorded_at = datetime.now(timezone.utc)
+    elif inst.payment_transaction_id and data.get("payment_type_paid"):
+        transaction = db.get(PaymentTransaction, inst.payment_transaction_id)
+        if transaction is not None:
+            transaction.payment_type = data["payment_type_paid"]
     db.commit()
     db.refresh(inst)
     return InstallationOut(**_hydrate(db, inst))

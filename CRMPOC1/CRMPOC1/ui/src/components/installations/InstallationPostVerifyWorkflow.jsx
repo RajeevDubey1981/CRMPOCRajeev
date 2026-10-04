@@ -214,6 +214,7 @@ export default function InstallationPostVerifyWorkflow({
     payment_type: installation.payment_type_paid || installation.payment_type_requested || "Cash",
     proof_document: null,
   });
+  const [serviceReviewRemarks, setServiceReviewRemarks] = useState("");
 
   const [submitMsg, setSubmitMsg] = useState("");
   const [completeErr, setCompleteErr] = useState("");
@@ -242,15 +243,18 @@ export default function InstallationPostVerifyWorkflow({
   const canRaisePayment = isAssignedEngineer
     && installation.status === "Installation Completed";
   const canApproveCompletion = isAdminLike && installation.status === "Completion Pending Approval";
+  const canReviewServiceObservation = isAdminLike && installation.status === "Service Team Review";
+  const engineerSerialObservations = Array.isArray(installation.engineer_serials)
+    ? installation.engineer_serials.filter((row) => row.observation || row.unit_status)
+    : [];
   const needsSecondSerialProof = installationNeedsSecondSerialProof(installation);
   const hasSubmittedCompletionProof = Boolean(installation.work_report_file_path);
   const canApprovePayment = isAdminLike && installation.status === "Payment Pending";
-  const isFinalPaymentApproval = installation.payment_approval_status === "Approved"
-    || installation.status === "Completed"
-    || isPaymentAdmin
-    || installation.payment_approval_stage === "admin"
+  const isFinalPaymentApproval = installation.payment_approval_stage === "admin"
     || installation.payment_approval_stage_label === "Admin";
-  const isUpiPaymentApproval = canApprovePayment && isPaymentAdmin && isFinalPaymentApproval && adminForm.payment_type === "UPI";
+  const isAdminFinalApproval = isPaymentAdmin && canApprovePayment;
+  const requiresPaymentProof = isAdminFinalApproval && adminForm.payment_type === "UPI";
+  const isUpiPaymentApproval = requiresPaymentProof;
   const paymentStageSummary = installation.payment_approval_status === "Pending"
     ? `Current approval: ${installation.payment_approval_stage_label || "Service Role"} (${installation.payment_approval_step || 1}/${installation.payment_approval_total_steps || 3}). Next: ${installation.payment_next_approver_role || installation.payment_approval_stage_label || "Service Role"}.`
     : installation.payment_approval_status === "Approved"
@@ -324,7 +328,7 @@ export default function InstallationPostVerifyWorkflow({
       fd.append("payment_type", adminForm.payment_type);
       if (adminForm.proof_document) fd.append("document", adminForm.proof_document);
       await installationsApi.updateStatus(installationId, fd);
-      setSubmitMsg(isFinalPaymentApproval ? "Payment approved. Installation completed." : "Payment stage approved. Forwarded to the next approver.");
+      setSubmitMsg(isAdminFinalApproval || isFinalPaymentApproval ? "Payment approved. Installation completed." : "Payment stage approved. Forwarded to the next approver.");
       if (onUpdated) await onUpdated();
     } catch (error) {
       const message = formatApiError(error, "Failed to approve payment");
@@ -377,6 +381,24 @@ export default function InstallationPostVerifyWorkflow({
     });
   }
 
+  async function reviewServiceObservation(decision) {
+    const remarks = serviceReviewRemarks.trim();
+    if (decision === "return" && !remarks) {
+      const message = "Add remarks explaining what the engineer should correct.";
+      setApprovalErr(message);
+      onError?.(message);
+      return;
+    }
+    await run(async () => {
+      const body = new FormData();
+      body.append("decision", decision);
+      if (remarks) body.append("remarks", remarks);
+      await installationsApi.reviewServiceObservation(installationId, body);
+      setServiceReviewRemarks("");
+      setSubmitMsg(decision === "approve" ? "Observation reviewed. Engineer can continue installation." : "Returned to engineer for correction.");
+    });
+  }
+
   if (!serialReady || !installationId) return null;
 
   return (
@@ -407,6 +429,81 @@ export default function InstallationPostVerifyWorkflow({
         )}
       </div>
 
+      {(installation.engineer_site_remarks || engineerSerialObservations.length > 0 || canReviewServiceObservation) && (
+        <div className="rounded-md border border-violet-200 bg-violet-50 p-4">
+          <div className="text-sm font-medium text-violet-900">Engineer observation for review</div>
+          <p className="mt-1 text-xs text-violet-800">
+            Check this before deciding whether the unit can continue or must go back to the engineer.
+          </p>
+          {installation.engineer_site_remarks && (
+            <div className="mt-3 rounded-md border border-violet-100 bg-white px-3 py-2">
+              <div className="text-xs uppercase tracking-wide text-slate-500">Overall observation</div>
+              <div className="mt-1 whitespace-pre-wrap text-sm text-slate-800">{installation.engineer_site_remarks}</div>
+            </div>
+          )}
+          {engineerSerialObservations.length > 0 && (
+            <div className="mt-3 overflow-x-auto rounded-md border border-violet-100 bg-white">
+              <table className="min-w-full divide-y divide-slate-200 text-left text-sm">
+                <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+                  <tr>
+                    <th className="px-3 py-2">Serial</th>
+                    <th className="px-3 py-2">Serial 2</th>
+                    <th className="px-3 py-2">Issue / status</th>
+                    <th className="px-3 py-2">Observation</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {engineerSerialObservations.map((row) => (
+                    <tr key={row.id}>
+                      <td className="px-3 py-2 font-mono text-xs text-slate-800">{row.serial_no || "-"}</td>
+                      <td className="px-3 py-2 font-mono text-xs text-slate-800">{row.serial_no_2 || "-"}</td>
+                      <td className="px-3 py-2 text-slate-800">{row.unit_status || "-"}</td>
+                      <td className="px-3 py-2 whitespace-pre-wrap text-slate-800">{row.observation || "-"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          {canReviewServiceObservation && (
+            <div className="mt-4">
+              <label className="text-xs uppercase tracking-wide text-slate-500">
+                Review remarks
+                <span className="ml-1 font-normal normal-case text-slate-500">(required when returning)</span>
+              </label>
+              <textarea
+                rows={3}
+                value={serviceReviewRemarks}
+                onChange={(e) => {
+                  setApprovalErr("");
+                  setServiceReviewRemarks(e.target.value);
+                }}
+                className={`${fieldClass} mt-1 bg-white`}
+                placeholder="Example: part broken, wrong serial number, or instruction for engineer."
+              />
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => reviewServiceObservation("return")}
+                  disabled={busy}
+                  className="rounded-md border border-rose-300 bg-white px-4 py-2 text-sm text-rose-700 disabled:opacity-50"
+                >
+                  Return to engineer
+                </button>
+                <button
+                  type="button"
+                  onClick={() => reviewServiceObservation("approve")}
+                  disabled={busy}
+                  className="rounded-md bg-violet-700 px-4 py-2 text-sm text-white disabled:opacity-50"
+                >
+                  Continue installation
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {(installation.status === "Returned" || installation.status === "Rejected") && isAssignedEngineer && (
         <div className="rounded-md border border-rose-200 bg-rose-50 p-4 text-sm text-rose-900">
           <div className="font-medium">Admin returned this installation for correction</div>
@@ -428,6 +525,12 @@ export default function InstallationPostVerifyWorkflow({
               Resume installation workflow
             </button>
           )}
+        </div>
+      )}
+
+      {installation.parent_installation_id && ["Assigned", "In Progress"].includes(installation.status) && (
+        <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+          This split unit is still pending completion. Submit Step 7 for this serial pair, then admin can approve it in Step 8.
         </div>
       )}
 
@@ -706,10 +809,13 @@ export default function InstallationPostVerifyWorkflow({
             {paymentForm.payment_type === "UPI" && (
               <div className="md:col-span-2 space-y-2">
                 <div>
-                  <label className="text-xs uppercase tracking-wide text-slate-500">UPI QR code</label>
+                  <label className="text-xs uppercase tracking-wide text-slate-500">
+                    UPI QR code <span className="text-rose-600">*</span>
+                  </label>
                   <input
                     type="file"
                     accept=".pdf,.jpg,.jpeg,.png"
+                    required
                     onChange={(e) => setPaymentForm((current) => ({ ...current, qr_code: e.target.files?.[0] || null }))}
                     className="mt-1 block w-full text-sm"
                     disabled={!canRaisePayment}
@@ -735,7 +841,7 @@ export default function InstallationPostVerifyWorkflow({
               if (Number(paymentForm.payment_amount) < 0) {
                 throw new Error("Payment amount cannot be negative");
               }
-              if (paymentForm.payment_type === "UPI" && !paymentForm.qr_code && !installation.payment_qr_code_path) {
+              if (paymentForm.payment_type === "UPI" && !paymentForm.qr_code) {
                 throw new Error("UPI QR code is required");
               }
               const fd = new FormData();
@@ -765,7 +871,7 @@ export default function InstallationPostVerifyWorkflow({
             : paymentStageSummary}
         >
           <p className="text-xs text-indigo-800">
-            Review the engineer payment request. Intermediate approvals forward it to the next approver; only final Admin approval completes payment.
+            Review the engineer payment request. Intermediate approvals forward it to the next approver; Admin approval completes payment.
           </p>
           {installation.status === "Payment Pending" && (
             <div className="mt-3 rounded-md border border-indigo-200 bg-white px-3 py-2 text-sm text-indigo-900">
@@ -805,7 +911,7 @@ export default function InstallationPostVerifyWorkflow({
                 {PAYMENT_TYPES.map((type) => <option key={type} value={type}>{type}</option>)}
               </select>
             </div>
-            {isPaymentAdmin && isFinalPaymentApproval && adminForm.payment_type === "UPI" && (
+            {requiresPaymentProof && (
               <div className="md:col-span-2">
                 <label className="text-xs uppercase tracking-wide text-slate-500">
                   Payment proof <span className="text-rose-600">*</span>
@@ -836,7 +942,7 @@ export default function InstallationPostVerifyWorkflow({
             onClick={approvePayment}
             className="mt-3 rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {busy ? "Approving..." : isFinalPaymentApproval ? "Approve payment" : "Approve stage"}
+            {busy ? "Approving..." : isAdminFinalApproval || isFinalPaymentApproval ? "Approve payment" : "Approve stage"}
           </button>
           {installation.status === "Completed" && isAdminLike && (
             <button

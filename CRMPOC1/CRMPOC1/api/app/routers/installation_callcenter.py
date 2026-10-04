@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, UploadFile, status
@@ -53,6 +54,7 @@ from app.services.installation_workflow import (
     sync_order_item_for_service_eligibility,
 )
 from app.services.permissions import can_act_on
+from app.services.payment_approval_workflow import approval_stage_payload, first_payment_stage, notify_payment_stage
 
 router = APIRouter(tags=["installations"])
 
@@ -82,6 +84,19 @@ def _list_engineer_serials(db: Session, installation_id: int) -> list[Installati
         .order_by(InstallationEngineerSerial.line_no, InstallationEngineerSerial.id)
     ).all()
     return [_serial_out(row) for row in rows]
+
+
+def _split_installation_group(db: Session, inst: InstallationRequest) -> list[InstallationRequest]:
+    parent_id = inst.parent_installation_id or inst.id
+    rows = db.scalars(
+        select(InstallationRequest).where(
+            or_(
+                InstallationRequest.id == parent_id,
+                InstallationRequest.parent_installation_id == parent_id,
+            )
+        )
+    ).all()
+    return sorted(rows, key=lambda row: (row.parent_installation_id is not None, row.id))
 
 
 def _is_callcenter_user(user: User) -> bool:
@@ -671,6 +686,65 @@ def _ensure_assigned_engineer(inst: InstallationRequest, user: User) -> None:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "This installation is not assigned to you")
 
 
+def _prepare_engineer_payment_request(
+    db: Session,
+    inst: InstallationRequest,
+    *,
+    payment_amount: float,
+    payment_type: str,
+    work_report: str | None,
+    qr_blob: bytes | None,
+    qr_filename: str | None,
+    qr_content_type: str | None,
+    qr_size_bytes: int | None,
+    user: User,
+) -> None:
+    old_status = inst.status
+    inst.payment_amount_requested = float(payment_amount)
+    inst.payment_type_requested = payment_type
+    inst.payment_requested_at = now_utc()
+    if work_report:
+        inst.work_report = work_report.strip()
+    if qr_blob:
+        inst.payment_qr_code_blob = qr_blob
+        inst.payment_qr_code_filename = qr_filename
+        inst.payment_qr_code_content_type = qr_content_type
+        inst.payment_qr_code_size_bytes = qr_size_bytes
+        inst.payment_qr_code_path = None
+    payload = approval_stage_payload(first_payment_stage().key)
+    inst.payment_approval_status = "Pending"
+    inst.payment_approval_stage = payload["payment_approval_stage"]
+    inst.payment_approval_stage_label = payload["payment_approval_stage_label"]
+    inst.payment_approval_step = payload["payment_approval_step"]
+    inst.payment_approval_total_steps = payload["payment_approval_total_steps"]
+    inst.payment_next_approver_role = payload["payment_next_approver_role"]
+    inst.status = "Payment Pending"
+
+    log_installation_action(
+        db,
+        inst,
+        action="Payment Requested",
+        user=user,
+        old_status=old_status,
+        new_status=inst.status,
+        remarks=work_report,
+        metadata={
+            "payment_amount": payment_amount,
+            "payment_type": payment_type,
+        },
+    )
+    notify_payment_stage(
+        db,
+        module="installations",
+        entity_id=inst.id,
+        title=f"Installation {inst.id}",
+        href=f"/installations/{inst.id}",
+        entity_status=inst.status,
+        stage_key=inst.payment_approval_stage,
+        occurred_at=inst.payment_requested_at,
+    )
+
+
 @router.post("/{installation_id}/complete-installation", response_model=InstallationOut)
 async def complete_installation(
     installation_id: int,
@@ -830,7 +904,7 @@ async def raise_installation_payment_request(
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Payment type must be Cash or UPI")
     if payment_amount < 0:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Payment amount cannot be negative")
-    if normalized_payment_type == "UPI" and (qr_code is None or not qr_code.filename) and not inst.payment_qr_code_path and not inst.payment_qr_code_blob:
+    if normalized_payment_type == "UPI" and (qr_code is None or not qr_code.filename):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "QR Code is required when payment type is UPI")
 
     qr_blob = None
@@ -840,32 +914,212 @@ async def raise_installation_payment_request(
     if qr_code is not None and qr_code.filename:
         qr_blob, qr_filename, qr_content_type, qr_size_bytes = await read_upload_bytes(qr_code)
 
+    _prepare_engineer_payment_request(
+        db,
+        inst,
+        payment_amount=payment_amount,
+        payment_type=normalized_payment_type,
+        work_report=work_report,
+        qr_blob=qr_blob,
+        qr_filename=qr_filename,
+        qr_content_type=qr_content_type,
+        qr_size_bytes=qr_size_bytes,
+        user=user,
+    )
+    db.commit()
+    db.refresh(inst)
+    return InstallationOut(**_hydrate_callcenter(db, inst))
+
+
+@router.post("/bulk-payment-request", response_model=list[InstallationOut])
+async def raise_bulk_installation_payment_request(
+    installation_ids: str = Form(...),
+    payment_amount: float | None = Form(None),
+    payment_amounts_json: str | None = Form(None),
+    payment_type: str = Form(...),
+    work_report: str | None = Form(None),
+    qr_code: UploadFile | None = File(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    from app.routers.installations import PAYMENT_TYPES, _load_visible
+
+    try:
+        parsed_ids = [int(raw.strip()) for raw in installation_ids.split(",") if raw.strip()]
+    except ValueError:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid installation id list")
+    if not parsed_ids:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "No installation requests selected")
+
+    normalized_payment_type = (payment_type or "").strip()
+    if normalized_payment_type not in PAYMENT_TYPES:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Payment type must be Cash or UPI")
+
+    row_amounts: dict[int, float] = {}
+    if payment_amounts_json:
+        try:
+            raw_amounts = json.loads(payment_amounts_json)
+            row_amounts = {int(key): float(value) for key, value in raw_amounts.items()}
+        except (TypeError, ValueError, json.JSONDecodeError):
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid per-installation payment amounts")
+
+    rows = [_load_visible(db, user, installation_id) for installation_id in parsed_ids]
+    for inst in rows:
+        if not supports_engineer_installation_workflow(inst):
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Installation #{inst.id} is not assigned workflow")
+        if not inst.serial_verified_at:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Installation #{inst.id} serial numbers are not verified")
+        _ensure_assigned_engineer(inst, user)
+        if inst.status != "Installation Completed":
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Installation #{inst.id} is not ready for payment")
+
+    if row_amounts:
+        missing_amounts = [inst.id for inst in rows if inst.id not in row_amounts]
+        if missing_amounts:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Missing payment amount for installation id(s): {missing_amounts}")
+        if any(amount < 0 for amount in row_amounts.values()):
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Payment amount cannot be negative")
+    else:
+        if payment_amount is None:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Payment amount is required")
+        if payment_amount < 0:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Payment amount cannot be negative")
+        row_amounts = {inst.id: float(payment_amount) for inst in rows}
+
+    if normalized_payment_type == "UPI" and (qr_code is None or not qr_code.filename):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "QR Code is required when payment type is UPI")
+
+    qr_blob = None
+    qr_filename = None
+    qr_content_type = None
+    qr_size_bytes = None
+    if qr_code is not None and qr_code.filename:
+        qr_blob, qr_filename, qr_content_type, qr_size_bytes = await read_upload_bytes(qr_code)
+
+    for inst in rows:
+        _prepare_engineer_payment_request(
+            db,
+            inst,
+            payment_amount=row_amounts[inst.id],
+            payment_type=normalized_payment_type,
+            work_report=work_report,
+            qr_blob=qr_blob,
+            qr_filename=qr_filename,
+            qr_content_type=qr_content_type,
+            qr_size_bytes=qr_size_bytes,
+            user=user,
+        )
+
+    db.commit()
+    for inst in rows:
+        db.refresh(inst)
+    return [InstallationOut(**_hydrate_callcenter(db, inst)) for inst in rows]
+
+
+@router.post("/{installation_id}/send-to-service-review", response_model=InstallationOut)
+def send_installation_to_service_review(
+    installation_id: int,
+    observation: str = Form(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    from app.routers.installations import _load_visible
+
+    inst = _load_visible(db, user, installation_id)
+    if not supports_engineer_installation_workflow(inst):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "This workflow applies only to assigned installation requests")
+    _ensure_assigned_engineer(inst, user)
+    remark = (observation or "").strip()
+    if not remark:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Observation is required")
+
     old_status = inst.status
-    inst.payment_amount_requested = float(payment_amount)
-    inst.payment_type_requested = normalized_payment_type
-    inst.payment_requested_at = now_utc()
-    if work_report:
-        inst.work_report = work_report.strip()
-    if qr_blob:
-        inst.payment_qr_code_blob = qr_blob
-        inst.payment_qr_code_filename = qr_filename
-        inst.payment_qr_code_content_type = qr_content_type
-        inst.payment_qr_code_size_bytes = qr_size_bytes
-        inst.payment_qr_code_path = None
-    inst.status = "Payment Pending"
+    inst.engineer_site_remarks = remark
+    inst.status = "Service Team Review"
+    log_installation_action(
+        db,
+        inst,
+        action="Sent to Service Role",
+        user=user,
+        old_status=old_status,
+        new_status=inst.status,
+        remarks=remark,
+        metadata={
+            "serial_no": inst.serial_no,
+            "serial_no_2": inst.serial_no_2,
+        },
+    )
+    db.commit()
+    db.refresh(inst)
+    return InstallationOut(**_hydrate_callcenter(db, inst))
+
+
+@router.post("/{installation_id}/service-review", response_model=InstallationOut)
+def review_installation_service_observation(
+    installation_id: int,
+    decision: str = Form(...),
+    remarks: str | None = Form(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    from app.routers.installations import _load_visible
+
+    if not is_operations_admin(user):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only Admin or Service role can review engineer observations")
+    inst = _load_visible(db, user, installation_id)
+    if not supports_engineer_installation_workflow(inst):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "This workflow applies only to assigned installation requests")
+    if inst.status != "Service Team Review":
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Installation is not waiting for service review")
+
+    normalized = (decision or "").strip().lower()
+    note = (remarks or "").strip()
+    old_status = inst.status
+    if normalized == "approve":
+        group_rows = _split_installation_group(db, inst)
+        rows_to_advance = [
+            row for row in group_rows
+            if row.status in {"Assigned", "Service Team Review"} and row.assigned_engineer == inst.assigned_engineer
+        ]
+        if inst not in rows_to_advance:
+            rows_to_advance.append(inst)
+        for row in rows_to_advance:
+            row_old_status = row.status
+            row.status = "In Progress"
+            if row.id == inst.id:
+                continue
+            log_installation_action(
+                db,
+                row,
+                action="Service Observation Approved",
+                user=user,
+                old_status=row_old_status,
+                new_status=row.status,
+                remarks=note,
+                metadata={
+                    "approved_with_installation_id": inst.id,
+                    "engineer_observation": inst.engineer_site_remarks,
+                },
+            )
+        action = "Service Observation Approved"
+    elif normalized in {"return", "reject"}:
+        if not note:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Remarks are required when returning to engineer")
+        inst.admin_approval_remark = note
+        inst.status = return_installation_to_engineer_for_rework(inst, reject_stage="completion")
+        action = "Service Observation Returned"
+    else:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Decision must be approve or return")
 
     log_installation_action(
         db,
         inst,
-        action="Payment Requested",
+        action=action,
         user=user,
         old_status=old_status,
         new_status=inst.status,
-        remarks=work_report,
-        metadata={
-            "payment_amount": payment_amount,
-            "payment_type": normalized_payment_type,
-        },
+        remarks=note,
+        metadata={"engineer_observation": inst.engineer_site_remarks},
     )
     db.commit()
     db.refresh(inst)

@@ -1812,18 +1812,6 @@ def submit_serials_for_assignment(
     serial_count = _resolve_serial_count(db, reference_item.item_id, reference_item.item_code)
     chunk_size = 2 if serial_count >= 2 else 1
 
-    if serial_count >= 2:
-        # Dual-serial line items are one physical unit; selecting one column submits both serials.
-        selection_keys = {(item_id, slot) for item_id, slot in parsed}
-        for item_id, slot in list(parsed):
-            item = items_by_id[item_id]
-            if not (item.serial_no and item.serial_no_2):
-                continue
-            other_slot = "serial2" if slot == "serial1" else "serial1"
-            if (item_id, other_slot) not in selection_keys:
-                selection_keys.add((item_id, other_slot))
-                parsed.append((item_id, other_slot))
-
     # Resolve to (item, slot, serial_value) in selection order, skipping already-locked rows.
     resolved: list[tuple[OrderItem, str, str]] = []
     skipped_already_submitted: list[str] = []
@@ -1848,6 +1836,20 @@ def submit_serials_for_assignment(
             "consumed_order_item_ids": [],
             "skipped_already_submitted": skipped_already_submitted,
         }
+
+    if serial_count >= 2:
+        selected_chunks = _chunk_by_size(resolved, chunk_size)
+        incomplete_pair = any(len(chunk) != chunk_size for chunk in selected_chunks)
+        mismatched_pair = any(
+            {slot for _, slot, _ in chunk} != {"serial1", "serial2"}
+            for chunk in selected_chunks
+            if len(chunk) == chunk_size
+        )
+        if incomplete_pair or mismatched_pair:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                "Select one Serial 1 and one Serial 2 for each installation unit",
+            )
 
     global_conflicts = _find_global_serial_conflicts(
         db,

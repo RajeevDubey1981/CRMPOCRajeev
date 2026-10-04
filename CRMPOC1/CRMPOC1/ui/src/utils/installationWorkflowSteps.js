@@ -84,6 +84,7 @@ const ENGINEER_BULK_WORKFLOW_STATUSES = new Set([
   "Completion Pending Approval",
   "Installation Completed",
   "Payment Pending",
+  "Service Team Review",
 ]);
 
 const ADMIN_BULK_WORKFLOW_EXTRA_STATUSES = new Set(["Submitted"]);
@@ -116,6 +117,8 @@ export function adminBulkReviewActionLabel(status) {
       return "Approve completion (Step 8)";
     case "Payment Pending":
       return "Approve payment (Step 10)";
+    case "Service Team Review":
+      return "Service Role review";
     case "Serial Pending Verification":
       return "Verify serials (Step 6)";
     case "Installation Completed":
