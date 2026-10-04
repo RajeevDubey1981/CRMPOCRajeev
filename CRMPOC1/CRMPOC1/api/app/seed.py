@@ -141,7 +141,7 @@ DEFAULT_ROLES = [
             "complaints": ALL, "installations": ALL, "orders": ALL, "vendors": ALL,
             "items": ALL, "couriers": ALL, "calls": ALL, "claims": ALL,
             "users": ALL, "roles": ALL, "dashboard": ALL, "services": ALL,
-            "store_receiving": ALL, "store_approval": ALL, "store_stock": ALL,
+            "store_receiving": ALL, "store_approval": ALL, "store_stock": ALL, "store_dispatch": ALL,
         },
     },
     {
@@ -155,7 +155,7 @@ DEFAULT_ROLES = [
             "roles": NONE,
             "payments": (True, False, False, False, False),
             "email_logs": (True, False, False, False, False),
-            "store_receiving": ALL, "store_approval": ALL, "store_stock": ALL,
+            "store_receiving": ALL, "store_approval": ALL, "store_stock": ALL, "store_dispatch": ALL,
         },
     },
     {
@@ -168,6 +168,7 @@ DEFAULT_ROLES = [
             "store_receiving": (True, True, True, False, False),
             "store_approval": NONE,
             "store_stock": RO_VIEW,
+            "store_dispatch": (True, True, False, False, False),
         },
     },
     {
@@ -180,6 +181,7 @@ DEFAULT_ROLES = [
             "store_receiving": (True, True, True, False, True),
             "store_approval": (True, False, True, False, False),
             "store_stock": (True, False, False, False, True),
+            "store_dispatch": (True, True, True, False, True),
         },
     },
     {

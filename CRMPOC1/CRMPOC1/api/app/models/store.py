@@ -71,6 +71,27 @@ class StoreStock(Base, TimestampMixin):
     unit_cost: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
     bin_location: Mapped[str | None] = mapped_column(String(50), nullable=True)
     received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
+    # set while the unit is held for, or has gone out against, one order line
+    order_item_id: Mapped[int | None] = mapped_column(ForeignKey("order_items.id"), nullable=True, index=True)
+    reserved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    issued_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    dispatch_id: Mapped[int | None] = mapped_column(ForeignKey("store_dispatches.id"), nullable=True, index=True)
+
+
+class StoreDispatch(Base, TimestampMixin):
+    """One dispatch of an order out of the store: the bill it went against and the transport details."""
+
+    __tablename__ = "store_dispatches"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    dispatch_no: Mapped[str] = mapped_column(String(30), unique=True, nullable=False, index=True)
+    order_id: Mapped[int] = mapped_column(ForeignKey("orders.id"), nullable=False, index=True)
+    bill_no: Mapped[str] = mapped_column(String(100), nullable=False)
+    courier_id: Mapped[int | None] = mapped_column(ForeignKey("couriers.id"), nullable=True)
+    lrn_no: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    remarks: Mapped[str | None] = mapped_column(Text, nullable=True)
+    dispatched_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    dispatched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 
 class StoreLedger(Base):

@@ -7,11 +7,14 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.database import get_db
 from app.deps import get_current_user
+from app.models.courier import Courier
 from app.models.item_master import ItemMaster
+from app.models.order import Order
 from app.models.store import (
     CONDITIONS,
     GRN_SOURCES,
     STOCK_TYPES,
+    StoreDispatch,
     StoreGrn,
     StoreGrnLine,
     StoreLedger,
@@ -19,6 +22,9 @@ from app.models.store import (
 )
 from app.models.user import User
 from app.schemas.store import (
+    CourierLookup,
+    DispatchIn,
+    FreeStock,
     GrnIn,
     GrnLineOut,
     GrnListItem,
@@ -26,15 +32,20 @@ from app.schemas.store import (
     GrnOut,
     LedgerResponse,
     LedgerRow,
+    OrderUnitOut,
     RejectIn,
+    ReserveOut,
     SerialCheckIn,
     SerialCheckOut,
     StockSummaryItem,
     StockUnit,
     StockUnitsResponse,
     StoreItemLookup,
+    StoreOrderListItem,
+    StoreOrderListResponse,
+    StoreOrderOut,
 )
-from app.services import store_service
+from app.services import store_dispatch_service, store_service
 from app.services.permissions import can_act_on
 
 router = APIRouter(prefix="/api/store", tags=["store"])
@@ -131,6 +142,8 @@ def meta(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
         "can_receive": can_act_on(db, user, "store_receiving", "can_create", None),
         "can_approve": can_act_on(db, user, "store_approval", "can_edit", None),
         "can_view_stock": can_act_on(db, user, "store_stock", "can_view", None),
+        "can_view_dispatch": can_act_on(db, user, "store_dispatch", "can_view", None),
+        "can_dispatch": can_act_on(db, user, "store_dispatch", "can_create", None),
     }
 
 
@@ -367,3 +380,159 @@ def ledger(
         ],
         total=total,
     )
+
+
+# ---------------------------------------------------------------------------
+# Orders shipped from our own store: reserve, bill gate, dispatch
+# ---------------------------------------------------------------------------
+
+def _load_store_order(db: Session, order_id: int) -> Order:
+    order = db.get(Order, order_id)
+    if order is None or order.deleted_at is not None or order.fulfilment != "Store":
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Store order not found")
+    return order
+
+
+def _store_order_out(db: Session, order: Order, user: User) -> StoreOrderOut:
+    lines = store_dispatch_service.order_lines(db, order)
+    units = store_dispatch_service.held_units(db, order)
+    wanted = {ln.item_id for ln in lines if ln.item_id}
+    items = {i.id: i for i in db.scalars(select(ItemMaster).where(ItemMaster.id.in_(wanted))).all()} if wanted else {}
+    out_lines = []
+    needed: dict[int, int] = {}
+    for ln in lines:
+        u = units.get(ln.id)
+        item = items.get(ln.item_id)
+        if u is None and ln.item_id:
+            needed[ln.item_id] = needed.get(ln.item_id, 0) + 1
+        out_lines.append(
+            OrderUnitOut(
+                order_item_id=ln.id,
+                item_id=ln.item_id,
+                item_code=item.item_code if item else ln.item_code,
+                item_name=item.item_name if item else None,
+                serial_count=int(item.serial_count or 0) if item else 1,
+                stock_id=u.id if u else None,
+                serial_no=(u.serial_no if u else ln.serial_no),
+                serial_no_2=(u.serial_no_2 if u else ln.serial_no_2),
+                unit_status=u.status if u else None,
+                received_at=u.received_at if u else None,
+            )
+        )
+    free = store_dispatch_service.free_stock_by_item(db)
+    stock_check = [
+        FreeStock(item_id=iid, item_name=items[iid].item_name if iid in items else None, needed=n, available=free.get(iid, 0))
+        for iid, n in needed.items()
+    ]
+    stage = store_dispatch_service.order_stage(db, order)
+    dsp = db.scalar(select(StoreDispatch).where(StoreDispatch.order_id == order.id).order_by(StoreDispatch.id.desc()))
+    courier = db.get(Courier, order.courier_id) if order.courier_id else None
+    pending = order.status == "Pending"
+    return StoreOrderOut(
+        id=order.id,
+        order_no=order.order_no,
+        order_date=order.order_date,
+        customer_name=order.customer_name,
+        customer_city=order.customer_city,
+        customer_address=order.customer_address,
+        oem_bill_no=order.oem_bill_no,
+        status=order.status,
+        stage=stage,
+        courier_name=courier.courier_name if courier else None,
+        lrn_no=order.lrn_no,
+        dispatch_no=dsp.dispatch_no if dsp else None,
+        dispatched_at=dsp.dispatched_at if dsp else None,
+        lines=out_lines,
+        stock_check=stock_check,
+        can_reserve=pending and stage == "Needs stock" and can_act_on(db, user, "store_dispatch", "can_create", None),
+        can_release=pending and bool(units) and can_act_on(db, user, "store_dispatch", "can_edit", None),
+        can_dispatch=pending and stage == "Ready to dispatch" and can_act_on(db, user, "store_dispatch", "can_create", None),
+    )
+
+
+@router.get("/lookup/couriers", response_model=list[CourierLookup])
+def lookup_couriers(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    _need(db, user, "store_dispatch", "can_view", "Your role cannot use store dispatch")
+    rows = db.scalars(select(Courier).where(Courier.deleted_at.is_(None)).order_by(Courier.courier_name)).all()
+    return [CourierLookup(id=c.id, courier_name=c.courier_name) for c in rows]
+
+
+@router.get("/orders", response_model=StoreOrderListResponse)
+def list_store_orders(
+    stage: str | None = Query(None),
+    search: str | None = Query(None),
+    page: int = Query(1, ge=1),
+    per_page: int = Query(20, ge=1, le=100),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _need(db, user, "store_dispatch", "can_view", "Your role cannot use store dispatch")
+    stmt = select(Order).where(Order.fulfilment == "Store", Order.deleted_at.is_(None), Order.status != "Cancelled")
+    term = (search or "").strip()
+    if term:
+        like = f"%{term}%"
+        stmt = stmt.where(or_(Order.order_no.ilike(like), Order.customer_name.ilike(like), Order.oem_bill_no.ilike(like), Order.customer_city.ilike(like)))
+    counts = {s: 0 for s in store_dispatch_service.STAGES}
+    rows = []
+    for o in db.scalars(stmt.order_by(Order.id.desc())).all():
+        st = store_dispatch_service.order_stage(db, o)
+        counts[st] += 1
+        if not stage or st == stage:
+            rows.append((o, st))
+    total = len(rows)
+    page_rows = rows[(page - 1) * per_page : page * per_page]
+    items = []
+    for o, st in page_rows:
+        lines = store_dispatch_service.order_lines(db, o)
+        units = store_dispatch_service.held_units(db, o)
+        items.append(
+            StoreOrderListItem(
+                id=o.id, order_no=o.order_no, order_date=o.order_date, customer_name=o.customer_name,
+                customer_city=o.customer_city, oem_bill_no=o.oem_bill_no, status=o.status, stage=st,
+                units=len(lines), held=len(units),
+            )
+        )
+    return StoreOrderListResponse(items=items, total=total, counts=counts)
+
+
+@router.get("/orders/{order_id}", response_model=StoreOrderOut)
+def get_store_order(order_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    _need(db, user, "store_dispatch", "can_view", "Your role cannot use store dispatch")
+    return _store_order_out(db, _load_store_order(db, order_id), user)
+
+
+@router.post("/orders/{order_id}/reserve", response_model=ReserveOut)
+def reserve_store_order(order_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    _need(db, user, "store_dispatch", "can_create", "Your role cannot reserve stock")
+    order = _load_store_order(db, order_id)
+    result = store_dispatch_service.reserve_order(db, order, user)
+    db.commit()
+    db.refresh(order)
+    return ReserveOut(reserved=result["reserved"], short=result["short"], order=_store_order_out(db, order, user))
+
+
+@router.post("/orders/{order_id}/release", response_model=StoreOrderOut)
+def release_store_order(order_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    _need(db, user, "store_dispatch", "can_edit", "Only a store manager can release reserved stock")
+    order = _load_store_order(db, order_id)
+    if order.status != "Pending":
+        raise HTTPException(status.HTTP_409_CONFLICT, "Stock cannot be released once the order has left the store")
+    store_dispatch_service.release_order(db, order, user)
+    db.commit()
+    db.refresh(order)
+    return _store_order_out(db, order, user)
+
+
+@router.post("/orders/{order_id}/dispatch", response_model=StoreOrderOut)
+def dispatch_store_order(order_id: int, body: DispatchIn, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    _need(db, user, "store_dispatch", "can_create", "Your role cannot dispatch orders")
+    order = _load_store_order(db, order_id)
+    store_dispatch_service.dispatch_order(
+        db, order, user, scans=body.scans, courier_id=body.courier_id, lrn_no=body.lrn_no, remarks=body.remarks
+    )
+    from app.services.pending_action_sync import sync_order_pending_actions
+
+    sync_order_pending_actions(db, order)
+    db.commit()
+    db.refresh(order)
+    return _store_order_out(db, order, user)

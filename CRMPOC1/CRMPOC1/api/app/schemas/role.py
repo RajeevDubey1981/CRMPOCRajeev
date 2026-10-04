@@ -22,6 +22,7 @@ MODULES = (
     "store_receiving",  # Store: receive goods with a GRN (create = scan and submit)
     "store_approval",   # Store: approve and post a GRN (edit = approve)
     "store_stock",      # Store: stock on hand and the ledger
+    "store_dispatch",   # Store: reserve stock for orders and dispatch with the bill (edit = release a reservation)
 )
 
 # Modules with sub-module scoping. A sub_module=None permission row means

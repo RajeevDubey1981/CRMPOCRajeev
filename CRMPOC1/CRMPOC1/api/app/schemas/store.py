@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Literal
 
@@ -157,3 +157,91 @@ class StoreItemLookup(BaseModel):
     item_code: str
     item_name: str
     serial_count: int
+
+
+class DispatchIn(BaseModel):
+    scans: list[str] = Field(default_factory=list)
+    courier_id: int | None = None
+    lrn_no: str | None = Field(default=None, max_length=100)
+    remarks: str | None = None
+
+
+class CourierLookup(BaseModel):
+    id: int
+    courier_name: str
+
+
+class ShortLine(BaseModel):
+    item_id: int
+    item_code: str | None = None
+    item_name: str | None = None
+    missing: int
+
+
+class ReserveOut(BaseModel):
+    reserved: int
+    short: list[ShortLine] = Field(default_factory=list)
+    order: "StoreOrderOut"
+
+
+class OrderUnitOut(BaseModel):
+    order_item_id: int
+    item_id: int | None = None
+    item_code: str | None = None
+    item_name: str | None = None
+    serial_count: int = 1
+    stock_id: int | None = None
+    serial_no: str | None = None
+    serial_no_2: str | None = None
+    unit_status: str | None = None
+    received_at: datetime | None = None
+
+
+class FreeStock(BaseModel):
+    item_id: int
+    item_name: str | None = None
+    needed: int
+    available: int
+
+
+class StoreOrderListItem(BaseModel):
+    id: int
+    order_no: str | None = None
+    order_date: date | None = None
+    customer_name: str | None = None
+    customer_city: str | None = None
+    oem_bill_no: str | None = None
+    status: str
+    stage: str
+    units: int
+    held: int
+
+
+class StoreOrderListResponse(BaseModel):
+    items: list[StoreOrderListItem]
+    total: int
+    counts: dict[str, int]
+
+
+class StoreOrderOut(BaseModel):
+    id: int
+    order_no: str | None = None
+    order_date: date | None = None
+    customer_name: str | None = None
+    customer_city: str | None = None
+    customer_address: str | None = None
+    oem_bill_no: str | None = None
+    status: str
+    stage: str
+    courier_name: str | None = None
+    lrn_no: str | None = None
+    dispatch_no: str | None = None
+    dispatched_at: datetime | None = None
+    lines: list[OrderUnitOut]
+    stock_check: list[FreeStock]
+    can_reserve: bool = False
+    can_release: bool = False
+    can_dispatch: bool = False
+
+
+ReserveOut.model_rebuild()
