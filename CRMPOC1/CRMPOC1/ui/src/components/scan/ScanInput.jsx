@@ -1,6 +1,7 @@
 import { useState } from "react";
 
 import ScanDialog from "./ScanDialog.jsx";
+import { unlockAudio } from "./scanFeedback.js";
 
 export function BarcodeIcon({ className = "h-5 w-5" }) {
   return (
@@ -18,7 +19,7 @@ export function ScanButton({ onScan, disabled = false, className = "", title = "
     <>
       <button
         type="button"
-        onClick={() => setOpen(true)}
+        onClick={() => { unlockAudio(); setOpen(true); }}
         disabled={disabled}
         title={title}
         aria-label="Scan serial number"

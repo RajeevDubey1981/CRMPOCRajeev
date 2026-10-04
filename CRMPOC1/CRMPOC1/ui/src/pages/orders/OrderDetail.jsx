@@ -4,6 +4,7 @@ import { Link, useParams, useSearchParams } from "react-router-dom";
 import Modal from "../../components/Modal.jsx";
 import ScanSerialsModal from "../../components/orders/ScanSerialsModal.jsx";
 import { BarcodeIcon } from "../../components/scan/ScanInput.jsx";
+import { unlockAudio } from "../../components/scan/scanFeedback.js";
 import VendorOrderLineItemsEditor, {
   collapseOrderItemsToLineItems,
   serializeVendorLineItems,
@@ -1199,7 +1200,7 @@ export default function OrderDetail() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => setScanScope({ itemCode: "", label: "all items", rows: order.items || [] })}
+                  onClick={() => { unlockAudio(); setScanScope({ itemCode: "", label: "all items", rows: order.items || [] }); }}
                   disabled={csvBusy}
                   className="inline-flex items-center gap-2 rounded-md border border-brand-300 bg-brand-50 px-4 py-2 text-sm font-medium text-brand-800 hover:bg-brand-100 disabled:opacity-50"
                 >
@@ -1254,7 +1255,7 @@ export default function OrderDetail() {
                       </button>
                       <button
                         type="button"
-                        onClick={() => setScanScope({ itemCode: group.itemCode || "", label: group.itemName || group.itemCode || "this item", rows: group.rows })}
+                        onClick={() => { unlockAudio(); setScanScope({ itemCode: group.itemCode || "", label: group.itemName || group.itemCode || "this item", rows: group.rows }); }}
                         disabled={csvBusy}
                         className="inline-flex items-center gap-1.5 rounded-md border border-brand-300 bg-brand-50 px-3 py-1.5 text-sm font-medium text-brand-800 hover:bg-brand-100 disabled:opacity-50"
                       >

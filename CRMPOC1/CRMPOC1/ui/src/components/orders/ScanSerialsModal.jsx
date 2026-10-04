@@ -2,9 +2,10 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import Modal from "../Modal.jsx";
 import CameraScan from "../scan/CameraScan.jsx";
+import { isSoundOn, playError, playSuccess, setSoundOn, unlockAudio } from "../scan/scanFeedback.js";
 
 const SERIAL_RE = /^[A-Z0-9][A-Z0-9\-_/.]{2,99}$/;
-const MODES = [["scanner", "Barcode scanner"], ["camera", "Phone camera"], ["type", "Type it"]];
+const MODES = [["camera", "Phone camera"], ["scanner", "Barcode scanner"], ["type", "Type it"]];
 const norm = (v) => String(v || "").trim().toUpperCase();
 
 function isPhone() {
@@ -22,6 +23,9 @@ export default function ScanSerialsModal({ open, onClose, scopeLabel, items, all
   const [target, setTarget] = useState(null);
   const [log, setLog] = useState([]);
   const [text, setText] = useState("");
+  const [last, setLast] = useState(null);
+  const [sound, setSound] = useState(isSoundOn());
+  const lastAccepted = useRef({ code: "", at: 0 });
   const inputRef = useRef(null);
 
   const editable = useMemo(() => (items || []).filter((it) => !isLocked(it)), [items, isLocked]);
@@ -34,6 +38,8 @@ export default function ScanSerialsModal({ open, onClose, scopeLabel, items, all
     setSlots(next);
     setTarget(null);
     setLog([]);
+    setLast(null);
+    lastAccepted.current = { code: "", at: 0 };
     setText("");
   }, [open, items]);
 
@@ -60,11 +66,22 @@ export default function ScanSerialsModal({ open, onClose, scopeLabel, items, all
 
   function note(kind, message) {
     setLog((cur) => [...cur.slice(-3), { kind, message }]);
+    setLast({ kind, message });
+    if (kind === "ok") playSuccess(); else playError();
+  }
+
+  function toggleSound() {
+    const next = !sound;
+    setSound(next);
+    setSoundOn(next);
+    if (next) { unlockAudio(); playSuccess(); }
   }
 
   function handleCode(raw) {
     const v = norm(raw);
     if (!v) return;
+    // the camera still pointing at a code that was just accepted is not a new scan
+    if (lastAccepted.current.code === v && Date.now() - lastAccepted.current.at < 6000) return;
     if (itemCodes.has(v)) {
       note("info", `${v} is the item barcode, not a serial number. Nothing was filled.`);
       return;
@@ -97,7 +114,8 @@ export default function ScanSerialsModal({ open, onClose, scopeLabel, items, all
     const [id, k] = spot;
     setSlots((cur) => ({ ...cur, [id]: { ...cur[id], [k]: v } }));
     const rowNo = editable.findIndex((it) => it.id === id) + 1;
-    note("ok", `${v} added to row ${rowNo}, Serial ${k === "a" ? 1 : 2}.`);
+    lastAccepted.current = { code: v, at: Date.now() };
+    note("ok", `Scanned successfully: ${v} (row ${rowNo}, Serial ${k === "a" ? 1 : 2})`);
     setTarget(null);
   }
 
@@ -132,14 +150,17 @@ export default function ScanSerialsModal({ open, onClose, scopeLabel, items, all
               <button
                 key={key}
                 type="button"
-                onClick={() => setMode(key)}
+                onClick={() => { unlockAudio(); setMode(key); }}
                 className={`rounded-full px-3 py-1 text-sm ${mode === key ? "bg-brand-600 text-white" : "bg-slate-100 text-slate-700 hover:bg-slate-200"}`}
               >
                 {label}
               </button>
             ))}
           </div>
-          <span className="text-sm text-slate-600">{filled} of {slotOrder.length} serial boxes filled</span>
+          <div className="flex items-center gap-3 text-sm text-slate-600">
+            <span>{filled} of {slotOrder.length} serial boxes filled</span>
+            <button type="button" onClick={toggleSound} className="text-xs underline">Sound and vibration: {sound ? "on" : "off"}</button>
+          </div>
         </div>
 
         {mode === "camera" && <CameraScan onCode={handleCode} />}
@@ -163,14 +184,13 @@ export default function ScanSerialsModal({ open, onClose, scopeLabel, items, all
           {lockedCount > 0 ? ` ${lockedCount} row(s) are locked because an installation was already requested.` : ""}
         </p>
 
-        {log.length > 0 && (
-          <div className="space-y-1">
-            {log.map((entry, i) => (
-              <div key={i} className="text-sm">
-                <span className={`mr-2 rounded px-2 py-0.5 text-xs font-medium ${badge[entry.kind]}`}>{badgeText[entry.kind]}</span>
-                {entry.message}
-              </div>
-            ))}
+        {last && (
+          <div
+            role="status"
+            aria-live="polite"
+            className={`rounded-md px-3 py-3 text-sm font-medium ${last.kind === "ok" ? "bg-emerald-100 text-emerald-900" : last.kind === "info" ? "bg-sky-100 text-sky-900" : last.kind === "warn" ? "bg-amber-100 text-amber-900" : "bg-rose-100 text-rose-900"}`}
+          >
+            {last.kind === "ok" ? "\u2714 " : "\u2716 "}{last.message}
           </div>
         )}
 
