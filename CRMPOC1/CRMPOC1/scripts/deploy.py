@@ -195,6 +195,48 @@ def python_executable() -> str:
     return py
 
 
+# The CRM runs on Python 3.12 in production (api/Dockerfile) and requirements.txt is pinned for 3.11 to 3.13.
+# A newer Python (3.14, 3.15 preview) has no ready-made pydantic-core build, so pip tries to compile it and fails.
+SUPPORTED_PYTHONS = ((3, 13), (3, 12), (3, 11))
+
+
+def _python_version(exe: str) -> tuple[int, int] | None:
+    try:
+        out = subprocess.run(
+            [exe, "-c", "import sys;print(sys.version_info[0], sys.version_info[1])"],
+            capture_output=True, text=True, check=False,
+        ).stdout.split()
+        return (int(out[0]), int(out[1])) if len(out) == 2 else None
+    except (OSError, ValueError, IndexError):
+        return None
+
+
+def supported_python() -> str:
+    """A Python the CRM's pinned packages install on, for building the local API virtual environment."""
+    configured = os.environ.get("PYTHON_EXE")
+    if configured and Path(configured).is_file():
+        return configured
+    if sys.executable and _python_version(sys.executable) in SUPPORTED_PYTHONS:
+        return sys.executable
+    if sys.platform == "win32" and shutil.which("py"):
+        for major, minor in SUPPORTED_PYTHONS:
+            found = subprocess.run(
+                ["py", f"-{major}.{minor}", "-c", "import sys;print(sys.executable)"],
+                capture_output=True, text=True, check=False,
+            )
+            path = found.stdout.strip()
+            if found.returncode == 0 and path and Path(path).is_file():
+                return path
+    for name in ("python3.13", "python3.12", "python3.11"):
+        path = shutil.which(name)
+        if path:
+            return path
+    raise SystemExit(
+        "No Python 3.11, 3.12 or 3.13 found. The CRM packages do not install on newer Python versions.\n"
+        "Install Python 3.12 or 3.13, or set PYTHON_EXE to it and run this script again."
+    )
+
+
 def ensure_api_venv() -> Path:
     api_python = API_DIR / ("venv\\Scripts\\python.exe" if sys.platform == "win32" else "venv/bin/python")
     requirements = API_DIR / "requirements.txt"
@@ -209,7 +251,8 @@ def ensure_api_venv() -> Path:
             stderr=subprocess.DEVNULL,
             check=False,
         )
-        return result.returncode == 0
+        # a venv built on an unsupported Python (for example 3.15) starts fine but cannot hold the packages
+        return result.returncode == 0 and _python_version(str(api_python)) in SUPPORTED_PYTHONS
 
     if venv_works():
         return api_python
@@ -218,7 +261,8 @@ def ensure_api_venv() -> Path:
     if api_python.parent.parent.exists():
         print("Recreating API virtual environment...")
         shutil.rmtree(api_python.parent.parent)
-    base_python = python_executable()
+    base_python = supported_python()
+    print(f"Using Python for the API environment: {base_python}")
     venv_check = subprocess.run(
         [base_python, "-c", "import venv"],
         cwd=API_DIR,
