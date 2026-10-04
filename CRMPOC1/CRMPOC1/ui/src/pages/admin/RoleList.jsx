@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import Modal from "../../components/Modal.jsx";
 import { rolesApi } from "../../api/admin.js";
 import { useAuth } from "../../auth/AuthContext.jsx";
-import { moduleLabel, normalizePermissionModules } from "../../utils/permissionModules.js";
+import { moduleLabel, normalizePermissionModules, VIEW_ONLY_MODULES } from "../../utils/permissionModules.js";
 
 const fieldClass = "w-full rounded-md border border-slate-300 px-3 py-2 text-sm";
 const labelClass = "mb-1 block text-sm font-medium text-slate-700";
@@ -46,6 +46,17 @@ function PermissionMatrix({ modules, subModulesByModule, permissions, onChange, 
     return byKey[permKey(module, sub_module)] || blankRow(module, sub_module);
   }
 
+  // Tick (or untick) one column for every module in one click.
+  function toggleColumn(flag) {
+    if (readOnly) return;
+    const topRows = modules.map((m) => rowFor(m, null));
+    const eligible = topRows.filter((r) => !VIEW_ONLY_MODULES.includes(r.module) || flag === "can_view");
+    const allOn = eligible.every((r) => r[flag]);
+    const next = topRows.map((r) => (eligible.includes(r) ? { ...r, [flag]: !allOn } : r));
+    const subRows = permissions.filter((p) => p.sub_module != null);
+    onChange([...next, ...subRows]);
+  }
+
   function renderRow(module, sub_module, label, isSub) {
     const row = rowFor(module, sub_module);
     return (
@@ -54,17 +65,24 @@ function PermissionMatrix({ modules, subModulesByModule, permissions, onChange, 
           {isSub ? <span className="text-slate-400">↳ </span> : null}
           {moduleLabel(label)}
         </td>
-        {FLAGS.map((f) => (
-          <td key={f} className="px-3 py-2 text-center">
-            <input
-              type="checkbox"
-              checked={!!row[f]}
-              disabled={readOnly}
-              onChange={(e) => update(module, sub_module, f, e.target.checked)}
-              className="h-4 w-4"
-            />
-          </td>
-        ))}
+        {FLAGS.map((f) => {
+          const notApplicable = VIEW_ONLY_MODULES.includes(module) && f !== "can_view";
+          return (
+            <td key={f} className="px-3 py-2 text-center">
+              {notApplicable ? (
+                <span className="text-slate-300" title="Not applicable">-</span>
+              ) : (
+                <input
+                  type="checkbox"
+                  checked={!!row[f]}
+                  disabled={readOnly}
+                  onChange={(e) => update(module, sub_module, f, e.target.checked)}
+                  className="h-4 w-4"
+                />
+              )}
+            </td>
+          );
+        })}
         {!readOnly && (
           <td className="px-3 py-2 text-center">
             <button type="button" onClick={() => toggleAll(module, sub_module, true)} className="rounded px-1.5 py-0.5 text-xs text-slate-600 hover:bg-slate-100">all</button>
@@ -81,8 +99,17 @@ function PermissionMatrix({ modules, subModulesByModule, permissions, onChange, 
         <thead className="bg-slate-100 text-left text-slate-700">
           <tr>
             <th className="px-3 py-2">Module</th>
-            {FLAGS.map((f) => <th key={f} className="px-3 py-2 text-center">{FLAG_LABELS[f]}</th>)}
-            {!readOnly && <th className="px-3 py-2 text-center">All</th>}
+            {FLAGS.map((f) => (
+              <th key={f} className="px-3 py-2 text-center">
+                {FLAG_LABELS[f]}
+                {!readOnly && (
+                  <button type="button" onClick={() => toggleColumn(f)} className="mx-auto block text-[10px] font-normal text-brand-600 underline" title={`Tick or untick ${FLAG_LABELS[f]} for every module`}>
+                    all
+                  </button>
+                )}
+              </th>
+            ))}
+            {!readOnly && <th className="px-3 py-2 text-center">Row</th>}
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100">
@@ -102,12 +129,38 @@ function PermissionMatrix({ modules, subModulesByModule, permissions, onChange, 
   );
 }
 
+const ADMIN_ONLY_POWERS = [
+  "Create, edit or delete roles",
+  "Change this permission table",
+  "Make someone an Admin or Sub Admin",
+  "Approve payments (final approval)",
+  "Email settings and API keys",
+  "Permanent (hard) delete of data",
+];
+
 function RoleEditor({ role, modules, subModulesByModule, onClose, onSaved }) {
   const [name, setName] = useState(role?.name || "");
   const [description, setDescription] = useState(role?.description || "");
   const [permissions, setPermissions] = useState(role?.permissions || []);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+
+  // One-click starting points. "Sub Admin" = everything except Roles; users without Delete; payments and email logs view only.
+  function applyPreset(kind) {
+    const rows = modules.map((m) => {
+      const viewOnly = VIEW_ONLY_MODULES.includes(m);
+      let f = [false, false, false, false, false];
+      if (kind === "view") f = viewOnly ? [true, false, false, false, false] : [true, false, false, false, true];
+      if (kind === "all" || kind === "subadmin") {
+        if (m === "roles") f = [false, false, false, false, false];
+        else if (viewOnly) f = [true, false, false, false, false];
+        else if (kind === "subadmin" && m === "users") f = [true, true, true, false, false];
+        else f = [true, true, true, true, true];
+      }
+      return { module: m, sub_module: null, can_view: f[0], can_create: f[1], can_edit: f[2], can_delete: f[3], can_export: f[4] };
+    });
+    setPermissions(rows);
+  }
 
   async function save() {
     setBusy(true);
@@ -143,13 +196,30 @@ function RoleEditor({ role, modules, subModulesByModule, onClose, onSaved }) {
         </div>
       </div>
       <div>
-        <label className={labelClass}>Permissions</label>
+        <div className="mb-2 flex flex-wrap items-center gap-2">
+          <label className={`${labelClass} mb-0`}>Permissions</label>
+          <span className="text-xs text-slate-400">Start from:</span>
+          {(name || "").toLowerCase() === "sub_admin" && (
+            <button type="button" onClick={() => applyPreset("subadmin")} className="rounded-md bg-indcool-lime px-2.5 py-1 text-xs font-bold text-indcool-navy hover:opacity-90">
+              Recommended Sub Admin
+            </button>
+          )}
+          <button type="button" onClick={() => applyPreset("all")} className="rounded-md border border-slate-300 px-2.5 py-1 text-xs hover:bg-slate-50">Everything (except Roles)</button>
+          <button type="button" onClick={() => applyPreset("view")} className="rounded-md border border-slate-300 px-2.5 py-1 text-xs hover:bg-slate-50">View only</button>
+          <button type="button" onClick={() => applyPreset("clear")} className="rounded-md border border-slate-300 px-2.5 py-1 text-xs hover:bg-slate-50">Clear all</button>
+        </div>
         <PermissionMatrix
           modules={modules}
           subModulesByModule={subModulesByModule}
           permissions={permissions}
           onChange={setPermissions}
         />
+        <div className="mt-3 rounded-lg border border-dashed border-slate-300 bg-slate-50 px-3 py-2">
+          <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">&#128274; Admin only - can never be given to a Sub Admin</div>
+          <ul className="mt-1 grid grid-cols-1 gap-x-4 text-xs text-slate-500 sm:grid-cols-2">
+            {ADMIN_ONLY_POWERS.map((t) => <li key={t}>&bull; {t}</li>)}
+          </ul>
+        </div>
       </div>
       <div className="flex justify-end gap-2">
         <button onClick={onClose} className="rounded-md border border-slate-300 px-3 py-2 text-sm">Cancel</button>

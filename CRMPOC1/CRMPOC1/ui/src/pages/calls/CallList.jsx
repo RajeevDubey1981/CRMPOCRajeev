@@ -1,3 +1,5 @@
+import { hasPermission } from "../../utils/permissions.js";
+import { useAuth } from "../../auth/AuthContext.jsx";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
@@ -24,6 +26,8 @@ function fmtDuration(secs) {
 }
 
 export default function CallList() {
+  const { user: permUser } = useAuth();
+  const canDeletePerm = hasPermission(permUser, "calls", "can_delete");
   const navigate = useNavigate();
   const [data, setData] = useState({ items: [], total: 0, stats: {} });
   const [loading, setLoading] = useState(false);
@@ -301,11 +305,13 @@ export default function CallList() {
                       onClick={() => setEditTarget(call)}
                       className="rounded px-2 py-1 text-slate-600 hover:bg-slate-100 hover:text-slate-900"
                     >✏️</button>
+{canDeletePerm && (
                     <button
                       title="Delete"
                       onClick={() => setConfirmDelete(call)}
                       className="rounded px-2 py-1 text-rose-600 hover:bg-rose-100 hover:text-rose-900"
                     >🗑</button>
+)}
                   </div>
                 </td>
               </tr>

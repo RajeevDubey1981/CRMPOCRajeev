@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -21,6 +22,9 @@ class ItemMasterCreate(BaseModel):
     hsn_code: str | None = None
     mrp: float | None = None
     serial_count: int = Field(default=1, ge=0, le=2)
+    source: Literal["Buy", "Make", "Both"] = "Buy"
+    item_type: Literal["Finished good", "Component", "Spare"] | None = None
+    gst_rate: float | None = Field(default=None, ge=0, le=40)
     is_active: bool = True
 
 
@@ -34,6 +38,9 @@ class ItemMasterUpdate(BaseModel):
     hsn_code: str | None = None
     mrp: float | None = None
     serial_count: int | None = Field(default=None, ge=0, le=2)
+    source: Literal["Buy", "Make", "Both"] | None = None
+    item_type: Literal["Finished good", "Component", "Spare"] | None = None
+    gst_rate: float | None = Field(default=None, ge=0, le=40)
     is_active: bool | None = None
 
 
@@ -48,6 +55,9 @@ class ItemMasterOut(BaseModel):
     hsn_code: str | None
     mrp: float | None
     serial_count: int
+    source: str = "Buy"
+    item_type: str | None = None
+    gst_rate: float | None = None
     is_active: bool
     created_at: datetime
     updated_at: datetime
@@ -66,6 +76,9 @@ class ItemMasterListItem(BaseModel):
     hsn_code: str | None
     mrp: float | None
     serial_count: int
+    source: str = "Buy"
+    item_type: str | None = None
+    gst_rate: float | None = None
     is_active: bool
     created_at: datetime
 

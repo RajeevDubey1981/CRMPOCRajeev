@@ -26,6 +26,8 @@ class Order(Base, TimestampMixin, SoftDeleteMixin):
     vendor_bill_no: Mapped[str | None] = mapped_column(String(100), nullable=True)
     vendor_bill_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     status: Mapped[str] = mapped_column(String(50), default="Pending", nullable=False, index=True)
+    # "Vendor" = the vendor ships and enters serials (as always); "Store" = our own store reserves and dispatches from stock.
+    fulfilment: Mapped[str] = mapped_column(String(20), default="Vendor", server_default="Vendor", nullable=False)
     expected_delivery_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     actual_delivery_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     order_file_path: Mapped[str | None] = mapped_column(String(500), nullable=True)

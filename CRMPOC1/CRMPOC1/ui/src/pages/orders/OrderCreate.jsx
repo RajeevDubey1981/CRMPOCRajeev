@@ -79,6 +79,7 @@ export default function OrderCreate() {
     customer_state: "",
     customer_address: "",
     vendor_id: "",
+    fulfilment: "Vendor",
     status: "Pending",
     courier_id: "",
     expected_delivery_date: "",
@@ -90,6 +91,7 @@ export default function OrderCreate() {
   const [form, setForm] = useState(initialForm);
   const [consignees, setConsignees] = useState([]);
   const [lineItems, setLineItems] = useState([]);
+  const fromStore = !isVendor && form.fulfilment === "Store";
 
   useEffect(() => {
     ordersApi.vendors().then(setVendors).catch(() => {});
@@ -210,7 +212,7 @@ export default function OrderCreate() {
         return `Item ${rowNo}: Dry and wet free services cannot exceed 4 total.`;
       }
       const serialCount = itemSerialCount(row.item_id);
-      if (!isVendor) {
+      if (!isVendor && !fromStore) {
         if (serialCount >= 1 && !(row.serial_no || "").trim()) {
           return `Item ${rowNo}: Serial Number 1 is required for this item code.`;
         }
@@ -237,7 +239,7 @@ export default function OrderCreate() {
     setErr("");
     setSuccessMsg("");
 
-    if (!form.vendor_id && !isVendor) {
+    if (!form.vendor_id && !isVendor && !fromStore) {
       setErr("Vendor Name is required");
       return;
     }
@@ -265,9 +267,10 @@ export default function OrderCreate() {
         order_no: form.order_no.trim() || null,
         order_date: form.order_date || null,
         oem_bill_no: isVendor ? null : form.oem_bill_no || null,
-        vendor_id: isVendor ? null : (form.vendor_id ? Number(form.vendor_id) : null),
-        status: isVendor ? "Pending" : form.status,
-        courier_id: isVendor ? null : (form.courier_id ? Number(form.courier_id) : null),
+        vendor_id: isVendor || fromStore ? null : (form.vendor_id ? Number(form.vendor_id) : null),
+        fulfilment: fromStore ? "Store" : "Vendor",
+        status: isVendor || fromStore ? "Pending" : form.status,
+        courier_id: isVendor || fromStore ? null : (form.courier_id ? Number(form.courier_id) : null),
         customer_name: form.customer_name || null,
         customer_contact: form.customer_contact || null,
         customer_email: form.customer_email || null,
@@ -285,12 +288,12 @@ export default function OrderCreate() {
             address: (row.address || "").trim() || null,
           })),
         expected_delivery_date: form.expected_delivery_date || null,
-        lrn_no: isVendor ? null : (form.lrn_no || null),
+        lrn_no: isVendor || fromStore ? null : (form.lrn_no || null),
         items: lineItems
           .map((row) => ({
             item_id: row.item_id ? Number(row.item_id) : null,
-            serial_no: (row.serial_no || "").trim() || null,
-            serial_no_2: (row.serial_no_2 || "").trim() || null,
+            serial_no: fromStore ? null : (row.serial_no || "").trim() || null,
+            serial_no_2: fromStore ? null : (row.serial_no_2 || "").trim() || null,
             item_qty: Number(row.item_qty) || 1,
             pcb_warranty_years: row.pcb_warranty_years ? Number(row.pcb_warranty_years) : null,
             component_warranty_years: row.component_warranty_years ? Number(row.component_warranty_years) : null,
@@ -510,9 +513,23 @@ export default function OrderCreate() {
           <h2 className="mb-4 text-sm font-semibold text-slate-700 uppercase tracking-wide">
             Vendor &amp; Delivery
           </h2>
+          {!isVendor && (
+            <div className="mb-4 flex flex-wrap items-center gap-4 rounded-md bg-slate-50 px-3 py-2 text-sm">
+              <span className="font-medium text-slate-700">Ships from</span>
+              <label className="inline-flex items-center gap-2">
+                <input type="radio" name="fulfilment" checked={form.fulfilment === "Vendor"} onChange={() => set("fulfilment", "Vendor")} />
+                Vendor
+              </label>
+              <label className="inline-flex items-center gap-2">
+                <input type="radio" name="fulfilment" checked={form.fulfilment === "Store"} onChange={() => set("fulfilment", "Store")} />
+                Our store
+              </label>
+              {fromStore && <span className="text-xs text-slate-500">The store reserves stock, waits for the bill number and dispatches. Serial numbers come from the store.</span>}
+            </div>
+          )}
           <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
             <div>
-              <RequiredLabel>Vendor Name</RequiredLabel>
+              {fromStore ? <label className={labelClass}>Vendor Name</label> : <RequiredLabel>Vendor Name</RequiredLabel>}
               {isVendor ? (
                 <>
                   <input
@@ -540,7 +557,7 @@ export default function OrderCreate() {
                 value={form.status}
                 onChange={(v) => set("status", v)}
                 placeholder="Search status..."
-                disabled={isVendor}
+                disabled={isVendor || fromStore}
               />
               {isVendor && (
                 <p className="mt-1 text-xs text-slate-400">
@@ -555,7 +572,7 @@ export default function OrderCreate() {
                 value={form.courier_id}
                 onChange={(v) => set("courier_id", v)}
                 placeholder="Search courier..."
-                disabled={isVendor}
+                disabled={isVendor || fromStore}
               />
             </div>
             <div>
@@ -653,12 +670,14 @@ export default function OrderCreate() {
                       className={fieldClass}
                     />
                   </div>
-                  {isVendor && (
+                  {(isVendor || fromStore) && (
                     <div className="md:col-span-4 rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800">
-                      Serial numbers are not required from vendors. Admin will add them after the order is submitted.
+                      {fromStore
+                        ? "Serial numbers are filled in by the store when it dispatches this order."
+                        : "Serial numbers are not required from vendors. Admin will add them after the order is submitted."}
                     </div>
                   )}
-                  {!isVendor && itemSerialCount(row.item_id) >= 1 && (
+                  {!isVendor && !fromStore && itemSerialCount(row.item_id) >= 1 && (
                     <div>
                       <RequiredLabel>Serial Number 1</RequiredLabel>
                       <input
@@ -669,7 +688,7 @@ export default function OrderCreate() {
                       />
                     </div>
                   )}
-                  {!isVendor && itemSerialCount(row.item_id) >= 2 && (
+                  {!isVendor && !fromStore && itemSerialCount(row.item_id) >= 2 && (
                     <div>
                       <RequiredLabel>Serial Number 2</RequiredLabel>
                       <input

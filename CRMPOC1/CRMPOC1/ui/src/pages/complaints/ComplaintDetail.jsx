@@ -1,4 +1,6 @@
+import { hasPermission } from "../../utils/permissions.js";
 import { useEffect, useState } from "react";
+import PriorityBadge from "../../components/complaints/PriorityBadge.jsx";
 import { BOUNCED_BUTTON, BounceBanner } from "../../components/EmailBounceNotice.jsx";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
@@ -35,6 +37,7 @@ function Field({ label, value, mono = false, full = false }) {
 }
 
 export default function ComplaintDetail() {
+  const { user: permUser } = useAuth();
   const navigate = useNavigate();
   const { id } = useParams();
   const { user } = useAuth();
@@ -339,6 +342,7 @@ export default function ComplaintDetail() {
           <h1 className="mt-1 flex items-center gap-3 text-3xl font-bold text-slate-900">
             Complaint <span className="font-mono text-lg text-slate-500">{complaint.comp_no}</span>
             <StatusBadge value={complaint.status} />
+            {complaint.priority === "High" && <PriorityBadge at={complaint.priority_at} by={complaint.priority_by_name} />}
           </h1>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -352,6 +356,15 @@ export default function ComplaintDetail() {
               >
                 Edit
               </button>
+              <button
+                type="button"
+                onClick={() => run(() => complaintsApi.setPriority(id, complaint.priority === "High" ? "Normal" : "High"))}
+                disabled={busy}
+                title={complaint.priority === "High" ? "Remove the high priority mark" : "Mark as HIGH priority: it will blink and be shown first in the list"}
+                className={`rounded-md border px-4 py-2 text-sm font-medium disabled:opacity-50 ${complaint.priority === "High" ? "border-orange-600 bg-orange-100 text-orange-800 hover:bg-orange-200" : "border-orange-300 text-orange-700 hover:bg-orange-50"}`}
+              >
+                {complaint.priority === "High" ? "Clear priority" : "Mark high priority"}
+              </button>
               {complaint.status !== "Rejected" && (
                 <button
                   type="button"
@@ -362,6 +375,7 @@ export default function ComplaintDetail() {
                   Reject
                 </button>
               )}
+{hasPermission(permUser, "complaints", "can_delete", complaint?.query_type) && (
               <button
                 type="button"
                 onClick={() => setConfirmDelete(true)}
@@ -370,6 +384,7 @@ export default function ComplaintDetail() {
               >
                 Delete
               </button>
+)}
             </>
           )}
           {!callcenterLocked && (

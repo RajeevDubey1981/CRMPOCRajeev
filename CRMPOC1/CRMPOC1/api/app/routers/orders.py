@@ -387,6 +387,7 @@ def _hydrate_order(db: Session, order: Order) -> OrderOut:
         vendor_bill_no=order.vendor_bill_no,
         vendor_bill_date=order.vendor_bill_date,
         status=order.status,
+        fulfilment=order.fulfilment or "Vendor",
         expected_delivery_date=order.expected_delivery_date,
         actual_delivery_date=order.actual_delivery_date,
         order_file_path=order.order_file_path,
@@ -986,6 +987,12 @@ async def create_order(
         raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Invalid order payload: {e}")
 
     vendor_id = body.vendor_id
+    from_store = body.fulfilment == "Store"
+    if from_store:
+        if user.role == "vendor":
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "Vendors cannot create orders that ship from our store")
+        if any((it.serial_no or "").strip() or (it.serial_no_2 or "").strip() for it in body.items):
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Serial numbers come from the store when it dispatches. Leave them empty.")
     if user.role == "vendor":
         if body.oem_bill_no:
             raise HTTPException(status.HTTP_403_FORBIDDEN, "Vendors cannot add OEM bill details")
@@ -1042,7 +1049,7 @@ async def create_order(
         if item_data.free_service_count > 4:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Free service count cannot exceed 4")
 
-    _validate_order_item_serials(db, body.items or [], require_serials=user.role != "vendor")
+    _validate_order_item_serials(db, body.items or [], require_serials=user.role != "vendor" and not from_store)
 
     order = Order(
         order_no=body.order_no,
@@ -1060,6 +1067,7 @@ async def create_order(
         vendor_bill_no=body.vendor_bill_no,
         vendor_bill_date=body.vendor_bill_date,
         status=body.status,
+        fulfilment="Store" if from_store else "Vendor",
         expected_delivery_date=body.expected_delivery_date,
         order_file_path=order_file_path,
         created_by=user.id,
@@ -1517,6 +1525,12 @@ def update_order(
 
     old_status = order.status
     data = body.model_dump(exclude_unset=True)
+    if "fulfilment" in data and (data["fulfilment"] is None or data["fulfilment"] == order.fulfilment or not can_edit_order):
+        data.pop("fulfilment")
+    if "fulfilment" in data:
+        from app.services import store_dispatch_service
+
+        store_dispatch_service.check_can_change_fulfilment(db, order)
     if user.role == "vendor":
         if can_vendor_pending:
             disallowed_fields = [field for field in data if field not in VENDOR_PENDING_ORDER_FIELDS]
@@ -1677,6 +1691,11 @@ def update_order(
                         metadata=metadata,
                     )
 
+    if order.fulfilment == "Store" and old_status != order.status and order.status == "Cancelled":
+        from app.services import store_dispatch_service
+
+        store_dispatch_service.release_order(db, order, user)
+
     from app.services.pending_action_sync import sync_order_pending_actions
 
     sync_order_pending_actions(db, order)
@@ -1706,6 +1725,10 @@ def delete_order(
     order = _load_order(db, user, order_id)
     if not can_act_on(db, user, "orders", "can_delete", None):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Your role cannot delete orders")
+    if order.fulfilment == "Store":
+        from app.services import store_dispatch_service
+
+        store_dispatch_service.release_order(db, order, user)
     order.deleted_at = datetime.now(timezone.utc)
     db.commit()
 

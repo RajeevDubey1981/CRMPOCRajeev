@@ -42,6 +42,7 @@ from app.schemas.complaint import (
     ComplaintListResponse,
     ComplaintModelOption,
     ComplaintOut,
+    ComplaintPriorityIn,
     ComplaintStatusUpdate,
     ComplaintUpdate,
 )
@@ -295,6 +296,23 @@ def _order_link_fields(db: Session, complaint: Complaint) -> dict[str, int | str
     return {"order_id": order.id, "order_no": order.order_no}
 
 
+def _apply_priority(db: Session, c: Complaint, value: str, user: User) -> None:
+    """Mark a complaint High or Normal and leave a line in its history."""
+    old = c.priority or "Normal"
+    if value == old:
+        return
+    c.priority = value
+    c.priority_at = datetime.now(timezone.utc) if value == "High" else None
+    c.priority_by = user.id if value == "High" else None
+    db.add(ComplaintStatusLog(
+        complaint_id=c.id,
+        old_status=c.status,
+        new_status=c.status,
+        changed_by=user.id,
+        remark=f"Priority changed: {old} -> {value}",
+    ))
+
+
 def _bounce_fields(db: Session, email_address: str | None) -> dict:
     bounced, reason = bounce_info(db, email_address)
     return {"email_bounced": bounced, "email_bounce_reason": reason}
@@ -329,6 +347,9 @@ def _hydrate(db: Session, c: Complaint) -> dict:
         "assigned_engineer_name": engineer_name,
         "created_by_name": created_by_name,
         **_bounce_fields(db, c.customer_email),
+        "priority": c.priority or "Normal",
+        "priority_at": c.priority_at,
+        "priority_by_name": (db.get(User, c.priority_by).name if c.priority_by and db.get(User, c.priority_by) else None),
         **_order_link_fields(db, c),
     }
 
@@ -383,6 +404,8 @@ def _list_row(
         service_request_status=service_request_status,
         installation_request_id=installation_request_id,
         installation_request_status=installation_request_status,
+        priority=c.priority or "Normal",
+        priority_at=c.priority_at,
     )
 
 
@@ -417,6 +440,7 @@ def _is_complaint_editor_role(user: User) -> bool:
         "indcool",
         "indcool service",
         "indcool_service",
+        "sub_admin",
     }
 
 
@@ -695,6 +719,7 @@ def list_complaints(
     id: int | None = None,
     comp_no: str | None = None,
     source: str | None = None,
+    priority: Literal["Normal", "High"] | None = None,
     date_from: date | None = None,
     date_to: date | None = None,
     sort: str = "-created_at",
@@ -705,6 +730,9 @@ def list_complaints(
     stmt, has_access = _apply_view_scope(stmt, db, user)
     if not has_access:
         return ComplaintListResponse(items=[], total=0, page=page, per_page=per_page)
+    high_priority_total = db.scalar(select(func.count()).select_from(stmt.where(Complaint.priority == "High").subquery())) or 0
+    if priority:
+        stmt = stmt.where(Complaint.priority == priority)
     if id is not None:
         stmt = stmt.where(Complaint.id == id)
     if comp_no:
@@ -731,7 +759,8 @@ def list_complaints(
 
     sort_col = sort.lstrip("-")
     col = getattr(Complaint, sort_col, Complaint.created_at)
-    stmt = stmt.order_by(desc(col) if sort.startswith("-") else col)
+    # High-priority complaints always come first (on every page); the chosen sort applies inside each group.
+    stmt = stmt.order_by(case((Complaint.priority == "High", 0), else_=1), desc(col) if sort.startswith("-") else col)
 
     total = db.scalar(select(func.count()).select_from(stmt.subquery())) or 0
     rows = db.scalars(stmt.offset((page - 1) * per_page).limit(per_page)).all()
@@ -802,6 +831,7 @@ def list_complaints(
         total=total,
         page=page,
         per_page=per_page,
+        high_priority_total=high_priority_total,
     )
 
 
@@ -833,6 +863,9 @@ def create_complaint(
         status="Pending",
         created_by=user.id,
         source="callcenter",
+        priority=body.priority,
+        priority_at=datetime.now(timezone.utc) if body.priority == "High" else None,
+        priority_by=user.id if body.priority == "High" else None,
     )
     db.add(complaint)
     db.flush()
@@ -841,7 +874,7 @@ def create_complaint(
         old_status=None,
         new_status="Pending",
         changed_by=user.id,
-        remark="Complaint created",
+        remark="Complaint created" + (" - marked HIGH priority" if body.priority == "High" else ""),
     ))
     linked_service = None
     if (complaint.query_type or "").lower() == "service":
@@ -1405,9 +1438,12 @@ def update_complaint(
     old_status = c.status
     new_status = data.pop("status", None)
     assigned_engineer = data.pop("assigned_engineer", None)
+    new_priority = data.pop("priority", None)
 
     for field, value in data.items():
         setattr(c, field, value)
+    if new_priority is not None:
+        _apply_priority(db, c, new_priority, user)
     _sync_linked_service_contact(db, c, data.keys())
 
     if assigned_engineer is not None:
@@ -1430,6 +1466,26 @@ def update_complaint(
             )
         )
 
+    from app.services.pending_action_sync import sync_complaint_pending_actions
+
+    sync_complaint_pending_actions(db, c)
+    db.commit()
+    db.refresh(c)
+    return ComplaintOut(**_hydrate(db, c))
+
+
+@router.put("/{complaint_id}/priority", response_model=ComplaintOut)
+def set_complaint_priority(
+    complaint_id: int,
+    body: ComplaintPriorityIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Mark a complaint High (blinks, shown first) or back to Normal. Needs the complaints edit permission."""
+    c = _load_visible(db, user, complaint_id)
+    if not can_act_on(db, user, "complaints", "can_edit", c.query_type):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Your role cannot change the priority of this complaint")
+    _apply_priority(db, c, body.priority, user)
     from app.services.pending_action_sync import sync_complaint_pending_actions
 
     sync_complaint_pending_actions(db, c)

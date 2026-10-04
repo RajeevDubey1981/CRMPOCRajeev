@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 
+import { attachSceneEffects } from "./loginSceneFx.js";
 import "./login-scene.css";
 
 // Animated INDcool login background: three flows play one after another
@@ -26,14 +27,14 @@ const DESK = {
   actors: [
     ["SUP", 40, 20, 105],
     ["CUST", 690, 20, 70],
-    ["TECH", 40, 374, 70],
+    ["FRAN", 40, 374, 70],
     ["ADM", 356, 374, 88],
     ["VEND", 650, 374, 105],
   ],
   labels: [
     ["INDcool SUPPORT", 20, 4, 150],
     ["CUSTOMER", 675, 4, 100],
-    ["TECHNICIAN", 15, 480, 120],
+    ["SERVICE FRANCHISE", 0, 480, 150],
     ["ADMIN", 350, 480, 100],
     ["VENDOR", 650, 480, 105],
   ],
@@ -80,14 +81,14 @@ const PHONE = {
   actors: [
     ["SUP", 12, 30, 84],
     ["CUST", 300, 30, 62],
-    ["TECH", 10, 540, 56],
+    ["FRAN", 10, 540, 56],
     ["ADM", 160, 540, 70],
     ["VEND", 296, 540, 84],
   ],
   labels: [
     ["INDcool SUPPORT", 0, 13, 110],
     ["CUSTOMER", 285, 13, 90],
-    ["TECHNICIAN", -6, 622, 78],
+    ["SERVICE<br>FRANCHISE", -6, 622, 78],
     ["ADMIN", 155, 622, 80],
     ["VENDOR", 296, 622, 84],
   ],
@@ -114,7 +115,7 @@ const PHONE = {
     ["pcb", 326, 662, 44, 11, -1, -10, 12, 12], ["filter", 150, 52, 66, 15, -10, 18, 14, 5],
     ["flake", 262, 204, 20, 9, -2, 10, -12, 28], ["flake", 80, 204, 20, 10, -6, -10, 12, -32],
   ],
-  labelStyle: "font-size:8.5px;letter-spacing:1px;white-space:nowrap;",
+  labelStyle: "font-size:8.5px;letter-spacing:1px;white-space:nowrap;line-height:1.15;",
 };
 
 // ---------- shared art pieces ----------
@@ -146,7 +147,7 @@ const people = (p) => ({
   CUST: `<svg viewBox="0 0 80 112"><g ${G}><circle cx="38" cy="32" r="13"/><path d="M14 110V74Q14 56 38 56Q62 56 62 74V110"/><rect x="52" y="20" width="9" height="18" rx="2.5" transform="rotate(14 56 29)" class="ls-a"/><path d="M58 60L60 44"/><path d="M30 36Q38 43 46 36" stroke-width="1.3"/><path d="M68 14L72 10M70 24H76M68 34L72 38" class="ls-a" stroke-width="1.2"/></g></svg>`,
   SUP: `<svg viewBox="0 0 120 112"><g ${G}><circle cx="36" cy="34" r="12"/><path d="M21 33A15 15 0 0 1 51 33" class="ls-a"/><rect x="17" y="31" width="6" height="12" rx="2" class="ls-a"/><rect x="49" y="31" width="6" height="12" rx="2" class="ls-a"/><path d="M22 42Q20 54 36 52" class="ls-a" stroke-width="1.3"/><path d="M12 110V74Q12 56 36 56Q60 56 60 74V110"/><rect x="66" y="40" width="46" height="34" rx="3"/><path d="M89 74V86M78 86H100"/><path d="M72 50H106M72 56H96M72 62H102" class="ls-a" stroke-width="1.2"/><path d="M0 110H120" stroke-width="1.5"/></g></svg>`,
   ADM: `<svg viewBox="0 0 100 112"><g ${G}><circle cx="38" cy="30" r="12"/><path d="M14 110V72Q14 54 38 54Q62 54 62 72V110"/><path d="M38 54L33 70L38 94L43 70Z" class="ls-a" stroke-width="1.3"/><rect x="62" y="64" width="32" height="42" rx="3"/><rect x="72" y="60" width="12" height="8" rx="2" class="ls-a"/><path d="M68 78H88M68 86H84M68 94H80" stroke-width="1.2"/><g class="ls-ap ${p}k-ap"><path d="M66 100L74 108L92 86" class="ls-a" stroke-width="3.4"/></g></g></svg>`,
-  TECH: `<svg viewBox="0 0 80 112"><g ${G}><path d="M20 24A20 17 0 0 1 60 24Z" class="ls-a"/><path d="M15 24H65" class="ls-a"/><circle cx="40" cy="34" r="12"/><path d="M18 110V72Q18 54 40 54Q62 54 62 72V110"/><path d="M58 66L62 86"/><rect x="50" y="86" width="26" height="18" rx="2" class="ls-a"/><path d="M57 86V81H69V86"/><path d="M34 38Q40 43 46 38" stroke-width="1.2"/></g></svg>`,
+  FRAN: `<svg viewBox="0 0 80 112"><g ${G}><path d="M20 24A20 17 0 0 1 60 24Z" class="ls-a"/><path d="M15 24H65" class="ls-a"/><circle cx="40" cy="34" r="12"/><path d="M18 110V72Q18 54 40 54Q62 54 62 72V110"/><path d="M58 66L62 86"/><rect x="50" y="86" width="26" height="18" rx="2" class="ls-a"/><path d="M57 86V81H69V86"/><path d="M34 38Q40 43 46 38" stroke-width="1.2"/></g></svg>`,
   VEND: `<svg viewBox="0 0 120 112"><g ${G}><circle cx="30" cy="30" r="12"/><path d="M8 110V72Q8 54 30 54Q52 54 52 72V110"/><rect x="58" y="38" width="52" height="36" rx="3"/><path d="M84 74V86M72 86H96"/><g class="ls-scr ${p}k-scr"><path d="M66 48H102M66 54H92M66 60H98M66 66H88" class="ls-a" stroke-width="1.2"/></g><g class="ls-chk ${p}k-ck"><path d="M72 58L82 68L102 46" class="ls-a" stroke-width="3.2"/></g><rect x="52" y="92" width="60" height="12" rx="2"/></g><g class="ls-keys">${KEYS}</g><g class="ls-typing ${p}k-ty">${KEYS}</g><path d="M0 111H120" stroke="currentColor" stroke-width="1.5"/></svg>`,
 });
 const TICKET = `<svg viewBox="0 0 34 42" width="30" height="38"><g ${G}><rect x="2" y="2" width="30" height="38" rx="3" fill="var(--pap)"/><path d="M8 12H26M8 18H26M8 24H20" class="ls-a" stroke-width="1.3"/><path d="M8 33H18" stroke-width="2.2"/></g></svg>`;
@@ -212,7 +213,19 @@ function buildCss(L) {
 }
 
 // ---------- the art (html string) for one layout ----------
-const el = (cls, html, st = "") => `<div class="${cls}" style="${st}">${html}</div>`;
+const SAY = {
+  SUP: "Hello! I will register your complaint.",
+  CUST: "My AC is not cooling!",
+  FRAN: "I will visit and fix it at your home.",
+  ADM: "Spare part approved \u2713",
+  VEND: "Order dispatched today!",
+};
+const PART_NAMES = {
+  indoor: "Indoor unit", outdoor: "Outdoor unit", compressor: "Compressor", coil: "Condenser coil", prop: "Fan blade",
+  xflow: "Cross-flow fan", pcb: "Control board (PCB)", filter: "Air filter", flake: "Cool air",
+};
+
+const el = (cls, html, st = "", attrs = "") => `<div class="${cls}" style="${st}" ${attrs}>${html}</div>`;
 
 function buildArt(L) {
   const p = L.p;
@@ -220,11 +233,12 @@ function buildArt(L) {
   const pos = L.pos;
 
   let floats = "";
-  L.floats.forEach((f) => {
+  L.floats.forEach((f, i) => {
     floats += el(
-      "ls-fp ls-drift",
-      mk(f[0]),
-      `left:${f[1]}px;top:${f[2]}px;width:${f[3]}px;--d:${f[4]}s;--dl:${f[5]}s;--dx:${f[6]}px;--dy:${f[7]}px;--r:${f[8]}deg`,
+      "ls-fp",
+      `<div class="ls-par"><div class="ls-drift" style="--d:${f[4]}s;--dl:${f[5]}s;--dx:${f[6]}px;--dy:${f[7]}px;--r:${f[8]}deg"><div class="ls-spinme">${mk(f[0])}</div></div></div>`,
+      `left:${f[1]}px;top:${f[2]}px;width:${f[3]}px`,
+      `data-ls="part" data-name="${PART_NAMES[f[0]]}" data-depth="${(0.02 + 0.05 * ((i % 4) / 3)).toFixed(3)}"`,
     );
   });
 
@@ -232,7 +246,7 @@ function buildArt(L) {
   let s = `<svg class="ls-route" viewBox="0 0 ${L.W} ${L.H}"><g fill="none" stroke="var(--acc)" stroke-width="1.3" stroke-dasharray="4 6" opacity=".45">${Object.values(L.paths)
     .map((d) => `<path d="${d}"/>`)
     .join("")}</g></svg>`;
-  L.actors.forEach(([who, x, y, w]) => (s += el("ls-it", PE[who], `left:${x}px;top:${y}px;width:${w}px`)));
+  L.actors.forEach(([who, x, y, w]) => (s += el("ls-it", PE[who], `left:${x}px;top:${y}px;width:${w}px`, `data-ls="act" data-say="${SAY[who]}"`)));
   L.labels.forEach(([t, x, y, w]) => (s += el("ls-lbl", t, `left:${x}px;top:${y}px;width:${w}px;${L.labelStyle}`)));
 
   // flow 1 bubbles
@@ -286,6 +300,12 @@ const CSS_TEXT = buildCss(DESK) + buildCss(PHONE);
 export default function LoginScene({ children }) {
   const wrapRef = useRef(null);
   const stageRef = useRef(null);
+  const fxRef = useRef(null);
+
+  useEffect(() => {
+    if (!wrapRef.current || !stageRef.current || !fxRef.current) return undefined;
+    return attachSceneEffects(wrapRef.current, stageRef.current, fxRef.current);
+  }, []);
 
   useEffect(() => {
     const wrap = wrapRef.current;
@@ -319,6 +339,7 @@ export default function LoginScene({ children }) {
           <div className="ls-art-d" dangerouslySetInnerHTML={{ __html: ART_DESK }} />
           <div className="ls-art-m" dangerouslySetInnerHTML={{ __html: ART_PHONE }} />
         </div>
+        <div ref={fxRef} className="ls-fx" aria-hidden="true" />
         <div className="ls-card">{children}</div>
       </div>
     </div>

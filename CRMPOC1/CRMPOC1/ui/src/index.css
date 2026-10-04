@@ -53,3 +53,68 @@ th {
 .crm-scroll > table > thead th * {
   color: inherit !important;
 }
+
+/* High-priority complaints: blinking badge, flashing row / card (stops for people who prefer less motion) */
+.prio-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 999px;
+  background: #ea580c;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  line-height: 1;
+  padding: 4px 10px;
+  animation: prio-pulse 1.1s ease-in-out infinite;
+}
+.prio-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #fff;
+  animation: prio-ping 1.1s ease-out infinite;
+}
+.prio-dot-orange {
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  background: #ea580c;
+  animation: prio-ping-orange 1.1s ease-out infinite;
+}
+tr.prio-row {
+  animation: prio-flash 1.6s ease-in-out infinite;
+}
+tr.prio-row > td:first-child {
+  box-shadow: inset 5px 0 0 #ea580c;
+}
+.prio-card {
+  border: 2px solid #ea580c !important;
+  animation: prio-card-glow 1.6s ease-in-out infinite;
+}
+@keyframes prio-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+@keyframes prio-ping {
+  0% { box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.9); }
+  100% { box-shadow: 0 0 0 7px rgba(255, 255, 255, 0); }
+}
+@keyframes prio-ping-orange {
+  0% { box-shadow: 0 0 0 0 rgba(234, 88, 12, 0.7); }
+  100% { box-shadow: 0 0 0 8px rgba(234, 88, 12, 0); }
+}
+@keyframes prio-flash {
+  0%, 100% { background-color: #fff7ed; }
+  50% { background-color: #fed7aa; }
+}
+@keyframes prio-card-glow {
+  0%, 100% { background-color: #fff7ed; box-shadow: 0 0 0 0 rgba(234, 88, 12, 0); }
+  50% { background-color: #ffedd5; box-shadow: 0 0 14px 2px rgba(234, 88, 12, 0.45); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .prio-badge, .prio-dot, .prio-dot-orange, tr.prio-row, .prio-card { animation: none; }
+  tr.prio-row { background-color: #ffedd5; }
+  .prio-card { background-color: #ffedd5; }
+}

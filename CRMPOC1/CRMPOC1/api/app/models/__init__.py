@@ -28,6 +28,16 @@ from app.models.service import (
 )
 from app.models.pending_action import UserPendingAction
 from app.models.partner_registration import PartnerRegistration
+from app.models.accounts import (
+    AssemblyOrder,
+    AssemblyPart,
+    Bom,
+    BomLine,
+    PurchaseOrder,
+    PurchaseOrderLine,
+    Supplier,
+)
+from app.models.store import StoreDispatch, StoreGrn, StoreGrnLine, StoreLedger, StoreStock
 from app.models.partner_agreement import PartnerAgreement
 from app.models.email_bounce import EmailBounce
 from app.models.email_send_log import EmailSendLog
@@ -59,4 +69,16 @@ __all__ = [
     "PartnerAgreement",
     "EmailBounce",
     "EmailSendLog",
+    "StoreGrn",
+    "StoreGrnLine",
+    "StoreStock",
+    "StoreLedger",
+    "StoreDispatch",
+    "Supplier",
+    "Bom",
+    "BomLine",
+    "AssemblyOrder",
+    "AssemblyPart",
+    "PurchaseOrder",
+    "PurchaseOrderLine",
 ]

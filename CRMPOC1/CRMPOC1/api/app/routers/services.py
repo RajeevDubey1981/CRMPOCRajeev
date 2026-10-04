@@ -202,9 +202,9 @@ def _is_service_team(user: User) -> bool:
 
 
 def _is_call_center(user: User) -> bool:
-    return _role(user) in {"callcenter", "call center", "admin", "incool", "indcool service", "indcool_service"}
+    return _role(user) in {"callcenter", "call center", "admin", "incool", "indcool service", "indcool_service", "sub_admin"}
 def _is_workflow_admin(user: User) -> bool:
-    return _role(user) in {"admin", "incool", "indcool", "service", "indcool service", "indcool_service"}
+    return _role(user) in {"admin", "incool", "indcool", "service", "indcool service", "indcool_service", "sub_admin"}
 
 
 def _is_engineer(user: User) -> bool:

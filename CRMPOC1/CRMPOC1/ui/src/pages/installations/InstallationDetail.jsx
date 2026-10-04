@@ -1,3 +1,4 @@
+import { hasPermission } from "../../utils/permissions.js";
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 
@@ -49,6 +50,8 @@ function FileLinkField({ label, path, full = false }) {
 }
 
 export default function InstallationDetail() {
+  const { user: permUser } = useAuth();
+  const canDeletePerm = hasPermission(permUser, "installations", "can_delete");
   const navigate = useNavigate();
   const { id } = useParams();
   const [searchParams] = useSearchParams();
@@ -284,7 +287,7 @@ export default function InstallationDetail() {
               {usesStructuredWorkflow && installation.assigned_engineer ? "Return to engineer" : "Reject"}
             </button>
           )}
-          {isAdminLike && (
+          {isAdminLike && canDeletePerm && (
             <button
               onClick={() => setConfirmDelete(true)}
               disabled={busy}

@@ -1,3 +1,5 @@
+import { hasPermission } from "../../utils/permissions.js";
+import { useAuth } from "../../auth/AuthContext.jsx";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
@@ -18,6 +20,8 @@ function fmtMrp(v) {
 }
 
 export default function ItemMasterList() {
+  const { user: permUser } = useAuth();
+  const canDeletePerm = hasPermission(permUser, "items", "can_delete");
   const navigate = useNavigate();
   const [data, setData] = useState({ items: [], total: 0 });
   const [loading, setLoading] = useState(false);
@@ -210,11 +214,13 @@ export default function ItemMasterList() {
                       onClick={() => navigate(`/items/${item.id}`)}
                       className="rounded p-1 text-slate-600 hover:bg-slate-100"
                     >✏️</button>
+{canDeletePerm && (
                     <button
                       title="Delete"
                       onClick={() => setConfirmDelete(item)}
                       className="rounded p-1 text-rose-600 hover:bg-rose-50"
                     >🗑</button>
+)}
                   </div>
                 </td>
               </tr>

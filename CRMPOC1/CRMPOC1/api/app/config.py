@@ -45,6 +45,30 @@ class Settings(BaseSettings):
     wa_verify_token: str = ""
     wa_template_name: str = "otp_verification"
     wa_template_language: str = "en_US"
+    wa_happy_code_template: str = "service_happy_code_otp"
+    wa_happy_code_language: str = "en_US"
+
+    # Store: the person who created a GRN cannot approve it (turn off only for a one-person store)
+    store_maker_checker: bool = True
+    # Accounts: the state our GST registration is in (decides CGST+SGST or IGST) and whether a PO needs a second person
+    company_state: str = "Uttar Pradesh"
+    acc_maker_checker: bool = True
+
+    # SMS India Hub (SMS needs a DLT-approved template; keep off until the account and DLT ids are set in .env)
+    sms_enabled: bool = False
+    sms_api_url: str = "https://cloud.smsindiahub.in/api/mt/SendSMS"
+    sms_user: str = ""
+    sms_password: str = ""
+    sms_sender_id: str = ""
+    sms_channel: str = "Trans"
+    sms_route: str = ""
+    sms_pe_id: str = ""
+    sms_happy_code_template_id: str = ""
+    sms_happy_code_text: str = (
+        "Dear {name}, your INDcool service request {service} has an engineer assigned. "
+        "Your Happy Code is {code}. Please give it to our engineer on completion of your service request. "
+        "-TEAM INDcool"
+    )
 
     seed_admin_email: str = "admin@indcool.com"
     seed_admin_password: str = "admin123"

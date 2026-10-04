@@ -1,0 +1,141 @@
+/* "Actions pending for you" popup - navy and white, clean line icons, restrained motion */
+.pa-ico { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; display: block; flex: none; }
+.pa-overlay {
+  position: fixed; inset: 0; z-index: 60; display: flex; justify-content: center; align-items: flex-start;
+  padding: 5vh 12px 12px; background: rgba(16, 32, 68, 0.55); backdrop-filter: blur(2px); animation: pa-fade 0.25s ease;
+}
+@keyframes pa-fade { from { opacity: 0; } to { opacity: 1; } }
+.pa-modal {
+  width: 100%; max-width: 680px; max-height: 88vh; background: #fff; border-radius: 14px; box-shadow: 0 24px 64px rgba(10, 24, 56, 0.45);
+  display: flex; flex-direction: column; overflow: hidden; animation: pa-in 0.32s cubic-bezier(0.2, 0.9, 0.3, 1);
+}
+@keyframes pa-in { from { opacity: 0; transform: translateY(18px) scale(0.98); } to { opacity: 1; transform: none; } }
+
+.pa-head { position: relative; background: #1e3a78; color: #fff; padding: 16px 20px; overflow: hidden; flex: none; }
+.pa-head::before {
+  content: ""; position: absolute; width: 260px; height: 260px; right: -60px; top: -140px; border-radius: 50%;
+  background: radial-gradient(circle, rgba(95, 150, 255, 0.45), transparent 70%); animation: pa-glow 7s ease-in-out infinite alternate;
+}
+@keyframes pa-glow { from { transform: translate(0, 0); } to { transform: translate(-40px, 30px); } }
+.pa-head-row { position: relative; display: flex; align-items: center; gap: 14px; }
+.pa-logo { width: 40px; height: 40px; border-radius: 10px; background: rgba(255, 255, 255, 0.14); display: flex; align-items: center; justify-content: center; flex: none; }
+.pa-logo .pa-ico { width: 20px; height: 20px; transform-origin: 50% 0; animation: pa-swing 2.6s ease-in-out 0.4s 2; }
+@keyframes pa-swing { 0%, 100% { transform: rotate(0); } 15% { transform: rotate(14deg); } 30% { transform: rotate(-11deg); } 45% { transform: rotate(7deg); } 60% { transform: rotate(-4deg); } }
+.pa-head-text h3 { margin: 0; font-size: 16.5px; font-weight: 800; letter-spacing: 0.15px; }
+.pa-head-text small { display: block; font-size: 12px; color: #c4d6f7; margin-top: 2px; }
+.pa-count { margin-left: auto; text-align: right; }
+.pa-count b { display: block; font-size: 26px; line-height: 1; font-weight: 800; font-variant-numeric: tabular-nums; }
+.pa-count span { font-size: 10px; letter-spacing: 0.12em; font-weight: 700; color: #c4d6f7; }
+.pa-close { margin-left: 6px; width: 32px; height: 32px; border: 0; border-radius: 8px; background: transparent; color: #d8e5ff; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: 0.15s; flex: none; }
+.pa-close:hover { background: rgba(255, 255, 255, 0.14); color: #fff; }
+
+.pa-sum { display: flex; gap: 18px; align-items: center; padding: 10px 20px; background: #f7f9fc; border-bottom: 1px solid #e5ebf3; font-size: 12px; color: #5b6575; flex-wrap: wrap; flex: none; }
+.pa-sum b { color: #1e3a78; font-weight: 800; }
+.pa-sum-pri, .pa-sum-pri b { color: #c2410c; }
+.pa-bar { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+.pa-bar i { display: block; width: 110px; height: 5px; border-radius: 5px; background: #dfe7f2; overflow: hidden; }
+.pa-bar u { display: block; height: 100%; background: #2f5bb5; border-radius: 5px; transition: width 0.5s ease; }
+
+.pa-tabs { display: flex; gap: 2px; padding: 0 14px; border-bottom: 1px solid #e5ebf3; align-items: flex-end; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; flex: none; }
+.pa-tabs::-webkit-scrollbar { display: none; }
+.pa-tab { position: relative; background: none; border: 0; font-family: inherit; font-size: 12.5px; font-weight: 700; color: #64748b; padding: 11px 10px 10px; cursor: pointer; white-space: nowrap; transition: color 0.15s; }
+.pa-tab em { font-style: normal; margin-left: 6px; font-size: 10.5px; background: #eef2f8; color: #475569; border-radius: 999px; padding: 1px 7px; }
+.pa-tab:hover, .pa-tab.on { color: #1e3a78; }
+.pa-tab.on em { background: #1e3a78; color: #fff; }
+.pa-tab::after { content: ""; position: absolute; left: 10px; right: 10px; bottom: -1px; height: 2px; background: #1e3a78; transform: scaleX(0); transition: transform 0.22s ease; }
+.pa-tab.on::after { transform: scaleX(1); }
+.pa-tab-pri:hover, .pa-tab-pri.on { color: #c2410c; }
+.pa-tab-pri.on::after { background: #c2410c; }
+.pa-tab-pri.on em { background: #c2410c; }
+.pa-switch { margin-left: auto; align-self: center; display: flex; align-items: center; gap: 7px; font-size: 11.5px; color: #64748b; padding: 0 8px; white-space: nowrap; cursor: pointer; }
+.pa-switch input { width: 30px; height: 17px; appearance: none; background: #cdd7e5; border-radius: 999px; position: relative; cursor: pointer; transition: 0.2s; }
+.pa-switch input::before { content: ""; position: absolute; width: 13px; height: 13px; border-radius: 50%; background: #fff; left: 2px; top: 2px; transition: 0.2s; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3); }
+.pa-switch input:checked { background: #1e3a78; }
+.pa-switch input:checked::before { transform: translateX(13px); }
+
+.pa-list { overflow-y: auto; overflow-x: hidden; padding: 4px 16px 10px; flex: 1; background: #fbfcfe; min-height: 120px; }
+.pa-gh { font-size: 10.5px; font-weight: 800; letter-spacing: 0.1em; color: #7b8798; text-transform: uppercase; margin: 14px 2px 7px; display: flex; align-items: center; gap: 7px; }
+.pa-gh.pri { color: #c2410c; }
+.pa-gh .pa-ico { width: 13px; height: 13px; }
+
+.pa-card {
+  position: relative; display: flex; gap: 13px; align-items: center; background: #fff; border: 1px solid #e3e9f2; border-radius: 11px;
+  padding: 12px 14px; margin-bottom: 8px; overflow: hidden; animation: pa-card 0.4s ease both; animation-delay: calc(var(--i) * 45ms);
+  transition: box-shadow 0.2s, border-color 0.2s, transform 0.2s, opacity 0.3s;
+}
+@keyframes pa-card { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+.pa-card:hover { border-color: #b9c9e3; box-shadow: 0 6px 18px rgba(30, 58, 120, 0.1); transform: translateY(-1px); }
+.pa-card.read { background: #fafbfd; }
+.pa-card.read .pa-tt, .pa-card.read .pa-ms { opacity: 0.65; }
+.pa-card.pri { background: #fffaf5; border-color: #f6c9a0; }
+.pa-card.pri::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: #ea580c; }
+.pa-card.gone { animation: pa-gone 0.3s ease forwards; }
+@keyframes pa-gone { to { opacity: 0; transform: translateX(40px); } }
+.pa-tile { flex: none; width: 38px; height: 38px; border-radius: 10px; display: flex; align-items: center; justify-content: center; background: #eaf0fa; color: #1e3a78; position: relative; }
+.pa-card.pri .pa-tile { background: #feeedd; color: #c2410c; }
+.pa-ud { position: absolute; top: -3px; right: -3px; width: 10px; height: 10px; border-radius: 50%; background: #2f5bb5; border: 2px solid #fff; }
+.pa-card.pri .pa-ud { background: #ea580c; }
+.pa-ud::after { content: ""; position: absolute; inset: -2px; border-radius: 50%; border: 2px solid #2f5bb5; animation: pa-pulse 2s ease-out infinite; opacity: 0; }
+.pa-card.pri .pa-ud::after { border-color: #ea580c; }
+@keyframes pa-pulse { 0% { transform: scale(0.6); opacity: 0.7; } 100% { transform: scale(2.2); opacity: 0; } }
+.pa-card.read .pa-ud { display: none; }
+.pa-body { flex: 1; min-width: 0; }
+.pa-meta { display: flex; gap: 8px; align-items: center; font-size: 11px; color: #7b8798; flex-wrap: wrap; }
+.pa-k { font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; color: #1e3a78; font-size: 10px; }
+.pa-tm { display: inline-flex; align-items: center; gap: 4px; }
+.pa-tm .pa-ico { width: 11px; height: 11px; }
+.pa-hp { display: inline-flex; align-items: center; gap: 5px; background: #ea580c; color: #fff; font-weight: 800; font-size: 9.5px; letter-spacing: 0.06em; border-radius: 5px; padding: 2px 7px; text-transform: uppercase; }
+.pa-hp::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: #fff; animation: pa-blink 1.4s ease-in-out infinite; }
+@keyframes pa-blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+.pa-tt { font-size: 13.5px; font-weight: 800; color: #12295c; margin: 3px 0 1px; word-break: break-all; }
+.pa-ms { font-size: 12.5px; color: #4b5565; }
+.pa-st { display: inline-block; margin-top: 5px; font-size: 10.5px; color: #475569; background: #f1f4f9; border: 1px solid #e3e9f2; border-radius: 5px; padding: 1px 8px; }
+.pa-ac { display: flex; gap: 7px; align-items: center; flex: none; }
+.pa-go { position: relative; display: inline-flex; align-items: center; gap: 7px; border: 0; background: #1e3a78; color: #fff; font-family: inherit; font-weight: 700; font-size: 12px; border-radius: 8px; padding: 9px 13px; cursor: pointer; white-space: nowrap; transition: background 0.15s; }
+.pa-go:hover { background: #2f5bb5; }
+.pa-go .pa-ico { width: 14px; height: 14px; transition: transform 0.2s; }
+.pa-go:hover .pa-ico { transform: translateX(3px); }
+
+.pa-done { display: flex; align-items: center; gap: 9px; margin: 12px 0 4px; padding: 10px 12px; border-radius: 10px; background: #e9f6ee; border: 1px solid #b7dcc5; color: #1a7a45; font-size: 12.5px; font-weight: 700; animation: pa-card 0.4s ease both; }
+.pa-foot { display: flex; align-items: center; gap: 10px; padding: 11px 16px; border-top: 1px solid #e5ebf3; background: #fff; flex-wrap: wrap; flex: none; }
+.pa-hint { font-size: 11.5px; color: #7b8798; }
+.pa-btn { font-family: inherit; font-weight: 700; font-size: 12.5px; border-radius: 8px; padding: 9px 14px; cursor: pointer; border: 1px solid #d5deea; background: #fff; color: #1e3a78; transition: 0.15s; display: inline-flex; align-items: center; gap: 7px; }
+.pa-btn:hover:not(:disabled) { background: #f1f5fb; }
+.pa-btn:disabled { opacity: 0.5; cursor: default; }
+.pa-mark { background: #1e3a78; color: #fff; border-color: #1e3a78; margin-left: auto; }
+.pa-mark:hover:not(:disabled) { background: #2f5bb5; }
+.pa-mark .pa-ico { width: 15px; height: 15px; }
+.pa-empty { text-align: center; padding: 40px 10px; animation: pa-card 0.5s ease both; }
+.pa-empty-ring { width: 66px; height: 66px; border-radius: 50%; margin: 0 auto 12px; display: flex; align-items: center; justify-content: center; background: #e9f6ee; color: #1a7a45; }
+.pa-empty-ring .pa-ico { width: 30px; height: 30px; stroke-width: 2.2; }
+.pa-empty-ring .pa-ico path { stroke-dasharray: 30; animation: pa-draw 0.6s 0.15s ease both; }
+.pa-empty h4 { margin: 0 0 3px; font-size: 17px; color: #12295c; font-weight: 800; }
+.pa-empty p { margin: 0; font-size: 12.5px; color: #7b8798; }
+
+@media (max-width: 520px) {
+  .pa-card { flex-wrap: wrap; }
+  .pa-ac { width: 100%; justify-content: flex-end; }
+  .pa-bar { display: none; }
+  .pa-overlay { padding-top: 2vh; }
+  .pa-modal { max-height: 94vh; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pa-overlay, .pa-modal, .pa-head::before, .pa-logo .pa-ico, .pa-card, .pa-card.gone, .pa-ud::after, .pa-hp::before,
+  .pa-empty, .pa-empty-ring .pa-ico path, .pa-done { animation: none !important; }
+  .pa-card, .pa-tab::after, .pa-bar u { transition: none; }
+}
+
+/* per-item tick */
+.pa-pick { display: inline-flex; align-items: center; gap: 7px; height: 34px; padding: 0 10px; border: 1px solid #d5deea; border-radius: 8px; background: #fff; cursor: pointer; user-select: none; transition: 0.15s; }
+.pa-pick input { position: absolute; opacity: 0; pointer-events: none; }
+.pa-pick:hover:not(.is-read) { border-color: #1e3a78; background: #f1f5fb; }
+.pa-pick-t { font-size: 12px; font-weight: 700; color: #1e3a78; white-space: nowrap; }
+.pa-box { width: 18px; height: 18px; border-radius: 5px; border: 2px solid #1e3a78; background: #fff; display: inline-flex; align-items: center; justify-content: center; transition: 0.2s; flex: none; }
+.pa-box .pa-ico { width: 12px; height: 12px; color: #fff; stroke-width: 3.2; opacity: 0; transform: scale(0.4); transition: 0.2s; }
+.pa-pick input:checked + .pa-box { background: #1e3a78; }
+.pa-pick input:checked + .pa-box .pa-ico { opacity: 1; transform: none; }
+.pa-pick input:focus-visible + .pa-box { box-shadow: 0 0 0 4px rgba(30, 58, 120, 0.25); }
+.pa-pick.is-read { background: #e9f6ee; border-color: #b7dcc5; cursor: default; }
+.pa-pick.is-read .pa-box { background: #1a7a45; border-color: #1a7a45; }
+.pa-pick.is-read .pa-pick-t { color: #1a7a45; }
+.pa-card.picked { border-color: #1e3a78; box-shadow: 0 0 0 2px rgba(30, 58, 120, 0.15); }

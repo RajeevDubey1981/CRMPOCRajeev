@@ -41,7 +41,7 @@ def _complaint_users(db: Session, complaint: Complaint) -> list[User]:
             User.is_active.is_(True),
             User.deleted_at.is_(None),
             func.lower(func.trim(User.role)).in_(
-                {"admin", "incool", "indcool", "indcool service", "indcool_service", "service", "callcenter", "sales"}
+                {"admin", "incool", "indcool", "indcool service", "indcool_service", "service", "callcenter", "sales", "sub_admin"}
             ),
         )
     ).all()
@@ -103,7 +103,7 @@ def sync_complaint_pending_actions(db: Session, complaint: Complaint) -> None:
             entity_id=complaint.id,
             action_type="triage_complaint",
             title=title,
-            message=f"Complaint is {complaint.status}. Review and take action.",
+            message=("HIGH PRIORITY - " if (getattr(complaint, "priority", "Normal") == "High") else "") + f"Complaint is {complaint.status}. Review and take action.",
             action_label="Open complaint",
             href=href,
             entity_status=complaint.status,
