@@ -7,7 +7,6 @@ import Pagination from "../components/Pagination.jsx";
 import { ordersApi } from "../api/orders.js";
 import { api } from "../api/client.js";
 import { useAuth } from "../auth/AuthContext.jsx";
-import { BidsAside, BidStatCard, useVendorBids } from "../components/bids/VendorBidsPanel.jsx";
 
 const ORDER_STATUSES = ["Pending", "In Transit", "Delivered", "Returned"];
 
@@ -66,7 +65,6 @@ export default function VendorDashboard() {
   const { user } = useAuth();
   const role = user?.role?.toLowerCase?.() || "";
   const isVendor = role === "vendor";
-  const vendorBids = useVendorBids();
 
   const [summary, setSummary]               = useState(null);
   const [data, setData]                     = useState({ items: [], total: 0 });
@@ -272,12 +270,7 @@ export default function VendorDashboard() {
             </div>
           </div>
         ))}
-        {vendorBids.enabled && <BidStatCard bids={vendorBids.bids} />}
       </div>
-
-      {/* the orders area keeps its place; the highlighted bids column sits beside it when bids are switched on */}
-      <div className={vendorBids.enabled ? "grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_340px]" : ""}>
-      <div className="min-w-0 space-y-4">
 
       {/* ── Search + Action bar ── */}
       <div className="flex flex-wrap items-center justify-between gap-2 rounded bg-white p-3 shadow-sm">
@@ -508,10 +501,6 @@ export default function VendorDashboard() {
             onPerPageChange={(n) => { setPerPage(n); setPage(1); }}
           />
         </div>
-      </div>
-
-      </div>
-      {vendorBids.enabled && <BidsAside bids={vendorBids.bids} msg={vendorBids.msg} onConfirm={vendorBids.confirm} />}
       </div>
 
       {/* ── Batch Status Modal ── */}
