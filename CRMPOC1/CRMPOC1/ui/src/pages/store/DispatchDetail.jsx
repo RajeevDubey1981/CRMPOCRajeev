@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
 import { storeApi, storeError } from "../../api/store.js";
-import { CameraScan } from "./GrnForm.jsx";
+import CameraScan from "../../components/scan/CameraScan.jsx";
 import { STAGE_BADGE } from "./DispatchList.jsx";
 import { fmtDateTime } from "./GrnList.jsx";
 

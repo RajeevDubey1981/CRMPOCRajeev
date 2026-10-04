@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { servicesApi } from "../../api/services.js";
 import { engineerIdsMatch } from "../../utils/engineerAssignment.js";
 import Modal from "../../components/Modal.jsx";
+import ScanInput from "../../components/scan/ScanInput.jsx";
 import StatusBadge from "../../components/StatusBadge.jsx";
 
 const PAYMENT_TYPES = ["Cash", "UPI"];
@@ -938,9 +939,9 @@ export default function EngineerUnitWorkflowPanel({
               ? "Enter the correct serial number. It will be submitted again for Admin/INDcool approval."
               : "Enter the serial number. It will be submitted to Admin/INDcool for approval. If the serial is not on the order, Admin/INDcool will review and decide."}
           </p>
-          <input
+          <ScanInput
             value={serialInputs[unit.id] || ""}
-            onChange={(event) => setSerialInputs((current) => ({ ...current, [unit.id]: event.target.value }))}
+            onValue={(value) => setSerialInputs((current) => ({ ...current, [unit.id]: value }))}
             className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
             placeholder="Serial number"
             autoFocus
@@ -988,9 +989,9 @@ export default function EngineerUnitWorkflowPanel({
 
           <div>
             <label className="mb-1 block text-sm font-medium text-slate-700">Serial to approve</label>
-            <input
+            <ScanInput
               value={form.override_serial || ""}
-              onChange={(event) => updateSerialReview(unit.id, "override_serial", event.target.value)}
+              onValue={(value) => updateSerialReview(unit.id, "override_serial", value)}
               className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm font-mono"
               placeholder="Serial number"
             />
@@ -1654,9 +1655,9 @@ export default function EngineerUnitWorkflowPanel({
         for the same customer. Admin reviews each serial (free/paid); then complete and raise payment per serial.
       </p>
       <div className="flex flex-wrap gap-2">
-        <input
+        <ScanInput
           value={newVisitSerial}
-          onChange={(e) => setNewVisitSerial(e.target.value)}
+          onValue={setNewVisitSerial}
           onKeyDown={(e) => {
             if (e.key === "Enter") {
               e.preventDefault();
@@ -1664,7 +1665,8 @@ export default function EngineerUnitWorkflowPanel({
             }
           }}
           placeholder="Serial number"
-          className="min-w-[12rem] flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm"
+          wrapperClassName="min-w-[12rem] flex-1"
+          className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
         />
         <button
           type="button"

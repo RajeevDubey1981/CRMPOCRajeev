@@ -3,6 +3,7 @@ import { BOUNCED_BUTTON, BounceBanner } from "../../components/EmailBounceNotice
 import { Link, useParams } from "react-router-dom";
 
 import Modal from "../../components/Modal.jsx";
+import ScanInput from "../../components/scan/ScanInput.jsx";
 import StatusBadge from "../../components/StatusBadge.jsx";
 import { useAuth } from "../../auth/AuthContext.jsx";
 import {
@@ -1010,7 +1011,7 @@ export default function ServiceRequestDetail() {
           <div className="grid gap-6 lg:grid-cols-2">
             <div className="space-y-3">
               <div className="text-sm font-medium text-slate-700">Verify product serial number</div>
-              <input value={serialNo} onChange={(e) => setSerialNo(e.target.value)} disabled={!canVerifySerial} placeholder="Scan or enter serial no" className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-100 disabled:text-slate-500" />
+              <ScanInput value={serialNo} onValue={setSerialNo} disabled={!canVerifySerial} placeholder="Scan or enter serial no" className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-100 disabled:text-slate-500" />
               <button
                 onClick={() => run(
                   () => servicesApi.verifySerial(service.id, { serial_no: serialNo }),

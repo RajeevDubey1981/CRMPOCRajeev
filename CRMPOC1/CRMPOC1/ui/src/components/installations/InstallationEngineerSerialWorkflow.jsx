@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 
 import { installationsApi } from "../../api/installations.js";
 import { formatApiError } from "../../utils/apiError.js";
+import ScanInput from "../scan/ScanInput.jsx";
 import WorkflowStepSection from "./WorkflowStepSection.jsx";
 
 const emptySerialLine = () => ({
@@ -158,15 +159,15 @@ export default function InstallationEngineerSerialWorkflow({
                   )}
                 </div>
                 <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
-                  <input
+                  <ScanInput
                     value={line.serial_no}
-                    onChange={(e) => updateLine(index, "serial_no", e.target.value)}
+                    onValue={(value) => updateLine(index, "serial_no", value)}
                     placeholder="Serial number"
                     className={fieldClass}
                   />
-                  <input
+                  <ScanInput
                     value={line.serial_no_2}
-                    onChange={(e) => updateLine(index, "serial_no_2", e.target.value)}
+                    onValue={(value) => updateLine(index, "serial_no_2", value)}
                     placeholder="Serial number 2 (optional)"
                     className={fieldClass}
                   />

@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 
 import Modal from "../../components/Modal.jsx";
+import ScanSerialsModal from "../../components/orders/ScanSerialsModal.jsx";
+import { BarcodeIcon } from "../../components/scan/ScanInput.jsx";
 import VendorOrderLineItemsEditor, {
   collapseOrderItemsToLineItems,
   serializeVendorLineItems,
@@ -243,6 +245,7 @@ export default function OrderDetail() {
   const [csvErr, setCsvErr] = useState("");
   const [importPreview, setImportPreview] = useState(null);
   const [collapsedItemGroups, setCollapsedItemGroups] = useState({});
+  const [scanScope, setScanScope] = useState(null);
   const [itemOptions, setItemOptions] = useState([]);
   const [editLineItems, setEditLineItems] = useState([]);
   const [editConsignees, setEditConsignees] = useState([]);
@@ -553,6 +556,43 @@ export default function OrderDetail() {
     } catch (e) {
       setCsvErr(e.message || "Failed to read CSV");
     }
+  }
+
+  function reviewScannedSerials(changed, serialColumnCount) {
+    const columns = buildOrderItemCsvColumns(serialColumnCount);
+    const rows = changed.map(({ item, serial1, serial2 }, index) => {
+      const values = {
+        "ID": String(item.id),
+        "Item ID": item.item_id != null ? String(item.item_id) : "",
+        "Item Name": item.item_name || "",
+        "Item Code": item.item_code || "",
+        "Serial Number 1": serial1,
+        "Serial Number 2": serial2,
+        "PCB Warranty": item.pcb_warranty_years != null ? String(item.pcb_warranty_years) : "",
+        "Component Warranty": item.component_warranty_years != null ? String(item.component_warranty_years) : "",
+        "Machine Warranty": item.machine_warranty_years != null ? String(item.machine_warranty_years) : "",
+        "Free Services": String(item.free_service_count ?? 0),
+        "Dry Free Services": String(item.dry_free_service_count ?? 0),
+        "Wet Free Services": String(item.wet_free_service_count ?? 0),
+        "Installation Status": item.installation_status || "",
+      };
+      return {
+        previewId: `scan-${Date.now()}-${index}`,
+        rowNumber: index + 2,
+        cells: Object.fromEntries(columns.map((column) => [column, values[column] ?? ""])),
+        duplicateReasons: [],
+      };
+    });
+    setCsvErr("");
+    setCsvMsg("");
+    setImportPreview({
+      itemCode: scanScope?.itemCode || "",
+      fileName: "scanned-serials.csv",
+      columns,
+      serialColumnCount,
+      rows,
+    });
+    setScanScope(null);
   }
 
   function closeImportPreview() {
@@ -1157,6 +1197,15 @@ export default function OrderDetail() {
                 >
                   Export CSV
                 </button>
+                <button
+                  type="button"
+                  onClick={() => setScanScope({ itemCode: "", label: "all items", rows: order.items || [] })}
+                  disabled={csvBusy}
+                  className="inline-flex items-center gap-2 rounded-md border border-brand-300 bg-brand-50 px-4 py-2 text-sm font-medium text-brand-800 hover:bg-brand-100 disabled:opacity-50"
+                >
+                  <BarcodeIcon className="h-4 w-4" />
+                  Scan serials
+                </button>
               </div>
             )}
           </div>
@@ -1202,6 +1251,15 @@ export default function OrderDetail() {
                         className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
                       >
                         Export CSV
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setScanScope({ itemCode: group.itemCode || "", label: group.itemName || group.itemCode || "this item", rows: group.rows })}
+                        disabled={csvBusy}
+                        className="inline-flex items-center gap-1.5 rounded-md border border-brand-300 bg-brand-50 px-3 py-1.5 text-sm font-medium text-brand-800 hover:bg-brand-100 disabled:opacity-50"
+                      >
+                        <BarcodeIcon className="h-4 w-4" />
+                        Scan serials
                       </button>
                     </div>
                   )}
@@ -1849,6 +1907,16 @@ export default function OrderDetail() {
           }}
         />
       )}
+
+      <ScanSerialsModal
+        open={!!scanScope}
+        onClose={() => setScanScope(null)}
+        scopeLabel={scanScope?.label}
+        items={scanScope?.rows || []}
+        allItems={order.items || []}
+        isLocked={isItemLocked}
+        onReview={reviewScannedSerials}
+      />
 
       <Modal
         open={!!importPreview}

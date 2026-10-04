@@ -5,61 +5,12 @@ import { useAuth } from "../../auth/AuthContext.jsx";
 import { hasPermission } from "../../utils/permissions.js";
 import { storeApi, storeError } from "../../api/store.js";
 import { accountsApi } from "../../api/accounts.js";
+import CameraScan from "../../components/scan/CameraScan.jsx";
 import { GRN_BADGE, fmtDateTime } from "./GrnList.jsx";
 
 const fieldClass = "w-full rounded-md border border-slate-300 px-3 py-2 text-sm";
 const labelClass = "mb-1 block text-sm font-medium text-slate-700";
 const MODES = [["scanner", "Scanner"], ["camera", "Phone camera"], ["type", "Type it"]];
-
-export function CameraScan({ onCode }) {
-  const videoRef = useRef(null);
-  const last = useRef({ code: "", at: 0 });
-  const [err, setErr] = useState("");
-
-  useEffect(() => {
-    let stream = null;
-    let timer = null;
-    let stopped = false;
-    async function start() {
-      if (!("BarcodeDetector" in window)) {
-        setErr("This browser cannot read barcodes with the camera. Use the scanner or type the serial.");
-        return;
-      }
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
-        if (stopped) { stream.getTracks().forEach((t) => t.stop()); return; }
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play();
-        const detector = new window.BarcodeDetector();
-        const tick = async () => {
-          if (stopped) return;
-          try {
-            const codes = await detector.detect(videoRef.current);
-            const now = Date.now();
-            if (codes.length && (codes[0].rawValue !== last.current.code || now - last.current.at > 2500)) {
-              last.current = { code: codes[0].rawValue, at: now };
-              onCode(codes[0].rawValue);
-            }
-          } catch { /* keep scanning */ }
-          timer = setTimeout(tick, 350);
-        };
-        tick();
-      } catch {
-        setErr("The camera is not available. Allow camera access, and open the CRM over https.");
-      }
-    }
-    start();
-    return () => {
-      stopped = true;
-      if (timer) clearTimeout(timer);
-      if (stream) stream.getTracks().forEach((t) => t.stop());
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  if (err) return <div className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800">{err}</div>;
-  return <video ref={videoRef} playsInline muted className="h-44 w-full rounded-md bg-slate-900 object-cover" />;
-}
 
 const EMPTY_HEAD = { source_type: "Purchase", supplier_name: "", reference_no: "", remarks: "", po_id: "" };
 
