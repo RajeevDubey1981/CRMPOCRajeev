@@ -520,42 +520,42 @@ export default function InstallationList() {
                                           {editLabel(row)}
                                         </button>
                                         {row.status !== "Rejected" && (
-                                        <button
-                                          title="Reject"
-                                          onClick={(event) => {
-                                            event.stopPropagation();
-                                            doReject(row);
-                                          }}
-                                          className="rounded border border-rose-300 px-2 py-0.5 text-xs font-medium text-rose-700 hover:bg-rose-50"
-                                        >
-                                          Reject
-                                        </button>
-                                      )}
+                                          <button
+                                            title="Reject"
+                                            onClick={(event) => {
+                                              event.stopPropagation();
+                                              doReject(row);
+                                            }}
+                                            className="rounded border border-rose-300 px-2 py-0.5 text-xs font-medium text-rose-700 hover:bg-rose-50"
+                                          >
+                                            Reject
+                                          </button>
+                                        )}
                                         {canDeletePerm && (
-                                        <button
-                                          title="Delete"
-                                          onClick={(event) => {
-                                            event.stopPropagation();
-                                            setConfirmDelete(row);
-                                          }}
-                                          className="rounded p-1 text-rose-600 hover:bg-rose-50"
-                                        >
-                                          Delete
-                                        </button>
-                                      )}
+                                          <button
+                                            title="Delete"
+                                            onClick={(event) => {
+                                              event.stopPropagation();
+                                              setConfirmDelete(row);
+                                            }}
+                                            className="rounded p-1 text-rose-600 hover:bg-rose-50"
+                                          >
+                                            Delete
+                                          </button>
+                                        )}
                                         {(row.status === "Submitted" || row.status === "Assigned") && (
-                                        <button
-                                          title="Cancel submission"
-                                          onClick={(event) => {
-                                            event.stopPropagation();
-                                            doCancel(row);
-                                          }}
-                                          disabled={cancelBusyId === row.id}
-                                          className="rounded border border-rose-300 px-2 py-0.5 text-xs font-medium text-rose-600 hover:bg-rose-50 disabled:opacity-50"
-                                        >
-                                          {cancelBusyId === row.id ? "..." : "Cancel"}
-                                        </button>
-                                      )}
+                                          <button
+                                            title="Cancel submission"
+                                            onClick={(event) => {
+                                              event.stopPropagation();
+                                              doCancel(row);
+                                            }}
+                                            disabled={cancelBusyId === row.id}
+                                            className="rounded border border-rose-300 px-2 py-0.5 text-xs font-medium text-rose-600 hover:bg-rose-50 disabled:opacity-50"
+                                          >
+                                            {cancelBusyId === row.id ? "..." : "Cancel"}
+                                          </button>
+                                        )}
                                       </div>
                                     </td>
                                   )}
