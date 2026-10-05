@@ -4,8 +4,11 @@
   "webDir": "www",
   "server": {
     "url": "https://indcoolapplainces.com",
-    "allowNavigation": ["indcoolapplainces.com"],
-    "cleartext": false
+    "allowNavigation": [
+      "indcoolapplainces.com"
+    ],
+    "cleartext": false,
+    "errorPath": "error.html"
   },
   "android": {
     "allowMixedContent": false

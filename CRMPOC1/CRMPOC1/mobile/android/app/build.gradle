@@ -7,13 +7,23 @@ android {
         applicationId "in.indcool.service"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        versionCode 2
+        versionName "1.0.1"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
              // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
+        }
+    }
+    // Tester builds are always signed with this one key, so a new APK installs over the old one on the same phone.
+    // It is NOT the Play Store key: that one is made separately, kept private, and never put in the repo.
+    signingConfigs {
+        debug {
+            storeFile file('tester.keystore')
+            storePassword 'indcool-tester'
+            keyAlias 'tester'
+            keyPassword 'indcool-tester'
         }
     }
     buildTypes {
