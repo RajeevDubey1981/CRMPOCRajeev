@@ -225,6 +225,7 @@ export default function EngineerUnitWorkflowPanel({
     return units.filter((unit) => unit.assigned_engineer_id);
   }, [service?.units, isEngineer, userId]);
 
+  const [photoCounts, setPhotoCounts] = useState({}); // photos taken per serial, reported by the Photos button
   const [rows, setRows] = useState([]);
   const [serialInputs, setSerialInputs] = useState({});
   const [completionRows, setCompletionRows] = useState({});
@@ -1847,12 +1848,18 @@ export default function EngineerUnitWorkflowPanel({
                   <div>{progressSummary(unit)}</div>
                 </div>
               )}
+              {isEngineer && !verified && photoCounts[unit.id] === 0 && (
+                <div className="mt-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                  Take at least 1 photo of the machine before you verify this serial.
+                </div>
+              )}
               <div className="mt-3 flex flex-wrap items-center gap-2">
                 <FieldPhotos
                   kind="service-units"
                   id={unit.id}
                   serialNo={unit.serial_no}
                   canAdd={isEngineer && engineerIdsMatch(unit.assigned_engineer_id, userId)}
+                  onCountChange={(n) => setPhotoCounts((c) => (c[unit.id] === n ? c : { ...c, [unit.id]: n }))}
                 />
                 <div className="ml-auto [&_button]:min-h-[44px] [&_button]:px-4 [&_button]:text-sm">{renderStepButton(unit)}</div>
               </div>
@@ -1905,6 +1912,7 @@ export default function EngineerUnitWorkflowPanel({
                       id={unit.id}
                       serialNo={unit.serial_no}
                       canAdd={isEngineer && engineerIdsMatch(unit.assigned_engineer_id, userId)}
+                  onCountChange={(n) => setPhotoCounts((c) => (c[unit.id] === n ? c : { ...c, [unit.id]: n }))}
                     />
                   </td>
                   <td className="px-3 py-2"><StatusBadge value={unit.unit_status || "Assigned"} /></td>

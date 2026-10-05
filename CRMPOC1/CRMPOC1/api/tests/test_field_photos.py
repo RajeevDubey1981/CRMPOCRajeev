@@ -139,9 +139,22 @@ class FieldPhotoTests(unittest.TestCase):
         path = f"/api/field-photos/service-units/{self.unit.id}"
         self.assertEqual(self.post(path, self.eng1, data=b"%PDF-1.4 x", name="a.pdf", mime="application/pdf").status_code, 400)
         self.assertEqual(self.post(path, self.eng1, data=b"not an image", name="a.jpg").status_code, 400)
-        for _ in range(6):
+        for _ in range(4):
             self.assertEqual(self.post(path, self.eng1).status_code, 201)
         self.assertEqual(self.post(path, self.eng1).status_code, 400)
+
+    def test_engineer_cannot_verify_a_serial_without_a_photo(self):
+        url = f"/api/services/{self.unit.service_request_id}/verify-serial"
+        body = {"unit_id": self.unit.id, "serial_no": "SER-001"}
+        r = self.client.post(url, json=body, headers=self.h(self.eng1))
+        self.assertEqual(r.status_code, 400, r.text)
+        self.assertIn("at least 1 photo", r.json()["detail"])
+        self.assertIn("SER-001", r.json()["detail"])
+        bulk = self.client.post(f"/api/services/{self.unit.service_request_id}/verify-serials-bulk", json={"unit_ids": [self.unit.id]}, headers=self.h(self.eng1))
+        self.assertEqual(bulk.status_code, 400, bulk.text)
+        self.assertEqual(self.post(f"/api/field-photos/service-units/{self.unit.id}", self.eng1).status_code, 201)
+        ok = self.client.post(url, json=body, headers=self.h(self.eng1))
+        self.assertEqual(ok.status_code, 200, ok.text)
 
     def test_missing_serial_is_404(self):
         self.assertEqual(self.post("/api/field-photos/service-units/9999", self.eng1).status_code, 404)

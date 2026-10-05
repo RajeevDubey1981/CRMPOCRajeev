@@ -26,7 +26,7 @@ from app.services.role_access import role_key
 
 router = APIRouter(prefix="/api/field-photos", tags=["field-photos"])
 
-MAX_PHOTOS_PER_SERIAL = 6
+MAX_PHOTOS_PER_SERIAL = 4
 MAX_PHOTO_BYTES = 5 * 1024 * 1024
 IMAGE_EXT = {".jpg", ".jpeg", ".png"}
 IMAGE_MIME = {"image/jpeg", "image/jpg", "image/png"}

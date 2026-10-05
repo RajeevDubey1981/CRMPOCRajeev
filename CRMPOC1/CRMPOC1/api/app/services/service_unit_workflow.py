@@ -6,9 +6,10 @@ from datetime import datetime, timezone
 from typing import Callable
 
 from fastapi import HTTPException, status
-from sqlalchemy import desc, select
+from sqlalchemy import desc, func, select
 from sqlalchemy.orm import Session
 
+from app.models.field_photo import FieldPhoto
 from app.models.order import OrderItem
 from app.models.service import (
     ServiceApproval,
@@ -248,6 +249,9 @@ def units_without_observation(
     return [unit for unit in units if unit.id not in observations]
 
 
+MIN_FIELD_PHOTOS = 1  # an engineer must photograph the machine before a serial can be verified
+
+
 def verify_unit_serial(
     db: Session,
     service: ServiceRequest,
@@ -269,8 +273,16 @@ def verify_unit_serial(
     if not resolved_serial:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Serial number is required for this unit")
 
-    lookup_item = find_order_item_by_serial(db, resolved_serial)
     role_key = (user.role or "").lower()
+    if role_key == "engineer":
+        photo_count = db.scalar(select(func.count(FieldPhoto.id)).where(FieldPhoto.service_request_unit_id == unit.id)) or 0
+        if photo_count < MIN_FIELD_PHOTOS:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                f"Take at least {MIN_FIELD_PHOTOS} photo of the machine first (serial {resolved_serial}). Tap Photos on that serial.",
+            )
+
+    lookup_item = find_order_item_by_serial(db, resolved_serial)
     submits_for_review = role_key in {"engineer", "vendor"}
 
     if lookup_item is None:
