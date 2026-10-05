@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { servicesApi } from "../../api/services.js";
 import { engineerIdsMatch } from "../../utils/engineerAssignment.js";
 import Modal from "../../components/Modal.jsx";
+import FieldPhotos from "../../components/fieldphoto/FieldPhotos.jsx";
 import ScanInput from "../../components/scan/ScanInput.jsx";
 import StatusBadge from "../../components/StatusBadge.jsx";
 
@@ -1758,6 +1759,7 @@ export default function EngineerUnitWorkflowPanel({
             <tr>
               {isServiceTeam && <th className="px-3 py-2">Billing</th>}
               <th className="px-3 py-2">Serial</th>
+              <th className="px-3 py-2">Photos</th>
               <th className="px-3 py-2">Status</th>
               <th className="px-3 py-2">Verify</th>
               {!isEngineer && <th className="px-3 py-2">Steps</th>}
@@ -1789,6 +1791,14 @@ export default function EngineerUnitWorkflowPanel({
                     </td>
                   )}
                   <td className="px-3 py-2 font-mono text-xs">{unit.serial_no || "—"}</td>
+                  <td className="px-3 py-2">
+                    <FieldPhotos
+                      kind="service-units"
+                      id={unit.id}
+                      serialNo={unit.serial_no}
+                      canAdd={isEngineer && engineerIdsMatch(unit.assigned_engineer_id, userId)}
+                    />
+                  </td>
                   <td className="px-3 py-2"><StatusBadge value={unit.unit_status || "Assigned"} /></td>
                   <td className="px-3 py-2">
                     {verified ? (

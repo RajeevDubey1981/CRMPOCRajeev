@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { installationsApi } from "../../api/installations.js";
 import { formatApiError } from "../../utils/apiError.js";
 import ScanInput from "../scan/ScanInput.jsx";
+import FieldPhotos from "../fieldphoto/FieldPhotos.jsx";
 import WorkflowStepSection from "./WorkflowStepSection.jsx";
 
 const emptySerialLine = () => ({
@@ -232,6 +233,7 @@ export default function InstallationEngineerSerialWorkflow({
                   <th className="px-2 py-2">Unit status</th>
                   <th className="px-2 py-2">Observation</th>
                   <th className="px-2 py-2">Verification</th>
+                  <th className="px-2 py-2">Photos</th>
                 </tr>
               </thead>
               <tbody>
@@ -243,6 +245,14 @@ export default function InstallationEngineerSerialWorkflow({
                     <td className="px-2 py-2">{row.unit_status || "—"}</td>
                     <td className="px-2 py-2">{row.observation || "—"}</td>
                     <td className="px-2 py-2">{row.verification_status}</td>
+                    <td className="px-2 py-2">
+                      <FieldPhotos
+                        kind="installation-serials"
+                        id={row.id}
+                        serialNo={row.serial_no}
+                        canAdd={Boolean(isEngineer) && Number(assignedEngineerId) === Number(userId)}
+                      />
+                    </td>
                   </tr>
                 ))}
               </tbody>
