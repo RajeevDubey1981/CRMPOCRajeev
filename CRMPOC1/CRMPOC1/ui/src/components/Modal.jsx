@@ -34,7 +34,7 @@ export default function Modal({ open, onClose, title, children, maxWidth = "max-
             ✕
           </button>
         </div>
-        <div className="overflow-y-auto p-5">{children}</div>
+        <div className="crm-modal-body overflow-y-auto p-5">{children}</div>
       </div>
     </div>
   );

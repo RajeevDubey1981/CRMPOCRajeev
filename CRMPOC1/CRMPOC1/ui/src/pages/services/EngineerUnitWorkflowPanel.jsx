@@ -140,6 +140,48 @@ function proofActionLink(unit, onOpen) {
   );
 }
 
+const DONE_COMPLETE = ["Service Completed", "Payment Requested", "Payment Completed", "Closed"];
+const DONE_PAYMENT = ["Payment Requested", "Payment Completed", "Closed"];
+const GUIDE_STEPS = [
+  ["Verify", "Verify the serial"],
+  ["Observe", "Add your observation"],
+  ["Complete", "Complete the service"],
+  ["Payment", "Raise the payment request"],
+];
+
+function unitStage(unit) {
+  if (!unit.serial_verified_at) return 0;
+  if (!unit.observation_id) return 1;
+  if (!DONE_COMPLETE.includes(unit.unit_status)) return 2;
+  if (!DONE_PAYMENT.includes(unit.unit_status)) return 3;
+  return 4;
+}
+
+// Phones: shows where the engineer is in the four steps (the earliest step any serial is still on)
+function StepGuide({ units }) {
+  if (!units.length) return null;
+  const stage = Math.min(...units.map(unitStage));
+  return (
+    <div className="md:hidden">
+      <div className="flex gap-1">
+        {GUIDE_STEPS.map(([label], i) => (
+          <div
+            key={label}
+            className={`flex-1 rounded-md py-1.5 text-center text-[11px] ${
+              i < stage ? "bg-indcool-navy text-white" : i === stage ? "bg-indcool-lime font-bold text-indcool-navy" : "bg-slate-200 text-slate-500"
+            }`}
+          >
+            {i + 1} {label}
+          </div>
+        ))}
+      </div>
+      <p className="mt-1.5 text-sm font-medium text-slate-700">
+        {stage >= GUIDE_STEPS.length ? "All steps are done for these serials." : `Next: ${GUIDE_STEPS[stage][1]}`}
+      </p>
+    </div>
+  );
+}
+
 function WorkflowSteps({ unit }) {
   const steps = [
     { label: "Verify", done: Boolean(unit.serial_verified_at) },
@@ -1337,6 +1379,18 @@ export default function EngineerUnitWorkflowPanel({
               className={inputClass()}
             />
           </div>
+          {completion.completion_status === "Service Completed" && (() => {
+            const missing = [
+              !completion.work_performed?.trim() && "Work performed",
+              !proof && "Proof of service photo",
+              !completion.completion_code?.trim() && "Happy Code",
+            ].filter(Boolean);
+            return missing.length ? (
+              <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                Missing: {missing.join(", ")}
+              </div>
+            ) : null;
+          })()}
           <div className="flex justify-end gap-2 pt-2">
             <button type="button" onClick={closeModal} className="rounded-md border border-slate-300 px-4 py-2 text-sm">
               Cancel
@@ -1687,7 +1741,7 @@ export default function EngineerUnitWorkflowPanel({
   if (!workUnits.length) {
     if (!addSerialBlock) return null;
     return (
-      <section className="rounded-lg bg-white p-6 shadow-sm space-y-4" id="engineer-serial-workflow-table">
+      <section className="rounded-lg bg-white p-4 shadow-sm space-y-4 sm:p-6" id="engineer-serial-workflow-table">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-700">Serial workflow (per unit)</h2>
         {addSerialBlock}
         {!busy && (service?.units || []).length > 0 && workUnits.length === 0 && isEngineer && (
@@ -1701,7 +1755,7 @@ export default function EngineerUnitWorkflowPanel({
   }
 
   return (
-    <section className="rounded-lg bg-white p-6 shadow-sm space-y-6" id="engineer-serial-workflow-table">
+    <section className="rounded-lg bg-white p-4 shadow-sm space-y-6 sm:p-6" id="engineer-serial-workflow-table">
       <div>
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-700">
           Serial workflow (per unit)
@@ -1753,6 +1807,8 @@ export default function EngineerUnitWorkflowPanel({
         )}
       </div>
 
+      {(isEngineer || isVendor) && <StepGuide units={workUnits} />}
+
       {/* phones: one card per serial with its action button in view, no sideways scrolling */}
       <div className="space-y-2 md:hidden">
         {workUnits.map((unit) => {
@@ -1798,7 +1854,7 @@ export default function EngineerUnitWorkflowPanel({
                   serialNo={unit.serial_no}
                   canAdd={isEngineer && engineerIdsMatch(unit.assigned_engineer_id, userId)}
                 />
-                <div className="ml-auto">{renderStepButton(unit)}</div>
+                <div className="ml-auto [&_button]:min-h-[44px] [&_button]:px-4 [&_button]:text-sm">{renderStepButton(unit)}</div>
               </div>
             </div>
           );

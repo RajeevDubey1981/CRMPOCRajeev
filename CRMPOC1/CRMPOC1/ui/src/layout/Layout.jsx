@@ -5,6 +5,7 @@ import { fetchPendingActions, markPendingActionsRead } from "../api/pendingActio
 import { useAuth } from "../auth/AuthContext.jsx";
 import PendingActionsModal from "../components/PendingActionsModal.jsx";
 import CallcenterGuard from "./CallcenterGuard.jsx";
+import MobileNav, { mobileNavItems } from "./MobileNav.jsx";
 import Sidebar from "./Sidebar.jsx";
 import Topbar from "./Topbar.jsx";
 
@@ -113,12 +114,13 @@ export default function Layout() {
           }}
           pendingLoading={loadingPending}
         />
-        <main className="min-w-0 flex-1 overflow-x-hidden overflow-y-auto p-3 sm:p-4 lg:p-6">
+        <main className={`min-w-0 flex-1 overflow-x-hidden overflow-y-auto p-3 sm:p-4 lg:p-6 ${mobileNavItems(user).length ? "pb-24 md:pb-4 lg:pb-6" : ""}`}>
           <CallcenterGuard>
             <Outlet />
           </CallcenterGuard>
         </main>
       </div>
+      <MobileNav onMore={() => setMobileSidebarOpen(true)} />
       <PendingActionsModal
         open={modalOpen}
         onClose={() => setModalOpen(false)}

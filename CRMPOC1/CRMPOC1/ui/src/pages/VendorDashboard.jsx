@@ -365,8 +365,33 @@ export default function VendorDashboard() {
           )}
         </div>
 
+        {/* phones (vendors): one card per order instead of a ten column table */}
+        {isVendor && (
+          <div className="space-y-2 p-2 md:hidden">
+            {loading && <div className="py-8 text-center text-sm text-slate-400">Loading…</div>}
+            {!loading && rows.length === 0 && <div className="py-8 text-center text-sm text-slate-400">No orders found.</div>}
+            {!loading && rows.map((o) => (
+              <div key={o.id} className="rounded-lg border border-slate-200 bg-white p-3">
+                <div className="flex items-start justify-between gap-2">
+                  <span className="break-all font-mono text-sm font-semibold text-slate-800">{o.oem_bill_no || o.order_no}</span>
+                  {o.status && (
+                    <span className={`inline-block shrink-0 rounded px-2 py-0.5 text-xs font-semibold ${STATUS_BADGE[o.status] || "bg-slate-200 text-slate-700"}`}>{o.status}</span>
+                  )}
+                </div>
+                <div className="mt-1 text-sm text-slate-700">{o.customer_name || "—"}</div>
+                <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
+                  <div><dt className="text-slate-400">Order no</dt><dd className="break-all font-mono text-slate-700">{o.order_no || "—"}</dd></div>
+                  <div><dt className="text-slate-400">City</dt><dd className="text-slate-700">{o.customer_city || "—"}</dd></div>
+                  <div><dt className="text-slate-400">Order date</dt><dd className="text-slate-700">{fmtDate(o.order_date)}</dd></div>
+                  <div><dt className="text-slate-400">Expected delivery</dt><dd className="text-slate-700">{fmtDate(o.expected_delivery_date)}</dd></div>
+                </dl>
+              </div>
+            ))}
+          </div>
+        )}
+
         {/* Table */}
-        <div className="crm-scroll">
+        <div className={`crm-scroll ${isVendor ? "hidden md:block" : ""}`}>
           <table className="min-w-full text-xs">
             <thead className="border-b-2 border-slate-200 bg-slate-50">
               <tr>

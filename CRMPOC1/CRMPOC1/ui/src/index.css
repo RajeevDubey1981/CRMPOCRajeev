@@ -36,6 +36,26 @@ th {
   }
 }
 
+/* Phones: the Submit / Cancel buttons at the end of a popup form stay pinned to the bottom while the form scrolls */
+@media (max-width: 767px) {
+  .crm-modal-body {
+    padding-bottom: 0;
+  }
+  .crm-modal-body .space-y-3 > .flex.justify-end:last-child,
+  .crm-modal-body form > .flex.justify-end:last-child {
+    position: sticky;
+    bottom: 0;
+    z-index: 5;
+    margin: 0.75rem -1.25rem 0;
+    padding: 0.75rem 1.25rem;
+    background: #fff;
+    border-top: 1px solid #e2e8f0;
+  }
+  .crm-modal-body .flex.justify-end > button {
+    min-height: 44px;
+  }
+}
+
 /* Phones: a table cell never breaks a word letter by letter. The table keeps the width its words need and its
    box scrolls sideways (overflow-wrap:anywhere used to squeeze every column to a few pixels). */
 @media (max-width: 767px) {

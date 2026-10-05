@@ -543,6 +543,23 @@ export default function ServiceRequestDetail() {
             Service Request <span className="whitespace-nowrap font-mono text-lg text-slate-500">{service.request_no}</span>
             <StatusBadge value={service.status} />
           </h1>
+          {(service.customer_mobile || service.customer_address) && (
+            <div className="mt-2 flex gap-2 md:hidden">
+              {service.customer_mobile && (
+                <a href={`tel:${service.customer_mobile}`} className="flex-1 rounded-md border border-slate-300 bg-white px-3 py-2.5 text-center text-sm font-semibold text-indcool-navy">Call customer</a>
+              )}
+              {service.customer_address && (
+                <a
+                  href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(service.customer_address)}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex-1 rounded-md border border-slate-300 bg-white px-3 py-2.5 text-center text-sm font-semibold text-indcool-navy"
+                >
+                  Open in Maps
+                </a>
+              )}
+            </div>
+          )}
           {service.complaint_id && (
             <p className="mt-2 text-sm text-slate-600">
               Linked complaint:{" "}

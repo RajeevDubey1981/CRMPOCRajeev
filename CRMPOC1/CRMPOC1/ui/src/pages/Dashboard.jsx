@@ -83,6 +83,17 @@ const SERVICE_SUMMARY_TONES = [
   ["closed", "Closed", "bg-slate-600"],
 ];
 
+// What the engineer should do next for a service request, from its status
+const NEXT_STEP_BY_STATUS = {
+  Assigned: "Verify the serial",
+  "Engineer Visit": "Verify the serial",
+  "Serial Verified": "Add your observation",
+  "Approved for Service": "Complete the service",
+  "Service In Progress": "Complete the service",
+  "Service Completed": "Raise the payment request",
+};
+const NOT_FOR_ENGINEER_NOW = new Set(["Payment Requested", "Payment Completed", "Closed", "Rejected", "Cancelled", "Pending Service Approval"]);
+
 const ENGINEER_GRID_COLUMNS = [
   { key: "service_request_no", label: "Service Request" },
   { key: "comp_no", label: "Complaint Ref" },
@@ -161,7 +172,10 @@ export default function Dashboard() {
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [dashboardPanelOpen, setDashboardPanelOpen] = useState(true);
   const [serviceSummary, setServiceSummary] = useState(null);
+  const nextJobFor = (rows) => rows.find((r) => !NOT_FOR_ENGINEER_NOW.has(r.status) && NEXT_STEP_BY_STATUS[r.status])
+    || rows.find((r) => !NOT_FOR_ENGINEER_NOW.has(r.status)) || null;
   const [serviceRequests, setServiceRequests] = useState({ items: [], total: 0 });
+  const nextJob = isEngineer ? nextJobFor(serviceRequests.items || []) : null;
   const [serviceErr, setServiceErr] = useState("");
   const [partnerInviteOpen, setPartnerInviteOpen] = useState(false);
   const [partnerInviteMeta, setPartnerInviteMeta] = useState({ partner_types: [] });
@@ -559,6 +573,20 @@ export default function Dashboard() {
           {(dashErr || serviceErr) && (
             <div className="rounded bg-rose-50 px-3 py-2 text-sm text-rose-700">
               {dashErr || serviceErr}
+            </div>
+          )}
+
+          {isEngineer && nextJob && (
+            <div className="rounded-lg bg-indcool-lime p-3 text-indcool-navy shadow-sm sm:p-4">
+              <div className="text-xs">Do this next</div>
+              <div className="text-base font-bold">{NEXT_STEP_BY_STATUS[nextJob.status] || "Open the request"}: {nextJob.request_no}</div>
+              <div className="text-sm">{nextJob.customer_name}</div>
+              <div className="mt-2 flex gap-2">
+                <Link to={`/services/${nextJob.id}`} className="flex-1 rounded-md bg-indcool-navy px-4 py-2.5 text-center text-sm font-bold text-white">Open</Link>
+                {nextJob.customer_mobile && (
+                  <a href={`tel:${nextJob.customer_mobile}`} className="flex-1 rounded-md border border-indcool-navy bg-white px-4 py-2.5 text-center text-sm font-bold text-indcool-navy">Call</a>
+                )}
+              </div>
             </div>
           )}
 
