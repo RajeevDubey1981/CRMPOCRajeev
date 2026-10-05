@@ -103,7 +103,7 @@ function PermissionMatrix({ modules, subModulesByModule, permissions, onChange, 
               <th key={f} className="px-3 py-2 text-center">
                 {FLAG_LABELS[f]}
                 {!readOnly && (
-                  <button type="button" onClick={() => toggleColumn(f)} className="mx-auto block text-[10px] font-normal text-brand-600 underline" title={`Tick or untick ${FLAG_LABELS[f]} for every module`}>
+                  <button type="button" onClick={() => toggleColumn(f)} className="mx-auto block text-[11px] font-normal text-brand-600 underline" title={`Tick or untick ${FLAG_LABELS[f]} for every module`}>
                     all
                   </button>
                 )}

@@ -134,7 +134,7 @@ export default function FieldPhotos({ kind, id, serialNo, canAdd, count, onChang
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="inline-flex items-center gap-1 rounded-md border border-slate-300 bg-white px-2 py-1 text-xs text-slate-700 hover:bg-slate-50"
+        className="inline-flex items-center gap-1 whitespace-nowrap rounded-md border border-slate-300 bg-white px-2 py-1 text-xs text-slate-700 hover:bg-slate-50"
         title="Machine photos with location"
       >
         <span aria-hidden="true">📷</span> Photos{total != null ? ` (${total})` : ""}

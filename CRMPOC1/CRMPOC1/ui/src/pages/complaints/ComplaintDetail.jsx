@@ -339,7 +339,7 @@ export default function ComplaintDetail() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <Link to="/complaints" className="text-sm text-brand-600 hover:underline">Back to complaints</Link>
-          <h1 className="mt-1 flex items-center gap-3 text-3xl font-bold text-slate-900">
+          <h1 className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-2xl font-bold text-slate-900 sm:text-3xl">
             Complaint <span className="font-mono text-lg text-slate-500">{complaint.comp_no}</span>
             <StatusBadge value={complaint.status} />
             {complaint.priority === "High" && <PriorityBadge at={complaint.priority_at} by={complaint.priority_by_name} />}

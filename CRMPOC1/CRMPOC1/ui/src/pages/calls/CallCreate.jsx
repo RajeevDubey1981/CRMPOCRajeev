@@ -80,7 +80,7 @@ export default function CallCreate() {
   return (
     <div className="mx-auto max-w-3xl space-y-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold text-slate-900">Log Call</h1>
+        <h1 className="text-2xl font-bold text-slate-900 sm:text-3xl">Log Call</h1>
         {complaintId && (
           <button
             onClick={() => navigate(`/complaints/${complaintId}`)}

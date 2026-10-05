@@ -39,7 +39,7 @@ export default function Topbar({ onToggle, pendingCount = 0, onOpenPending, pend
             <path d="M9.5 17a2.5 2.5 0 0 0 5 0" />
           </svg>
           {pendingCount > 0 && (
-            <span className="absolute -right-1 -top-1 min-w-[1.1rem] rounded-full bg-rose-600 px-1 text-center text-[10px] font-semibold leading-4 text-white">
+            <span className="absolute -right-1 -top-1 min-w-[1.1rem] rounded-full bg-rose-600 px-1 text-center text-[11px] font-semibold leading-4 text-white">
               {badgeLabel}
             </span>
           )}

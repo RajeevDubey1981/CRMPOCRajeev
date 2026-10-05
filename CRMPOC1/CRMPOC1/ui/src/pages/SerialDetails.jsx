@@ -23,7 +23,7 @@ export default function SerialDetails() {
     <div className="space-y-6 p-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-slate-900">{serial.serial_no}</h1>
+          <h1 className="text-2xl font-bold text-slate-900 sm:text-3xl">{serial.serial_no}</h1>
           {serial.serial_no_2 && (
             <p className="text-sm text-slate-600 mt-1">Secondary: {serial.serial_no_2}</p>
           )}

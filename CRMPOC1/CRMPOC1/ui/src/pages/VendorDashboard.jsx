@@ -243,7 +243,7 @@ export default function VendorDashboard() {
     <div className="space-y-4">
 
       {/* ── Page Header ── */}
-      <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b border-slate-200 pb-3">
         <h1 className="text-xl font-semibold text-slate-800">
           Vendor Order Dashboard
           <span className="ml-2 text-sm font-normal text-slate-400">Overview</span>
@@ -386,7 +386,7 @@ export default function VendorDashboard() {
                     className="cursor-pointer select-none whitespace-nowrap px-3 py-2.5 text-left font-semibold text-slate-600 hover:text-brand-600"
                   >
                     {col.label}
-                    <span className="ml-1 text-[10px] text-slate-400">
+                    <span className="ml-1 text-[11px] text-slate-400">
                       {sortKey === col.key
                         ? sortDir === "asc" ? "▲" : "▼"
                         : "⇅"}

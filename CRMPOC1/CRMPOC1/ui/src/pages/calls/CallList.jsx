@@ -119,7 +119,7 @@ export default function CallList() {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-3xl font-bold text-slate-900">Call Log</h1>
+        <h1 className="text-2xl font-bold text-slate-900 sm:text-3xl">Call Log</h1>
         <div className="flex gap-2">
           <button
             onClick={() => navigate("/calls/calendar")}

@@ -62,7 +62,7 @@ export default function PendingFollowUps() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-3">
-        <h1 className="text-3xl font-bold text-slate-900">Pending Follow-ups</h1>
+        <h1 className="text-2xl font-bold text-slate-900 sm:text-3xl">Pending Follow-ups</h1>
         <button
           onClick={() => complaintId ? navigate(`/complaints/${complaintId}`) : navigate("/complaints")}
           className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium hover:bg-slate-50"

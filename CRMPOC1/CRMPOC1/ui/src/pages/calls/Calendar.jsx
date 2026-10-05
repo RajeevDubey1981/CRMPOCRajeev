@@ -65,7 +65,7 @@ export default function Calendar() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-3">
-        <h1 className="text-3xl font-bold text-slate-900">Call Follow-ups Calendar</h1>
+        <h1 className="text-2xl font-bold text-slate-900 sm:text-3xl">Call Follow-ups Calendar</h1>
         <button
           onClick={() => navigate("/calls")}
           className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium hover:bg-slate-50"

@@ -1753,7 +1753,59 @@ export default function EngineerUnitWorkflowPanel({
         )}
       </div>
 
-      <div className="overflow-x-auto rounded-md border border-slate-200">
+      {/* phones: one card per serial with its action button in view, no sideways scrolling */}
+      <div className="space-y-2 md:hidden">
+        {workUnits.map((unit) => {
+          const verified = Boolean(unit.serial_verified_at);
+          return (
+            <div key={unit.id} className="rounded-md border border-slate-200 bg-white p-3">
+              <div className="flex items-start justify-between gap-2">
+                <span className="break-all font-mono text-sm font-semibold text-slate-800">{unit.serial_no || "—"}</span>
+                <StatusBadge value={unit.unit_status || "Assigned"} />
+              </div>
+              <div className="mt-1 text-xs text-slate-500">
+                {verified
+                  ? "Serial verified"
+                  : unit.unit_status === "Serial Verification Pending"
+                    ? "Serial submitted for review"
+                    : "Serial not verified yet"}
+                {!verified && unit.unit_status === "Serial Verification Pending" && unit.serial_not_in_order && (
+                  <span className="ml-1 text-amber-700">(not in order records)</span>
+                )}
+              </div>
+              {isServiceTeam && (
+                <select
+                  value={unitBillingValue(unit)}
+                  disabled={busy || unitBillingLocked(unit) || !unit.serial_no}
+                  onChange={(event) => saveUnitBilling(unit, event.target.value)}
+                  className="mt-2 w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm disabled:bg-slate-100"
+                  aria-label="Free or paid service"
+                >
+                  <option value="Free">Free service</option>
+                  <option value="Paid">Paid service</option>
+                </select>
+              )}
+              {!isEngineer && (
+                <div className="mt-2 space-y-1 text-xs text-slate-600">
+                  <WorkflowSteps unit={unit} />
+                  <div>{progressSummary(unit)}</div>
+                </div>
+              )}
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <FieldPhotos
+                  kind="service-units"
+                  id={unit.id}
+                  serialNo={unit.serial_no}
+                  canAdd={isEngineer && engineerIdsMatch(unit.assigned_engineer_id, userId)}
+                />
+                <div className="ml-auto">{renderStepButton(unit)}</div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="hidden overflow-x-auto rounded-md border border-slate-200 md:block">
         <table className="min-w-full text-sm">
           <thead className="bg-slate-100 text-left text-slate-700">
             <tr>

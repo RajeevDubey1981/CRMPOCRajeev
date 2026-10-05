@@ -5,7 +5,7 @@ import { formatApiError } from "../../utils/apiError.js";
 import { ENGINEER_ASSIGNMENT_HINT, formatEngineerOptionLabel } from "../../utils/engineerAssignment.js";
 
 function serialCell(value) {
-  return value ? <span className="font-mono text-xs">{value}</span> : <span className="text-slate-400">â</span>;
+  return value ? <span className="font-mono text-xs">{value}</span> : <span className="text-slate-400">—</span>;
 }
 
 export default function ServiceUnitAssignmentPanel({
@@ -179,7 +179,7 @@ export default function ServiceUnitAssignmentPanel({
             {engineerGroups.map((group) => (
               <div key={group.item_code} className="rounded-md border border-slate-200">
                 <div className="border-b border-slate-200 bg-slate-50 px-4 py-3 text-sm">
-                  <div className="font-medium text-slate-800">{group.item_code} â {group.item_name}</div>
+                  <div className="font-medium text-slate-800">{group.item_code} — {group.item_name}</div>
                   <div className="text-slate-500">Assigned quantity: {group.units.length}</div>
                 </div>
                 <div className="overflow-x-auto">
@@ -384,7 +384,7 @@ export default function ServiceUnitAssignmentPanel({
               {orderItems.map((item) => (
                 <tr key={item.id} className={selectedItemCode === item.item_code ? "bg-sky-50" : ""}>
                   <td className="px-3 py-2 font-mono text-xs">{item.item_code}</td>
-                  <td className="px-3 py-2">{item.item_name || "â"}</td>
+                  <td className="px-3 py-2">{item.item_name || "—"}</td>
                   <td className="px-3 py-2 text-center">{item.ordered_quantity}</td>
                   <td className="px-3 py-2 text-center">{item.installed_quantity ?? item.units_count}</td>
                   <td className="px-3 py-2 text-center">{item.pending_installation_quantity ?? 0}</td>
@@ -465,11 +465,11 @@ export default function ServiceUnitAssignmentPanel({
                         <td key={colIdx} className="px-3 py-2">{serialCell(value)}</td>
                       ))}
                       <td className="px-3 py-2"><WarrantyBadge value={unit.warranty_status} /></td>
-                      <td className="px-3 py-2 text-center">{unit.free_service_count ?? "â"}</td>
-                      <td className="px-3 py-2 text-center">{unit.paid_service_count ?? "â"}</td>
+                      <td className="px-3 py-2 text-center">{unit.free_service_count ?? "—"}</td>
+                      <td className="px-3 py-2 text-center">{unit.paid_service_count ?? "—"}</td>
                       <td className="px-3 py-2"><WarrantyBadge value={unit.part_warranty_status} /></td>
-                      <td className="px-3 py-2">{unit.assigned_engineer_name || "â"}</td>
-                      <td className="px-3 py-2">{unit.admin_billing_type || "â"}</td>
+                      <td className="px-3 py-2">{unit.assigned_engineer_name || "—"}</td>
+                      <td className="px-3 py-2">{unit.admin_billing_type || "—"}</td>
                     </tr>
                   );
                 })}
@@ -483,7 +483,7 @@ export default function ServiceUnitAssignmentPanel({
               onChange={(e) => setAssignEngineerId(e.target.value)}
               className="rounded-md border border-slate-300 px-3 py-2 text-sm"
             >
-              <option value="">â Choose engineer â</option>
+              <option value="">— Choose engineer —</option>
               {engineers.map((engineer) => (
                 <option key={engineer.id} value={engineer.id}>{formatEngineerOptionLabel(engineer)}</option>
               ))}

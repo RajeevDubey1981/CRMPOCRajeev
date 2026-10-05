@@ -149,6 +149,7 @@ export default function Dashboard() {
   const [complaints, setComplaints] = useState({ items: [], total: 0 });
   const [loading, setLoading]       = useState(false);
   const [gridErr, setGridErr]       = useState("");
+  const [filtersOpen, setFiltersOpen] = useState(false); // phones: the long filter form starts folded away
   const [filters, setFilters]       = useState({
     id: "", comp_no: "", customer_name: "", status: "",
     query_type: "", service_type: "", mobile: "", source: "", date_from: "", date_to: "", priority: "",
@@ -533,7 +534,7 @@ export default function Dashboard() {
     <div ref={dashboardRef} className="space-y-5">
 
       {/* Page Header */}
-      <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b border-slate-200 pb-3">
         <button
           type="button"
           onClick={() => setDashboardPanelOpen((open) => !open)}
@@ -562,9 +563,9 @@ export default function Dashboard() {
           )}
 
           {isEngineer && serviceSummary && (
-            <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+            <div className="grid grid-cols-3 gap-2 sm:gap-3 xl:grid-cols-6">
               {SERVICE_SUMMARY_TONES.map(([key, label, tone]) => (
-                <div key={key} className={`rounded-lg p-3 text-white shadow-sm ${tone}`}>
+                <div key={key} className={`rounded-lg p-2.5 text-white shadow-sm sm:p-3 ${tone}`}>
                   <div className="text-xs font-medium opacity-90">{label}</div>
                   <div className="mt-1 text-2xl font-semibold">{serviceSummary[key] ?? 0}</div>
                 </div>
@@ -573,24 +574,24 @@ export default function Dashboard() {
           )}
 
           {!isEngineer && (
-          <div className="flex flex-wrap gap-3">
+          <div className="grid grid-cols-3 gap-2 sm:flex sm:flex-wrap sm:gap-3">
             {STAT_CARDS.map(card => (
               <div
                 key={card.key}
                 onClick={() => clickCard(card.statusFilter)}
-                className={`flex-1 min-w-[130px] cursor-pointer overflow-hidden rounded shadow transition-transform hover:-translate-y-0.5 hover:shadow-md ${card.bg} ${filters.status === card.statusFilter ? "ring-2 ring-offset-1 ring-white/50" : ""}`}
+                className={`min-w-0 cursor-pointer overflow-hidden rounded shadow transition-transform hover:-translate-y-0.5 hover:shadow-md sm:min-w-[130px] sm:flex-1 ${card.bg} ${filters.status === card.statusFilter ? "ring-2 ring-offset-1 ring-white/50" : ""}`}
               >
-                <div className="bg-black/10 px-3 py-2 text-xs font-semibold text-white/90">{card.label}</div>
-                <div className="px-3 py-3">
-                  <p className="text-2xl font-bold text-white">{summary?.[card.key] ?? "—"}</p>
-                  <p className="mt-0.5 text-xs text-white/70">Complaints</p>
+                <div className="bg-black/10 px-2 py-1.5 text-xs font-semibold text-white/90 sm:px-3 sm:py-2">{card.label}</div>
+                <div className="px-2 py-2 sm:px-3 sm:py-3">
+                  <p className="text-xl font-bold text-white sm:text-2xl">{summary?.[card.key] ?? "—"}</p>
+                  <p className="mt-0.5 hidden text-xs text-white/70 sm:block">Complaints</p>
                 </div>
               </div>
             ))}
             <div
               onClick={() => patch("priority", filters.priority === "High" ? "" : "High")}
               title="Click to show only the high priority complaints (click again to show all)"
-              className={`flex-1 min-w-[130px] cursor-pointer overflow-hidden rounded bg-orange-600 shadow transition-transform hover:-translate-y-0.5 hover:shadow-md ${filters.priority === "High" ? "ring-2 ring-offset-1 ring-white/50" : ""}`}
+              className={`min-w-0 cursor-pointer overflow-hidden rounded bg-orange-600 shadow sm:min-w-[130px] sm:flex-1 transition-transform hover:-translate-y-0.5 hover:shadow-md ${filters.priority === "High" ? "ring-2 ring-offset-1 ring-white/50" : ""}`}
             >
               <div className="flex items-center gap-2 bg-black/10 px-3 py-2 text-xs font-semibold text-white/90">
                 {(complaints.high_priority_total || 0) > 0 && <span className="prio-dot" />}
@@ -636,6 +637,13 @@ export default function Dashboard() {
           <div className="rounded bg-white p-4 shadow-sm">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <h3 className="text-sm font-semibold text-slate-600">Filter</h3>
+          <button
+            type="button"
+            onClick={() => setFiltersOpen((o) => !o)}
+            className="rounded border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-700 sm:hidden"
+          >
+            {filtersOpen ? "Hide filters" : "Show filters"}
+          </button>
           {!isEngineer && (
             <Link to="/complaints/new"
               className="rounded bg-brand-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-700">
@@ -643,7 +651,7 @@ export default function Dashboard() {
             </Link>
           )}
         </div>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+        <div className={`${filtersOpen ? "grid" : "hidden sm:grid"} grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4`}>
           {/* ID */}
           <Field label="ID"><input type="text" value={filters.id} onChange={e => patch("id", e.target.value)} placeholder="ID" /></Field>
           {/* Ref No */}
@@ -696,7 +704,7 @@ export default function Dashboard() {
           {/* Date to */}
           <Field label="Created Date (To)"><input type="date" value={filters.date_to} onChange={e => patch("date_to", e.target.value)} /></Field>
         </div>
-        <div className="mt-3 flex gap-2">
+        <div className={`mt-3 gap-2 ${filtersOpen ? "flex" : "hidden sm:flex"}`}>
           <button onClick={loadGrid}
             className="inline-flex items-center gap-1.5 rounded bg-brand-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-brand-700">
             🔍 Search

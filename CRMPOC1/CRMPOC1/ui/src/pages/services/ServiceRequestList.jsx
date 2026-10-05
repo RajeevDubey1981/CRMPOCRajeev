@@ -77,7 +77,7 @@ export default function ServiceRequestList() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold text-slate-800">Service Requests</h1>
           <p className="text-sm text-slate-500">Complete service lifecycle across call center, service team, engineer, vendor, approval, and payment.</p>
@@ -88,11 +88,11 @@ export default function ServiceRequestList() {
       </div>
 
       {summary && (
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+        <div className="grid grid-cols-3 gap-2 sm:gap-3 xl:grid-cols-6">
           {SUMMARY_TONES.map(([key, label, tone]) => (
-            <div key={key} className={`rounded-lg p-4 text-white shadow-sm ${tone}`}>
-              <div className="text-sm font-medium opacity-90">{label}</div>
-              <div className="mt-1 text-3xl font-semibold">{summary[key]}</div>
+            <div key={key} className={`rounded-lg p-2.5 text-white shadow-sm sm:p-4 ${tone}`}>
+              <div className="text-xs font-medium opacity-90 sm:text-sm">{label}</div>
+              <div className="mt-0.5 text-2xl font-semibold sm:mt-1 sm:text-3xl">{summary[key]}</div>
             </div>
           ))}
         </div>
@@ -127,7 +127,34 @@ export default function ServiceRequestList() {
 
       {err && <div className="rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-700">{err}</div>}
 
-      <div className="overflow-hidden rounded-lg bg-white shadow-sm">
+      {/* phones: one card per request, so nothing is hidden off to the right */}
+      <div className="space-y-2 md:hidden">
+        {loading && <div className="rounded-lg bg-white px-4 py-8 text-center text-sm text-slate-400 shadow-sm">Loading...</div>}
+        {!loading && data.items.length === 0 && <div className="rounded-lg bg-white px-4 py-8 text-center text-sm text-slate-400 shadow-sm">No service requests found.</div>}
+        {!loading && data.items.map((row) => (
+          <div key={row.id} onClick={() => navigate(`/services/${row.id}`)} className="cursor-pointer rounded-lg bg-white p-3 shadow-sm active:bg-sky-50">
+            <div className="flex items-start justify-between gap-2">
+              <span className="font-mono text-sm font-semibold text-brand-700">{row.request_no}</span>
+              <StatusBadge value={row.status} />
+            </div>
+            <div className="mt-1 text-sm font-medium text-slate-800">{row.customer_name}</div>
+            {row.customer_mobile && (
+              <a href={`tel:${row.customer_mobile}`} onClick={(e) => e.stopPropagation()} className="text-sm text-brand-600 underline">{row.customer_mobile}</a>
+            )}
+            <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
+              <div><dt className="text-slate-400">Order</dt><dd className="break-words text-slate-700">{row.order_no || "—"}</dd></div>
+              <div><dt className="text-slate-400">Serial</dt><dd className="break-words font-mono text-slate-700">{row.serial_no || "—"}</dd></div>
+              <div><dt className="text-slate-400">Service type</dt><dd className="text-slate-700">{row.service_type || "—"}</dd></div>
+              <div><dt className="text-slate-400">Engineer</dt><dd className="text-slate-700">{row.assigned_engineer_name || "—"}</dd></div>
+            </dl>
+          </div>
+        ))}
+        <div className="rounded-lg bg-white px-3 py-3 shadow-sm">
+          <Pagination page={page} perPage={perPage} total={data.total} onPageChange={setPage} onPerPageChange={(n) => { setPerPage(n); setPage(1); }} />
+        </div>
+      </div>
+
+      <div className="hidden overflow-hidden rounded-lg bg-white shadow-sm md:block">
         <div className="crm-scroll">
           <table className="min-w-full text-sm">
             <thead className="bg-slate-50 text-left text-slate-600">

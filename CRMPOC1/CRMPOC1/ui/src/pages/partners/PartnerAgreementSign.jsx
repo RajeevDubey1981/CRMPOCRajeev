@@ -39,7 +39,7 @@ function StepBar({ step }) {
               >
                 {done ? "✓" : n}
               </div>
-              <span className={`whitespace-nowrap text-[10px] ${active ? "font-bold text-sky-700" : "text-slate-400"}`}>
+              <span className={`whitespace-nowrap text-[11px] ${active ? "font-bold text-sky-700" : "text-slate-400"}`}>
                 {label}
               </span>
             </div>
@@ -371,7 +371,7 @@ export default function PartnerAgreementSign() {
               </p>
 
               <div className="mt-5 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-left">
-                <div className="mb-2 text-[10px] font-bold uppercase tracking-wider text-emerald-700">
+                <div className="mb-2 text-[11px] font-bold uppercase tracking-wider text-emerald-700">
                   Digital signing certificate
                 </div>
                 {[
@@ -408,7 +408,7 @@ export default function PartnerAgreementSign() {
           )}
         </div>
 
-        <p className="mt-4 text-center text-[10px] text-slate-400">
+        <p className="mt-4 text-center text-[11px] text-slate-400">
           Legally valid under IT Act 2000 · {otpChannelLabel(context.otp_channel)} verification
         </p>
       </div>

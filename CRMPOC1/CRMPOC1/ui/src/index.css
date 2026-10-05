@@ -36,6 +36,25 @@ th {
   }
 }
 
+/* Phones: a table cell never breaks a word letter by letter. The table keeps the width its words need and its
+   box scrolls sideways (overflow-wrap:anywhere used to squeeze every column to a few pixels). */
+@media (max-width: 767px) {
+  td,
+  th {
+    overflow-wrap: break-word;
+  }
+  th {
+    white-space: nowrap;
+  }
+  /* any table not already inside a scrolling box gets its own sideways scroll */
+  main :not(.overflow-x-auto):not(.overflow-auto):not(.crm-scroll) > table {
+    display: block;
+    max-width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
 /* List tables: the box scrolls (both ways) and the navy heading row stays pinned */
 .crm-scroll {
   max-height: calc(100dvh - 9rem);
