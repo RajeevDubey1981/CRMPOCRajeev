@@ -1,0 +1,14 @@
+{
+  "name": "indcool-service-app",
+  "private": true,
+  "version": "1.0.0",
+  "description": "INDcool Service: Android app shell around the live INDcool CRM",
+  "scripts": {
+    "sync": "cap sync android"
+  },
+  "dependencies": {
+    "@capacitor/android": "^8.0.0",
+    "@capacitor/cli": "^8.0.0",
+    "@capacitor/core": "^8.0.0"
+  }
+}

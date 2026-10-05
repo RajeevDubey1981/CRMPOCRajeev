@@ -1,0 +1,14 @@
+{
+  "appId": "in.indcool.service",
+  "appName": "INDcool Service",
+  "webDir": "www",
+  "server": {
+    "url": "https://indcoolapplainces.com",
+    "allowNavigation": ["indcoolapplainces.com"],
+    "cleartext": false
+  },
+  "android": {
+    "allowMixedContent": false
+  },
+  "backgroundColor": "#1E3A78"
+}
