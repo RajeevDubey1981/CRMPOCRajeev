@@ -527,6 +527,20 @@ def _log_status(
     sync_service_pending_actions(db, service)
 
 
+def _clear_service_field_assignment_for_rejection(db: Session, service: ServiceRequest) -> None:
+    service.assigned_engineer_id = None
+    service.assigned_vendor_id = None
+    clear_completion_code(service)
+    db.query(ServiceAssignment).filter(
+        ServiceAssignment.service_request_id == service.id,
+        ServiceAssignment.is_active == True,
+    ).update({ServiceAssignment.is_active: False}, synchronize_session=False)
+    if service.complaint_id:
+        complaint = db.get(Complaint, service.complaint_id)
+        if complaint is not None and complaint.deleted_at is None:
+            complaint.assigned_engineer = None
+
+
 def _write_service_summary_to_serial_history(
     db: Session,
     service: ServiceRequest,
@@ -2050,6 +2064,8 @@ def service_approval(
         service.status_date = _now()
         if body.decision == "Approve":
             service.approved_at = _now()
+        else:
+            _clear_service_field_assignment_for_rejection(db, service)
 
     _log_status(db, service, action="Service Approved" if body.decision == "Approve" else "Service Rejected", user=user, old_status=old_status, new_status=service.status, remarks=body.remarks)
     db.commit()

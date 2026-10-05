@@ -5,7 +5,7 @@ history because some databases are already at 0050; this one takes everything th
 before every step, so it is safe on a database that never had them.
 
 Revision ID: 0052_remove_store_accounts
-Revises: 0051_merge_installation_service_user_and_accounts
+Revises: 0052_clear_rejected_service_assignments
 """
 
 from typing import Sequence, Union
@@ -14,7 +14,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "0052_remove_store_accounts"
-down_revision: Union[str, None] = "0051_merge_installation_service_user_and_accounts"
+down_revision: Union[str, None] = "0052_clear_rejected_service_assignments"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
