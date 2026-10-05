@@ -1,7 +1,7 @@
 from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -153,10 +153,35 @@ def detect(text: str = Query(""), _: BidAccess = Depends(manager_access)):
 
 @router.get("/vendors", response_model=list[VendorPick])
 def vendors(_: BidAccess = Depends(manager_access), db: Session = Depends(get_db)):
-    rows = db.scalars(
-        select(Vendor).where(Vendor.is_active.is_(True), Vendor.deleted_at.is_(None)).order_by(Vendor.name_of_firm)
-    ).all()
-    return [VendorPick(id=v.id, vendor_code=v.vendor_code, name=v.name_of_firm, email=v.email) for v in rows]
+    """Allocation list: one entry per active vendor login, the same vendor record that login resolves to."""
+    login_emails = {
+        (e or "").strip().lower()
+        for e in db.scalars(
+            select(User.email).where(
+                func.lower(User.role) == "vendor", User.is_active.is_(True), User.deleted_at.is_(None)
+            )
+        ).all()
+        if e
+    }
+    # Pick the record the login itself resolves to (newest not-deleted record with that email, see
+    # vendor_accounts), and only then drop it if it is switched off: a vendor must see the bids given to it.
+    rows = db.scalars(select(Vendor).where(Vendor.deleted_at.is_(None))).all()
+    best: dict[str, Vendor] = {}
+    for v in rows:
+        key = (v.email or "").strip().lower()
+        if key in login_emails and (key not in best or v.id > best[key].id):
+            best[key] = v
+    picked = sorted((v for v in best.values() if v.is_active), key=lambda v: (v.name_of_firm or "").lower())
+    names = [(v.name_of_firm or "").strip().lower() for v in picked]
+    return [
+        VendorPick(
+            id=v.id,
+            vendor_code=v.vendor_code,
+            name=v.name_of_firm if names.count((v.name_of_firm or "").strip().lower()) == 1 else f"{v.name_of_firm} ({v.email})",
+            email=v.email,
+        )
+        for v in picked
+    ]
 
 
 # --------------------------------------------------------------------------- vendor lookup and requests

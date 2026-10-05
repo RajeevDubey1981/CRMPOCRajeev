@@ -240,6 +240,38 @@ class BidApiTests(unittest.TestCase):
         self.assertEqual((r.json()["status"], r.json()["vendor_name"]), ("Confirmed", "INDcool (Self)"))
         self.assertEqual(self.sent, [])
 
+    def test_allocation_list_has_one_entry_per_vendor_login(self):
+        # a second record for the same firm and login, a firm with no login, an inactive record, and a same-name firm with another login
+        self.db.add_all([
+            Vendor(vendor_code="V001-DUP", name_of_firm="FROST POINT", email="frost@t.com", is_active=True),
+            Vendor(vendor_code="V900", name_of_firm="Nobody Has A Login", email="nologin@t.com", is_active=True),
+        ])
+        old = Vendor(vendor_code="V901", name_of_firm="Switched Off Traders", email="off@t.com", is_active=False)
+        self.db.add(old)
+        self.db.flush()
+        self._user("off@t.com", "vendor", "Switched Off Traders")
+        self.db.add(Vendor(vendor_code="V902", name_of_firm="Arctic Sales", email="arctic2@t.com", is_active=True))
+        self._user("arctic2@t.com", "vendor", "Arctic Sales Two")
+        self.db.commit()
+        rows = self.client.get("/api/bids/vendors", headers=self.h(self.sub)).json()
+        names = [r["name"] for r in rows]
+        self.assertEqual(len([r for r in rows if r["email"] == "frost@t.com"]), 1)
+        newest = self.db.scalars(select(Vendor).where(Vendor.email == "frost@t.com").order_by(Vendor.id.desc())).first()
+        self.assertEqual([r["id"] for r in rows if r["email"] == "frost@t.com"], [newest.id])
+        self.assertFalse(any("Nobody" in n for n in names))
+        self.assertFalse(any("Switched Off" in n for n in names))
+        arctics = [n for n in names if n.startswith("Arctic Sales")]
+        self.assertEqual(len(arctics), 2)
+        self.assertEqual(len(set(arctics)), 2, "same firm name with two logins must be told apart")
+        firms = [n.split(" (")[0].lower() for n in names]
+        self.assertEqual(firms, sorted(firms))
+        # a bid given from this list is the bid the vendor sees after logging in
+        pick = next(r for r in rows if r["email"] == "frost@t.com")
+        bid = self.enter()
+        self.client.post(f"/api/bids/{bid['id']}/allocate", json={"vendor_id": pick["id"]}, headers=self.h(self.sub))
+        mine = self.client.get("/api/bids", headers=self.h(self.vu1)).json()
+        self.assertEqual([b["bid_number"] for b in mine], [bid["bid_number"]])
+
     def test_vendor_cannot_allocate(self):
         bid = self.enter()
         r = self.client.post(f"/api/bids/{bid['id']}/allocate", json={"vendor_id": self.v1.id}, headers=self.h(self.vu1))
