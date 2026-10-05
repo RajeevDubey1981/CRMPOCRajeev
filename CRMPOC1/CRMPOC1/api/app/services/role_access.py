@@ -27,9 +27,13 @@ def role_key(role: str | None) -> str:
 
 
 def permission_role_name(role: str | None) -> str:
-    """Map legacy user.role values to canonical Role.name for permission lookup."""
+    """Map legacy user.role values to canonical Role.name for permission lookup.
+
+    sub_admin is NOT mapped: it has its own role card (Admin, Roles), and the rights set there are the rights the
+    Sub Admin gets. It used to be mapped to indcool_service, so the rights given on the sub_admin card never showed.
+    """
     key = role_key(role)
-    if key in {"indcool", "indcool service", "service", "service_manager", "sub_admin"}:
+    if key in {"indcool", "indcool service", "service", "service_manager"}:
         return "indcool_service"
     return key
 
