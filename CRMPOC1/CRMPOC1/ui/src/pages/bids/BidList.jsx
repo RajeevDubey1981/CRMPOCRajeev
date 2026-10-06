@@ -166,6 +166,11 @@ export default function BidList() {
                 </td>
                 <td className="px-3 py-2">
                   <div className="max-w-[280px] truncate" title={b.title}>{b.title}</div>
+                  {b.lines?.length > 0 && (
+                    <div className="max-w-[280px] truncate text-xs text-slate-600" title={b.lines.map((l) => `${l.item}${l.quantity != null ? ` × ${l.quantity}` : ""}`).join(", ")}>
+                      {b.lines.map((l) => `${l.item}${l.quantity != null ? ` × ${l.quantity}` : ""}`).join(" · ")}
+                    </div>
+                  )}
                   <div className="text-xs text-slate-500">{b.product_category}{b.product_type && b.product_type !== "Other" ? ` / ${b.product_type}` : ""}</div>
                 </td>
                 <td className="px-3 py-2 whitespace-nowrap">{b.bid_type}</td>

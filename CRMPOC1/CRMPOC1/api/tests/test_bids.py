@@ -272,6 +272,46 @@ class BidApiTests(unittest.TestCase):
         mine = self.client.get("/api/bids", headers=self.h(self.vu1)).json()
         self.assertEqual([b["bid_number"] for b in mine], [bid["bid_number"]])
 
+    def test_a_bid_can_have_several_items(self):
+        bid = self.enter(number="GEM/2026/B/7960553", title="Split AC in three sizes", lines=[
+            {"item": "Split AC 1.3 Ton - 1.7 Ton", "quantity": 10}, {"item": "1.8-2.2 Ton", "quantity": 8}, {"item": "0.8-1.2 Ton", "quantity": None}])
+        self.assertEqual([(l["item"], l["quantity"]) for l in bid["lines"]], [("Split AC 1.3 Ton - 1.7 Ton", 10), ("1.8-2.2 Ton", 8), ("0.8-1.2 Ton", None)])
+        self.assertEqual(bid["quantity"], 18, "the bid quantity is the total of the lines")
+        listed = self.client.get("/api/bids", headers=self.h(self.sub)).json()
+        self.assertEqual(len(listed[0]["lines"]), 3)
+        self.assertEqual(len(self.client.get("/api/bids", params={"q": "1.8 2.2 ton"}, headers=self.h(self.sub)).json()), 1)
+        self.assertEqual(len(self.client.get("/api/bids", params={"q": "7960553"}, headers=self.h(self.sub)).json()), 1)
+
+    def test_item_lines_can_be_changed_and_cleared(self):
+        bid = self.enter(lines=[{"item": "Window AC", "quantity": 4}])
+        two = [{"item": "Window AC", "quantity": 4}, {"item": "Cassette AC", "quantity": 6}]
+        r = self.client.put(f"/api/bids/{bid['id']}", json={"lines": two}, headers=self.h(self.sub))
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual((len(r.json()["lines"]), r.json()["quantity"]), (2, 10))
+        self.assertTrue(any(e["action"] == "edited" and "items" in e["text"] for e in r.json()["events"]))
+        same = self.client.put(f"/api/bids/{bid['id']}", json={"lines": two}, headers=self.h(self.sub))
+        self.assertEqual(len([e for e in same.json()["events"] if e["action"] == "edited"]), 1, "saving the same lines again logs nothing")
+        untouched = self.client.put(f"/api/bids/{bid['id']}", json={"title": "Window AC, new title"}, headers=self.h(self.sub))
+        self.assertEqual(len(untouched.json()["lines"]), 2)
+        cleared = self.client.put(f"/api/bids/{bid['id']}", json={"lines": []}, headers=self.h(self.sub))
+        self.assertEqual(cleared.json()["lines"], [])
+
+    def test_item_lines_are_checked(self):
+        today = svc.today_ist()
+        base = {"bid_number": "GEM/2026/B/1", "title": "Split AC", "end_date": (today + timedelta(days=5)).isoformat()}
+        twice = self.client.post("/api/bids", json={**base, "lines": [{"item": "1.5 Ton", "quantity": 2}, {"item": " 1.5  ton ", "quantity": 3}]}, headers=self.h(self.sub))
+        self.assertEqual(twice.status_code, 400)
+        self.assertIn("listed twice", twice.json()["detail"])
+        self.assertEqual(self.client.post("/api/bids", json={**base, "lines": [{"item": "   ", "quantity": 2}]}, headers=self.h(self.sub)).status_code, 422)
+        self.assertEqual(self.client.post("/api/bids", json={**base, "lines": [{"item": "1.5 Ton", "quantity": -1}]}, headers=self.h(self.sub)).status_code, 422)
+        self.assertEqual(self.client.get("/api/bids", headers=self.h(self.sub)).json(), [], "a refused bid is not kept")
+
+    def test_vendor_sees_the_items_of_their_bid(self):
+        bid = self.enter(lines=[{"item": "Split AC 1.5 Ton", "quantity": 4}])
+        self.allocate(bid["id"], self.v1)
+        mine = self.client.get(f"/api/bids/{bid['id']}", headers=self.h(self.vu1)).json()
+        self.assertEqual([l["item"] for l in mine["lines"]], ["Split AC 1.5 Ton"])
+
     def test_vendor_cannot_allocate(self):
         bid = self.enter()
         r = self.client.post(f"/api/bids/{bid['id']}/allocate", json={"vendor_id": self.v1.id}, headers=self.h(self.vu1))

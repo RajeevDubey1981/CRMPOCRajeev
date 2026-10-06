@@ -130,6 +130,15 @@ export default function BidDetail() {
               <Row label="Item">{bid.title}</Row>
               <Row label="Buyer / department">{bid.department}</Row>
               <Row label="Product">{bid.product_category}{bid.product_type && bid.product_type !== "Other" ? ` / ${bid.product_type}` : ""}</Row>
+              {bid.lines?.length > 0 && (
+                <Row label="Items">
+                  <ul className="space-y-0.5">
+                    {bid.lines.map((l, i) => (
+                      <li key={i}>{l.item}{l.quantity != null ? <span className="text-slate-500"> × {l.quantity}</span> : null}</li>
+                    ))}
+                  </ul>
+                </Row>
+              )}
               <Row label="Quantity">{bid.quantity}</Row>
               <Row label="Estimated value">{money(bid.estimated_value)}</Row>
               <Row label="Published">{fmtDate(bid.publish_date)}</Row>

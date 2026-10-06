@@ -1,7 +1,25 @@
 from datetime import date, datetime
 from decimal import Decimal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+
+class BidLineIn(BaseModel):
+    item: str = Field(min_length=1, max_length=255)
+    quantity: int | None = Field(None, ge=0)
+
+    @field_validator("item")
+    @classmethod
+    def _trim(cls, value: str) -> str:
+        value = " ".join(value.split())
+        if not value:
+            raise ValueError("Item cannot be empty")
+        return value
+
+
+class BidLineOut(BaseModel):
+    item: str
+    quantity: int | None = None
 
 
 class BidIn(BaseModel):
@@ -23,6 +41,7 @@ class BidIn(BaseModel):
     epbg_details: str | None = Field(None, max_length=255)
     tender_fee: Decimal | None = Field(None, ge=0)
     notes: str | None = None
+    lines: list[BidLineIn] = Field(default_factory=list, max_length=30)
 
 
 class BidUpdate(BaseModel):
@@ -44,6 +63,7 @@ class BidUpdate(BaseModel):
     epbg_details: str | None = None
     tender_fee: Decimal | None = Field(None, ge=0)
     notes: str | None = None
+    lines: list[BidLineIn] | None = Field(None, max_length=30)  # None = leave as is, a list replaces them
 
 
 class BidEventOut(BaseModel):
@@ -87,6 +107,7 @@ class BidOut(BaseModel):
     days_left: int | None = None
     pending_requests: int = 0
     created_at: datetime | None = None
+    lines: list[BidLineOut] = Field(default_factory=list)
     events: list[BidEventOut] = Field(default_factory=list)
 
 

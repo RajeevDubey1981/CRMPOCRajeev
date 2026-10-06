@@ -55,6 +55,8 @@ export default function BidForm() {
   const isEdit = !!id;
   const [meta, setMeta] = useState(null);
   const [form, setForm] = useState({ ...EMPTY, bid_number: params.get("number") || "" });
+  const [lines, setLines] = useState([]); // the items of the bid: { item, quantity }
+  const autoTitle = useRef(""); // the Item text made from the items below, kept until the user types their own
   const [auto, setAuto] = useState({ on: !isEdit, hit: true });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
@@ -66,6 +68,9 @@ export default function BidForm() {
     if (!isEdit) return;
     bidsApi.get(id).then((b) => {
       setForm(Object.fromEntries(Object.keys(EMPTY).map((k) => [k, b[k] ?? (typeof EMPTY[k] === "boolean" ? false : "")])));
+      setLines((b.lines || []).map((l) => ({ item: l.item, quantity: l.quantity ?? "" })));
+      const made = (b.lines || []).map((l) => l.item).join(", ");
+      if (made && made === b.title) autoTitle.current = made; // the Item text was made from the items, so keep it in step
     }).catch((e) => setErr(errText(e, "Could not load the bid")));
   }, [id, isEdit]);
 
@@ -84,6 +89,20 @@ export default function BidForm() {
   function set(key, value) {
     setForm((f) => ({ ...f, [key]: value }));
   }
+
+  // items of the bid: add, change, remove. The Item text follows them until the user writes their own.
+  function changeLines(next) {
+    setLines(next);
+    const made = next.map((l) => l.item.trim()).filter(Boolean).join(", ");
+    const follows = !form.title.trim() || form.title === autoTitle.current;
+    autoTitle.current = made;
+    if (follows) setForm((f) => ({ ...f, title: made }));
+  }
+  const addLine = () => changeLines([...lines, { item: "", quantity: "" }]);
+  const editLine = (i, key, value) => changeLines(lines.map((l, k) => (k === i ? { ...l, [key]: value } : l)));
+  const removeLine = (i) => changeLines(lines.filter((_, k) => k !== i));
+  const lineTotal = lines.reduce((sum, l) => sum + (Number(l.quantity) || 0), 0);
+  const hasLineQuantity = lines.some((l) => String(l.quantity).trim() !== "");
 
   function pickCategory(value) {
     touched.current = true;
@@ -113,6 +132,10 @@ export default function BidForm() {
       else body[k] = v;
     });
     body.bid_type = form.bid_type;
+    body.lines = lines
+      .filter((l) => l.item.trim())
+      .map((l) => ({ item: l.item.trim(), quantity: String(l.quantity).trim() === "" ? null : Number(l.quantity) }));
+    if (body.lines.length && body.lines.some((l) => l.quantity !== null)) body.quantity = body.lines.reduce((s, l) => s + (l.quantity || 0), 0);
     if (body.portal && form.bid_type === "GeM") body.portal = null;
     setBusy(true);
     try {
@@ -156,11 +179,42 @@ export default function BidForm() {
           <Field label="Item *" wide hint="Type what the bid is for. The product category below is picked from these words.">
             <input required value={form.title} onChange={(e) => set("title", e.target.value)} className={fieldClass} placeholder="Split AC 1.5 ton 5 star, 120 units" />
           </Field>
+          <div className="md:col-span-2">
+            <div className="mb-1 flex items-center justify-between">
+              <label className={labelClass}>Items in this bid</label>
+              <button type="button" onClick={addLine} className="rounded-md border border-brand-600 px-3 py-1 text-sm font-medium text-brand-700 hover:bg-brand-50">+ Add item</button>
+            </div>
+            {lines.length === 0 && <p className="text-xs text-slate-500">One item only? Just use the Item box above. If the bid has several things (for example 1.3 to 1.7 ton and 1.8 to 2.2 ton), add each one here with its quantity.</p>}
+            <div className="space-y-2">
+              {lines.map((l, i) => (
+                <div key={i} className="flex flex-wrap items-center gap-2 sm:flex-nowrap">
+                  <input
+                    value={l.item}
+                    onChange={(e) => editLine(i, "item", e.target.value)}
+                    placeholder="Item, for example Split AC 1.3 Ton - 1.7 Ton"
+                    aria-label={`Item ${i + 1}`}
+                    className="min-w-0 flex-1 basis-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none sm:basis-0"
+                  />
+                  <input
+                    type="number"
+                    min="0"
+                    value={l.quantity}
+                    onChange={(e) => editLine(i, "quantity", e.target.value)}
+                    placeholder="Qty"
+                    aria-label={`Quantity of item ${i + 1}`}
+                    className="w-24 shrink-0 rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none"
+                  />
+                  <button type="button" onClick={() => removeLine(i)} aria-label={`Remove item ${i + 1}`} className="min-h-[38px] shrink-0 rounded-md border border-slate-300 px-3 text-slate-600 hover:bg-slate-50">&times;</button>
+                </div>
+              ))}
+            </div>
+            {lines.length > 0 && <p className="mt-1 text-xs text-slate-500">{lines.filter((l) => l.item.trim()).length} item{lines.filter((l) => l.item.trim()).length === 1 ? "" : "s"}{hasLineQuantity ? `, ${lineTotal} in total` : ""}.</p>}
+          </div>
           <Field label="Buyer / department">
             <input value={form.department} onChange={(e) => set("department", e.target.value)} className={fieldClass} />
           </Field>
-          <Field label="Quantity">
-            <input type="number" min="0" value={form.quantity} onChange={(e) => set("quantity", e.target.value)} className={fieldClass} />
+          <Field label="Quantity" hint={hasLineQuantity ? "Worked out from the items above." : undefined}>
+            <input type="number" min="0" value={hasLineQuantity ? lineTotal : form.quantity} disabled={hasLineQuantity} onChange={(e) => set("quantity", e.target.value)} className={fieldClass} />
           </Field>
           <Field label="Product category">
             <select value={form.product_category} onChange={(e) => pickCategory(e.target.value)} className={fieldClass}>

@@ -7,13 +7,15 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.database import get_db
 from app.deps import get_current_user
-from app.models.bid import Bid, BidEvent, BidRequest
+from app.models.bid import Bid, BidEvent, BidLine, BidRequest
 from app.models.user import User
 from app.models.vendor import Vendor
 from app.schemas.bid import (
     AllocateIn,
     BidEventOut,
     BidIn,
+    BidLineIn,
+    BidLineOut,
     BidOut,
     BidRequestOut,
     BidUpdate,
@@ -59,11 +61,51 @@ def _fail(exc: BidError):
 
 # --------------------------------------------------------------------------- shaping
 
-def _bid_out(db: Session, bid: Bid, access: BidAccess, *, with_events: bool = False, pending: dict[int, int] | None = None) -> BidOut:
+def _lines_for(db: Session, bid_ids: list[int]) -> dict[int, list[BidLine]]:
+    """Tonnage lines of many bids in one query."""
+    out: dict[int, list[BidLine]] = {}
+    if not bid_ids:
+        return out
+    for row in db.scalars(select(BidLine).where(BidLine.bid_id.in_(bid_ids)).order_by(BidLine.position, BidLine.id)).all():
+        out.setdefault(row.bid_id, []).append(row)
+    return out
+
+
+def _line_text(rows: list[BidLine]) -> str:
+    """The item names, so a search for an item or a tonnage finds the bid."""
+    return " ".join(r.item for r in rows)
+
+
+def _save_lines(db: Session, bid: Bid, lines: list[BidLineIn]) -> bool:
+    """Replace the bid's item lines. The bid's quantity becomes their total. Returns True when something changed."""
+    seen: set[str] = set()
+    for line in lines:
+        key = svc.norm(line.item)
+        if key in seen:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, f"\"{line.item}\" is listed twice. Put the whole quantity on one line")
+        seen.add(key)
+    old = [(r.item, r.quantity) for r in db.scalars(select(BidLine).where(BidLine.bid_id == bid.id).order_by(BidLine.position, BidLine.id)).all()]
+    new = [(l.item, l.quantity) for l in lines]
+    if old == new:
+        return False
+    for row in db.scalars(select(BidLine).where(BidLine.bid_id == bid.id)).all():
+        db.delete(row)
+    db.flush()
+    for i, line in enumerate(lines):
+        db.add(BidLine(bid_id=bid.id, position=i, item=line.item, quantity=line.quantity))
+    quantities = [l.quantity for l in lines if l.quantity is not None]
+    if quantities:
+        bid.quantity = sum(quantities)
+    return True
+
+
+def _bid_out(db: Session, bid: Bid, access: BidAccess, *, with_events: bool = False, pending: dict[int, int] | None = None, lines_map: dict[int, list[BidLine]] | None = None) -> BidOut:
     vendor = db.get(Vendor, bid.vendor_id) if bid.vendor_id else None
     out = BidOut.model_validate(bid, from_attributes=True)
     out.vendor_name = svc.vendor_label(bid, vendor)
     out.days_left = (bid.end_date - svc.today_ist()).days
+    rows = (lines_map if lines_map is not None else _lines_for(db, [bid.id])).get(bid.id, [])
+    out.lines = [BidLineOut(item=r.item, quantity=r.quantity) for r in rows]
     if access.is_manager:
         if pending is not None:
             out.pending_requests = pending.get(bid.id, 0)
@@ -333,6 +375,7 @@ def list_bids(
         bids = [b for b in bids if b.status in svc.LIVE_STATUSES]
     elif state and state != "All":
         bids = [b for b in bids if b.status == state]
+    lines_map = _lines_for(db, [b.id for b in bids])
     names: dict[int, str] = {}
     if access.is_manager and q:
         names = {v.id: v.name_of_firm for v in db.scalars(select(Vendor)).all()}
@@ -343,13 +386,14 @@ def list_bids(
                 b.bid_number, b.title, b.department, b.product_category, b.product_type,
                 names.get(b.vendor_id) if b.vendor_id else None,
                 svc.SELF_NAME if b.is_self else None,
+                _line_text(lines_map.get(b.id, [])),
             ) if x)
             if svc.fuzzy_match(q, text):
                 scored.append((svc.search_rank(q, b.bid_number), b))
         scored.sort(key=lambda x: x[0])
         bids = [b for _, b in scored]
     pending = _pending_counts(db) if access.is_manager else None
-    return [_bid_out(db, b, access, pending=pending) for b in bids[:1000]]
+    return [_bid_out(db, b, access, pending=pending, lines_map=lines_map) for b in bids[:1000]]
 
 
 @router.post("", response_model=BidOut, status_code=status.HTTP_201_CREATED)
@@ -364,12 +408,14 @@ def create_bid(
     number = body.bid_number.strip()
     if svc.find_bid_by_number(db, number) is not None:
         raise HTTPException(status.HTTP_409_CONFLICT, "This bid number is already entered")
-    data = body.model_dump()
+    data = body.model_dump(exclude={"lines"})
     data["bid_number"] = number
     bid = Bid(**data, status="Open", created_by_id=user.id)
     svc.apply_category(bid)
     db.add(bid)
     db.flush()
+    if body.lines:
+        _save_lines(db, bid, body.lines)
     svc.add_event(db, bid, user, "entered", f"Bid entered ({bid.bid_type}{', ' + bid.portal if bid.portal else ''})")
     linked = svc.link_requests_to_bid(db, bid)
     if linked:
@@ -396,6 +442,8 @@ def update_bid(
 ):
     bid = _get_bid(db, bid_id, access)
     data = body.model_dump(exclude_unset=True)
+    new_lines = body.lines if "lines" in body.model_fields_set else None
+    data.pop("lines", None)
     _check_bid_type(data.get("bid_type"))
     new_end = data.get("end_date", bid.end_date)
     _check_dates(data.get("publish_date", bid.publish_date), new_end)
@@ -411,6 +459,9 @@ def update_bid(
     changed = [k for k, v in data.items() if getattr(bid, k) != v]
     for key, value in data.items():
         setattr(bid, key, value)
+    lines_changed = _save_lines(db, bid, new_lines) if new_lines is not None else False
+    if lines_changed:
+        changed.append("items")
     if "product_category" in data or "product_type" in data:
         svc.apply_category(bid)
     if "end_date" in data and bid.status in ("Allocated", "Confirmed") and not bid.is_self:
