@@ -30,6 +30,7 @@ from app.models.pending_action import UserPendingAction
 from app.models.partner_registration import PartnerRegistration
 from app.models.partner_agreement import PartnerAgreement
 from app.models.field_photo import FieldPhoto
+from app.models.user_query import UserQuery, UserQueryMessage, UserQueryRead
 from app.models.bid import Bid, BidEvent, BidLine, BidRequest, BidReminder
 from app.models.email_bounce import EmailBounce
 from app.models.email_send_log import EmailSendLog
@@ -42,6 +43,7 @@ from app.models.market import (
 )
 
 __all__ = [
+    "UserQuery", "UserQueryMessage", "UserQueryRead",
     "FieldPhoto",
     "Bid", "BidEvent", "BidLine", "BidRequest", "BidReminder",
     "User", "Role", "Permission",

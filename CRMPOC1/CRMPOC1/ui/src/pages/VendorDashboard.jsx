@@ -8,6 +8,7 @@ import { ordersApi } from "../api/orders.js";
 import { api } from "../api/client.js";
 import { useAuth } from "../auth/AuthContext.jsx";
 import { BidStatCard, useVendorBids } from "../components/bids/VendorBidsPanel.jsx";
+import QueriesPanel from "../components/queries/QueriesPanel.jsx";
 
 const ORDER_STATUSES = ["Pending", "In Transit", "Delivered", "Returned"];
 
@@ -254,6 +255,8 @@ export default function VendorDashboard() {
           <span>Vendor-dashboards</span>
         </nav>
       </div>
+
+      <QueriesPanel />
 
       {/* ── Stat Cards (icon layout) ── */}
       <div className="flex flex-wrap gap-4">

@@ -12,6 +12,12 @@ export function isServiceDeskRole(role) {
   return key === "service" || key === "indcool_service";
 }
 
+// Admin and Sub Admin answer the Queries that everyone else raises
+export function isQueryStaffRole(role) {
+  const key = roleKey(role);
+  return key === "admin" || key === "incool" || key === "sub_admin";
+}
+
 export function isSubAdminRole(role) {
   return roleKey(role) === "sub_admin";
 }
