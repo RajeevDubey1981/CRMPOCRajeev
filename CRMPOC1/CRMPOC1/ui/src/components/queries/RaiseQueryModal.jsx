@@ -64,7 +64,7 @@ export default function RaiseQueryModal({ open, onClose, onCreated, staff = fals
 
   return (
     <Modal open={open} onClose={onClose} title={staff ? "Write to a user" : "Raise a query"} maxWidth="max-w-xl">
-      <form onSubmit={submit} className="space-y-3">
+      <form onSubmit={submit} className="space-y-3 text-slate-800">
         {!staff && (
           <p className="rounded-md bg-sky-50 px-3 py-2 text-sm text-sky-900">
             Your Admin and Sub Admin will see this and answer here. You will see the reply in Queries.

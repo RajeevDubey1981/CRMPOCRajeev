@@ -43,6 +43,7 @@ export default function QueriesPanel() {
   const unread = summary?.unread ?? 0;
 
   return (
+    <>
     <section className="overflow-hidden rounded-lg bg-gradient-to-r from-indcool-navy to-indcool-blue p-4 text-white shadow-md" aria-label="Queries">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
@@ -88,13 +89,15 @@ export default function QueriesPanel() {
           ))}
         </ul>
       )}
-
-      <RaiseQueryModal
-        open={raising}
-        staff={staff}
-        onClose={() => setRaising(false)}
-        onCreated={(created) => { setRaising(false); navigate(`/queries/${created.id}`); }}
-      />
     </section>
+
+    {/* outside the blue box, so the form does not inherit its white text */}
+    <RaiseQueryModal
+      open={raising}
+      staff={staff}
+      onClose={() => setRaising(false)}
+      onCreated={(created) => { setRaising(false); navigate(`/queries/${created.id}`); }}
+    />
+    </>
   );
 }
