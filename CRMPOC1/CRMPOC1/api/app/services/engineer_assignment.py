@@ -18,9 +18,17 @@ SERVICE_TERMINAL_STATUSES = ("Closed", "Cancelled", "Rejected")
 COMPLAINT_TERMINAL_STATUSES = ("Resolved", "Rejected")
 
 
-def get_engineer_assignment_options(db: Session, address: str | None = None) -> list[InstallationEngineerAssignmentOption]:
+def get_engineer_assignment_options(
+    db: Session,
+    address: str | None = None,
+    pincode: str | None = None,
+    state: str | None = None,
+    district: str | None = None,
+) -> list[InstallationEngineerAssignmentOption]:
     """Engineers to pick from. With the customer's address, the nearest come first: same pin code, same area (first 3
-    digits), same district, same state, then the rest; within a group the one with the fewest pending jobs first."""
+    digits), same district, same state, then the rest; within a group the one with the fewest pending jobs first.
+    The pin code, state and district typed for the customer count first; the address text is used for what is missing."""
+    where = bool((address or "").strip() or pincode or state or district)
     engineers = db.scalars(
         select(User)
         .where(User.deleted_at.is_(None), User.is_active.is_(True), User.role == "engineer")
@@ -145,9 +153,9 @@ def get_engineer_assignment_options(db: Session, address: str | None = None) -> 
                 pincode=engineer.pincode,
                 state=engineer.state,
                 district=engineer.district,
-                match=match_engineer(address, engineer.pincode, engineer.state, engineer.district) if (address or "").strip() else "",
+                match=match_engineer(address, engineer.pincode, engineer.state, engineer.district, pincode, state, district) if where else "",
             )
         )
-    if (address or "").strip():
+    if where:
         options.sort(key=lambda o: (match_rank(o.match), o.pending_requests, o.name.lower()))
     return options

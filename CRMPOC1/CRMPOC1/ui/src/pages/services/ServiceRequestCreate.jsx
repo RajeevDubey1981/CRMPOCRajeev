@@ -4,6 +4,9 @@ import { useNavigate } from "react-router-dom";
 import { complaintsApi } from "../../api/complaints.js";
 import { servicesApi } from "../../api/services.js";
 import { mergeComplaintModelOptions } from "../../constants/complaintModels.js";
+import PlaceFields, { placeProblem } from "../../components/PlaceFields.jsx";
+import NearbyEngineers from "../../components/NearbyEngineers.jsx";
+import { fillPlaceFromAddress } from "../../utils/place.js";
 
 function todayStr() {
   return new Date().toISOString().slice(0, 10);
@@ -22,6 +25,9 @@ export default function ServiceRequestCreate() {
     customer_email: "",
     model_details: "",
     customer_address: "",
+    pincode: "",
+    state: "",
+    district: "",
     problem_description: "",
     additional_remarks: "",
     send_request_number: true,
@@ -40,6 +46,11 @@ export default function ServiceRequestCreate() {
   async function submit(e) {
     e.preventDefault();
     setErr("");
+    const placeErr = placeProblem(form);
+    if (placeErr) {
+      setErr(placeErr);
+      return;
+    }
     setSubmitting(true);
     try {
       const created = await servicesApi.create({
@@ -104,7 +115,18 @@ export default function ServiceRequestCreate() {
         </div>
         <div>
           <label className={labelClass}>Address</label>
-          <textarea rows={2} value={form.customer_address} onChange={(e) => set("customer_address", e.target.value)} className={fieldClass} />
+          <textarea
+            rows={2}
+            value={form.customer_address}
+            onChange={(e) => set("customer_address", e.target.value)}
+            onBlur={() => setForm((f) => ({ ...f, ...fillPlaceFromAddress(f, f.customer_address) }))}
+            className={fieldClass}
+          />
+        </div>
+        <div className="space-y-3 rounded-md border border-sky-200 bg-sky-50 p-3">
+          <div className="text-xs font-semibold uppercase tracking-wide text-sky-800">Customer location</div>
+          <PlaceFields value={form} onChange={(patch) => setForm((f) => ({ ...f, ...patch }))} />
+          <NearbyEngineers place={form} address={form.customer_address} />
         </div>
         <div>
           <label className={labelClass}>Problem Description</label>

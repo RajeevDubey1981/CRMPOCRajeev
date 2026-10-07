@@ -3,6 +3,9 @@ import { useNavigate } from "react-router-dom";
 
 import { installationsApi } from "../../api/installations.js";
 import { useAuth } from "../../auth/AuthContext.jsx";
+import PlaceFields, { placeProblem } from "../../components/PlaceFields.jsx";
+import NearbyEngineers from "../../components/NearbyEngineers.jsx";
+import { fillPlaceFromAddress } from "../../utils/place.js";
 
 function todayStr() {
   return new Date().toISOString().slice(0, 10);
@@ -24,6 +27,9 @@ export default function InstallationCreate() {
     contact_number: "",
     customer_email: "",
     address: "",
+    pincode: "",
+    state: "",
+    district: "",
     product_name: "",
   });
 
@@ -52,6 +58,7 @@ export default function InstallationCreate() {
       contact_number: option.customer_mobile || f.contact_number,
       customer_email: option.customer_email || f.customer_email,
       address: option.customer_address || f.address,
+      ...fillPlaceFromAddress(f, option.customer_address),
     }));
     setOrderSearch("");
     setOrderOptions([]);
@@ -62,6 +69,11 @@ export default function InstallationCreate() {
     setErr("");
     if (!/^\d{10,}$/.test(form.contact_number.replace(/\D/g, ""))) {
       setErr("Phone number must contain at least 10 digits");
+      return;
+    }
+    const placeErr = placeProblem(form);
+    if (placeErr) {
+      setErr(placeErr);
       return;
     }
     setSubmitting(true);
@@ -164,7 +176,19 @@ export default function InstallationCreate() {
 
         <div>
           <label className={labelClass}>Address</label>
-          <textarea rows={3} value={form.address} onChange={(e) => set("address", e.target.value)} className={fieldClass} />
+          <textarea
+            rows={3}
+            value={form.address}
+            onChange={(e) => set("address", e.target.value)}
+            onBlur={() => setForm((f) => ({ ...f, ...fillPlaceFromAddress(f, f.address) }))}
+            className={fieldClass}
+          />
+        </div>
+
+        <div className="space-y-3 rounded-md border border-sky-200 bg-sky-50 p-3">
+          <div className="text-xs font-semibold uppercase tracking-wide text-sky-800">Customer location</div>
+          <PlaceFields value={form} onChange={(patch) => setForm((f) => ({ ...f, ...patch }))} />
+          <NearbyEngineers place={form} address={form.address} />
         </div>
 
         <div className="flex justify-end gap-2">

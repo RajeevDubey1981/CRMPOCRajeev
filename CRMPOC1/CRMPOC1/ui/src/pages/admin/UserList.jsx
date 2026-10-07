@@ -4,6 +4,8 @@ import Modal from "../../components/Modal.jsx";
 import { rolesApi, usersAdminApi } from "../../api/admin.js";
 import { useAuth } from "../../auth/AuthContext.jsx";
 import { INDIAN_STATES } from "../../constants/indianStates.js";
+import { districtsOf } from "../../constants/indianDistricts.js";
+import PlaceFields from "../../components/PlaceFields.jsx";
 
 function fmtDate(s) {
   if (!s) return "—";
@@ -120,28 +122,7 @@ function UserForm({ initial, roles, busy, onCancel, onSubmit }) {
         {form.role === "engineer" && (
           <div className="grid grid-cols-1 gap-3 rounded-md border border-sky-200 bg-sky-50 p-3 md:col-span-2 md:grid-cols-3">
             <div className="md:col-span-3 text-xs font-semibold uppercase tracking-wide text-sky-800">Where this engineer works</div>
-            <div>
-              <label className={labelClass}>Pin code</label>
-              <input
-                inputMode="numeric"
-                maxLength={6}
-                value={form.pincode}
-                onChange={(e) => set("pincode", e.target.value.replace(/\D/g, ""))}
-                placeholder="6 digits"
-                className={fieldClass}
-              />
-            </div>
-            <div>
-              <label className={labelClass}>State</label>
-              <select value={form.state} onChange={(e) => set("state", e.target.value)} className={fieldClass}>
-                <option value="">Choose the state</option>
-                {INDIAN_STATES.map((s) => <option key={s} value={s}>{s}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className={labelClass}>District</label>
-              <input value={form.district} onChange={(e) => set("district", e.target.value)} placeholder="For example Gautam Buddh Nagar" className={fieldClass} />
-            </div>
+            <PlaceFields className="md:col-span-3" value={form} onChange={(patch) => setForm((f) => ({ ...f, ...patch }))} />
           </div>
         )}
         {!isEdit && (
@@ -334,16 +315,23 @@ export default function UserList() {
             onChange={(e) => setFilters({ ...filters, pincode: e.target.value.replace(/\D/g, "") })}
             className={fieldClass}
           />
-          <select value={filters.state} onChange={(e) => setFilters({ ...filters, state: e.target.value })} className={fieldClass}>
+          <select value={filters.state} onChange={(e) => setFilters({ ...filters, state: e.target.value, district: "" })} className={fieldClass}>
             <option value="">All states</option>
             {INDIAN_STATES.map((s) => <option key={s} value={s}>{s}</option>)}
           </select>
-          <input
-            placeholder="District"
-            value={filters.district}
-            onChange={(e) => setFilters({ ...filters, district: e.target.value })}
-            className={fieldClass}
-          />
+          {districtsOf(filters.state).length > 0 ? (
+            <select value={filters.district} onChange={(e) => setFilters({ ...filters, district: e.target.value })} className={fieldClass}>
+              <option value="">All districts of {filters.state}</option>
+              {districtsOf(filters.state).map((d) => <option key={d} value={d}>{d}</option>)}
+            </select>
+          ) : (
+            <input
+              placeholder="District"
+              value={filters.district}
+              onChange={(e) => setFilters({ ...filters, district: e.target.value })}
+              className={fieldClass}
+            />
+          )}
         </div>
       </div>
 

@@ -66,9 +66,22 @@ def match_rank(match: str) -> int:
     return _RANK.get(match, 4)
 
 
-def match_engineer(address: str | None, pincode: str | None, state: str | None, district: str | None) -> str:
-    """How an engineer's place fits the customer's address: same pin code, same area (first 3 digits), district or state."""
-    customer_pin = pincode_in(address)
+def _plain(text: str | None) -> str:
+    return re.sub(r"\s+", " ", re.sub(r"[^a-z0-9 ]", " ", (text or "").lower())).strip()
+
+
+def match_engineer(
+    address: str | None,
+    pincode: str | None,
+    state: str | None,
+    district: str | None,
+    customer_pincode: str | None = None,
+    customer_state: str | None = None,
+    customer_district: str | None = None,
+) -> str:
+    """How an engineer's place fits the customer: same pin code, same area (first 3 digits), district or state.
+    The customer's typed pin code, state and district are used first, the address text for what is missing."""
+    customer_pin = customer_pincode or pincode_in(address)
     low = " " + re.sub(r"\s+", " ", re.sub(r"[^a-z0-9 ]", " ", (address or "").lower())) + " "
     if pincode and customer_pin:
         if pincode == customer_pin:
@@ -76,11 +89,11 @@ def match_engineer(address: str | None, pincode: str | None, state: str | None, 
         if pincode[:3] == customer_pin[:3]:
             return MATCH_AREA
     if district:
-        d = re.sub(r"\s+", " ", re.sub(r"[^a-z0-9 ]", " ", district.lower())).strip()
-        if d and f" {d} " in low:
+        d = _plain(district)
+        if d and (d == _plain(customer_district) or f" {d} " in low):
             return MATCH_DISTRICT
     if state:
-        customer_state = state_in(address)
-        if customer_state and customer_state == state:
+        their_state = customer_state or state_in(address)
+        if their_state and their_state == state:
             return MATCH_STATE
     return MATCH_NONE

@@ -3,6 +3,9 @@ import { useEffect, useState } from "react";
 import Modal from "../../components/Modal.jsx";
 import { complaintsApi } from "../../api/complaints.js";
 import { mergeComplaintModelOptions } from "../../constants/complaintModels.js";
+import PlaceFields, { placeProblem } from "../../components/PlaceFields.jsx";
+import NearbyEngineers from "../../components/NearbyEngineers.jsx";
+import { fillPlaceFromAddress } from "../../utils/place.js";
 
 const QUERY_TYPES = ["Service", "Installation", "Sales", "Others"];
 const STATUSES = ["Pending", "Under Process", "In Process", "Resolved", "Rejected"];
@@ -14,6 +17,9 @@ export default function ComplaintEdit({ complaint, onClose, onSaved }) {
     customer_mobile: complaint.customer_mobile || "",
     customer_email: complaint.customer_email || "",
     customer_address: complaint.customer_address || "",
+    pincode: complaint.pincode || "",
+    state: complaint.state || "",
+    district: complaint.district || "",
     query_type: complaint.query_type || "Service",
     model_details: complaint.model_details || "",
     problem_description: complaint.problem_description || "",
@@ -41,6 +47,11 @@ export default function ComplaintEdit({ complaint, onClose, onSaved }) {
       setSubmitErr("Mobile number must contain at least 10 digits");
       return;
     }
+    const placeErr = placeProblem(form);
+    if (placeErr) {
+      setSubmitErr(placeErr);
+      return;
+    }
     setBusy(true);
     try {
       const body = {
@@ -48,6 +59,9 @@ export default function ComplaintEdit({ complaint, onClose, onSaved }) {
         customer_mobile: digits,
         customer_email: form.customer_email.trim() || null,
         customer_address: form.customer_address.trim() || null,
+        pincode: form.pincode.trim(),
+        state: form.state,
+        district: form.district.trim(),
         query_type: form.query_type,
         model_details: form.model_details || null,
         problem_description: form.problem_description.trim() || null,
@@ -145,6 +159,12 @@ export default function ComplaintEdit({ complaint, onClose, onSaved }) {
             onChange={(e) => set("customer_address", e.target.value)}
             className={fieldClass}
           />
+        </div>
+
+        <div className="space-y-3 rounded-md border border-sky-200 bg-sky-50 p-3">
+          <div className="text-xs font-semibold uppercase tracking-wide text-sky-800">Customer location</div>
+          <PlaceFields value={form} onChange={(patch) => setForm((f) => ({ ...f, ...patch }))} />
+          <NearbyEngineers place={form} address={form.customer_address} />
         </div>
 
         <div>

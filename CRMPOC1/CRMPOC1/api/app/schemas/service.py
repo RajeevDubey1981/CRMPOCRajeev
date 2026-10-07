@@ -3,6 +3,8 @@ from typing import Literal
 
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
+from app.schemas.place import PlaceIn
+
 SERVICE_STATUSES = (
     "New",
     "Service Team Review",
@@ -28,7 +30,7 @@ SERVICE_TYPES = ("Free Service", "Warranty Service", "Paid Service")
 WARRANTY_STATUSES = ("IN WARRANTY", "OUT OF WARRANTY")
 
 
-class ServiceCreate(BaseModel):
+class ServiceCreate(PlaceIn):
     request_date: date | None = None
     query_type: str = "Service"
     customer_name: str = Field(min_length=1, max_length=255)
@@ -49,7 +51,7 @@ class ServiceCreate(BaseModel):
         return digits
 
 
-class ServiceUpdate(BaseModel):
+class ServiceUpdate(PlaceIn):
     customer_name: str | None = None
     customer_mobile: str | None = None
     customer_email: EmailStr | None = None
@@ -471,6 +473,9 @@ class ServiceOut(BaseModel):
     customer_mobile: str
     customer_email: str | None
     customer_address: str | None
+    pincode: str | None = None
+    state: str | None = None
+    district: str | None = None
     model_details: str | None
     problem_description: str | None
     additional_remarks: str | None

@@ -8,6 +8,7 @@ import InstallationEngineerSerialWorkflow from "../../components/installations/I
 import InstallationPostVerifyWorkflow from "../../components/installations/InstallationPostVerifyWorkflow.jsx";
 import WorkflowStepSection from "../../components/installations/WorkflowStepSection.jsx";
 import { ENGINEER_ASSIGNMENT_HINT, formatEngineerOptionLabel } from "../../utils/engineerAssignment.js";
+import EngineerSelect from "../../components/EngineerSelect.jsx";
 import { isMissingItemCode } from "../../utils/installationItemCode.js";
 
 function Field({ label, value, mono = false }) {
@@ -107,10 +108,10 @@ export default function InstallationCallCenterWorkflow({
 
   useEffect(() => {
     if (!isCallcenter || !isAdminLike || !installation.order_verified_at) return;
-    installationsApi.engineerAssignmentOptions(installation.address)
+    installationsApi.engineerAssignmentOptions(installation.address, installation)
       .then(setEngineerOptions)
       .catch(() => setEngineerOptions([]));
-  }, [isCallcenter, isAdminLike, installation.order_verified_at, installation.id, installation.address]);
+  }, [isCallcenter, isAdminLike, installation.order_verified_at, installation.id, installation.address, installation.pincode, installation.state, installation.district]);
 
   useEffect(() => {
     if (installation.assigned_engineer) {
@@ -457,17 +458,7 @@ export default function InstallationCallCenterWorkflow({
             </p>
           )}
           <div className="mt-3 grid gap-3 md:grid-cols-[1fr_auto] md:items-end">
-            <select
-              value={selectedEngineerId}
-              onChange={(e) => setSelectedEngineerId(e.target.value)}
-              className={fieldClass}
-              disabled={!canAssignEngineer}
-            >
-              <option value="">Select engineer</option>
-              {engineerOptions.map((engineer) => (
-                <option key={engineer.id} value={engineer.id}>{formatEngineerOptionLabel(engineer)}</option>
-              ))}
-            </select>
+            <EngineerSelect engineers={engineerOptions} value={selectedEngineerId} onChange={(e) => setSelectedEngineerId(e.target.value)} disabled={!canAssignEngineer} emptyLabel="Select engineer" selectClassName={fieldClass} />
             <button
               type="button"
               disabled={!selectedEngineerId || !canAssignEngineer}

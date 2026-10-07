@@ -5,6 +5,7 @@ import { useAuth } from "../../auth/AuthContext.jsx";
 import { complaintsApi, serialsApi } from "../../api/complaints.js";
 import { installationsApi } from "../../api/installations.js";
 import { ENGINEER_ASSIGNMENT_HINT, formatEngineerOptionLabel } from "../../utils/engineerAssignment.js";
+import EngineerSelect from "../../components/EngineerSelect.jsx";
 
 const STATUSES = ["Pending", "Under Process", "In Process", "Resolved", "Rejected"];
 
@@ -133,16 +134,7 @@ export default function ComplaintStatusEdit({ complaint, onClose, onSaved }) {
           {!isEngineer && (
             <div>
               <label className={labelClass}>Assign Engineer</label>
-              <select
-                value={form.assigned_engineer}
-                onChange={(e) => set("assigned_engineer", e.target.value ? Number(e.target.value) : "")}
-                className={fieldClass}
-              >
-                <option value="">— Unassigned —</option>
-                {engineers.map((u) => (
-                  <option key={u.id} value={u.id}>{formatEngineerOptionLabel(u)}</option>
-                ))}
-              </select>
+              <EngineerSelect engineers={engineers} value={form.assigned_engineer} onChange={(e) => set("assigned_engineer", e.target.value ? Number(e.target.value) : "")} emptyLabel="— Unassigned —" selectClassName={fieldClass} />
               <p className="mt-1 text-xs text-slate-500">{ENGINEER_ASSIGNMENT_HINT}</p>
             </div>
           )}

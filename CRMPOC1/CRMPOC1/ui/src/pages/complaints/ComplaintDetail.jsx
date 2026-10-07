@@ -17,6 +17,7 @@ import { callsApi } from "../../api/calls.js";
 import { useAuth } from "../../auth/AuthContext.jsx";
 import { isOperationsAdminRole, isServiceTeamRole } from "../../utils/roles.js";
 import { ENGINEER_ASSIGNMENT_HINT, formatEngineerOptionLabel } from "../../utils/engineerAssignment.js";
+import EngineerSelect from "../../components/EngineerSelect.jsx";
 import ComplaintEdit from "./ComplaintEdit.jsx";
 import InstallationEngineerSerialWorkflow from "../../components/installations/InstallationEngineerSerialWorkflow.jsx";
 import InstallationPostVerifyWorkflow from "../../components/installations/InstallationPostVerifyWorkflow.jsx";
@@ -282,10 +283,10 @@ export default function ComplaintDetail() {
 
   useEffect(() => {
     if (!showAssignEngineerSection) return;
-    installationsApi.engineerAssignmentOptions(complaint?.customer_address)
+    installationsApi.engineerAssignmentOptions(complaint?.customer_address, complaint)
       .then(setEngineerOptions)
       .catch(() => setEngineerOptions([]));
-  }, [showAssignEngineerSection, linkedInstallation?.installation_request_id, complaint?.customer_address]);
+  }, [showAssignEngineerSection, linkedInstallation?.installation_request_id, complaint?.customer_address, complaint?.pincode, complaint?.state, complaint?.district]);
 
   useEffect(() => {
     if (linkedInstallation?.assigned_engineer) {
@@ -666,17 +667,7 @@ export default function ComplaintDetail() {
             <div className="mt-3 grid gap-3 md:grid-cols-[1fr_auto] md:items-end">
               <div>
                 <label className="text-xs uppercase tracking-wide text-slate-500">Engineer</label>
-                <select
-                  value={selectedEngineerId}
-                  onChange={(e) => setSelectedEngineerId(e.target.value)}
-                  disabled={busy}
-                  className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-100"
-                >
-                  <option value="">Select engineer</option>
-                  {engineerOptions.map((engineer) => (
-                    <option key={engineer.id} value={engineer.id}>{formatEngineerOptionLabel(engineer)}</option>
-                  ))}
-                </select>
+                <EngineerSelect engineers={engineerOptions} value={selectedEngineerId} onChange={(e) => setSelectedEngineerId(e.target.value)} disabled={busy} emptyLabel="Select engineer" selectClassName="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-100" />
                 <p className="mt-1 text-xs text-slate-500">{ENGINEER_ASSIGNMENT_HINT}</p>
                 {engineerOptions.length === 0 && (
                   <p className="mt-1 text-xs text-slate-500">No engineers available for assignment.</p>

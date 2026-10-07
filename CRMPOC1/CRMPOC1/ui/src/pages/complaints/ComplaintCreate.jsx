@@ -4,6 +4,9 @@ import { useNavigate } from "react-router-dom";
 import { complaintsApi } from "../../api/complaints.js";
 import { useAuth } from "../../auth/AuthContext.jsx";
 import { mergeComplaintModelOptions } from "../../constants/complaintModels.js";
+import PlaceFields, { placeProblem } from "../../components/PlaceFields.jsx";
+import NearbyEngineers from "../../components/NearbyEngineers.jsx";
+import { fillPlaceFromAddress } from "../../utils/place.js";
 
 const QUERY_TYPES = ["Service", "Installation", "Sales", "Others"];
 
@@ -30,6 +33,9 @@ export default function ComplaintCreate() {
     customer_mobile: "",
     customer_email: "",
     customer_address: "",
+    pincode: "",
+    state: "",
+    district: "",
     model_details: "",
     problem_description: "",
     query_type: "Service",
@@ -80,6 +86,7 @@ export default function ComplaintCreate() {
       customer_mobile: order.customer_contact || order.customer_mobile || f.customer_mobile,
       customer_email: order.customer_email || f.customer_email,
       customer_address: order.customer_address || f.customer_address,
+      ...fillPlaceFromAddress(f, order.customer_address),
     }));
     setSelectedOrder(order);
   }
@@ -95,6 +102,11 @@ export default function ComplaintCreate() {
     setErr("");
     if (!/^\d{10,}$/.test(form.customer_mobile.replace(/\D/g, ""))) {
       setErr("Mobile number must contain at least 10 digits");
+      return;
+    }
+    const placeErr = placeProblem(form);
+    if (placeErr) {
+      setErr(placeErr);
       return;
     }
     setSubmitting(true);
@@ -293,7 +305,19 @@ export default function ComplaintCreate() {
 
         <div>
           <label className={labelClass}>Address</label>
-          <textarea rows={2} value={form.customer_address} onChange={(e) => set("customer_address", e.target.value)} className={fieldClass} />
+          <textarea
+            rows={2}
+            value={form.customer_address}
+            onChange={(e) => set("customer_address", e.target.value)}
+            onBlur={() => setForm((f) => ({ ...f, ...fillPlaceFromAddress(f, f.customer_address) }))}
+            className={fieldClass}
+          />
+        </div>
+
+        <div className="space-y-3 rounded-md border border-sky-200 bg-sky-50 p-3">
+          <div className="text-xs font-semibold uppercase tracking-wide text-sky-800">Customer location</div>
+          <PlaceFields value={form} onChange={(patch) => setForm((f) => ({ ...f, ...patch }))} />
+          <NearbyEngineers place={form} address={form.customer_address} />
         </div>
 
         <div>

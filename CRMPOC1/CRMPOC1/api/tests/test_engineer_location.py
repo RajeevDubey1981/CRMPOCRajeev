@@ -144,6 +144,36 @@ class EngineerLocationApiTests(unittest.TestCase):
         self.assertEqual([r["name"] for r in plain], sorted(r["name"] for r in plain), "without an address the list is as before")
         self.assertEqual({r["match"] for r in plain}, {""})
 
+    def test_customer_place_is_saved_and_decides_the_nearest(self):
+        self.engineers()
+        cc = self._user("cc@t.com", "callcenter")
+        self.db.commit()
+        # no pin code in the address text: the typed place does the work
+        base = {"customer_name": "Asha", "customer_mobile": "9876543210", "customer_address": "Flat 4, Green Park"}
+        r = self.client.post("/api/complaints", json={**base, "pincode": "226 001", "state": "uttar pradesh", "district": "Lucknow", "query_type": "Service"}, headers=self.h(self.admin))
+        self.assertEqual(r.status_code, 201, r.text)
+        self.assertEqual((r.json()["pincode"], r.json()["state"], r.json()["district"]), ("226001", "Uttar Pradesh", "Lucknow"))
+        bad = self.client.post("/api/complaints", json={**base, "pincode": "22", "query_type": "Service"}, headers=self.h(self.admin))
+        self.assertEqual(bad.status_code, 422)
+        edited = self.client.put(f"/api/complaints/{r.json()['id']}", json={"pincode": "", "state": "", "district": ""}, headers=self.h(self.admin))
+        self.assertEqual((edited.json()["pincode"], edited.json()["state"], edited.json()["district"]), (None, None, None))
+
+        svc = self.client.post("/api/services", json={**base, "pincode": "302001", "state": "Rajasthan", "district": "Jaipur"}, headers=self.h(cc))
+        self.assertEqual(svc.status_code, 201, svc.text)
+        self.assertEqual(svc.json()["district"], "Jaipur")
+
+        inst = self.client.post("/api/installations", json={"customer_name": "Asha", "contact_number": "9876543210", "address": "Flat 4", "pincode": "201301", "state": "Uttar Pradesh", "district": "Gautam Buddh Nagar", "source": "callcenter"}, headers=self.h(self.admin))
+        self.assertEqual(inst.status_code, 201, inst.text)
+        self.assertEqual(inst.json()["pincode"], "201301")
+
+        url = "/api/installations/engineer-assignment-options"
+        rows = self.client.get(url, params={"pincode": "226001", "state": "Uttar Pradesh", "district": "Lucknow"}, headers=self.h(self.admin)).json()
+        self.assertEqual([(r["name"], r["match"]) for r in rows[:3]], [("Anil Yadav", "pincode"), ("Ramesh Kumar", "state"), ("Vikas Sharma", "state")])
+        jaipur = self.client.get(url, params={"state": "Rajasthan", "district": "jaipur"}, headers=self.h(self.admin)).json()
+        self.assertEqual((jaipur[0]["name"], jaipur[0]["match"]), ("Pooja Verma", "district"))
+        junk = self.client.get(url, params={"pincode": "12", "state": "Atlantis"}, headers=self.h(self.admin))
+        self.assertEqual(junk.status_code, 200, "a wrong place is ignored, not an error")
+
 
 if __name__ == "__main__":
     unittest.main()

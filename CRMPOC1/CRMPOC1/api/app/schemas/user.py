@@ -2,31 +2,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
-from app.services.geo import canonical_state, clean_pincode
-
-
-class _Place(BaseModel):
-    """Pin code, state and district: checked the same way when a user is created or changed."""
-
-    pincode: str | None = None
-    state: str | None = None
-    district: str | None = Field(None, max_length=100)
-
-    @field_validator("pincode")
-    @classmethod
-    def _pin(cls, value):
-        return clean_pincode(value)
-
-    @field_validator("state")
-    @classmethod
-    def _state(cls, value):
-        return canonical_state(value)
-
-    @field_validator("district")
-    @classmethod
-    def _district(cls, value):
-        text = " ".join((value or "").split())
-        return text or None
+from app.schemas.place import PlaceIn as _Place
 
 
 class UserCreate(_Place):

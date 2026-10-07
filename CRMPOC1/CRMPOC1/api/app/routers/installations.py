@@ -36,6 +36,7 @@ from app.schemas.installation import (
     PaymentApprovalLogOut,
 )
 from app.services.engineer_assignment import get_engineer_assignment_options
+from app.services.geo import canonical_state, clean_pincode
 from app.services.file_service import read_upload_bytes, save_upload, to_public_upload_path
 from app.services.role_access import is_operations_admin, is_system_admin
 from app.services.service_access import (
@@ -282,7 +283,7 @@ def _hydrate(db: Session, inst: InstallationRequest) -> dict:
     ).all()
     return {
         **{k: getattr(inst, k) for k in (
-            "id", "source", "customer_name", "contact_number", "customer_email", "address",
+            "id", "source", "customer_name", "contact_number", "customer_email", "address", "pincode", "state", "district",
             "order_id", "order_item_id", "product_name",
             "serial_no", "serial_no_2",
             "request_date", "assigned_engineer", "assigned_service_user_id", "status", "installation_date",
@@ -709,6 +710,9 @@ def payment_history(
 @router.get("/engineer-assignment-options", response_model=list[InstallationEngineerAssignmentOption])
 def engineer_assignment_options(
     address: str | None = Query(None, max_length=600, description="The customer's address: the nearest engineers come first"),
+    pincode: str | None = Query(None, max_length=10),
+    state: str | None = Query(None, max_length=100),
+    district: str | None = Query(None, max_length=100),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -720,7 +724,11 @@ def engineer_assignment_options(
         or can_act_on(db, user, "complaints", "can_view", None)
     ):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Your role cannot view engineer assignment options")
-    return get_engineer_assignment_options(db, address)
+    try:
+        pincode, state = clean_pincode(pincode), canonical_state(state)
+    except ValueError:
+        pincode = state = None
+    return get_engineer_assignment_options(db, address, pincode, state, " ".join((district or "").split()) or None)
 
 
 @router.get("/lookup/service-users")
@@ -766,6 +774,9 @@ def create_installation(
             contact_number=body.contact_number,
             customer_email=body.customer_email,
             address=body.address,
+            pincode=body.pincode,
+            state=body.state,
+            district=body.district,
             order_id=body.order_id,
             product_name=body.product_name,
             request_date=body.request_date or datetime.now(timezone.utc),
@@ -799,6 +810,9 @@ def create_installation(
         contact_number=body.contact_number,
         customer_email=body.customer_email,
         address=body.address,
+        pincode=body.pincode,
+        state=body.state,
+        district=body.district,
         order_id=order_item.order_id if order_item else None,
         order_item_id=body.order_item_id,
         product_name=body.product_name,
