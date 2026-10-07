@@ -85,7 +85,7 @@ export default function InstallationStatusEdit({ installation, onClose, onSaved,
   const isUpiPaymentApproval = paymentApprovalMode && isCompleted && form.payment_type === "UPI";
 
   useEffect(() => {
-    installationsApi.engineerAssignmentOptions()
+    installationsApi.engineerAssignmentOptions(installation.address)
       .then(setEngineers)
       .catch(() => setEngineers([]));
 

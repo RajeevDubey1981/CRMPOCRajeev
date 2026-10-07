@@ -3,7 +3,8 @@ import { api } from "./client.js";
 export const installationsApi = {
   list: (params) => api.get("/api/installations", { params }).then((r) => r.data),
   paymentHistory: (params) => api.get("/api/installations/payment-history", { params }).then((r) => r.data),
-  engineerAssignmentOptions: () => api.get("/api/installations/engineer-assignment-options").then((r) => r.data),
+  // address: the customer's address; with it the nearest engineers (same pin code, area, district, state) come first
+  engineerAssignmentOptions: (address) => api.get("/api/installations/engineer-assignment-options", { params: { address: address || undefined } }).then((r) => r.data),
   serviceUsers: () => api.get("/api/installations/lookup/service-users").then((r) => r.data),
   get: (id) => api.get(`/api/installations/${id}`).then((r) => r.data),
   create: (body) => api.post("/api/installations", body).then((r) => r.data),

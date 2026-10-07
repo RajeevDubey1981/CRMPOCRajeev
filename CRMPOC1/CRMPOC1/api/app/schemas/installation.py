@@ -139,6 +139,10 @@ class InstallationEngineerAssignmentOption(BaseModel):
     pending_requests: int = 0
     rating: float = 0.0
     completed_requests: int = 0
+    pincode: str | None = None
+    state: str | None = None
+    district: str | None = None
+    match: str = ""  # pincode | area | district | state | empty: how near the engineer is to the customer asked about
 
 
 class InstallationCompletionProofOut(BaseModel):

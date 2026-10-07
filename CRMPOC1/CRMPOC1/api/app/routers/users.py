@@ -9,6 +9,7 @@ from app.services.role_access import PROTECTED_USER_ROLES, is_sub_admin, role_ke
 from app.models.user import User
 from app.schemas.user import ResetPasswordRequest, UserCreate, UserOut, UserUpdate
 from app.security import hash_password
+from app.services.geo import canonical_state
 from app.services.vendor_accounts import (
     ensure_vendor_for_user,
     sync_vendor_for_user_email_update,
@@ -54,6 +55,9 @@ def _user_out(db: Session, user: User) -> UserOut:
         phone=user.phone,
         is_active=user.is_active,
         can_manage_bids=bool(user.can_manage_bids),
+        pincode=user.pincode,
+        state=user.state,
+        district=user.district,
         created_at=user.created_at,
         updated_at=user.updated_at,
         vendor_id=vendor.id if vendor else None,
@@ -66,6 +70,9 @@ def list_users(
     role: str | None = Query(None),
     active: bool | None = Query(None, description="If true, only active. If false, only inactive. Omit for both."),
     search: str | None = Query(None),
+    pincode: str | None = Query(None, description="Pin code, or its first digits"),
+    state: str | None = Query(None),
+    district: str | None = Query(None, description="Part of the district name"),
     db: Session = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
@@ -76,7 +83,19 @@ def list_users(
         stmt = stmt.where(User.is_active.is_(active))
     if search:
         like = f"%{search.strip()}%"
-        stmt = stmt.where(or_(User.name.ilike(like), User.email.ilike(like)))
+        stmt = stmt.where(or_(
+            User.name.ilike(like), User.email.ilike(like),
+            User.pincode.ilike(like), User.district.ilike(like), User.state.ilike(like),
+        ))
+    if pincode and pincode.strip():
+        stmt = stmt.where(User.pincode.like(f"{pincode.strip()}%"))
+    if state and state.strip():
+        try:
+            stmt = stmt.where(User.state == (canonical_state(state) or state.strip()))
+        except ValueError:
+            stmt = stmt.where(User.state == state.strip())
+    if district and district.strip():
+        stmt = stmt.where(User.district.ilike(f"%{district.strip()}%"))
     users = db.scalars(stmt.order_by(User.id)).all()
     return [_user_out(db, user) for user in users]
 
@@ -115,6 +134,9 @@ def create_user(
         phone=body.phone,
         is_active=body.is_active,
         can_manage_bids=bool(body.can_manage_bids) and role_key(body.role) != "vendor",
+        pincode=body.pincode,
+        state=body.state,
+        district=body.district,
     )
     db.add(user)
     db.flush()

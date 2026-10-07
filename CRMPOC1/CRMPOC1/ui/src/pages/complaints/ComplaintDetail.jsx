@@ -282,10 +282,10 @@ export default function ComplaintDetail() {
 
   useEffect(() => {
     if (!showAssignEngineerSection) return;
-    installationsApi.engineerAssignmentOptions()
+    installationsApi.engineerAssignmentOptions(complaint?.customer_address)
       .then(setEngineerOptions)
       .catch(() => setEngineerOptions([]));
-  }, [showAssignEngineerSection, linkedInstallation?.installation_request_id]);
+  }, [showAssignEngineerSection, linkedInstallation?.installation_request_id, complaint?.customer_address]);
 
   useEffect(() => {
     if (linkedInstallation?.assigned_engineer) {

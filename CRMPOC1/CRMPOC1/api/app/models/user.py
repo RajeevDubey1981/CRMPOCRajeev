@@ -15,4 +15,7 @@ class User(Base, TimestampMixin, SoftDeleteMixin):
     role: Mapped[str] = mapped_column(String(100), nullable=False, default="callcenter")
     phone: Mapped[str | None] = mapped_column(String(20), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    pincode: Mapped[str | None] = mapped_column(String(10), nullable=True, index=True)  # where an engineer works
+    state: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    district: Mapped[str | None] = mapped_column(String(100), nullable=True)
     can_manage_bids: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")

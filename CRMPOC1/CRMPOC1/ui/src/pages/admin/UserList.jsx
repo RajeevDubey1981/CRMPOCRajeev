@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import Modal from "../../components/Modal.jsx";
 import { rolesApi, usersAdminApi } from "../../api/admin.js";
 import { useAuth } from "../../auth/AuthContext.jsx";
+import { INDIAN_STATES } from "../../constants/indianStates.js";
 
 function fmtDate(s) {
   if (!s) return "—";
@@ -24,6 +25,9 @@ function UserForm({ initial, roles, busy, onCancel, onSubmit }) {
     password: "",
     is_active: initial?.is_active ?? true,
     can_manage_bids: initial?.can_manage_bids ?? false,
+    pincode: initial?.pincode || "",
+    state: initial?.state || "",
+    district: initial?.district || "",
   });
   const [err, setErr] = useState("");
 
@@ -38,6 +42,14 @@ function UserForm({ initial, roles, busy, onCancel, onSubmit }) {
       setErr("Password must be at least 6 characters");
       return;
     }
+    // where an engineer works: sent for engineers only, an empty box clears it
+    const placeBody = form.role === "engineer"
+      ? { pincode: form.pincode.trim(), state: form.state, district: form.district.trim() }
+      : {};
+    if (placeBody.pincode && !/^[1-9]\d{5}$/.test(placeBody.pincode.replace(/\s+/g, ""))) {
+      setErr("Pin code must be 6 digits");
+      return;
+    }
     try {
       const body = isEdit
         ? {
@@ -47,6 +59,7 @@ function UserForm({ initial, roles, busy, onCancel, onSubmit }) {
             phone: form.phone || null,
             is_active: form.is_active,
             can_manage_bids: bidTickApplies && form.can_manage_bids,
+            ...placeBody,
           }
         : {
             name: form.name,
@@ -56,6 +69,7 @@ function UserForm({ initial, roles, busy, onCancel, onSubmit }) {
             phone: form.phone || null,
             is_active: form.is_active,
             can_manage_bids: bidTickApplies && form.can_manage_bids,
+            ...placeBody,
           };
       await onSubmit(body);
     } catch (e) {
@@ -103,6 +117,33 @@ function UserForm({ initial, roles, busy, onCancel, onSubmit }) {
           <label className={labelClass}>Phone</label>
           <input value={form.phone} onChange={(e) => set("phone", e.target.value)} className={fieldClass} />
         </div>
+        {form.role === "engineer" && (
+          <div className="grid grid-cols-1 gap-3 rounded-md border border-sky-200 bg-sky-50 p-3 md:col-span-2 md:grid-cols-3">
+            <div className="md:col-span-3 text-xs font-semibold uppercase tracking-wide text-sky-800">Where this engineer works</div>
+            <div>
+              <label className={labelClass}>Pin code</label>
+              <input
+                inputMode="numeric"
+                maxLength={6}
+                value={form.pincode}
+                onChange={(e) => set("pincode", e.target.value.replace(/\D/g, ""))}
+                placeholder="6 digits"
+                className={fieldClass}
+              />
+            </div>
+            <div>
+              <label className={labelClass}>State</label>
+              <select value={form.state} onChange={(e) => set("state", e.target.value)} className={fieldClass}>
+                <option value="">Choose the state</option>
+                {INDIAN_STATES.map((s) => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className={labelClass}>District</label>
+              <input value={form.district} onChange={(e) => set("district", e.target.value)} placeholder="For example Gautam Buddh Nagar" className={fieldClass} />
+            </div>
+          </div>
+        )}
         {!isEdit && (
           <div className="md:col-span-2">
             <label className={labelClass}>Password *</label>
@@ -176,7 +217,7 @@ export default function UserList() {
   const { user: me } = useAuth();
   const [users, setUsers] = useState([]);
   const [roles, setRoles] = useState([]);
-  const [filters, setFilters] = useState({ search: "", role: "", active: "" });
+  const [filters, setFilters] = useState({ search: "", role: "", active: "", pincode: "", state: "", district: "" });
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
   const [creating, setCreating] = useState(false);
@@ -189,6 +230,9 @@ export default function UserList() {
     search: filters.search || undefined,
     role: filters.role || undefined,
     active: filters.active === "" ? undefined : filters.active === "true",
+    pincode: filters.pincode || undefined,
+    state: filters.state || undefined,
+    district: filters.district || undefined,
   }), [filters]);
 
   async function load() {
@@ -261,7 +305,7 @@ export default function UserList() {
       <div className="rounded-lg bg-white p-4 shadow-sm">
         <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
           <input
-            placeholder="Search name or email"
+            placeholder="Search name, email, pin code or district"
             value={filters.search}
             onChange={(e) => setFilters({ ...filters, search: e.target.value })}
             className={fieldClass}
@@ -283,6 +327,23 @@ export default function UserList() {
             <option value="true">Active only</option>
             <option value="false">Inactive only</option>
           </select>
+          <input
+            inputMode="numeric"
+            placeholder="Pin code (or its first digits)"
+            value={filters.pincode}
+            onChange={(e) => setFilters({ ...filters, pincode: e.target.value.replace(/\D/g, "") })}
+            className={fieldClass}
+          />
+          <select value={filters.state} onChange={(e) => setFilters({ ...filters, state: e.target.value })} className={fieldClass}>
+            <option value="">All states</option>
+            {INDIAN_STATES.map((s) => <option key={s} value={s}>{s}</option>)}
+          </select>
+          <input
+            placeholder="District"
+            value={filters.district}
+            onChange={(e) => setFilters({ ...filters, district: e.target.value })}
+            className={fieldClass}
+          />
         </div>
       </div>
 
@@ -297,14 +358,15 @@ export default function UserList() {
               <th className="px-3 py-2">Email</th>
               <th className="px-3 py-2">Role</th>
               <th className="px-3 py-2">Phone</th>
+              <th className="px-3 py-2">Area</th>
               <th className="px-3 py-2">Status</th>
               <th className="px-3 py-2">Created</th>
               <th className="px-3 py-2 text-right">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {loading && <tr><td colSpan={8} className="px-3 py-6 text-center text-slate-500">Loading…</td></tr>}
-            {!loading && users.length === 0 && <tr><td colSpan={8} className="px-3 py-6 text-center text-slate-500">No users.</td></tr>}
+            {loading && <tr><td colSpan={9} className="px-3 py-6 text-center text-slate-500">Loading…</td></tr>}
+            {!loading && users.length === 0 && <tr><td colSpan={9} className="px-3 py-6 text-center text-slate-500">No users.</td></tr>}
             {!loading && users.map((u) => (
               <tr key={u.id} className="hover:bg-slate-50">
                 <td className="px-3 py-2 font-medium text-slate-700">{u.id}</td>
@@ -315,6 +377,14 @@ export default function UserList() {
                   {u.can_manage_bids && <span className="ml-1 rounded-full bg-indigo-100 px-2 py-0.5 text-xs text-indigo-700" title="Can manage bids">Bids</span>}
                 </td>
                 <td className="px-3 py-2 font-mono text-xs">{u.phone || "—"}</td>
+                <td className="px-3 py-2 text-xs text-slate-700">
+                  {u.pincode || u.district || u.state ? (
+                    <>
+                      <div>{[u.district, u.state].filter(Boolean).join(", ") || "—"}</div>
+                      {u.pincode && <div className="font-mono text-slate-500">{u.pincode}</div>}
+                    </>
+                  ) : "—"}
+                </td>
                 <td className="px-3 py-2">
                   {u.is_active ? (
                     <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs text-emerald-700">Active</span>

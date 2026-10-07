@@ -184,10 +184,14 @@ export default function ServiceRequestDetail() {
 
   useEffect(() => {
     load();
-    installationsApi.engineerAssignmentOptions().then(setEngineers).catch(() => setEngineers([]));
     servicesApi.serviceUsers().then(setServiceUsers).catch(() => setServiceUsers([]));
     servicesApi.vendors().then(setVendors).catch(() => null);
   }, [id]);
+
+  // engineers to assign: the ones nearest the customer first (the address is known once the request has loaded)
+  useEffect(() => {
+    installationsApi.engineerAssignmentOptions(service?.customer_address).then(setEngineers).catch(() => setEngineers([]));
+  }, [service?.customer_address]);
 
   useEffect(() => {
     if (!customerSearch.trim()) {

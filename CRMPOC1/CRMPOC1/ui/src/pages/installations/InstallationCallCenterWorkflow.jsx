@@ -107,10 +107,10 @@ export default function InstallationCallCenterWorkflow({
 
   useEffect(() => {
     if (!isCallcenter || !isAdminLike || !installation.order_verified_at) return;
-    installationsApi.engineerAssignmentOptions()
+    installationsApi.engineerAssignmentOptions(installation.address)
       .then(setEngineerOptions)
       .catch(() => setEngineerOptions([]));
-  }, [isCallcenter, isAdminLike, installation.order_verified_at, installation.id]);
+  }, [isCallcenter, isAdminLike, installation.order_verified_at, installation.id, installation.address]);
 
   useEffect(() => {
     if (installation.assigned_engineer) {

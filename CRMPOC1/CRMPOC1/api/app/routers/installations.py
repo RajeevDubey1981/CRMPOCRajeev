@@ -708,6 +708,7 @@ def payment_history(
 
 @router.get("/engineer-assignment-options", response_model=list[InstallationEngineerAssignmentOption])
 def engineer_assignment_options(
+    address: str | None = Query(None, max_length=600, description="The customer's address: the nearest engineers come first"),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -719,7 +720,7 @@ def engineer_assignment_options(
         or can_act_on(db, user, "complaints", "can_view", None)
     ):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Your role cannot view engineer assignment options")
-    return get_engineer_assignment_options(db)
+    return get_engineer_assignment_options(db, address)
 
 
 @router.get("/lookup/service-users")
