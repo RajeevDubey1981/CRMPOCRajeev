@@ -201,6 +201,27 @@ def find_bid_by_number(db: Session, number: str) -> Bid | None:
     return None
 
 
+def similar_bids(db: Session, number: str, exclude_id: int | None = None, limit: int = 3) -> list[Bid]:
+    """Bids that share the long number part of this bid number (7960553 in GEM/2026/B/7960553) but are not the same text.
+    Catches a bid typed without its prefix, or with a different prefix."""
+    n = norm(number)
+    runs = re.findall(r"\d{5,}", number or "")
+    if not runs:
+        return []
+    found: list[Bid] = []
+    for bid in db.scalars(select(Bid).order_by(Bid.id.desc())).all():
+        if exclude_id is not None and bid.id == exclude_id:
+            continue
+        other = norm(bid.bid_number)
+        if other == n:
+            continue
+        if any(run in other for run in runs):
+            found.append(bid)
+            if len(found) >= limit:
+                break
+    return found
+
+
 # --------------------------------------------------------------------------- emails
 
 _outbox = threading.local()

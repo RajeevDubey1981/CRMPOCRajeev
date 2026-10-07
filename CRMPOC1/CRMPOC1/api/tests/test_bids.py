@@ -312,6 +312,24 @@ class BidApiTests(unittest.TestCase):
         mine = self.client.get(f"/api/bids/{bid['id']}", headers=self.h(self.vu1)).json()
         self.assertEqual([l["item"] for l in mine["lines"]], ["Split AC 1.5 Ton"])
 
+    def test_bid_number_check_while_typing(self):
+        bid = self.enter(number="GEM/2026/B/7960553")
+        check = lambda number, **kw: self.client.get("/api/bids/check-number", params={"number": number, **kw}, headers=self.h(self.sub)).json()
+        same = check("gem 2026 b 7960553")
+        self.assertEqual(same["exact"]["id"], bid["id"], "spaces, case and slashes do not hide a repeat")
+        self.assertEqual(check("GEM/2026/B/7960553", exclude_id=bid["id"])["exact"], None, "editing a bid does not clash with itself")
+        near = check("GEM/2025/B/7960553")
+        self.assertIsNone(near["exact"])
+        self.assertEqual([b["id"] for b in near["similar"]], [bid["id"]])
+        self.assertEqual([b["id"] for b in check("7960553")["similar"]], [bid["id"]], "just the number part is found too")
+        fresh = check("GEM/2026/B/1234567")
+        self.assertEqual((fresh["exact"], fresh["similar"]), (None, []))
+        self.assertEqual(check("ab")["exact"], None)
+        self.assertEqual(self.client.get("/api/bids/check-number", params={"number": "x"}, headers=self.h(self.vu1)).status_code, 403)
+        self.assertEqual(self.client.get("/api/bids/check-number", params={"number": "x"}).status_code, 401)
+        again = self.client.post("/api/bids", json={"bid_number": "gem/2026/b/7960553", "title": "Again", "end_date": "2030-01-01"}, headers=self.h(self.sub))
+        self.assertEqual(again.status_code, 409, "saving a repeat is still refused")
+
     def test_vendor_cannot_allocate(self):
         bid = self.enter()
         r = self.client.post(f"/api/bids/{bid['id']}/allocate", json={"vendor_id": self.v1.id}, headers=self.h(self.vu1))

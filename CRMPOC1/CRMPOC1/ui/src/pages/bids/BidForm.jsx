@@ -61,6 +61,7 @@ export default function BidForm() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const touched = useRef(false);
+  const [dup, setDup] = useState({ exact: null, similar: [] }); // answer of the live bid number check
 
   useEffect(() => { bidsApi.meta().then(setMeta).catch(() => {}); }, []);
 
@@ -85,6 +86,19 @@ export default function BidForm() {
     }, 300);
     return () => clearTimeout(timer);
   }, [form.title, auto.on]);
+
+  // is this bid number already entered? asked while typing, so nobody finds out only after filling the whole form
+  useEffect(() => {
+    const number = form.bid_number.trim();
+    if (number.length < 4) {
+      setDup({ exact: null, similar: [] });
+      return undefined;
+    }
+    const timer = setTimeout(() => {
+      bidsApi.checkNumber(number, isEdit ? Number(id) : null).then(setDup).catch(() => {});
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [form.bid_number, isEdit, id]);
 
   function set(key, value) {
     setForm((f) => ({ ...f, [key]: value }));
@@ -121,6 +135,10 @@ export default function BidForm() {
   async function submit(e) {
     e.preventDefault();
     setErr("");
+    if (dup.exact) {
+      setErr(`Bid number ${dup.exact.bid_number} is already entered. Open that bid instead of entering it again.`);
+      return;
+    }
     if (form.end_date && form.publish_date && form.end_date < form.publish_date) {
       setErr("The end date cannot be before the publish date.");
       return;
@@ -169,7 +187,31 @@ export default function BidForm() {
             </div>
           </Field>
           <Field label="Bid number *">
-            <input required minLength={3} value={form.bid_number} onChange={(e) => set("bid_number", e.target.value)} className={fieldClass} placeholder={form.bid_type === "GeM" ? "GEM/2026/B/5821904" : "UPPWD/2026-27/T-0441"} />
+            <input
+              required
+              minLength={3}
+              value={form.bid_number}
+              onChange={(e) => set("bid_number", e.target.value)}
+              className={`${fieldClass} ${dup.exact ? "border-rose-500 focus:border-rose-500" : dup.similar.length ? "border-amber-400" : ""}`}
+              placeholder={form.bid_type === "GeM" ? "GEM/2026/B/5821904" : "UPPWD/2026-27/T-0441"}
+              aria-invalid={dup.exact ? "true" : undefined}
+            />
+            {dup.exact && (
+              <div className="mt-1.5 rounded-md border border-rose-300 bg-rose-50 px-3 py-2 text-sm text-rose-800" role="alert">
+                <strong>Already entered.</strong> {dup.exact.bid_number}, {dup.exact.title} ({dup.exact.status}).{" "}
+                <Link to={`/bids/${dup.exact.id}`} className="font-semibold underline">Open that bid</Link>
+              </div>
+            )}
+            {!dup.exact && dup.similar.length > 0 && (
+              <div className="mt-1.5 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                <strong>Check this is not the same bid.</strong> A bid with the same number part is already entered:
+                <ul className="mt-1 space-y-0.5">
+                  {dup.similar.map((b) => (
+                    <li key={b.id}><Link to={`/bids/${b.id}`} className="font-mono underline">{b.bid_number}</Link> <span className="text-xs">{b.title} ({b.status})</span></li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </Field>
           {form.bid_type === "State govt" && (
             <Field label="Portal">
@@ -272,7 +314,7 @@ export default function BidForm() {
 
         <div className="flex justify-end gap-2">
           <Link to={isEdit ? `/bids/${id}` : "/bids"} className={btnGhost}>Cancel</Link>
-          <button type="submit" disabled={busy} className={btnPrimary}>{busy ? "Saving…" : isEdit ? "Save changes" : "Enter bid"}</button>
+          <button type="submit" disabled={busy || !!dup.exact} className={btnPrimary}>{busy ? "Saving…" : isEdit ? "Save changes" : "Enter bid"}</button>
         </div>
       </form>
     </div>

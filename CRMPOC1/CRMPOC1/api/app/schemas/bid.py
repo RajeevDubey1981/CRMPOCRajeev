@@ -22,6 +22,19 @@ class BidLineOut(BaseModel):
     quantity: int | None = None
 
 
+class BidMini(BaseModel):
+    id: int
+    bid_number: str
+    title: str
+    status: str
+    end_date: date
+
+
+class BidNumberCheck(BaseModel):
+    exact: BidMini | None = None  # the same number is already entered: saving is refused
+    similar: list[BidMini] = Field(default_factory=list)  # shares the long number part: check it is not the same bid
+
+
 class BidIn(BaseModel):
     bid_number: str = Field(min_length=3, max_length=120)
     bid_type: str = "GeM"

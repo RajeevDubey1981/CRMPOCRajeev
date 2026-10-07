@@ -16,6 +16,8 @@ from app.schemas.bid import (
     BidIn,
     BidLineIn,
     BidLineOut,
+    BidMini,
+    BidNumberCheck,
     BidOut,
     BidRequestOut,
     BidUpdate,
@@ -191,6 +193,23 @@ def meta(access: BidAccess = Depends(get_access)):
 @router.get("/detect")
 def detect(text: str = Query(""), _: BidAccess = Depends(manager_access)):
     return svc.detect_category(text)
+
+
+@router.get("/check-number", response_model=BidNumberCheck)
+def check_number(
+    number: str = Query("", max_length=120),
+    exclude_id: int | None = Query(None),
+    _: BidAccess = Depends(manager_access),
+    db: Session = Depends(get_db),
+):
+    """Is this bid number already entered? Used while typing in the bid form, before anything is saved."""
+    exact = svc.find_bid_by_number(db, number)
+    if exact is not None and exclude_id is not None and exact.id == exclude_id:
+        exact = None
+    return BidNumberCheck(
+        exact=BidMini.model_validate(exact, from_attributes=True) if exact else None,
+        similar=[BidMini.model_validate(b, from_attributes=True) for b in svc.similar_bids(db, number, exclude_id)],
+    )
 
 
 @router.get("/vendors", response_model=list[VendorPick])
