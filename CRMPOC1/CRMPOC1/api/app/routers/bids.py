@@ -119,7 +119,7 @@ def _bid_out(db: Session, bid: Bid, access: BidAccess, *, with_events: bool = Fa
         stmt = select(BidEvent).where(BidEvent.bid_id == bid.id)
         if not access.is_manager:
             stmt = stmt.where(BidEvent.vendor_id == access.vendor.id, BidEvent.action.notin_(("requested",)))
-        out.events = [BidEventOut.model_validate(e, from_attributes=True) for e in db.scalars(stmt.order_by(BidEvent.id)).all()]
+        out.events = [BidEventOut.model_validate(e, from_attributes=True) for e in db.scalars(stmt.order_by(BidEvent.at, BidEvent.id)).all()]
     return out
 
 
@@ -537,7 +537,7 @@ def release(
     if bid.status == "Submitted" and not access.can_override:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "A submitted bid can only be taken back by an admin or sub admin")
     why = (body.reason if body else None) or "Released by the bid team"
-    return _act(db, lambda d, b: svc.release_bid(d, b, why.strip(), user), bid, access)
+    return _act(db, lambda d, b: svc.release_bid(d, b, why.strip(), user, private_reason=True), bid, access)
 
 
 @router.post("/{bid_id}/confirm", response_model=BidOut)

@@ -408,10 +408,10 @@ def allocate_bid(
         bid.status = "Allocated"
         tail = f". Confirm by {fmt_date(bid.confirm_by)}, submit by {fmt_date(bid.submit_by)}"
     if override:
-        text = f"ADMIN OVERRIDE: reassigned from {holder} to {new_name}. Reason: {reason.strip()}{tail}"
-        add_event(db, bid, actor, "override", text, vendor_id=bid.vendor_id)
-    else:
-        add_event(db, bid, actor, "allocated", f"Allocated to {new_name}{tail}", vendor_id=bid.vendor_id)
+        # the override line names the old bidder and the reason: internal, so it has no vendor_id and no vendor ever sees it
+        add_event(db, bid, actor, "override", f"ADMIN OVERRIDE: reassigned from {holder} to {new_name}. Reason: {reason.strip()}{tail}")
+    # what the new bidder is shown is the same plain line as for any allocation
+    add_event(db, bid, actor, "allocated", f"Allocated to {new_name}{tail}", vendor_id=bid.vendor_id)
     db.flush()
     if not self_bid:
         _mail_vendor(
@@ -426,9 +426,9 @@ def allocate_bid(
         _mail_vendor(
             prev_vendor,
             f"Bid taken back by INDcool: {bid.bid_number}",
-            ["INDcool has taken this bid back."] + _bid_lines(bid) + [f"Reason: {reason.strip()}"],
+            ["INDcool has taken this bid back."] + _bid_lines(bid),
         )
-        add_event(db, bid, actor, "taken_back", f"Taken back from {prev_vendor.name_of_firm}", vendor_id=prev_vendor.id)
+        add_event(db, bid, actor, "taken_back", "Taken back by INDcool", vendor_id=prev_vendor.id)
     if override:
         _mail_team(db, f"Admin override on bid {bid.bid_number}", _bid_lines(bid) + [f"Now with {new_name}.", f"Reason: {reason.strip()}"])
     return bid
@@ -442,7 +442,9 @@ def release_bid(
     *,
     automatic: bool = False,
     notify_vendor: bool = True,
+    private_reason: bool = False,
 ) -> Bid:
+    """private_reason: the bid team's reason is for the team only. The vendor is told it was released, not why."""
     prev_vendor = db.get(Vendor, bid.vendor_id) if bid.vendor_id else None
     prev_name = SELF_NAME if bid.is_self else (prev_vendor.name_of_firm if prev_vendor else None)
     bid.vendor_id = None
@@ -452,16 +454,26 @@ def release_bid(
     bid.submit_by = None
     bid.allocated_at = None
     bid.confirmed_at = None
-    add_event(
-        db, bid, actor, "released" if not automatic else "auto_released",
-        f"Released: {why}. The bid is free for allocation again",
-        vendor_id=prev_vendor.id if prev_vendor else None,
-        actor_name=None if actor else "System",
-    )
+    if private_reason:
+        add_event(db, bid, actor, "released", f"Released: {why}. The bid is free for allocation again")
+        add_event(
+            db, bid, actor, "released", "Released by INDcool. The bid is free for allocation again",
+            vendor_id=prev_vendor.id if prev_vendor else None,
+        )
+    else:
+        add_event(
+            db, bid, actor, "released" if not automatic else "auto_released",
+            f"Released: {why}. The bid is free for allocation again",
+            vendor_id=prev_vendor.id if prev_vendor else None,
+            actor_name=None if actor else "System",
+        )
     db.flush()
     _mail_team(db, f"Bid is free again: {bid.bid_number}", _bid_lines(bid) + [why])
     if prev_vendor is not None and notify_vendor:
-        _mail_vendor(prev_vendor, f"Bid released from you: {bid.bid_number}", _bid_lines(bid) + [why])
+        _mail_vendor(
+            prev_vendor, f"Bid released from you: {bid.bid_number}",
+            _bid_lines(bid) + (["INDcool released this bid."] if private_reason else [why]),
+        )
     return bid
 
 

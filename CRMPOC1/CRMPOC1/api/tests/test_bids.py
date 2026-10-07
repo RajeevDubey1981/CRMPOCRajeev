@@ -330,6 +330,44 @@ class BidApiTests(unittest.TestCase):
         again = self.client.post("/api/bids", json={"bid_number": "gem/2026/b/7960553", "title": "Again", "end_date": "2030-01-01"}, headers=self.h(self.sub))
         self.assertEqual(again.status_code, 409, "saving a repeat is still refused")
 
+    def test_override_and_release_remarks_are_internal(self):
+        bid = self.enter()
+        self.allocate(bid["id"], self.v1)
+        mails = []
+        original = svc._deliver
+        svc._deliver = lambda to, subject, lines: (mails.append((to, subject, " ".join(lines))) or True)
+        try:
+            r = self.allocate(bid["id"], self.v2, who=self.admin, reason="Vendor technical mismatch")
+        finally:
+            svc._deliver = original
+        self.assertEqual(r.status_code, 200, r.text)
+        team = " ".join(e["text"] for e in r.json()["events"])
+        self.assertIn("ADMIN OVERRIDE", team)
+        self.assertIn("Frost Point", team)
+        self.assertIn("Vendor technical mismatch", team)
+        # the vendor now holding the bid sees a plain allocation line, never the old bidder or the reason
+        new_vendor = self.client.get(f"/api/bids/{bid['id']}", headers=self.h(self.vu2)).json()
+        seen = " ".join(e["text"] for e in new_vendor["events"])
+        self.assertIn("Allocated to Arctic Sales", seen)
+        for secret in ("Frost Point", "OVERRIDE", "mismatch", "reassigned"):
+            self.assertNotIn(secret, seen)
+        # the vendor it was taken from can no longer open the bid, and the mail it gets does not carry the reason
+        self.assertEqual(self.client.get(f"/api/bids/{bid['id']}", headers=self.h(self.vu1)).status_code, 404)
+        to_old = [m for m in mails if m[0] == "frost@t.com"]
+        self.assertTrue(to_old)
+        self.assertIn("taken", to_old[0][2].lower())
+        self.assertNotIn("mismatch", " ".join(m[2] for m in to_old))
+        self.assertNotIn("Arctic", " ".join(m[2] for m in to_old))
+        # a manual release: the reason is for the team
+        released = self.client.post(f"/api/bids/{bid['id']}/release", json={"reason": "Customer changed the specification"}, headers=self.h(self.sub)).json()
+        self.assertIn("Customer changed the specification", " ".join(e["text"] for e in released["events"]))
+        # nothing a vendor could ever be shown (events carrying their vendor id) holds the reason
+        self.db.expire_all()
+        shown = " ".join(e.text for e in self.db.scalars(select(BidEvent).where(BidEvent.bid_id == bid["id"], BidEvent.vendor_id.isnot(None))).all())
+        self.assertIn("Released by INDcool", shown)
+        for secret in ("specification", "OVERRIDE", "mismatch", "reassigned"):
+            self.assertNotIn(secret, shown)
+
     def test_vendor_cannot_allocate(self):
         bid = self.enter()
         r = self.client.post(f"/api/bids/{bid['id']}/allocate", json={"vendor_id": self.v1.id}, headers=self.h(self.vu1))
