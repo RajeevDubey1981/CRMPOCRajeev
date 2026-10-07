@@ -8,7 +8,7 @@ from app.models.installation import InstallationRequest
 from app.models.service import ServiceRequest, ServiceRequestUnit
 from app.models.user import User
 from app.schemas.installation import InstallationEngineerAssignmentOption
-from app.services.geo import match_engineer, match_rank
+from app.services.geo import match_engineer, match_rank, split_pincodes
 
 INSTALLATION_PENDING_STATUSES = ("Assigned", "In Progress", "Payment Pending", "Settlement Pending")
 INSTALLATION_SUCCESS_STATUSES = ("Completed", "Settlement Approved")
@@ -153,7 +153,8 @@ def get_engineer_assignment_options(
                 pincode=engineer.pincode,
                 state=engineer.state,
                 district=engineer.district,
-                match=match_engineer(address, engineer.pincode, engineer.state, engineer.district, pincode, state, district) if where else "",
+                extra_pincodes=split_pincodes(engineer.extra_pincodes),
+                match=match_engineer(address, engineer.pincode, engineer.state, engineer.district, pincode, state, district, split_pincodes(engineer.extra_pincodes)) if where else "",
             )
         )
     if where:

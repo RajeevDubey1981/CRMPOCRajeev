@@ -12,7 +12,7 @@ const OTHER = "__other__";
  * a district that is not in the list can be typed with "Other (type it)".
  * value = { pincode, state, district }, onChange(patch) gets only what changed.
  */
-export default function PlaceFields({ value, onChange, disabled = false, className = "" }) {
+export default function PlaceFields({ value, onChange, disabled = false, className = "", multiPin = false }) {
   const pincode = value?.pincode || "";
   const state = value?.state || "";
   const district = value?.district || "";
@@ -90,6 +90,75 @@ export default function PlaceFields({ value, onChange, disabled = false, classNa
           </select>
         )}
       </div>
+      {multiPin && (
+        <div className="sm:col-span-3">
+          <PinCodeChips
+            label="Other pin codes this engineer also works in"
+            value={value?.extra_pincodes || []}
+            onChange={(list) => onChange({ extra_pincodes: list })}
+            disabled={disabled}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Several pin codes as small tags: type or paste them (comma, space or Enter between), click x to remove one. */
+export function PinCodeChips({ value, onChange, label, disabled = false, max = 30 }) {
+  const [text, setText] = useState("");
+  const [problem, setProblem] = useState("");
+  const list = value || [];
+
+  // adds every good pin code; what is not a 6 digit pin code is returned so it stays in the box
+  function add(raw) {
+    const parts = String(raw || "").split(/[\s,;]+/).filter(Boolean);
+    const next = [...list];
+    const left = [];
+    for (const part of parts) {
+      if (!/^[1-9]\d{5}$/.test(part)) left.push(part);
+      else if (!next.includes(part)) next.push(part);
+    }
+    if (next.length > max) {
+      setProblem(`At most ${max} pin codes`);
+      return String(raw);
+    }
+    setProblem(left.length ? `"${left.join(", ")}" is not a 6 digit pin code` : "");
+    if (next.length !== list.length) onChange(next);
+    return left.join(" ");
+  }
+
+  return (
+    <div>
+      <label className={labelClass}>{label}</label>
+      <div className="flex flex-wrap items-center gap-1.5 rounded-md border border-slate-300 bg-white px-2 py-1.5">
+        {list.map((pin) => (
+          <span key={pin} className="inline-flex items-center gap-1 rounded-full bg-sky-100 px-2 py-0.5 text-xs font-medium text-sky-900">
+            {pin}
+            {!disabled && (
+              <button type="button" onClick={() => onChange(list.filter((p) => p !== pin))} className="text-sky-700 hover:text-rose-600" aria-label={`Remove ${pin}`}>x</button>
+            )}
+          </span>
+        ))}
+        <input
+          inputMode="numeric"
+          disabled={disabled}
+          value={text}
+          onChange={(e) => {
+            const v = e.target.value.replace(/[^\d\s,;]/g, "");
+            if (/[\s,;]$/.test(v)) setText(add(v));
+            else setText(v);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") { e.preventDefault(); setText(add(text)); }
+            else if (e.key === "Backspace" && text === "" && list.length) onChange(list.slice(0, -1));
+          }}
+          onBlur={() => { if (text.trim()) setText(add(text)); }}
+          placeholder={list.length ? "Add another" : "Type a pin code, then Enter"}
+          className="min-w-[8rem] flex-1 border-0 bg-transparent px-1 py-0.5 text-sm outline-none"
+        />
+      </div>
+      {problem ? <p className="mt-1 text-xs text-rose-700">{problem}</p> : <p className="mt-1 text-xs text-slate-500">Use this when the engineer also covers nearby pin codes. You can paste many at once.</p>}
     </div>
   );
 }

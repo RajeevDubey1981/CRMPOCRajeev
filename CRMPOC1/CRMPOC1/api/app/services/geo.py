@@ -27,6 +27,26 @@ def clean_pincode(value: str | None) -> str | None:
     return text
 
 
+def clean_pincode_list(values) -> list[str]:
+    """Several pin codes (a list, or one text with commas, spaces or new lines between them): each checked, no repeats."""
+    if values is None:
+        return []
+    if isinstance(values, str):
+        values = re.split(r"[,;\s]+", values)
+    out: list[str] = []
+    for value in values:
+        pin = clean_pincode(str(value))
+        if pin and pin not in out:
+            out.append(pin)
+    if len(out) > 30:
+        raise ValueError("At most 30 extra pin codes")
+    return out
+
+
+def split_pincodes(text: str | None) -> list[str]:
+    return [p for p in re.split(r"[,;\s]+", text or "") if p]
+
+
 def canonical_state(value: str | None) -> str | None:
     """The state spelled the way the list spells it, or None when empty. Raises ValueError when it is not a state."""
     text = (value or "").strip()
@@ -78,15 +98,17 @@ def match_engineer(
     customer_pincode: str | None = None,
     customer_state: str | None = None,
     customer_district: str | None = None,
+    extra_pincodes: list[str] | None = None,
 ) -> str:
     """How an engineer's place fits the customer: same pin code, same area (first 3 digits), district or state.
     The customer's typed pin code, state and district are used first, the address text for what is missing."""
     customer_pin = customer_pincode or pincode_in(address)
     low = " " + re.sub(r"\s+", " ", re.sub(r"[^a-z0-9 ]", " ", (address or "").lower())) + " "
-    if pincode and customer_pin:
-        if pincode == customer_pin:
+    own = [p for p in [pincode, *(extra_pincodes or [])] if p]
+    if own and customer_pin:
+        if customer_pin in own:
             return MATCH_PINCODE
-        if pincode[:3] == customer_pin[:3]:
+        if any(p[:3] == customer_pin[:3] for p in own):
             return MATCH_AREA
     if district:
         d = _plain(district)

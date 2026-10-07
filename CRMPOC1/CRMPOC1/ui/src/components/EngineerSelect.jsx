@@ -30,7 +30,7 @@ export default function EngineerSelect({
     if (!searching) return list;
     return list.filter((e) => {
       if (String(e.id) === String(value)) return true;
-      if (pin && !(e.pincode || "").startsWith(pin)) return false;
+      if (pin && ![e.pincode, ...(e.extra_pincodes || [])].some((p) => (p || "").startsWith(pin))) return false;
       if (state && e.state !== state) return false;
       if (district && !sameDistrict(e.district, district)) return false;
       return true;

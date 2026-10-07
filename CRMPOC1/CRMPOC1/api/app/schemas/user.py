@@ -2,7 +2,19 @@ from datetime import datetime
 
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
-from app.schemas.place import PlaceIn as _Place
+from app.schemas.place import PlaceIn
+from app.services.geo import clean_pincode_list
+
+
+class _Place(PlaceIn):
+    """The place of a user, and the other pin codes an engineer also works in."""
+
+    extra_pincodes: list[str] | None = None
+
+    @field_validator("extra_pincodes", mode="before")
+    @classmethod
+    def _extra(cls, value):
+        return None if value is None else clean_pincode_list(value)
 
 
 class UserCreate(_Place):
@@ -39,6 +51,7 @@ class UserOut(BaseModel):
     pincode: str | None = None
     state: str | None = None
     district: str | None = None
+    extra_pincodes: list[str] = []
     created_at: datetime | None = None
     updated_at: datetime | None = None
     vendor_id: int | None = None

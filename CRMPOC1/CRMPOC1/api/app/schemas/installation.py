@@ -144,6 +144,7 @@ class InstallationEngineerAssignmentOption(BaseModel):
     pincode: str | None = None
     state: str | None = None
     district: str | None = None
+    extra_pincodes: list[str] = []
     match: str = ""  # pincode | area | district | state | empty: how near the engineer is to the customer asked about
 
 

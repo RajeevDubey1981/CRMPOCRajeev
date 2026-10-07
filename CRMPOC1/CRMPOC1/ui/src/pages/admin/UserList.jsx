@@ -28,6 +28,7 @@ function UserForm({ initial, roles, busy, onCancel, onSubmit }) {
     is_active: initial?.is_active ?? true,
     can_manage_bids: initial?.can_manage_bids ?? false,
     pincode: initial?.pincode || "",
+    extra_pincodes: initial?.extra_pincodes || [],
     state: initial?.state || "",
     district: initial?.district || "",
   });
@@ -46,7 +47,7 @@ function UserForm({ initial, roles, busy, onCancel, onSubmit }) {
     }
     // where an engineer works: sent for engineers only, an empty box clears it
     const placeBody = form.role === "engineer"
-      ? { pincode: form.pincode.trim(), state: form.state, district: form.district.trim() }
+      ? { pincode: form.pincode.trim(), state: form.state, district: form.district.trim(), extra_pincodes: form.extra_pincodes }
       : {};
     if (placeBody.pincode && !/^[1-9]\d{5}$/.test(placeBody.pincode.replace(/\s+/g, ""))) {
       setErr("Pin code must be 6 digits");
@@ -122,7 +123,7 @@ function UserForm({ initial, roles, busy, onCancel, onSubmit }) {
         {form.role === "engineer" && (
           <div className="grid grid-cols-1 gap-3 rounded-md border border-sky-200 bg-sky-50 p-3 md:col-span-2 md:grid-cols-3">
             <div className="md:col-span-3 text-xs font-semibold uppercase tracking-wide text-sky-800">Where this engineer works</div>
-            <PlaceFields className="md:col-span-3" value={form} onChange={(patch) => setForm((f) => ({ ...f, ...patch }))} />
+            <PlaceFields multiPin className="md:col-span-3" value={form} onChange={(patch) => setForm((f) => ({ ...f, ...patch }))} />
           </div>
         )}
         {!isEdit && (
@@ -366,10 +367,10 @@ export default function UserList() {
                 </td>
                 <td className="px-3 py-2 font-mono text-xs">{u.phone || "—"}</td>
                 <td className="px-3 py-2 text-xs text-slate-700">
-                  {u.pincode || u.district || u.state ? (
+                  {u.pincode || u.district || u.state || (u.extra_pincodes || []).length ? (
                     <>
                       <div>{[u.district, u.state].filter(Boolean).join(", ") || "—"}</div>
-                      {u.pincode && <div className="font-mono text-slate-500">{u.pincode}</div>}
+                      {(u.pincode || (u.extra_pincodes || []).length > 0) && <div className="font-mono text-slate-500">{[u.pincode, ...(u.extra_pincodes || [])].filter(Boolean).join(", ")}</div>}
                     </>
                   ) : "—"}
                 </td>

@@ -1,4 +1,4 @@
-from sqlalchemy import String, Boolean
+from sqlalchemy import Boolean, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -18,4 +18,5 @@ class User(Base, TimestampMixin, SoftDeleteMixin):
     pincode: Mapped[str | None] = mapped_column(String(10), nullable=True, index=True)  # where an engineer works
     state: Mapped[str | None] = mapped_column(String(100), nullable=True)
     district: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    extra_pincodes: Mapped[str | None] = mapped_column(Text, nullable=True)  # other pin codes an engineer covers, comma separated
     can_manage_bids: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")

@@ -174,6 +174,28 @@ class EngineerLocationApiTests(unittest.TestCase):
         junk = self.client.get(url, params={"pincode": "12", "state": "Atlantis"}, headers=self.h(self.admin))
         self.assertEqual(junk.status_code, 200, "a wrong place is ignored, not an error")
 
+    def test_an_engineer_can_work_in_several_pin_codes(self):
+        r = self.client.post("/api/users", json={"name": "Multi Pin", "email": "multi@t.com", "password": "pw123456", "role": "engineer", "pincode": "201301", "state": "Uttar Pradesh", "district": "Gautam Buddha Nagar", "extra_pincodes": ["201 310", "110001", "201310"]}, headers=self.h(self.admin))
+        self.assertEqual(r.status_code, 201, r.text)
+        self.assertEqual(r.json()["extra_pincodes"], ["201310", "110001"], "cleaned, no repeats")
+        uid = r.json()["id"]
+        bad = self.client.put(f"/api/users/{uid}", json={"extra_pincodes": ["12345"]}, headers=self.h(self.admin))
+        self.assertEqual(bad.status_code, 422)
+        names = lambda **p: sorted(u["name"] for u in self.client.get("/api/users", params={"role": "engineer", **p}, headers=self.h(self.admin)).json())
+        self.assertEqual(names(pincode="110001"), ["Multi Pin"], "found by an extra pin code")
+        self.assertEqual(names(pincode="1100"), ["Multi Pin"])
+        self.assertEqual(names(search="110001"), ["Multi Pin"])
+        self.assertEqual(names(pincode="3100"), [], "the digits must start a pin code")
+        url = "/api/installations/engineer-assignment-options"
+        rows = self.client.get(url, params={"pincode": "110001"}, headers=self.h(self.admin)).json()
+        self.assertEqual((rows[0]["name"], rows[0]["match"]), ("Multi Pin", "pincode"))
+        near = self.client.get(url, params={"pincode": "110005"}, headers=self.h(self.admin)).json()
+        self.assertEqual((near[0]["name"], near[0]["match"]), ("Multi Pin", "area"), "same first 3 digits as an extra pin code")
+        kept = self.client.put(f"/api/users/{uid}", json={"phone": "9999999999"}, headers=self.h(self.admin)).json()
+        self.assertEqual(kept["extra_pincodes"], ["201310", "110001"], "changing something else leaves them")
+        cleared = self.client.put(f"/api/users/{uid}", json={"extra_pincodes": []}, headers=self.h(self.admin)).json()
+        self.assertEqual(cleared["extra_pincodes"], [])
+
 
 if __name__ == "__main__":
     unittest.main()

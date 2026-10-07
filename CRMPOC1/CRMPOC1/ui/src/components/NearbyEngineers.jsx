@@ -38,7 +38,7 @@ export default function NearbyEngineers({ place, address }) {
             <li key={e.id} className="flex flex-wrap items-center gap-x-2 text-slate-800">
               <span className="rounded bg-sky-600 px-1.5 py-0.5 text-xs font-medium text-white">{ENGINEER_MATCH_TEXT[e.match]}</span>
               <span className="font-medium">{e.name}</span>
-              <span className="text-xs text-slate-600">{[e.district, e.state, e.pincode].filter(Boolean).join(", ")}</span>
+              <span className="text-xs text-slate-600">{[e.district, e.state, [e.pincode, ...(e.extra_pincodes || [])].filter(Boolean).join("/")].filter(Boolean).join(", ")}</span>
               <span className="text-xs text-slate-500">Pending: {e.pending_requests}</span>
             </li>
           ))}

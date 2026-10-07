@@ -12,7 +12,8 @@ export function formatEngineerOptionLabel(engineer) {
   const pending = Number(engineer?.pending_requests ?? 0);
   const rating = Number(engineer?.rating ?? 0);
   const near = ENGINEER_MATCH_TEXT[engineer?.match];
-  const place = [engineer?.district, engineer?.state, engineer?.pincode].filter(Boolean).join(", ");
+  const pins = [engineer?.pincode, ...(engineer?.extra_pincodes || [])].filter(Boolean).join("/");
+  const place = [engineer?.district, engineer?.state, pins].filter(Boolean).join(", ");
   return `${near ? `${near} | ` : ""}${name} | ${place ? `${place} | ` : ""}Pending: ${pending} | Rating: ${rating.toFixed(1)}/5`;
 }
 

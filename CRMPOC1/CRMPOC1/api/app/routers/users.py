@@ -9,7 +9,7 @@ from app.services.role_access import PROTECTED_USER_ROLES, is_sub_admin, role_ke
 from app.models.user import User
 from app.schemas.user import ResetPasswordRequest, UserCreate, UserOut, UserUpdate
 from app.security import hash_password
-from app.services.geo import canonical_state
+from app.services.geo import canonical_state, split_pincodes
 from app.services.vendor_accounts import (
     ensure_vendor_for_user,
     sync_vendor_for_user_email_update,
@@ -58,6 +58,7 @@ def _user_out(db: Session, user: User) -> UserOut:
         pincode=user.pincode,
         state=user.state,
         district=user.district,
+        extra_pincodes=split_pincodes(user.extra_pincodes),
         created_at=user.created_at,
         updated_at=user.updated_at,
         vendor_id=vendor.id if vendor else None,
@@ -85,10 +86,11 @@ def list_users(
         like = f"%{search.strip()}%"
         stmt = stmt.where(or_(
             User.name.ilike(like), User.email.ilike(like),
-            User.pincode.ilike(like), User.district.ilike(like), User.state.ilike(like),
+            User.pincode.ilike(like), User.extra_pincodes.ilike(like), User.district.ilike(like), User.state.ilike(like),
         ))
     if pincode and pincode.strip():
-        stmt = stmt.where(User.pincode.like(f"{pincode.strip()}%"))
+        digits = pincode.strip()
+        stmt = stmt.where(or_(User.pincode.like(f"{digits}%"), User.extra_pincodes.like(f"{digits}%"), User.extra_pincodes.like(f"%,{digits}%")))
     if state and state.strip():
         try:
             stmt = stmt.where(User.state == (canonical_state(state) or state.strip()))
@@ -137,6 +139,7 @@ def create_user(
         pincode=body.pincode,
         state=body.state,
         district=body.district,
+        extra_pincodes=",".join(body.extra_pincodes or []) or None,
     )
     db.add(user)
     db.flush()
@@ -175,6 +178,8 @@ def update_user(
 
     if data.get("can_manage_bids") is None:
         data.pop("can_manage_bids", None)
+    if "extra_pincodes" in data:
+        data["extra_pincodes"] = ",".join(data["extra_pincodes"] or []) or None
     for field, value in data.items():
         setattr(user, field, value)
     if role_key(user.role) == "vendor":
