@@ -552,7 +552,71 @@ def verify_production(
     print(ssh_run(client, "curl -s -o /dev/null -w 'site:%{http_code}\\n' http://127.0.0.1/ || true"))
 
 
+def _git(*args: str) -> subprocess.CompletedProcess:
+    return subprocess.run(["git", *args], cwd=ROOT, capture_output=True, text=True)
+
+
+def check_github_in_sync() -> None:
+    """THE RULE: pull before you change anything, and whatever goes live must already be on GitHub.
+
+    So that nobody's work is overwritten, a production deploy stops when
+      - GitHub has changes this copy does not have yet  (run: git pull origin main)
+      - this copy has commits that are not on GitHub     (run: git push origin main)
+      - this copy has changed files that are not committed (commit them and push)
+    The build-stamp file api/app/release_build.py is ignored: every deploy rewrites it.
+    """
+    probe = _git("rev-parse", "--is-inside-work-tree")
+    if probe.returncode != 0:
+        print("\nNote: this is not a git copy, so the GitHub check is skipped.")
+        return
+    print("\nChecking this copy against GitHub (the rule: pull first, push what goes live)...")
+    fetched = _git("fetch", "origin", "main")
+    problems: list[str] = []
+    if fetched.returncode != 0:
+        problems.append("Could not reach GitHub, so it cannot be checked. Check the internet and try again.\n  " + (fetched.stderr or "").strip()[:200])
+    else:
+        behind = int((_git("rev-list", "--count", "HEAD..origin/main").stdout or "0").strip() or 0)
+        ahead = int((_git("rev-list", "--count", "origin/main..HEAD").stdout or "0").strip() or 0)
+        if behind:
+            problems.append(f"GitHub has {behind} newer change(s) that this copy does not have.\n  Run:  git pull origin main   and then deploy again.")
+        if ahead:
+            problems.append(f"This copy has {ahead} commit(s) that are not on GitHub yet.\n  Run:  git push origin main   and then deploy again.")
+        changed = [
+            line[3:].strip()
+            for line in (_git("status", "--porcelain", "--untracked-files=no").stdout or "").splitlines()
+            if line.strip() and not line[3:].strip().replace("\\", "/").endswith("api/app/release_build.py")
+        ]
+        if changed:
+            shown = "\n    ".join(changed[:12]) + (f"\n    ... and {len(changed) - 12} more" if len(changed) > 12 else "")
+            problems.append(
+                "These files are changed but not committed, so the live site would not match GitHub:\n    " + shown +
+                "\n  Commit them and push (git add, git commit, git push origin main), then deploy again."
+            )
+    if not problems:
+        print("OK: this copy is the same as GitHub, so this deploy will not overwrite anyone's work.")
+        return
+    print("\nDEPLOY STOPPED. Nothing was changed on the live site.\n")
+    for number, problem in enumerate(problems, 1):
+        print(f"{number}. {problem}\n")
+    raise SystemExit(1)
+
+
+def mark_live_on_github(build_id: str) -> None:
+    """After a good deploy, tag the commit that is live (live-<build>) and push the tag, so GitHub shows what is live."""
+    tag = f"live-{build_id}"
+    made = _git("tag", "-a", tag, "-m", f"Live on the site since {build_id}")
+    if made.returncode != 0:
+        print(f"Note: could not tag the live version ({(made.stderr or '').strip()[:120]}).")
+        return
+    pushed = _git("push", "origin", tag)
+    if pushed.returncode == 0:
+        print(f"GitHub now shows what is live: tag {tag}")
+    else:
+        print(f"Note: tag {tag} was made here but not pushed ({(pushed.stderr or '').strip()[:120]}). Run: git push origin {tag}")
+
+
 def deploy_production(config: dict[str, str]) -> None:
+    check_github_in_sync()
     try:
         import paramiko
     except ImportError:
@@ -591,6 +655,7 @@ def deploy_production(config: dict[str, str]) -> None:
         sftp.close()
         client.close()
 
+    mark_live_on_github(build_id)
     print("\nProduction deploy complete.")
     print(f"  Site: https://indcoolappliances.com (server: {host})")
     print(f"  API build: {build_id}  (check https://indcoolappliances.com/health)")
