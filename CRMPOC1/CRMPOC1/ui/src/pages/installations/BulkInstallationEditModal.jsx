@@ -26,7 +26,7 @@ export default function BulkInstallationEditModal({ rows, onClose, onSaved }) {
   const isAdminLike = isOperationsAdminRole(user?.role);
   const sharedStatuses = useMemo(() => uniqueNonEmptyValues(rows, "status"), [rows]);
   const sharedEngineerNames = useMemo(() => uniqueNonEmptyValues(rows, "assigned_engineer_name"), [rows]);
-  const sharedSettlementNames = useMemo(() => uniqueNonEmptyValues(rows, "settlement_approved_by_name"), [rows]);
+  const sharedServiceUserNames = useMemo(() => uniqueNonEmptyValues(rows, "assigned_service_user_name"), [rows]);
   const sharedPaymentTypes = useMemo(() => uniqueNonEmptyValues(rows, "payment_type_requested"), [rows]);
   const sharedPaymentAmounts = useMemo(() => uniqueNonEmptyValues(rows, "payment_amount_requested"), [rows]);
   const sharedQrPaths = useMemo(() => uniqueNonEmptyValues(rows, "payment_qr_code_path"), [rows]);
@@ -36,7 +36,7 @@ export default function BulkInstallationEditModal({ rows, onClose, onSaved }) {
   );
   const currentStatusText = displaySingleOrMixed(sharedStatuses);
   const currentEngineerText = displaySingleOrMixed(sharedEngineerNames);
-  const currentSettlementText = displaySingleOrMixed(sharedSettlementNames);
+  const currentServiceUserText = displaySingleOrMixed(sharedServiceUserNames);
   const currentQrPath = sharedQrPaths[0] || "";
   const hasMultipleQrSources = sharedQrPaths.length > 1;
   const isEngineerPaymentPendingMode = isEngineer && sharedStatuses.length === 1 && ["Payment Pending", "Returned", "Rejected"].includes(sharedStatuses[0]);
@@ -49,8 +49,10 @@ export default function BulkInstallationEditModal({ rows, onClose, onSaved }) {
     payment_amount: sharedPaymentAmounts.length === 1 ? String(sharedPaymentAmounts[0]) : "",
     payment_type: sharedPaymentTypes.length === 1 ? sharedPaymentTypes[0] : "Cash",
     assigned_engineer: "",
-    settlement_approved_by: "",
+    update_service_user: false,
+    service_user_id: "",
   });
+  const [serviceUsers, setServiceUsers] = useState([]);
   const [file, setFile] = useState(null);
   const [qrFile, setQrFile] = useState(null);
   const [qrObjectUrl, setQrObjectUrl] = useState("");
@@ -73,6 +75,11 @@ export default function BulkInstallationEditModal({ rows, onClose, onSaved }) {
   function set(field, value) {
     setForm((prev) => ({ ...prev, [field]: value }));
   }
+
+  useEffect(() => {
+    if (!isAdminLike) return;
+    installationsApi.serviceUsers().then(setServiceUsers).catch(() => setServiceUsers([]));
+  }, [isAdminLike]);
 
   useEffect(() => {
     let active = true;
@@ -127,6 +134,10 @@ export default function BulkInstallationEditModal({ rows, onClose, onSaved }) {
       setSubmitErr("Upload Payment Proof / Document is required when payment type is UPI");
       return;
     }
+    if (isAdminLike && form.update_service_user && !form.service_user_id) {
+      setSubmitErr("Choose a service user or turn off Update service user");
+      return;
+    }
 
     setBusy(true);
     try {
@@ -136,7 +147,9 @@ export default function BulkInstallationEditModal({ rows, onClose, onSaved }) {
       if (form.installation_date) fd.append("installation_date", form.installation_date);
       if (form.work_report) fd.append("work_report", form.work_report);
       if (form.assigned_engineer) fd.append("assigned_engineer", form.assigned_engineer);
-      if (form.settlement_approved_by) fd.append("settlement_approved_by", form.settlement_approved_by);
+      if (isAdminLike && form.update_service_user && form.service_user_id) {
+        fd.append("service_user_id", form.service_user_id);
+      }
       if (showPaymentSection && form.payment_amount) {
         fd.append("payment_amount", form.payment_amount);
         fd.append("payment_type", form.payment_type);
@@ -194,8 +207,33 @@ export default function BulkInstallationEditModal({ rows, onClose, onSaved }) {
               <input value={currentEngineerText} readOnly className={`${fieldClass} bg-slate-50 text-slate-600`} />
             </div>
             <div>
-              <label className={labelClass}>Settlement Raised By</label>
-              <input value={currentSettlementText} readOnly className={`${fieldClass} bg-slate-50 text-slate-600`} />
+              <label className={labelClass}>Current Service User</label>
+              <input value={currentServiceUserText} readOnly className={`${fieldClass} bg-slate-50 text-slate-600`} />
+            </div>
+            <label className="flex items-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 md:col-span-2">
+              <input
+                type="checkbox"
+                checked={form.update_service_user}
+                onChange={(e) => set("update_service_user", e.target.checked)}
+                className="h-4 w-4"
+              />
+              Update service user for selected requests
+            </label>
+            <div className="md:col-span-2">
+              <label className={labelClass}>Service User</label>
+              <select
+                value={form.service_user_id}
+                onChange={(e) => set("service_user_id", e.target.value)}
+                disabled={!form.update_service_user}
+                className={`${fieldClass} disabled:bg-slate-100 disabled:text-slate-400`}
+              >
+                <option value="">Select service user</option>
+                {serviceUsers.map((option) => (
+                  <option key={option.id} value={option.id}>
+                    {option.name} {option.email ? `(${option.email})` : ""}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
         )}

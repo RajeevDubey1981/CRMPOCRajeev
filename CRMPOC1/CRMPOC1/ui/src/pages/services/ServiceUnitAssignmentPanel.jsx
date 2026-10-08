@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { servicesApi } from "../../api/services.js";
 import WarrantyBadge from "../../components/WarrantyBadge.jsx";
+import ScanInput from "../../components/scan/ScanInput.jsx";
 import { formatApiError } from "../../utils/apiError.js";
 import EngineerSelect from "../../components/EngineerSelect.jsx";
 import { ENGINEER_ASSIGNMENT_HINT, engineerIdsMatch } from "../../utils/engineerAssignment.js";
@@ -48,6 +49,11 @@ export default function ServiceUnitAssignmentPanel({
   const [assignBillingType, setAssignBillingType] = useState("Free");
   const [assignRemarks, setAssignRemarks] = useState("");
   const [assignmentNotice, setAssignmentNotice] = useState(null);
+  const [assignmentBusy, setAssignmentBusy] = useState(false);
+  const assignmentInFlightRef = useRef(false);
+  const [rowSerialInputs, setRowSerialInputs] = useState({});
+  const [rowSerialBusyUnitId, setRowSerialBusyUnitId] = useState(null);
+  const [engineerSerialNotice, setEngineerSerialNotice] = useState(null);
   const orderItems = service?.order_items || [];
   const allUnits = service?.units || [];
   const orderVerified = (orderItems.length > 0)
@@ -117,9 +123,21 @@ export default function ServiceUnitAssignmentPanel({
   }, [engineerUnits]);
 
   const selectedItem = orderItems.find((item) => item.item_code === selectedItemCode);
-  const unassignedVisible = visibleUnits.filter((unit) => !unit.assigned_engineer_id);
+  const unassignedVisible = useMemo(
+    () => visibleUnits.filter((unit) => !unit.assigned_engineer_id),
+    [visibleUnits],
+  );
+  const availableQuantity = unassignedVisible.length;
   const allUnassignedSelected = unassignedVisible.length > 0
     && unassignedVisible.every((unit) => selectedUnitIds.has(unit.id));
+
+  useEffect(() => {
+    const assignableIds = new Set(unassignedVisible.map((unit) => unit.id));
+    setSelectedUnitIds((current) => {
+      const next = new Set(Array.from(current).filter((id) => assignableIds.has(id)));
+      return next.size === current.size ? current : next;
+    });
+  }, [unassignedVisible]);
 
   function toggleUnit(unitId) {
     setSelectedUnitIds((current) => {
@@ -171,25 +189,35 @@ export default function ServiceUnitAssignmentPanel({
   }
 
   async function assignSelectedUnits() {
+    if (assignmentInFlightRef.current) return;
     if (!assignEngineerId || selectedUnitIds.size === 0) return;
+    assignmentInFlightRef.current = true;
+    setAssignmentBusy(true);
     const engineer = engineers.find((row) => String(row.id) === String(assignEngineerId));
+    const unitIds = Array.from(selectedUnitIds);
     setAssignmentNotice(null);
-    await run(
-      () => servicesApi.assignUnits(service.id, {
-        unit_ids: Array.from(selectedUnitIds),
-        engineer_id: Number(assignEngineerId),
-        remarks: assignRemarks || null,
-        billing_type: assignBillingType,
-      }),
-      { successMessage: `Assigned ${selectedUnitIds.size} unit(s) to ${engineer?.name || "engineer"}.` },
-    );
-    setSelectedUnitIds(new Set());
-    setAssignQuantity("");
-    setAssignRemarks("");
-    onRefresh?.();
+    try {
+      await run(
+        () => servicesApi.assignUnits(service.id, {
+          unit_ids: unitIds,
+          engineer_id: Number(assignEngineerId),
+          remarks: assignRemarks || null,
+          billing_type: assignBillingType,
+        }),
+        { successMessage: `Assigned ${unitIds.length} unit(s) to ${engineer?.name || "engineer"}.` },
+      );
+      setSelectedUnitIds(new Set());
+      setAssignQuantity("");
+      setAssignRemarks("");
+      onRefresh?.();
+    } finally {
+      assignmentInFlightRef.current = false;
+      setAssignmentBusy(false);
+    }
   }
 
   async function assignQuantityUnits() {
+    if (assignmentInFlightRef.current) return;
     const quantity = Number(assignQuantity);
     const engineer = engineers.find((row) => String(row.id) === String(assignEngineerId));
     setAssignmentNotice(null);
@@ -201,7 +229,7 @@ export default function ServiceUnitAssignmentPanel({
       });
       return;
     }
-    const maxAvailable = Number(selectedItem?.unassigned_count || 0);
+    const maxAvailable = availableQuantity;
     if (quantity > maxAvailable) {
       setAssignmentNotice({
         type: "error",
@@ -213,15 +241,29 @@ export default function ServiceUnitAssignmentPanel({
       });
       return;
     }
-    await run(
-      async () => {
-        const updated = await servicesApi.assignUnitsByQuantity(service.id, {
-          item_code: selectedItemCode,
-          quantity,
-          engineer_id: Number(assignEngineerId),
-          remarks: assignRemarks || null,
-          billing_type: assignBillingType,
-        });
+    const unitsToAssign = unassignedVisible.slice(0, quantity);
+    if (unitsToAssign.length !== quantity) {
+      setAssignmentNotice({
+        type: "error",
+        title: "Quantity exceeds available units",
+        details: [
+          `Requested quantity: ${quantity}`,
+          `Available unassigned quantity for ${selectedItemCode}: ${unitsToAssign.length}`,
+        ],
+      });
+      return;
+    }
+    assignmentInFlightRef.current = true;
+    setAssignmentBusy(true);
+    try {
+      await run(
+        async () => {
+          const updated = await servicesApi.assignUnits(service.id, {
+            unit_ids: unitsToAssign.map((unit) => unit.id),
+            engineer_id: Number(assignEngineerId),
+            remarks: assignRemarks || null,
+            billing_type: assignBillingType,
+          });
         const serialFields = Number(selectedItem?.serial_count || 1);
         setAssignmentNotice({
           type: "success",
@@ -236,19 +278,88 @@ export default function ServiceUnitAssignmentPanel({
           ],
         });
         return updated;
-      },
-      { successMessage: `Assigned ${quantity} unit(s) of ${selectedItemCode} to ${engineer?.name || "engineer"}.` },
-    );
-    setSelectedUnitIds(new Set());
-    setAssignQuantity("");
-    setAssignRemarks("");
-    onRefresh?.();
+        },
+        { successMessage: `Assigned ${quantity} unit(s) of ${selectedItemCode} to ${engineer?.name || "engineer"}.` },
+      );
+      setSelectedUnitIds(new Set());
+      setAssignQuantity("");
+      setAssignRemarks("");
+      onRefresh?.();
+    } finally {
+      assignmentInFlightRef.current = false;
+      setAssignmentBusy(false);
+    }
+  }
+
+  function unitSerialValues(unit) {
+    const values = unit.serial_values?.length ? unit.serial_values : [unit.serial_no, unit.serial_no_2];
+    const labelsLength = Math.max(unit.serial_labels?.length || 0, Number(unit.serial_count || 1), values.length || 1);
+    return Array.from({ length: labelsLength }, (_, idx) => values[idx] || "");
+  }
+
+  function rowSerialValue(unit, slot) {
+    const saved = rowSerialInputs[unit.id]?.[slot];
+    if (saved !== undefined) return saved;
+    return unitSerialValues(unit)[slot] || "";
+  }
+
+  function updateRowSerial(unitId, slot, value) {
+    setRowSerialInputs((current) => ({
+      ...current,
+      [unitId]: { ...(current[unitId] || {}), [slot]: value },
+    }));
+  }
+
+  function unitHasSerial(unit) {
+    return (unit.serial_values || [unit.serial_no]).some((value) => (value || "").trim());
+  }
+
+  async function addSerialToAssignedRow(unit) {
+    const serial = rowSerialValue(unit, 0).trim();
+    const serial2 = rowSerialValue(unit, 1).trim();
+    if (!serial || rowSerialBusyUnitId === unit.id || parentBusy) return;
+    setRowSerialBusyUnitId(unit.id);
+    setEngineerSerialNotice(null);
+    try {
+      const updated = await servicesApi.addUnitBySerial(service.id, {
+        unit_id: unit.id,
+        serial_no: serial,
+        serial_no_2: serial2 || null,
+      });
+      setRowSerialInputs((current) => {
+        const next = { ...current };
+        delete next[unit.id];
+        return next;
+      });
+      setEngineerSerialNotice({
+        type: "success",
+        text: `Serial ${serial}${serial2 ? ` / ${serial2}` : ""} submitted for admin verification.`,
+      });
+      onServiceUpdated?.(updated);
+      onRefresh?.();
+    } catch (error) {
+      setEngineerSerialNotice({
+        type: "error",
+        text: formatApiError(error, "Serial submit failed"),
+      });
+    } finally {
+      setRowSerialBusyUnitId(null);
+    }
   }
 
   if (isEngineer) {
     return (
       <section className="rounded-lg bg-white p-6 shadow-sm">
         <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-slate-700">Your assigned units</h2>
+        {engineerSerialNotice && (
+          <div className={`mb-3 rounded-md border px-3 py-2 text-sm ${
+            engineerSerialNotice.type === "error"
+              ? "border-rose-200 bg-rose-50 text-rose-800"
+              : "border-emerald-200 bg-emerald-50 text-emerald-800"
+          }`}>
+            {engineerSerialNotice.text}
+          </div>
+        )}
         {engineerGroups.length === 0 ? (
           <p className="text-sm text-slate-500">No units assigned to you on this service request yet.</p>
         ) : (
@@ -267,17 +378,40 @@ export default function ServiceUnitAssignmentPanel({
                         {(group.serial_labels.length ? group.serial_labels : ["Serial Number"]).map((label) => (
                           <th key={label} className="px-3 py-2">{label}</th>
                         ))}
+                        <th className="px-3 py-2">Action</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {group.units.map((unit, idx) => (
                         <tr key={unit.id}>
                           <td className="px-3 py-2">{idx + 1}</td>
-                          {(unit.serial_values?.length ? unit.serial_values : [unit.serial_no]).map((value, colIdx) => (
+                          {unitSerialValues(unit).map((value, colIdx) => (
                             <td key={colIdx} className="px-3 py-2">
-                              {value ? serialCell(value) : <span className="text-slate-400">Enter/Select</span>}
+                              <ScanInput
+                                value={rowSerialValue(unit, colIdx)}
+                                onValue={(nextValue) => updateRowSerial(unit.id, colIdx, nextValue)}
+                                onKeyDown={(event) => {
+                                  if (event.key === "Enter") {
+                                    event.preventDefault();
+                                    addSerialToAssignedRow(unit);
+                                  }
+                                }}
+                                placeholder={value ? `Edit ${group.serial_labels[colIdx] || "serial"}` : `Enter ${group.serial_labels[colIdx] || "serial"}`}
+                                wrapperClassName="min-w-[13rem]"
+                                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm font-mono"
+                              />
                             </td>
                           ))}
+                          <td className="px-3 py-2">
+                            <button
+                              type="button"
+                              onClick={() => addSerialToAssignedRow(unit)}
+                              disabled={parentBusy || rowSerialBusyUnitId === unit.id || !rowSerialValue(unit, 0).trim()}
+                              className="rounded-md bg-sky-600 px-3 py-2 text-sm font-medium text-white hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              {rowSerialBusyUnitId === unit.id ? "Submitting..." : (unitHasSerial(unit) ? "Submit for verification" : "Add")}
+                            </button>
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -503,6 +637,15 @@ export default function ServiceUnitAssignmentPanel({
               Selected: {selectedUnitIds.size}
             </div>
           </div>
+          <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+            Available to assign now: <strong className="text-slate-800">{availableQuantity}</strong>
+            {" "}of {visibleUnits.length} service eligible unit(s).
+            {visibleUnits.length > availableQuantity && (
+              <span className="ml-2 text-amber-700">
+                {visibleUnits.length - availableQuantity} already assigned and locked.
+              </span>
+            )}
+          </div>
 
           <div className="overflow-x-auto">
             <table className="min-w-full text-sm">
@@ -532,18 +675,21 @@ export default function ServiceUnitAssignmentPanel({
                 {visibleUnits.map((unit, idx) => {
                   const isAssigned = Boolean(unit.assigned_engineer_id);
                   return (
-                    <tr key={unit.id} className={isAssigned ? "bg-slate-50" : ""}>
+                    <tr key={unit.id} className={isAssigned ? "bg-amber-50/60 text-slate-600" : ""}>
                       <td className="px-3 py-2">
                         <input
                           type="checkbox"
                           checked={selectedUnitIds.has(unit.id)}
                           disabled={isAssigned}
                           onChange={() => toggleUnit(unit.id)}
+                          title={isAssigned ? `Already assigned to ${unit.assigned_engineer_name || "engineer"}` : "Select for assignment"}
                         />
                       </td>
                       <td className="px-3 py-2">{idx + 1}</td>
                       {(unit.serial_values?.length ? unit.serial_values : [unit.serial_no]).map((value, colIdx) => (
-                        <td key={colIdx} className="px-3 py-2">{serialCell(value)}</td>
+                        <td key={colIdx} className="px-3 py-2">
+                          {serialCell(value)}
+                        </td>
                       ))}
                       <td className="px-3 py-2"><WarrantyBadge value={unit.warranty_status} /></td>
                       <td className="px-3 py-2 text-center">{unit.free_service_count ?? "—"}</td>
@@ -569,10 +715,11 @@ export default function ServiceUnitAssignmentPanel({
             <input
               type="number"
               min="1"
-              max={selectedItem?.unassigned_count || undefined}
+              max={availableQuantity || undefined}
               value={assignQuantity}
               onChange={(e) => setAssignQuantity(e.target.value)}
-              placeholder={`Quantity${selectedItem?.unassigned_count != null ? ` (max ${selectedItem.unassigned_count})` : ""}`}
+              disabled={availableQuantity === 0}
+              placeholder={`Quantity (max ${availableQuantity})`}
               className="rounded-md border border-slate-300 px-3 py-2 text-sm"
             />
             <select
@@ -596,7 +743,7 @@ export default function ServiceUnitAssignmentPanel({
             <button
               type="button"
               onClick={assignSelectedUnits}
-              disabled={!assignEngineerId || selectedUnitIds.size === 0}
+              disabled={parentBusy || assignmentBusy || !assignEngineerId || selectedUnitIds.size === 0}
               className="rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-50"
             >
               Assign selected serials ({selectedUnitIds.size})
@@ -604,9 +751,9 @@ export default function ServiceUnitAssignmentPanel({
             <button
               type="button"
               onClick={assignQuantityUnits}
-              disabled={!assignEngineerId || selectedUnitIds.size > 0 || !Number(assignQuantity)}
+              disabled={parentBusy || assignmentBusy || !assignEngineerId || selectedUnitIds.size > 0 || !Number(assignQuantity) || availableQuantity === 0}
               className="rounded-md border border-brand-500 bg-white px-4 py-2 text-sm font-medium text-brand-700 hover:bg-brand-50 disabled:opacity-50"
-              title={selectedUnitIds.size > 0 ? "Clear selected serials to assign by quantity" : "Assign without selecting serial numbers"}
+              title={selectedUnitIds.size > 0 ? "Clear selected serials to assign by quantity" : "Assign only currently unassigned units"}
             >
               Assign quantity ({Number(assignQuantity) || 0})
             </button>

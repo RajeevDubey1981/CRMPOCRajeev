@@ -108,6 +108,8 @@ class ServiceAssignUnitsByQuantityIn(BaseModel):
 
 class ServiceAddUnitBySerialIn(BaseModel):
     serial_no: str = Field(min_length=1, max_length=100)
+    serial_no_2: str | None = Field(default=None, max_length=100)
+    unit_id: int | None = None
     engineer_id: int | None = None
     billing_type: Literal["Free", "Paid"] | None = "Free"
     remarks: str | None = None

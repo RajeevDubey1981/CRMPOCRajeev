@@ -35,6 +35,7 @@ from app.services.service_unit_workflow import (
     completions_for_service,
     observations_for_service,
     payment_requests_for_service,
+    sync_service_request_from_units,
 )
 
 def _json_load_parts(observation) -> list[str]:
@@ -53,6 +54,61 @@ def _is_installed_order_item(db: Session, order_item: OrderItem) -> bool:
 
 def _now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def restore_assigned_placeholder_serials(db: Session, service_id: int) -> None:
+    """Repair older quantity assignments that were saved after clearing their serial fields."""
+    items = db.scalars(
+        select(ServiceRequestItem).where(ServiceRequestItem.service_request_id == service_id)
+    ).all()
+    used_order_item_ids = {
+        row.order_item_id
+        for row in db.scalars(
+            select(ServiceRequestUnit).where(
+                ServiceRequestUnit.service_request_id == service_id,
+                ServiceRequestUnit.order_item_id.is_not(None),
+            )
+        )
+        if row.order_item_id is not None
+    }
+
+    for item in items:
+        blank_assigned_units = db.scalars(
+            select(ServiceRequestUnit)
+            .where(
+                ServiceRequestUnit.service_request_id == service_id,
+                ServiceRequestUnit.service_request_item_id == item.id,
+                ServiceRequestUnit.assigned_engineer_id.is_not(None),
+                ServiceRequestUnit.order_item_id.is_(None),
+                ServiceRequestUnit.serial_no.is_(None),
+            )
+            .order_by(ServiceRequestUnit.id)
+        ).all()
+        if not blank_assigned_units:
+            continue
+
+        available_order_items = []
+        for order_item in db.scalars(
+            select(OrderItem)
+            .where(
+                OrderItem.order_id == item.order_id,
+                OrderItem.item_code == item.item_code,
+            )
+            .order_by(OrderItem.id)
+        ):
+            if order_item.id in used_order_item_ids:
+                continue
+            if not _is_installed_order_item(db, order_item):
+                continue
+            available_order_items.append(order_item)
+
+        for unit, order_item in zip(blank_assigned_units, available_order_items):
+            unit.order_item_id = order_item.id
+            unit.serial_no = order_item.serial_no
+            unit.serial_no_2 = order_item.serial_no_2
+            billing = "Paid" if unit.service_type == "Paid Service" else "Free"
+            apply_unit_billing_choice(db, unit, billing, order_item=order_item)
+            used_order_item_ids.add(order_item.id)
 
 
 BILLING_LOCKED_UNIT_STATUSES = frozenset({"Payment Completed", "Closed"})
@@ -287,6 +343,7 @@ def verify_order_for_service(
 
 
 def build_order_item_summaries(db: Session, service_id: int) -> list[dict]:
+    restore_assigned_placeholder_serials(db, service_id)
     items = db.scalars(
         select(ServiceRequestItem)
         .where(ServiceRequestItem.service_request_id == service_id)
@@ -359,6 +416,7 @@ def build_unit_rows(
     item_code: str | None = None,
     engineer_id: int | None = None,
 ) -> list[dict]:
+    restore_assigned_placeholder_serials(db, service_id)
     stmt = (
         select(ServiceRequestUnit, ServiceRequestItem)
         .join(ServiceRequestItem, ServiceRequestUnit.service_request_item_id == ServiceRequestItem.id)
@@ -532,8 +590,10 @@ def add_service_unit_by_serial(
     service: ServiceRequest,
     *,
     serial_no: str,
+    serial_no_2: str | None = None,
     engineer_id: int,
     assigned_by_user_id: int,
+    unit_id: int | None = None,
     billing_type: str | None = "Free",
     remarks: str | None = None,
 ) -> ServiceRequestUnit:
@@ -542,6 +602,7 @@ def add_service_unit_by_serial(
     The serial may be on any order for the same customer as this service request (not only the linked order).
     """
     normalized = (serial_no or "").strip()
+    normalized_2 = (serial_no_2 or "").strip() or None
     if not normalized:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Serial number is required")
 
@@ -555,6 +616,69 @@ def add_service_unit_by_serial(
             status.HTTP_400_BAD_REQUEST,
             "Identify the customer or verify an order on this service request before adding serials.",
         )
+
+    if engineer_id is None:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "An engineer must be selected to assign this serial.",
+        )
+
+    if unit_id is not None:
+        target_unit = db.get(ServiceRequestUnit, unit_id)
+        if target_unit is None or target_unit.service_request_id != service.id:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Unit not found on this service request")
+        if target_unit.assigned_engineer_id is not None and target_unit.assigned_engineer_id != engineer_id:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "This row is assigned to another engineer")
+        if target_unit.serial_verified_at is not None:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Serial is already verified for this row")
+
+        customer_order_item = find_customer_order_item_by_serial(db, service, normalized)
+        installed_order_item = (
+            customer_order_item
+            if customer_order_item is not None and order_item_is_installed_for_service(db, customer_order_item)
+            else None
+        )
+        order_item_for_row = installed_order_item or customer_order_item
+
+        if order_item_for_row is not None:
+            item_order = db.get(Order, order_item_for_row.order_id)
+            if item_order is None or item_order.deleted_at is not None:
+                raise HTTPException(status.HTTP_400_BAD_REQUEST, "Order for this serial is not available")
+
+            target_item = db.get(ServiceRequestItem, target_unit.service_request_item_id)
+            target_code = (target_item.item_code if target_item else "").strip() or "UNASSIGNED"
+            order_item_code = (order_item_for_row.item_code or "").strip() or "UNASSIGNED"
+            if target_code != order_item_code:
+                raise HTTPException(
+                    status.HTTP_400_BAD_REQUEST,
+                    f"Scanned serial belongs to item {order_item_code}, but this row is for item {target_code}.",
+                )
+
+            existing_for_serial = db.scalar(
+                select(ServiceRequestUnit).where(
+                    ServiceRequestUnit.service_request_id == service.id,
+                    ServiceRequestUnit.order_item_id == order_item_for_row.id,
+                    ServiceRequestUnit.id != target_unit.id,
+                )
+            )
+            if existing_for_serial is not None:
+                raise HTTPException(status.HTTP_409_CONFLICT, "This serial is already added to another row on this service request")
+
+            target_unit.order_item_id = order_item_for_row.id
+            if service.order_id is None:
+                service.order_id = item_order.id
+                service.customer_name = item_order.customer_name or service.customer_name
+                service.customer_mobile = item_order.customer_contact or service.customer_mobile
+                service.customer_email = item_order.customer_email or service.customer_email
+                service.customer_address = item_order.customer_address or service.customer_address
+
+        target_unit.serial_no = normalized
+        target_unit.serial_no_2 = normalized_2 or (order_item_for_row.serial_no_2 if order_item_for_row is not None else None)
+        target_unit.serial_verified_at = None
+        target_unit.unit_status = "Serial Verification Pending"
+        target_unit.remarks = remarks or "Engineer submitted serial for admin verification."
+        sync_service_request_from_units(db, service, engineer_id=engineer_id)
+        return target_unit
 
     order_item = find_customer_installed_order_item(db, service, normalized)
     if order_item is None:
@@ -578,12 +702,6 @@ def add_service_unit_by_serial(
         service.customer_mobile = item_order.customer_contact or service.customer_mobile
         service.customer_email = item_order.customer_email or service.customer_email
         service.customer_address = item_order.customer_address or service.customer_address
-
-    if engineer_id is None:
-        raise HTTPException(
-            status.HTTP_400_BAD_REQUEST,
-            "An engineer must be selected to assign this serial.",
-        )
 
     unit = _ensure_service_item_and_unit(db, service, item_order, order_item)
 
@@ -759,11 +877,8 @@ def assign_units_to_engineer_by_quantity(
     selected_units = eligible_units[:quantity]
     now = _now()
     for unit in selected_units:
-        # Hide the preloaded serial from the engineer until they identify the actual machine in the field.
-        unit.order_item_id = None
-        unit.serial_no = None
-        unit.serial_no_2 = None
-        apply_unit_billing_choice(db, unit, billing, order_item=None)
+        order_item = db.get(OrderItem, unit.order_item_id) if unit.order_item_id else None
+        apply_unit_billing_choice(db, unit, billing, order_item=order_item)
         unit.assigned_engineer_id = engineer.id
         unit.assigned_at = now
         unit.assigned_by_user_id = assigned_by_user_id

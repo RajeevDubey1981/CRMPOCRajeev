@@ -162,7 +162,6 @@ export default function InstallationList() {
         current.pendingCount += isCompletedStatus(inst.status) ? 0 : 1;
         current.completedCount += isCompletedStatus(inst.status) ? 1 : 0;
         current.assignedEngineerName = summarizeGroupValue(current.requests, "assigned_engineer_name");
-        current.settlementRaisedByName = summarizeGroupValue(current.requests, "settlement_approved_by_name");
         continue;
       }
       groups.set(key, {
@@ -172,7 +171,6 @@ export default function InstallationList() {
         orderNo: inst.order_no || "-",
         vendorName: inst.vendor_name || "-",
         assignedEngineerName: summarizeGroupValue([inst], "assigned_engineer_name"),
-        settlementRaisedByName: summarizeGroupValue([inst], "settlement_approved_by_name"),
         pendingCount: isCompletedStatus(inst.status) ? 0 : 1,
         completedCount: isCompletedStatus(inst.status) ? 1 : 0,
         requests: [inst],
@@ -436,7 +434,7 @@ export default function InstallationList() {
                               : "Select requests in this Item Code group for bulk actions"}
                           </span>
                           <div className="text-xs text-slate-500">
-                            {!isEngineer && `Assigned engineer: ${group.assignedEngineerName} | Settlement raised by: ${group.settlementRaisedByName}`}
+                            {!isEngineer && `Assigned engineer: ${group.assignedEngineerName}`}
                           </div>
                         </div>
 
@@ -453,7 +451,7 @@ export default function InstallationList() {
                                 <th className="px-3 py-2">Serial Number 2</th>
                                 <th className="px-3 py-2">Current Status</th>
                                 {!isEngineer && <th className="px-3 py-2">Assigned Engineer</th>}
-                                {!isEngineer && <th className="px-3 py-2">Settlement Raised By</th>}
+                                {!isEngineer && <th className="px-3 py-2">Service User</th>}
                                 <th className="px-3 py-2">Assigned Date</th>
                                 <th className="px-3 py-2">Install Date</th>
                                 {!isEngineer && <th className="px-3 py-2 text-right">Actions</th>}
@@ -493,7 +491,7 @@ export default function InstallationList() {
                                   <td className="px-3 py-2 font-mono text-xs">{row.serial_no_2 || "-"}</td>
                                   <td className="px-3 py-2"><StatusBadge value={row.status} /></td>
                                   {!isEngineer && <td className="px-3 py-2">{row.assigned_engineer_name || "-"}</td>}
-                                  {!isEngineer && <td className="px-3 py-2">{row.settlement_approved_by_name || "-"}</td>}
+                                  {!isEngineer && <td className="px-3 py-2">{row.assigned_service_user_name || "-"}</td>}
                                   <td className="px-3 py-2 text-xs">{fmtDate(row.request_date)}</td>
                                   <td className="px-3 py-2 text-xs">{fmtDate(row.installation_date)}</td>
                                   {!isEngineer && (

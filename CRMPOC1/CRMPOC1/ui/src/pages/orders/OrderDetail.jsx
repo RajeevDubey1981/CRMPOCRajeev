@@ -330,13 +330,13 @@ export default function OrderDetail() {
     const keys = [];
     for (const item of group.rows) {
       if (isItemLocked(item)) continue;
-      if (serialType === "serial1" && item.serial_no) keys.push(`${item.id}-serial1`);
-      if (serialType === "serial2" && item.serial_no_2) keys.push(`${item.id}-serial2`);
+      if ((!serialType || serialType === "serial1") && item.serial_no) keys.push(`${item.id}-serial1`);
+      if ((!serialType || serialType === "serial2") && item.serial_no_2) keys.push(`${item.id}-serial2`);
     }
     return keys;
   }
 
-  function toggleSelectAllSerialsInGroup(group, serialType) {
+  function toggleSelectAllSerialsInGroup(group, serialType = null) {
     if (!canSubmitInstallationRequest) return;
     const keys = serialSelectionKeysForGroup(group, serialType);
     if (!keys.length) return;
@@ -749,18 +749,20 @@ export default function OrderDetail() {
   function selectedSerialPairError(selection = selectedSerials) {
     const keys = Array.from(selection);
     if (!keys.length) return "";
-    const selectedItems = keys
-      .map((key) => {
-        const [itemIdStr, slot] = key.split("-");
-        const item = (order?.items || []).find((candidate) => String(candidate.id) === itemIdStr);
-        return item ? { item, slot } : null;
-      })
-      .filter(Boolean);
-    if (!selectedItems.some(({ item }) => Number(item.serial_count ?? 1) >= 2)) return "";
+    const selectedByItemId = new Map();
+    for (const key of keys) {
+      const [itemIdStr, slot] = key.split("-");
+      if (!selectedByItemId.has(itemIdStr)) selectedByItemId.set(itemIdStr, new Set());
+      selectedByItemId.get(itemIdStr).add(slot);
+    }
 
-    for (let index = 0; index < selectedItems.length; index += 2) {
-      const pair = selectedItems.slice(index, index + 2);
-      if (pair.length !== 2 || new Set(pair.map(({ slot }) => slot)).size !== 2) {
+    for (const [itemIdStr, slots] of selectedByItemId.entries()) {
+      const item = (order?.items || []).find((candidate) => String(candidate.id) === itemIdStr);
+      if (!item || Number(item.serial_count ?? 1) < 2) continue;
+      if (item.serial_no && !slots.has("serial1")) {
+        return "Select one Serial 1 and one Serial 2 for each installation unit.";
+      }
+      if (item.serial_no_2 && !slots.has("serial2")) {
         return "Select one Serial 1 and one Serial 2 for each installation unit.";
       }
     }
@@ -1295,9 +1297,9 @@ export default function OrderDetail() {
                             <div className="flex items-center gap-2">
                               <input
                                 type="checkbox"
-                                title="Select all serials in this item code group"
-                                checked={serialSelectionKeysForGroup(group, "serial1").every((key) => selectedSerials.has(key))}
-                                onChange={() => toggleSelectAllSerialsInGroup(group, "serial1")}
+                                title="Select all Serial 1 and Serial 2 values in this item code group"
+                                checked={serialSelectionKeysForGroup(group).every((key) => selectedSerials.has(key))}
+                                onChange={() => toggleSelectAllSerialsInGroup(group)}
                                 className="h-4 w-4"
                               />
                               <span>Serial 1 <span className="text-xs">(select)</span></span>
@@ -1312,9 +1314,9 @@ export default function OrderDetail() {
                               <div className="flex items-center gap-2">
                                 <input
                                   type="checkbox"
-                                  title="Select all serial 2 values in this item code group"
-                                  checked={serialSelectionKeysForGroup(group, "serial2").every((key) => selectedSerials.has(key))}
-                                  onChange={() => toggleSelectAllSerialsInGroup(group, "serial2")}
+                                  title="Select all Serial 1 and Serial 2 values in this item code group"
+                                  checked={serialSelectionKeysForGroup(group).every((key) => selectedSerials.has(key))}
+                                  onChange={() => toggleSelectAllSerialsInGroup(group)}
                                   className="h-4 w-4"
                                 />
                                 <span>Serial 2 <span className="text-xs">(select)</span></span>

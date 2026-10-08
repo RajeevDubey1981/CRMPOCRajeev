@@ -3,7 +3,7 @@ import secrets
 import time
 from datetime import date, datetime, timezone
 
-from fastapi import APIRouter, BackgroundTasks, Body, Depends, File, Form, HTTPException, Query, Request, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, Body, Depends, File, Form, HTTPException, Query, Request, Response, UploadFile, status
 from sqlalchemy import desc, exists, func, or_, select
 from sqlalchemy.orm import Session
 
@@ -110,6 +110,7 @@ from app.services.service_documents import (
     build_public_upload_url,
     customer_document_types,
     customer_documents_approved,
+    delete_service_request_graph,
     order_workflow_unlocked,
     on_enter_service_team_review,
     reset_service_workflow_from_status,
@@ -134,6 +135,7 @@ from app.services.service_units import (
     build_order_item_summaries,
     build_unit_rows,
     engineer_has_unit_assignment,
+    restore_assigned_placeholder_serials,
     verify_order_for_service,
 )
 from app.services.service_unit_workflow import (
@@ -189,6 +191,14 @@ SERVICE_STATUS_FLOW = {
     "Closed": set(),
     "Rejected": {"Assigned", "Cancelled"},
     "Cancelled": set(),
+}
+
+SERVICE_DELETE_LOCKED_STATUSES = {
+    "Completion Pending Approval",
+    "Service Completed",
+    "Payment Requested",
+    "Payment Completed",
+    "Closed",
 }
 
 
@@ -1097,6 +1107,7 @@ def get_service(service_id: int, db: Session = Depends(get_db), user: User = Dep
             old_status=old_status,
             new_status=service.status,
         )
+    restore_assigned_placeholder_serials(db, service.id)
     db.commit()
     return _hydrate_service(db, service)
 
@@ -1115,6 +1126,21 @@ def update_service(service_id: int, body: ServiceUpdate, db: Session = Depends(g
     db.commit()
     db.refresh(service)
     return _hydrate_service(db, service)
+
+
+@router.delete("/{service_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_service(service_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    service = _load_visible_service(db, service_id, user)
+    if not _is_workflow_admin(user):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only admins can delete service requests")
+    if service.status in SERVICE_DELETE_LOCKED_STATUSES:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "Service request cannot be deleted after completion or payment is started",
+        )
+    delete_service_request_graph(db, service)
+    db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.post("/{service_id}/identify-customer", response_model=ServiceOut)
@@ -1426,8 +1452,10 @@ def add_service_unit_by_serial_endpoint(
         db,
         service,
         serial_no=body.serial_no,
+        serial_no_2=body.serial_no_2,
         engineer_id=engineer_id,
         assigned_by_user_id=assigned_by,
+        unit_id=body.unit_id,
         billing_type=body.billing_type,
         remarks=body.remarks,
     )
@@ -1450,7 +1478,7 @@ def add_service_unit_by_serial_endpoint(
         old_status=old_status,
         new_status=service.status,
         remarks=body.remarks,
-        metadata={"unit_id": unit.id, "serial_no": body.serial_no, "engineer_id": engineer_id},
+        metadata={"unit_id": unit.id, "target_unit_id": body.unit_id, "serial_no": body.serial_no, "serial_no_2": body.serial_no_2, "engineer_id": engineer_id},
     )
     db.commit()
     db.refresh(service)

@@ -1,20 +1,26 @@
 from datetime import datetime, timezone
 from urllib.parse import urljoin
 
-from sqlalchemy import desc, select
+from sqlalchemy import desc, or_, select
 from sqlalchemy.orm import Session
 
 from app.config import settings
+from app.models.field_photo import FieldPhoto
+from app.models.payment import PaymentTransaction
+from app.models.payment_approval import PaymentApprovalLog
+from app.models.pending_action import UserPendingAction
 from app.models.service import (
     ServiceAssignment,
     ServiceApproval,
     ServiceCompletion,
     ServiceDocument,
     ServiceDocumentRule,
+    ServiceNotification,
     ServiceObservation,
     ServicePaymentRequest,
     ServiceRequest,
     ServiceRequestItem,
+    ServiceStatusLog,
     ServiceRequestUnit,
     ServiceUnitAssignment,
 )
@@ -142,9 +148,49 @@ def service_workflow_is_revert(old_status: str, new_status: str) -> bool:
 
 
 def _delete_engineer_workflow_records(db: Session, service_id: int) -> None:
-    for model in (ServiceObservation, ServiceApproval, ServiceCompletion, ServicePaymentRequest):
+    payment_request_ids = list(
+        db.scalars(
+            select(ServicePaymentRequest.id).where(ServicePaymentRequest.service_request_id == service_id)
+        )
+    )
+    payment_log_filters = [
+        PaymentApprovalLog.module == "services",
+        PaymentApprovalLog.entity_id == service_id,
+    ]
+    if payment_request_ids:
+        payment_log_filters.append(PaymentApprovalLog.service_payment_request_id.in_(payment_request_ids))
+    for row in db.scalars(
+        select(PaymentApprovalLog).where(or_(*payment_log_filters))
+    ):
+        db.delete(row)
+    db.flush()
+    for model in (ServicePaymentRequest, ServiceCompletion, ServiceApproval, ServiceObservation):
         for row in db.scalars(select(model).where(model.service_request_id == service_id)):
             db.delete(row)
+        db.flush()
+
+
+def _delete_unit_photos(db: Session, service_id: int) -> None:
+    unit_ids = list(
+        db.scalars(
+            select(ServiceRequestUnit.id).where(ServiceRequestUnit.service_request_id == service_id)
+        )
+    )
+    if not unit_ids:
+        return
+    for row in db.scalars(select(FieldPhoto).where(FieldPhoto.service_request_unit_id.in_(unit_ids))):
+        db.delete(row)
+    db.flush()
+
+
+def _delete_service_pending_actions(db: Session, service_id: int) -> None:
+    for row in db.scalars(
+        select(UserPendingAction).where(
+            UserPendingAction.module == "services",
+            UserPendingAction.entity_id == service_id,
+        )
+    ):
+        db.delete(row)
 
 
 def _clear_serial_verification_state(db: Session, service: ServiceRequest) -> None:
@@ -170,13 +216,17 @@ def reset_service_downstream_workflow_for_documents(db: Session, service: Servic
         db.add(assignment)
 
     _delete_engineer_workflow_records(db, service.id)
+    _delete_unit_photos(db, service.id)
 
     for unit_assignment in db.scalars(select(ServiceUnitAssignment).where(ServiceUnitAssignment.service_request_id == service.id)):
         db.delete(unit_assignment)
+    db.flush()
     for unit in db.scalars(select(ServiceRequestUnit).where(ServiceRequestUnit.service_request_id == service.id)):
         db.delete(unit)
+    db.flush()
     for item in db.scalars(select(ServiceRequestItem).where(ServiceRequestItem.service_request_id == service.id)):
         db.delete(item)
+    db.flush()
 
     _clear_serial_verification_state(db, service)
 
@@ -226,6 +276,53 @@ def reset_service_workflow_from_status(db: Session, service: ServiceRequest, tar
 
     service.status_date = datetime.now(timezone.utc)
     db.add(service)
+
+
+def delete_service_request_graph(db: Session, service: ServiceRequest) -> None:
+    """Hard-delete a service request and rows owned by the service workflow."""
+    payment_transaction_ids = {
+        payment_transaction_id
+        for payment_transaction_id in db.scalars(
+            select(ServicePaymentRequest.payment_transaction_id).where(
+                ServicePaymentRequest.service_request_id == service.id,
+                ServicePaymentRequest.payment_transaction_id.is_not(None),
+            )
+        )
+    }
+    _delete_engineer_workflow_records(db, service.id)
+    _delete_unit_photos(db, service.id)
+    _delete_service_pending_actions(db, service.id)
+
+    for row in db.scalars(select(ServiceUnitAssignment).where(ServiceUnitAssignment.service_request_id == service.id)):
+        db.delete(row)
+    db.flush()
+    for row in db.scalars(select(ServiceRequestUnit).where(ServiceRequestUnit.service_request_id == service.id)):
+        db.delete(row)
+    db.flush()
+    for row in db.scalars(select(ServiceRequestItem).where(ServiceRequestItem.service_request_id == service.id)):
+        db.delete(row)
+    db.flush()
+    for row in db.scalars(select(ServiceAssignment).where(ServiceAssignment.service_request_id == service.id)):
+        db.delete(row)
+    for row in db.scalars(select(ServiceDocument).where(ServiceDocument.service_request_id == service.id)):
+        db.delete(row)
+    for row in db.scalars(select(ServiceNotification).where(ServiceNotification.service_request_id == service.id)):
+        db.delete(row)
+    for row in db.scalars(select(ServiceStatusLog).where(ServiceStatusLog.service_request_id == service.id)):
+        db.delete(row)
+
+    for transaction_id in payment_transaction_ids:
+        still_used = db.scalar(
+            select(ServicePaymentRequest.id)
+            .where(ServicePaymentRequest.payment_transaction_id == transaction_id)
+            .limit(1)
+        )
+        if not still_used:
+            transaction = db.get(PaymentTransaction, transaction_id)
+            if transaction:
+                db.delete(transaction)
+
+    db.delete(service)
 
 
 def document_workflow_active(service: ServiceRequest) -> bool:

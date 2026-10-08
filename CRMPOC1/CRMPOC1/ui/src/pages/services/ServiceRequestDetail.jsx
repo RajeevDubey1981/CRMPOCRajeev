@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { BOUNCED_BUTTON, BounceBanner } from "../../components/EmailBounceNotice.jsx";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 
 import Modal from "../../components/Modal.jsx";
 import ScanInput from "../../components/scan/ScanInput.jsx";
@@ -27,6 +27,13 @@ const SERVICE_STATUSES = [
   "Serial Verified", "Pending Service Approval", "Approved for Service", "Service In Progress",
   "Completion Pending Approval", "Service Completed", "Payment Requested", "Payment Completed", "Closed", "Rejected", "Cancelled",
 ];
+const SERVICE_DELETE_LOCKED_STATUSES = new Set([
+  "Completion Pending Approval",
+  "Service Completed",
+  "Payment Requested",
+  "Payment Completed",
+  "Closed",
+]);
 
 function Field({ label, value }) {
   return (
@@ -128,6 +135,7 @@ function UploadDocumentModal({ open, onClose, onSubmit }) {
 
 export default function ServiceRequestDetail() {
   const { id } = useParams();
+  const navigate = useNavigate();
   const { user } = useAuth();
   const role = user?.role?.toLowerCase?.() || "";
   const [service, setService] = useState(null);
@@ -319,6 +327,27 @@ export default function ServiceRequestDetail() {
     }
   }
 
+  async function deleteCurrentServiceRequest() {
+    if (!service) {
+      return;
+    }
+    const label = service.request_no || `#${service.id}`;
+    if (!window.confirm(`Delete service request ${label}? This will remove all data linked to this service request.`)) {
+      return;
+    }
+    setBusy(true);
+    setErr("");
+    setSuccessMsg("");
+    try {
+      await servicesApi.deleteRequest(service.id);
+      navigate("/services", { replace: true });
+    } catch (error) {
+      setErr(error.response?.data?.detail || "Delete failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const activeAssigneeOptions = useMemo(() => (
     engineers
   ), [engineers]);
@@ -331,6 +360,7 @@ export default function ServiceRequestDetail() {
   const roleIsEngineer = role === "engineer";
   const roleIsVendor = role === "vendor";
   const canEditWorkflow = roleIsAdminLike;
+  const deleteDisabledByStatus = SERVICE_DELETE_LOCKED_STATUSES.has(service?.status);
   const documentsWorkflowUnlocked = Boolean(service?.customer_documents_approved);
   const engineerWorkUnits = useMemo(() => {
     if (!service?.units?.length) return [];
@@ -652,7 +682,7 @@ export default function ServiceRequestDetail() {
           <p className="mt-1 text-xs text-amber-800">
             Update step clears later work from the selected step onward (order verify, assignment, engineer steps). Customer documents are kept. Use the current step to restart from here.
           </p>
-          <div className="mt-3 grid gap-3 md:grid-cols-[1fr_2fr_auto]">
+          <div className="mt-3 grid gap-3 md:grid-cols-[1fr_2fr_auto_auto]">
             <select
               value={workflowStatus || service.status}
               onChange={(event) => setWorkflowStatus(event.target.value)}
@@ -696,6 +726,15 @@ export default function ServiceRequestDetail() {
               className="rounded-md bg-amber-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
             >
               Update step
+            </button>
+            <button
+              type="button"
+              disabled={busy || deleteDisabledByStatus}
+              onClick={deleteCurrentServiceRequest}
+              title={deleteDisabledByStatus ? "Cannot delete after completion or payment is started" : "Delete service request"}
+              className="rounded-md bg-rose-700 px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Delete
             </button>
           </div>
         </section>

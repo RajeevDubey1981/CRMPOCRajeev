@@ -5,6 +5,7 @@ export const servicesApi = {
   get: (id) => api.get(`/api/services/${id}`).then((r) => r.data),
   create: (body) => api.post("/api/services", body).then((r) => r.data),
   update: (id, body) => api.put(`/api/services/${id}`, body).then((r) => r.data),
+  deleteRequest: (id) => api.delete(`/api/services/${id}`).then((r) => r.data),
   updateStatus: (id, body) => api.post(`/api/services/${id}/status`, body).then((r) => r.data),
   summary: () => api.get("/api/services/summary").then((r) => r.data),
   history: (id) => api.get(`/api/services/${id}/history`).then((r) => r.data),

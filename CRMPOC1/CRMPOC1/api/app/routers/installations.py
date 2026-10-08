@@ -1544,6 +1544,7 @@ async def bulk_update_status(
     payment_type: str | None = Form(None),
     settlement_approved_by: int | None = Form(None),
     assigned_engineer: int | None = Form(None),
+    service_user_id: int | None = Form(None),
     document: UploadFile | None = File(None),
     qr_code: UploadFile | None = File(None),
     db: Session = Depends(get_db),
@@ -1568,6 +1569,11 @@ async def bulk_update_status(
     }
     if len(item_codes) > 1:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Bulk editing is allowed only within the same Item Code group")
+    service_user = None
+    if service_user_id is not None:
+        if not can_assign_service_desk_user(user):
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "Only Admin or Service Manager can assign service users")
+        service_user = _require_active_installation_service_user(db, service_user_id)
 
     qr_blob = None
     qr_filename = None
@@ -1651,6 +1657,8 @@ async def bulk_update_status(
                 inst.work_report_file_path = doc_path
         if settlement_approved_by is not None:
             inst.settlement_approved_by = settlement_approved_by
+        if service_user is not None:
+            inst.assigned_service_user_id = service_user.id
         if qr_blob:
             inst.payment_qr_code_blob = qr_blob
             inst.payment_qr_code_filename = qr_filename
