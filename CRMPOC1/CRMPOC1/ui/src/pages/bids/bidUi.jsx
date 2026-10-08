@@ -12,6 +12,15 @@ export function fmtDate(iso) {
   return `${d} ${MONTHS[m - 1]} ${y}`;
 }
 
+// a time from the server (UTC, no zone mark) shown in India time: 10 Oct 2026, 11:30 AM
+export function fmtDateTime(iso) {
+  if (!iso) return "—";
+  const text = String(iso);
+  const d = new Date(/[zZ]|[+-]\d\d:?\d\d$/.test(text) ? text : `${text}Z`);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleString("en-IN", { timeZone: "Asia/Kolkata", day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit", hour12: true });
+}
+
 export function fmtShort(iso) {
   return fmtDate(iso).slice(0, -5);
 }

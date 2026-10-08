@@ -12,6 +12,7 @@ import re
 import threading
 import time
 from datetime import date, datetime, timedelta, timezone
+from datetime import time as clock
 from html import escape
 
 from sqlalchemy import func, select
@@ -60,6 +61,30 @@ def today_ist() -> date:
 
 def now_ist_hour() -> int:
     return datetime.now(IST).hour
+
+
+def moment(today: date | None = None) -> datetime:
+    """Now, as an aware UTC time. Asking for another day than today (a test, a manual run) gives noon of that day."""
+    real = datetime.now(timezone.utc)
+    if today is None or today == today_ist():
+        return real
+    return datetime.combine(today, clock(12, 0), IST).astimezone(timezone.utc)
+
+
+def aware(value: datetime | None) -> datetime | None:
+    """The database keeps UTC without a zone mark."""
+    if value is None:
+        return None
+    return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+
+
+def fmt_moment(value: datetime | None) -> str:
+    """10 Oct 2026, 11:30 AM (India time)."""
+    value = aware(value)
+    if value is None:
+        return "-"
+    local = value.astimezone(IST)
+    return f"{local.day} {local.strftime('%b %Y')}, {local.strftime('%I:%M %p').lstrip('0')}"
 
 
 # --------------------------------------------------------------------------- category detection
@@ -261,9 +286,7 @@ def _deliver(to: str | None, subject: str, lines: list[str]) -> bool:
     try:
         from app.services.email_service import send_email
 
-        body = "".join(f"<p style=\"margin:0 0 10px\">{escape(line)}</p>" for line in lines)
-        html = f"<div style=\"font-family:Arial,sans-serif;font-size:14px;color:#222\">{body}<p>TEAM INDcool</p></div>"
-        text = "\n\n".join(lines) + "\n\nTEAM INDcool"
+        html, text = _render(lines)
         return bool(send_email(to.strip(), subject, html, text))
     except Exception:
         logger.exception("bid email failed: %s", subject)
@@ -297,6 +320,110 @@ def _bid_lines(bid: Bid) -> list[str]:
         f"Item: {bid.title}",
         f"Closing date: {fmt_date(bid.end_date)}",
     ]
+
+
+def _bid_url(bid: Bid) -> str:
+    base = (settings.app_public_url or "").strip().rstrip("/")
+    return f"{base}/bids/{bid.id}" if base.startswith("http") else ""
+
+
+def _accept_mail(bid: Bid, color: str, bar: str, sub: str, lead: str, box: str) -> list[str]:
+    """The mail for a bid waiting to be accepted or rejected. Lines starting with @ are laid out by _render."""
+    url = _bid_url(bid)
+    lines = [f"@banner|{color}|{bar}|{sub}", "Hello,", lead, f"@row|Bid number|{bid.bid_number}", f"@row|Item|{bid.title}", f"@row|Closing date|{fmt_date(bid.end_date)}"]
+    if bid.emd_amount:
+        lines.append(f"@row|EMD|Rs {bid.emd_amount:,.0f}")
+    lines.append(f"@row|Answer by|{fmt_moment(bid.confirm_due_at)}")
+    if url:
+        lines += [f"@button|Accept: I will bid|{url}|#047857", f"@button|Reject|{url}|#b91c1c"]
+    else:
+        lines.append("Open the CRM, go to Bids and accept or reject the bid there.")
+    lines.append(f"@box|{box}")
+    return lines
+
+
+def _submit_mail(bid: Bid, days: int) -> tuple[str, list[str]]:
+    """(subject, lines) of the morning mail for a bid that was accepted but is not marked submitted."""
+    end = fmt_date(bid.end_date)
+    if days == 0:
+        color, when = "#b91c1c", "TODAY"
+        subject = f"LAST DAY: mark bid {bid.bid_number} as submitted in the CRM"
+        box = "Your bid is not yet submitted. It is being withdrawn from you and opened for allocation to another eligible vendor. If you have already submitted on the portal, mark it submitted right now."
+    elif days == 1:
+        color, when = "#c2410c", "tomorrow"
+        subject = f"Your bid {bid.bid_number} is not yet submitted. Last date is tomorrow, it will be withdrawn"
+        box = "Your bid is not yet submitted. If it is not marked submitted today, the bid will be withdrawn from you and opened for allocation to another eligible vendor."
+    else:
+        color, when = "#b45309", "in 2 days"
+        subject = f"Reminder: bid {bid.bid_number} closes in 2 days. Update the CRM once submitted"
+        box = f"Please submit and update the CRM by {fmt_date(bid.submit_by)}. After that the bid will be withdrawn and opened for allocation to another eligible vendor."
+    url = _bid_url(bid)
+    lines = [
+        f"@banner|{color}|{'LAST DAY. ' if days == 0 else ''}Bid is waiting to be marked submitted|The last date is {when}",
+        "Hello,",
+        f"You accepted the bid below, but it is <b>not marked submitted in the CRM</b>. The last date is <b>{when}</b>.",
+        f"@row|Bid number|{bid.bid_number}", f"@row|Item|{bid.title}", f"@row|Last date|{end}", "@row|In the CRM|Accepted, not marked submitted",
+        "<b>Already submitted on the portal?</b> Mark it submitted in the CRM. It takes a few seconds. <b>Not submitted yet?</b> Please submit on the portal before the last date, then update the CRM.",
+    ]
+    if url:
+        lines.append(f"@button|Mark as submitted in the CRM|{url}|{color}")
+    lines.append(f"@box|{box}")
+    return subject, lines
+
+
+def _render(lines: list[str]) -> tuple[str, str]:
+    """HTML and plain text of a mail. A plain line is a paragraph (<b> is allowed); lines starting with @ are
+    @banner|color|title|subtitle, @row|label|value, @button|label|url|color and @box|text."""
+    banner, rows, parts, text = "", [], [], []
+    for line in lines:
+        if line.startswith("@banner|"):
+            _, color, title, sub = (line.split("|", 3) + ["", "", ""])[:4]
+            banner = (
+                f'<div style="background:{escape(color)};color:#fff;padding:16px 20px"><div style="font-size:19px;font-weight:bold">{escape(title)}</div>'
+                f'<div style="font-size:13px;opacity:.95">{escape(sub)}</div></div>'
+            )
+            text.append(f"{title.upper()}\n{sub}")
+        elif line.startswith("@row|"):
+            _, label, value = (line.split("|", 2) + ["", ""])[:3]
+            rows.append(f'<tr><td style="padding:7px 8px;border-bottom:1px solid #e5e7eb;color:#64748b;width:38%">{escape(label)}</td><td style="padding:7px 8px;border-bottom:1px solid #e5e7eb"><b>{escape(value)}</b></td></tr>')
+            text.append(f"{label}: {value}")
+        else:
+            if rows:
+                parts.append(f'<table style="width:100%;border-collapse:collapse;margin:10px 0 14px;font-size:13.5px">{"".join(rows)}</table>')
+                rows = []
+            if line.startswith("@button|"):
+                _, label, url, color = (line.split("|", 3) + ["", "", ""])[:4]
+                parts.append(f'<a href="{escape(url)}" style="display:inline-block;padding:12px 22px;margin:0 8px 8px 0;border-radius:8px;background:{escape(color or "#1e3a78")};color:#fff;text-decoration:none;font-weight:bold">{escape(label)}</a>')
+                text.append(f"{label}: {url}")
+            elif line.startswith("@box|"):
+                body = line.split("|", 1)[1]
+                parts.append(f'<p style="font-size:13px;color:#7c2d12;background:#fff7ed;border:1px solid #fed7aa;border-radius:6px;padding:8px 10px">{escape(body)}</p>')
+                text.append(body)
+            else:
+                parts.append(f'<p style="margin:0 0 10px">{_light(line)}</p>')
+                text.append(re.sub(r"</?b>", "", line))
+    if rows:
+        parts.append(f'<table style="width:100%;border-collapse:collapse;margin:10px 0 14px;font-size:13.5px">{"".join(rows)}</table>')
+    html = (
+        '<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#222;max-width:600px;margin:0 auto;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden">'
+        f'{banner}<div style="padding:18px 20px">{"".join(parts)}<p style="color:#64748b;font-size:12.5px;border-top:1px solid #e5e7eb;padding-top:10px;margin-top:16px">TEAM INDcool</p></div></div>'
+    )
+    return html, "\n\n".join(text) + "\n\nTEAM INDcool"
+
+
+def _light(line: str) -> str:
+    """Escape a line but let <b> and </b> through."""
+    return escape(line).replace("&lt;b&gt;", "<b>").replace("&lt;/b&gt;", "</b>")
+
+
+def _sync_cards(db: Session, bid: Bid) -> None:
+    """Keep the vendor's login-popup card for this bid right. Never breaks the bid action that called it."""
+    try:
+        from app.services.pending_action_sync import sync_bid_pending_actions
+
+        sync_bid_pending_actions(db, bid)
+    except Exception:
+        logger.exception("could not update the popup card of bid %s", getattr(bid, "bid_number", "?"))
 
 
 # --------------------------------------------------------------------------- entering and editing
@@ -333,13 +460,27 @@ def dates_for_allocation(bid: Bid, today: date) -> tuple[date, date]:
     return confirm_by, submit_by
 
 
+def confirm_due_for(bid: Bid, now: datetime) -> datetime:
+    """Accept or reject within `bid_confirm_hours` (48) of the allocation, but never later than the end of the day before
+    the closing date. If that is almost now, the end of the closing day is the most that can be given."""
+    due = now + timedelta(hours=max(1, settings.bid_confirm_hours))
+    cap = datetime.combine(bid.end_date - timedelta(days=1), clock(23, 59, 59), IST).astimezone(timezone.utc)
+    if cap <= now + timedelta(hours=1):
+        cap = datetime.combine(bid.end_date, clock(23, 59, 59), IST).astimezone(timezone.utc)
+    return min(due, cap)
+
+
 def refresh_bid(db: Session, bid: Bid, today: date | None = None) -> str | None:
     """Apply the time rules to one bid. Returns 'released', 'closed' or None."""
     today = today or today_ist()
-    if bid.status == "Allocated" and bid.confirm_by and today > bid.confirm_by and not bid.is_self:
-        who = _vendor_name(db, bid)
-        release_bid(db, bid, f"{who} did not confirm by {fmt_date(bid.confirm_by)}", None, automatic=True)
-        return "released"
+    if bid.status == "Allocated" and not bid.is_self:
+        due = aware(bid.confirm_due_at)
+        late = moment(today) > due if due is not None else bool(bid.confirm_by and today > bid.confirm_by)
+        if late:
+            who = _vendor_name(db, bid)
+            by = fmt_moment(due) if due is not None else fmt_date(bid.confirm_by)
+            release_bid(db, bid, f"{who} did not accept or reject by {by}", None, automatic=True)
+            return "released"
     if (
         bid.status == "Confirmed" and not bid.is_self and bid.submit_by
         and today > bid.submit_by and today <= bid.end_date
@@ -354,6 +495,7 @@ def refresh_bid(db: Session, bid: Bid, today: date | None = None) -> str | None:
         _mail_team(db, f"Bid closed without a submission: {bid.bid_number}", _bid_lines(bid) + ["The end date passed and nothing was submitted."])
         if bid.vendor_id:
             _mail_vendor(db.get(Vendor, bid.vendor_id), f"Bid closed: {bid.bid_number}", _bid_lines(bid) + ["This bid closed without a submission."])
+        _sync_cards(db, bid)
         return "closed"
     return None
 
@@ -396,6 +538,11 @@ def allocate_bid(
     bid.is_self = bool(self_bid)
     bid.allocated_at = datetime.now(timezone.utc)
     bid.confirm_by, bid.submit_by = dates_for_allocation(bid, today)
+    bid.confirm_due_at = None if self_bid else confirm_due_for(bid, moment(today))
+    if bid.confirm_due_at is not None:
+        bid.confirm_by = bid.confirm_due_at.astimezone(IST).date()
+    bid.accept_remind_24_at = None
+    bid.accept_remind_2_at = None
     bid.confirmed_at = None
     bid.submitted_at = None
     bid.submission_ref = None
@@ -406,7 +553,7 @@ def allocate_bid(
         tail = ". INDcool bids itself, so it is confirmed at once"
     else:
         bid.status = "Allocated"
-        tail = f". Confirm by {fmt_date(bid.confirm_by)}, submit by {fmt_date(bid.submit_by)}"
+        tail = f". Accept or reject by {fmt_moment(bid.confirm_due_at)}, submit by {fmt_date(bid.submit_by)}"
     if override:
         # the override line names the old bidder and the reason: internal, so it has no vendor_id and no vendor ever sees it
         add_event(db, bid, actor, "override", f"ADMIN OVERRIDE: reassigned from {holder} to {new_name}. Reason: {reason.strip()}{tail}")
@@ -414,13 +561,13 @@ def allocate_bid(
     add_event(db, bid, actor, "allocated", f"Allocated to {new_name}{tail}", vendor_id=bid.vendor_id)
     db.flush()
     if not self_bid:
+        hours = max(1, round((aware(bid.confirm_due_at) - moment(today)).total_seconds() / 3600))
         _mail_vendor(
             vendor,
-            f"Bid allocated to you: {bid.bid_number}",
-            ["A bid has been allocated to you by INDcool."] + _bid_lines(bid) + [
-                f"Please confirm in the CRM by {fmt_date(bid.confirm_by)}. After that the bid goes back to INDcool.",
-                f"Submit on the portal by {fmt_date(bid.submit_by)}.",
-            ],
+            f"Bid allocated to you: {bid.bid_number}. Accept or reject within {hours} hours",
+            _accept_mail(bid, "#1d4ed8", "A bid has been allocated to you", f"Accept or reject within {hours} hours · by {fmt_moment(bid.confirm_due_at)}",
+                         f"INDcool has allocated the bid below to you. Please accept or reject it by <b>{fmt_moment(bid.confirm_due_at)}</b>.",
+                         "If there is no answer, the bid will be withdrawn and opened for allocation to another eligible vendor."),
         )
     if override and prev_vendor is not None and (self_bid or prev_vendor.id != vendor.id):
         _mail_vendor(
@@ -431,6 +578,7 @@ def allocate_bid(
         add_event(db, bid, actor, "taken_back", "Taken back by INDcool", vendor_id=prev_vendor.id)
     if override:
         _mail_team(db, f"Admin override on bid {bid.bid_number}", _bid_lines(bid) + [f"Now with {new_name}.", f"Reason: {reason.strip()}"])
+    _sync_cards(db, bid)
     return bid
 
 
@@ -451,6 +599,7 @@ def release_bid(
     bid.is_self = False
     bid.status = "Open"
     bid.confirm_by = None
+    bid.confirm_due_at = None
     bid.submit_by = None
     bid.allocated_at = None
     bid.confirmed_at = None
@@ -468,6 +617,7 @@ def release_bid(
             actor_name=None if actor else "System",
         )
     db.flush()
+    _sync_cards(db, bid)
     _mail_team(db, f"Bid is free again: {bid.bid_number}", _bid_lines(bid) + [why])
     if prev_vendor is not None and notify_vendor:
         _mail_vendor(
@@ -489,6 +639,9 @@ def confirm_bid(db: Session, bid: Bid, actor: User, *, on_behalf: bool = False, 
     who = _vendor_name(db, bid)
     suffix = f" (confirmed by {actor.name} for them)" if on_behalf else ""
     add_event(db, bid, actor, "confirmed", f"{who} confirmed bidding{suffix}", vendor_id=bid.vendor_id)
+    bid.confirm_due_at = None
+    db.flush()
+    _sync_cards(db, bid)
     _mail_team(db, f"{who} confirmed bid {bid.bid_number}", _bid_lines(bid) + [f"Submit on the portal by {fmt_date(bid.submit_by)}."])
     return bid
 
@@ -522,6 +675,8 @@ def submit_bid(db: Session, bid: Bid, actor: User, reference: str | None = None,
         f"{who} marked it submitted" + (f". Acknowledgement {bid.submission_ref}" if bid.submission_ref else ""),
         vendor_id=bid.vendor_id,
     )
+    db.flush()
+    _sync_cards(db, bid)
     _mail_team(db, f"Bid submitted: {bid.bid_number}", _bid_lines(bid) + [f"Submitted by {who}." + (f" Acknowledgement {bid.submission_ref}." if bid.submission_ref else "")])
     return bid
 
@@ -534,6 +689,8 @@ def set_result(db: Session, bid: Bid, actor: User, result: str, note: str | None
     bid.status = result
     bid.result_note = (note or "").strip() or None
     add_event(db, bid, actor, "result", f"Result: {result}" + (f". {bid.result_note}" if bid.result_note else ""), vendor_id=bid.vendor_id)
+    db.flush()
+    _sync_cards(db, bid)
     if bid.vendor_id:
         _mail_vendor(db.get(Vendor, bid.vendor_id), f"Bid result: {bid.bid_number} {result}", _bid_lines(bid) + [f"Result: {result}."] + ([bid.result_note] if bid.result_note else []))
     return bid
@@ -635,8 +792,10 @@ def allocate_from_request(db: Session, request: BidRequest, actor: User, *, can_
 
 # --------------------------------------------------------------------------- scheduled rules and reminders
 
-def run_rules(db: Session, today: date | None = None, *, send_reminders: bool = True) -> dict:
-    """Release late bids, close ended bids and send the daily reminders. Safe to run many times a day."""
+def run_rules(db: Session, today: date | None = None, *, send_reminders: bool = True, accept_reminders: bool | None = None) -> dict:
+    """Release late bids, close ended bids and send the reminders. Safe to run many times a day.
+    The "24 hours / 2 hours left to accept or reject" mails go at any hour; the morning mails only after the reminder hour."""
+    today_given = today is not None
     today = today or today_ist()
     summary = {"released": 0, "closed": 0, "reminders": 0}
     for bid in db.scalars(select(Bid).where(Bid.status.in_(("Open", "Allocated", "Confirmed")))).all():
@@ -644,38 +803,88 @@ def run_rules(db: Session, today: date | None = None, *, send_reminders: bool = 
         if outcome:
             summary[outcome] += 1
     db.flush()
+    for bid in db.scalars(select(Bid).where(Bid.status.in_(("Allocated", "Confirmed")), Bid.is_self.is_(False), Bid.vendor_id.isnot(None))).all():
+        _sync_cards(db, bid)  # the hours left on the popup card go down as time passes
+    if accept_reminders is None:
+        accept_reminders = send_reminders
+    if accept_reminders:
+        summary["reminders"] += send_accept_reminders(db, moment(today if today_given else None))
     if send_reminders:
-        summary["reminders"] = send_due_reminders(db, today)
+        summary["reminders"] += send_due_reminders(db, today)
     db.commit()
     flush_outbox()
     return summary
 
 
-def send_due_reminders(db: Session, today: date) -> int:
-    """Daily from 3 days before closing until closing day, to the allocated vendor only, never after submission."""
+def _held_by_vendor(db: Session, status: str) -> list[Bid]:
+    return list(db.scalars(select(Bid).where(Bid.status == status, Bid.is_self.is_(False), Bid.vendor_id.isnot(None))).all())
+
+
+def send_accept_reminders(db: Session, now: datetime | None = None) -> int:
+    """One mail at 24 hours left and one at 2 hours left to accept or reject, to the vendor the bid is with."""
+    now = now or moment()
     sent = 0
-    held = db.scalars(select(Bid).where(Bid.status.in_(("Allocated", "Confirmed")), Bid.is_self.is_(False), Bid.vendor_id.isnot(None))).all()
-    for bid in held:
+    for bid in _held_by_vendor(db, "Allocated"):
+        due = aware(bid.confirm_due_at)
+        if due is None:
+            continue
+        left = (due - now).total_seconds() / 3600
+        if left <= 0:
+            continue
+        window = (due - (aware(bid.allocated_at) or now)).total_seconds() / 3600  # how long the vendor was given
+        if left <= 2 and window > 3 and bid.accept_remind_2_at is None:
+            kind, color = 2, "#b91c1c"
+        elif left <= 24 and window > 26 and bid.accept_remind_24_at is None and bid.accept_remind_2_at is None:
+            kind, color = 24, "#c2410c"
+        else:
+            continue
+        vendor = db.get(Vendor, bid.vendor_id)
+        if kind == 2:
+            subject = f"LAST WARNING: bid {bid.bid_number} will be withdrawn in 2 hours"
+            bar, sub = "LAST WARNING. Your answer is still needed", f"2 hours left · until {fmt_moment(due)}"
+            lead = f"<b>Only 2 hours left.</b> Please accept or reject the bid below by <b>{fmt_moment(due)}</b>."
+            box = "If you do not answer, the bid will be withdrawn from you and opened for allocation to another eligible vendor."
+        else:
+            subject = f"Reminder: accept or reject bid {bid.bid_number}. 24 hours left"
+            bar, sub = "Your answer is still needed", f"24 hours left · until {fmt_moment(due)}"
+            lead = f"You have not yet answered for the bid below. Only <b>24 hours</b> are left (until <b>{fmt_moment(due)}</b>)."
+            box = "After that the bid will be withdrawn and opened for allocation to another eligible vendor."
+        ok = _mail_vendor(vendor, subject, _accept_mail(bid, color, bar, sub, lead, box))
+        stamp = datetime.now(timezone.utc)
+        if kind == 2:
+            bid.accept_remind_2_at = stamp
+            bid.accept_remind_24_at = bid.accept_remind_24_at or stamp
+        else:
+            bid.accept_remind_24_at = stamp
+        name = vendor.name_of_firm if vendor else "the vendor"
+        add_event(
+            db, bid, None, "reminder",
+            f"Reminder emailed to {name} ({kind} hours left to accept or reject)" if ok
+            else f"Reminder could not be emailed to {name} (no valid email or mail is off)",
+            vendor_id=bid.vendor_id,
+        )
+        sent += 1
+    return sent
+
+
+def send_due_reminders(db: Session, today: date) -> int:
+    """Every morning from 2 days before the closing date until it is marked submitted, to the vendor who accepted the bid."""
+    sent = 0
+    for bid in _held_by_vendor(db, "Confirmed"):
         days = (bid.end_date - today).days
-        if days < 0 or days > 3:
+        if days < 0 or days > 2:
             continue
         if db.scalar(select(BidReminder.id).where(BidReminder.bid_id == bid.id, BidReminder.sent_on == today)):
             continue
         vendor = db.get(Vendor, bid.vendor_id)
-        when = "TODAY" if days == 0 else f"in {days} day{'s' if days > 1 else ''}"
-        ok = _mail_vendor(
-            vendor,
-            f"Reminder: bid {bid.bid_number} closes on {fmt_date(bid.end_date)}" + (" (TODAY)" if days == 0 else ""),
-            [f"This is a reminder that bid {bid.bid_number} closes on {fmt_date(bid.end_date)} ({when})."]
-            + _bid_lines(bid)[1:2]
-            + ([f"Please confirm bidding in the CRM by {fmt_date(bid.confirm_by)}."] if bid.status == "Allocated" else [])
-            + [f"Submit on the portal by {fmt_date(bid.submit_by)}."],
-        )
+        ok = _mail_vendor(vendor, *_submit_mail(bid, days))
         db.add(BidReminder(bid_id=bid.id, vendor_id=bid.vendor_id, sent_on=today, sent_to=(vendor.email if vendor else None), ok=ok))
+        when = "today" if days == 0 else ("tomorrow" if days == 1 else "in 2 days")
+        name = vendor.name_of_firm if vendor else "the vendor"
         add_event(
             db, bid, None, "reminder",
-            f"Reminder emailed to {vendor.name_of_firm if vendor else 'the vendor'} (closes {when})" if ok else
-            f"Reminder could not be emailed to {vendor.name_of_firm if vendor else 'the vendor'} (no valid email or mail is off)",
+            f"Reminder emailed to {name} (not yet marked submitted, last date {when})" if ok else
+            f"Reminder could not be emailed to {name} (no valid email or mail is off)",
             vendor_id=bid.vendor_id,
         )
         sent += 1
@@ -696,7 +905,7 @@ def _loop() -> None:
             discard_outbox()
             with SessionLocal() as db:
                 reminders_due = settings.bid_reminders_enabled and now_ist_hour() >= settings.bid_reminder_hour_ist
-                result = run_rules(db, send_reminders=reminders_due)
+                result = run_rules(db, send_reminders=reminders_due, accept_reminders=settings.bid_reminders_enabled)
                 if any(result.values()):
                     logger.warning("bid rules ran: %s", result)
         except Exception:

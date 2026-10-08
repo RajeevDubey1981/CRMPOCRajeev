@@ -87,7 +87,7 @@
 .pa-hp { display: inline-flex; align-items: center; gap: 5px; background: #ea580c; color: #fff; font-weight: 800; font-size: 9.5px; letter-spacing: 0.06em; border-radius: 5px; padding: 2px 7px; text-transform: uppercase; }
 .pa-hp::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: #fff; animation: pa-blink 1.4s ease-in-out infinite; }
 @keyframes pa-blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
-.pa-tt { font-size: 13.5px; font-weight: 800; color: #12295c; margin: 3px 0 1px; word-break: break-all; }
+.pa-tt { font-size: 13.5px; font-weight: 800; color: #12295c; margin: 3px 0 1px; overflow-wrap: anywhere; }
 .pa-ms { font-size: 12.5px; color: #4b5565; }
 .pa-st { display: inline-block; margin-top: 5px; font-size: 10.5px; color: #475569; background: #f1f4f9; border: 1px solid #e3e9f2; border-radius: 5px; padding: 1px 8px; }
 .pa-ac { display: flex; gap: 7px; align-items: center; flex: none; }
@@ -139,3 +139,13 @@
 .pa-pick.is-read .pa-box { background: #1a7a45; border-color: #1a7a45; }
 .pa-pick.is-read .pa-pick-t { color: #1a7a45; }
 .pa-card.picked { border-color: #1e3a78; box-shadow: 0 0 0 2px rgba(30, 58, 120, 0.15); }
+
+/* a card with a time limit (a bid to accept or reject, or to mark submitted): the time pill and the "stays" note */
+.pa-time { display: inline-block; margin-left: 8px; border-radius: 999px; padding: 1px 9px; font-size: 11px; font-weight: 800; vertical-align: 1px; white-space: nowrap; word-break: normal; }
+.pa-time.blue { background: #dbeafe; color: #1d4ed8; }
+.pa-time.amber { background: #fef3c7; color: #b45309; }
+.pa-time.orange { background: #ffedd5; color: #c2410c; }
+.pa-time.red { background: #fee2e2; color: #b91c1c; animation: pa-blink 1.2s ease-in-out infinite; }
+.pa-lock { display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 10px; border: 1px dashed #cbd5e1; border-radius: 8px; background: #f8fafc; color: #64748b; font-size: 11px; font-weight: 700; white-space: nowrap; }
+.pa-lock .pa-ico { width: 13px; height: 13px; }
+@media (prefers-reduced-motion: reduce) { .pa-time.red { animation: none; } }

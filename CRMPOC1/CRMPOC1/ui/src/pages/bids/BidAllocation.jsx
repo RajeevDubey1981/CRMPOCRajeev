@@ -15,6 +15,7 @@ import {
   fieldClass,
   fmtDate,
   useBidSide,
+  fmtDateTime,
 } from "./bidUi.jsx";
 
 function OpenRow({ bid, vendors, onDone, onMsg }) {
@@ -88,7 +89,7 @@ export default function BidAllocation() {
       <div className="overflow-x-auto rounded-lg bg-white shadow-sm">
         <table className="min-w-full text-sm">
           <thead className="border-b bg-slate-50 text-left text-xs font-semibold text-slate-600">
-            <tr><th className="px-3 py-2">Bid number</th><th className="px-3 py-2">Bidder</th><th className="px-3 py-2">Status</th><th className="px-3 py-2">Confirm by</th><th className="px-3 py-2">Submit by</th><th className="px-3 py-2">Closes</th><th className="px-3 py-2" /></tr>
+            <tr><th className="px-3 py-2">Bid number</th><th className="px-3 py-2">Bidder</th><th className="px-3 py-2">Status</th><th className="px-3 py-2">Accept or reject by</th><th className="px-3 py-2">Submit by</th><th className="px-3 py-2">Closes</th><th className="px-3 py-2" /></tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
             {held.length === 0 && <tr><td colSpan={7} className="px-3 py-6 text-center text-slate-500">Nothing is locked right now.</td></tr>}
@@ -97,7 +98,7 @@ export default function BidAllocation() {
                 <td className="px-3 py-2"><BidLink bid={b} /></td>
                 <td className="px-3 py-2">{b.vendor_name}</td>
                 <td className="px-3 py-2"><StatusPill bid={b} /></td>
-                <td className="px-3 py-2 whitespace-nowrap">{b.status === "Allocated" ? fmtDate(b.confirm_by) : "—"}</td>
+                <td className="px-3 py-2 whitespace-nowrap">{b.status === "Allocated" ? (b.confirm_due_at ? fmtDateTime(b.confirm_due_at) : fmtDate(b.confirm_by)) : "—"}</td>
                 <td className="px-3 py-2 whitespace-nowrap">{b.status === "Submitted" ? "Submitted" : fmtDate(b.submit_by)}</td>
                 <td className="px-3 py-2 whitespace-nowrap">{fmtDate(b.end_date)}<DaysLeft bid={b} /></td>
                 <td className="px-3 py-2 text-right"><Link to={`/bids/${b.id}`} className={btnGhost}>{side.canOverride ? "Open / override" : "Open"}</Link></td>

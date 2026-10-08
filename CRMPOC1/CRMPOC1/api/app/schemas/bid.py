@@ -112,6 +112,7 @@ class BidOut(BaseModel):
     vendor_name: str | None = None
     is_self: bool = False
     confirm_by: date | None = None
+    confirm_due_at: datetime | None = None
     submit_by: date | None = None
     confirmed_at: datetime | None = None
     submitted_at: datetime | None = None

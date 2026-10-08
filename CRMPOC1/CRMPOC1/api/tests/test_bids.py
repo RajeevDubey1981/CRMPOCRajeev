@@ -205,9 +205,10 @@ class BidApiTests(unittest.TestCase):
         today = svc.today_ist()
         self.assertEqual(out["status"], "Allocated")
         self.assertEqual(out["vendor_name"], "Frost Point")
-        self.assertEqual(out["confirm_by"], (today + timedelta(days=1)).isoformat())
+        self.assertEqual(out["confirm_by"], (today + timedelta(days=2)).isoformat(), "48 hours to accept or reject")
+        self.assertIsNotNone(out["confirm_due_at"])
         self.assertEqual(out["submit_by"], (today + timedelta(days=9)).isoformat())
-        self.assertIn(("frost@t.com", "Bid allocated to you: GEM/2026/B/5821904"), self.sent)
+        self.assertIn(("frost@t.com", "Bid allocated to you: GEM/2026/B/5821904. Accept or reject within 48 hours"), self.sent)
 
     def test_second_vendor_is_refused_while_locked(self):
         bid = self.enter()
@@ -420,8 +421,8 @@ class BidApiTests(unittest.TestCase):
         today = svc.today_ist()
         self.db.expire_all()
         out = svc.run_rules(self.db, today + timedelta(days=1), send_reminders=False)
-        self.assertEqual(out["released"], 0)  # the confirm-by day itself is still fine
-        out = svc.run_rules(self.db, today + timedelta(days=2), send_reminders=False)
+        self.assertEqual(out["released"], 0)  # still inside the 48 hours
+        out = svc.run_rules(self.db, today + timedelta(days=3), send_reminders=False)
         self.assertEqual(out["released"], 1)
         b = self.bid(bid["id"])
         self.assertEqual((b.status, b.vendor_id), ("Open", None))
@@ -468,24 +469,23 @@ class BidApiTests(unittest.TestCase):
         self.assertEqual(r.status_code, 409)
 
     # --- reminders
-    def test_reminders_daily_from_three_days_to_closing_vendor_only_once_a_day(self):
+    def test_reminders_daily_from_two_days_to_closing_vendor_only_once_a_day(self):
         bid = self.enter(days=6)
         self.allocate(bid["id"], self.v1)
         self.client.post(f"/api/bids/{bid['id']}/confirm", headers=self.h(self.vu1))
         end = svc.today_ist() + timedelta(days=6)
-        for offset, expected in ((5, 0), (4, 0), (3, 1), (2, 1), (1, 1), (0, 0)):  # on closing day an unsubmitted bid has already gone back to INDcool
+        for offset, expected in ((5, 0), (4, 0), (3, 0), (2, 1), (1, 1), (0, 0)):  # on closing day an unsubmitted bid has already gone back to INDcool
             self.sent.clear()
             day = end - timedelta(days=offset)
             out = svc.run_rules(self.db, day, send_reminders=True)
             self.assertEqual(out["reminders"], expected, f"{offset} days before")
-            reminder_mails = [m for m in self.sent if m[1].startswith("Reminder:")]
+            reminder_mails = [m for m in self.sent if m[0] == "frost@t.com" and bid["bid_number"] in m[1] and "allocated" not in m[1] and "released" not in m[1]]
             self.assertEqual(len(reminder_mails), expected)
             if expected:
                 self.assertEqual(reminder_mails[0][0], "frost@t.com")
-                self.assertIn(bid["bid_number"], reminder_mails[0][1])
             self.sent.clear()
             self.assertEqual(svc.run_rules(self.db, day, send_reminders=True)["reminders"], 0)  # no double send same day
-        self.assertEqual(len(self.db.scalars(select(BidReminder)).all()), 3)
+        self.assertEqual(len(self.db.scalars(select(BidReminder)).all()), 2)
         self.assertEqual(self.bid(bid["id"]).status, "Open")
 
     def test_no_reminder_after_submission_or_for_self_bids(self):
@@ -648,6 +648,124 @@ class BidApiTests(unittest.TestCase):
         self.assertEqual(bad.status_code, 400)
         empty = self.client.get("/api/bids/stats", headers=self.h(self.vu3)).json()
         self.assertEqual([(r["vendor_name"], r["allocated"]) for r in empty["vendors"]], [("Cool Zone", 0)])
+    # --- 48 hours to accept or reject, the reminders and the login popup cards
+    def _cards(self, user):
+        r = self.client.get("/api/pending-actions", headers=self.h(user))
+        self.assertEqual(r.status_code, 200, r.text)
+        return [i for i in r.json()["items"] if i["module"] == "bids"]
+
+    def test_accept_time_is_48_hours_but_never_past_the_day_before_closing(self):
+        from datetime import datetime, timezone
+
+        bid = self.enter(days=10)
+        self.allocate(bid["id"], self.v1)
+        due = svc.aware(self.bid(bid["id"]).confirm_due_at)
+        self.assertAlmostEqual((due - datetime.now(timezone.utc)).total_seconds() / 3600, 48, delta=0.1)
+        near = self.enter(number="GEM/2026/B/6000001", days=1)
+        self.allocate(near["id"], self.v2)
+        b = self.bid(near["id"])
+        end_of_closing_day = svc.datetime.combine(b.end_date, svc.clock(23, 59, 59), svc.IST)
+        self.assertLessEqual(svc.aware(b.confirm_due_at), end_of_closing_day)
+        self.assertLess(svc.aware(b.confirm_due_at), datetime.now(timezone.utc) + svc.timedelta(hours=48))
+
+    def test_accept_reminders_at_24_and_2_hours_left_each_sent_once(self):
+        bid = self.enter(days=10)
+        self.allocate(bid["id"], self.v1)
+        due = svc.aware(self.bid(bid["id"]).confirm_due_at)
+        self.sent.clear()
+        self.assertEqual(svc.send_accept_reminders(self.db, due - svc.timedelta(hours=30)), 0)
+        self.assertEqual(svc.send_accept_reminders(self.db, due - svc.timedelta(hours=23)), 1)
+        self.db.commit()
+        svc.flush_outbox()
+        self.assertEqual([m[1] for m in self.sent], [f"Reminder: accept or reject bid {bid['bid_number']}. 24 hours left"])
+        self.assertEqual(svc.send_accept_reminders(self.db, due - svc.timedelta(hours=22)), 0, "once")
+        self.sent.clear()
+        self.assertEqual(svc.send_accept_reminders(self.db, due - svc.timedelta(hours=1.5)), 1)
+        self.db.commit()
+        svc.flush_outbox()
+        self.assertEqual([m[1] for m in self.sent], [f"LAST WARNING: bid {bid['bid_number']} will be withdrawn in 2 hours"])
+        self.assertEqual(svc.send_accept_reminders(self.db, due - svc.timedelta(hours=1)), 0, "once")
+        self.assertEqual(svc.send_accept_reminders(self.db, due + svc.timedelta(hours=1)), 0, "nothing after the time is up")
+
+    def test_accept_reminders_skipped_when_the_window_is_short(self):
+        near = self.enter(days=1)
+        self.allocate(near["id"], self.v1)
+        b = self.bid(near["id"])
+        due = svc.aware(b.confirm_due_at)
+        window = (due - svc.aware(b.allocated_at)).total_seconds() / 3600
+        self.sent.clear()
+        sent = svc.send_accept_reminders(self.db, due - svc.timedelta(hours=23))
+        self.assertEqual(sent, 1 if window > 26 else 0, "no 24 hour mail when the vendor was given less than 26 hours")
+
+    def test_popup_cards_for_accept_then_submit_and_they_cannot_be_ticked_away(self):
+        from datetime import datetime, timezone
+
+        bid = self.enter(days=2)
+        self.allocate(bid["id"], self.v1)
+        cards = self._cards(self.vu1)
+        self.assertEqual([(c["action_type"], c["action_label"]) for c in cards], [("bid_accept", "Accept or reject")])
+        self.assertFalse(cards[0]["message"].startswith("HIGH PRIORITY"), "plenty of time left")
+        self.assertEqual(cards[0]["href"], f"/bids/{bid['id']}")
+        self.assertIsNotNone(cards[0]["due_at"])
+        self.assertEqual(self._cards(self.vu2), [], "only the vendor the bid is with")
+        # 20 hours left: urgent
+        b = self.bid(bid["id"])
+        b.confirm_due_at = datetime.now(timezone.utc) + svc.timedelta(hours=20)
+        self.db.commit()
+        svc.run_rules(self.db, send_reminders=False, accept_reminders=False)
+        self.assertTrue(self._cards(self.vu1)[0]["message"].startswith("HIGH PRIORITY - "))
+        # a vendor cannot hide it: marking everything read leaves it
+        self.client.post("/api/pending-actions/mark-read", json={"ids": None}, headers=self.h(self.vu1))
+        self.client.post("/api/pending-actions/mark-read", json={"ids": [cards[0]["id"]]}, headers=self.h(self.vu1))
+        self.assertFalse(self._cards(self.vu1)[0]["is_read"])
+        # accepted: the closing date is 2 days away, so the submit card comes
+        self.client.post(f"/api/bids/{bid['id']}/confirm", headers=self.h(self.vu1))
+        cards = self._cards(self.vu1)
+        self.assertEqual([c["action_type"] for c in cards], ["bid_submit"])
+        self.assertIn("not marked submitted", cards[0]["message"])
+        # submitted: nothing left
+        self.client.post(f"/api/bids/{bid['id']}/submit", json={}, headers=self.h(self.vu1))
+        self.assertEqual(self._cards(self.vu1), [])
+
+    def test_no_submit_card_until_two_days_before_closing_and_declining_removes_the_card(self):
+        far = self.enter(days=10)
+        self.allocate(far["id"], self.v1)
+        self.client.post(f"/api/bids/{far['id']}/confirm", headers=self.h(self.vu1))
+        self.assertEqual(self._cards(self.vu1), [], "10 days to go: no submit card yet")
+        other = self.enter(number="GEM/2026/B/6000002", days=10)
+        self.allocate(other["id"], self.v1)
+        self.assertEqual([c["action_type"] for c in self._cards(self.vu1)], ["bid_accept"])
+        self.client.post(f"/api/bids/{other['id']}/decline", json={"reason": "No stock"}, headers=self.h(self.vu1))
+        self.assertEqual(self._cards(self.vu1), [])
+
+    def test_mails_are_laid_out_with_banner_rows_and_buttons(self):
+        from app.config import settings
+
+        bid = self.enter(days=10)
+        self.allocate(bid["id"], self.v1)
+        b = self.bid(bid["id"])
+        old = settings.app_public_url
+        settings.app_public_url = "https://crm.example.test"
+        try:
+            html, text = svc._render(svc._accept_mail(b, "#1d4ed8", "A bid has been allocated to you", "Accept or reject within 48 hours", "Please <b>answer</b>.", "No answer: withdrawn."))
+            self.assertIn("background:#1d4ed8", html)
+            self.assertIn(f'href="https://crm.example.test/bids/{b.id}"', html)
+            self.assertIn("Accept: I will bid", html)
+            self.assertIn(b.bid_number, html)
+            self.assertNotIn("@banner", html + text)
+            self.assertNotIn("<b>", text)
+            self.assertIn(f"Accept: I will bid: https://crm.example.test/bids/{b.id}", text)
+            subject, lines = svc._submit_mail(b, 1)
+            self.assertIn("Last date is tomorrow", subject)
+            html, _ = svc._render(lines)
+            self.assertIn("Mark as submitted in the CRM", html)
+            self.assertIn("withdrawn from you and opened for allocation to another eligible vendor", html)
+            settings.app_public_url = ""
+            html, _ = svc._render(svc._accept_mail(b, "#1d4ed8", "x", "y", "z", "w"))
+            self.assertNotIn("<a href", html)
+            self.assertIn("Open the CRM", html)
+        finally:
+            settings.app_public_url = old
 
 if __name__ == "__main__":
     unittest.main()

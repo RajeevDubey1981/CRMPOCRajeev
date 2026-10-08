@@ -40,7 +40,8 @@ class Settings(BaseSettings):
     bounce_lookback_days: int = 3
 
     # Bid management
-    bid_confirm_days: int = 1  # a vendor must confirm within this many days of allocation
+    bid_confirm_days: int = 1  # (old rule, kept for bids allocated before the hours rule) days to confirm
+    bid_confirm_hours: int = 48  # a vendor must accept or reject within this many hours of allocation
     bid_submit_buffer_days: int = 1  # and submit this many days before the bid end date
     bid_reminders_enabled: bool = True
     bid_reminder_hour_ist: int = 9

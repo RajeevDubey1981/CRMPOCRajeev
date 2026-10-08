@@ -39,7 +39,10 @@ class Bid(Base, TimestampMixin):
     vendor_id: Mapped[int | None] = mapped_column(ForeignKey("vendors.id"), nullable=True, index=True)
     is_self: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)  # INDcool bids itself
     allocated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    confirm_by: Mapped[date | None] = mapped_column(Date, nullable=True)
+    confirm_by: Mapped[date | None] = mapped_column(Date, nullable=True)  # the day of confirm_due_at
+    confirm_due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)  # accept or reject before this moment
+    accept_remind_24_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)  # the 24 hours left mail was sent
+    accept_remind_2_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)  # the 2 hours left mail was sent
     submit_by: Mapped[date | None] = mapped_column(Date, nullable=True)
     confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
