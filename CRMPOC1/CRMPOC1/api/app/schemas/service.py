@@ -155,6 +155,7 @@ class ServiceRequestUnitOut(BaseModel):
     observation_submitted_at: datetime | None = None
     unit_status: str = "Assigned"
     serial_not_in_order: bool = False
+    return_remarks: str | None = None
     approval_id: int | None = None
     approval_decision: str | None = None
     completion_id: int | None = None
@@ -181,6 +182,12 @@ class ServiceRequestUnitOut(BaseModel):
 class ServiceSerialVerifyIn(BaseModel):
     serial_no: str | None = Field(default=None, max_length=100)
     unit_id: int | None = None
+
+
+class ServiceSerialMismatchReturnIn(BaseModel):
+    unit_id: int
+    scanned_serial_no: str = Field(min_length=1, max_length=100)
+    remarks: str | None = Field(default=None, max_length=500)
 
 
 class ServiceSerialReviewIn(BaseModel):

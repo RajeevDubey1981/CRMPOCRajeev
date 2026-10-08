@@ -140,6 +140,22 @@ function proofActionLink(unit, onOpen) {
   );
 }
 
+function normalizeSerial(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function unitExpectedSerials(unit) {
+  const values = Array.isArray(unit?.serial_values) && unit.serial_values.length
+    ? unit.serial_values
+    : [unit?.serial_no, unit?.serial_no_2];
+  return values.map((value) => String(value || "").trim()).filter(Boolean);
+}
+
+function serialMatchesExpectedUnit(unit, serial) {
+  const normalized = normalizeSerial(serial);
+  return Boolean(normalized) && unitExpectedSerials(unit).some((value) => normalizeSerial(value) === normalized);
+}
+
 const DONE_COMPLETE = ["Service Completed", "Payment Requested", "Payment Completed", "Closed"];
 const DONE_PAYMENT = ["Payment Requested", "Payment Completed", "Closed"];
 const GUIDE_STEPS = [
@@ -238,6 +254,10 @@ export default function EngineerUnitWorkflowPanel({
   const [completionReviewRemarks, setCompletionReviewRemarks] = useState({});
   const [activeModal, setActiveModal] = useState(null);
   const [newVisitSerial, setNewVisitSerial] = useState("");
+  const [failedVisitSerial, setFailedVisitSerial] = useState("");
+  const [returnUnitId, setReturnUnitId] = useState("");
+  const [failedReturnRemark, setFailedReturnRemark] = useState("");
+  const [returnRemarks, setReturnRemarks] = useState({});
 
   useEffect(() => {
     setRows(workUnits.map((unit) => emptyRow(unit)));
@@ -265,7 +285,6 @@ export default function EngineerUnitWorkflowPanel({
   const canVerifyOrObserve = Boolean(
     (isEngineer || isVendor || isServiceTeam)
     && workUnits.length > 0
-    && ["Assigned", "Engineer Visit", "Serial Verified", "Pending Service Approval", "Service In Progress"].includes(service?.status),
   );
 
   const unverifiedUnits = workUnits.filter((unit) => !unit.serial_verified_at && unit.unit_status === "Assigned");
@@ -309,6 +328,13 @@ export default function EngineerUnitWorkflowPanel({
     }));
   }
 
+  function updateReturnRemark(unitId, value) {
+    setReturnRemarks((current) => ({
+      ...current,
+      [unitId]: value,
+    }));
+  }
+
   async function verifyOne(unit) {
     const serialNo = (serialInputs[unit.id] || "").trim();
     if (!serialNo) return;
@@ -324,6 +350,28 @@ export default function EngineerUnitWorkflowPanel({
     });
   }
 
+  async function returnSerialMismatch(unit) {
+    const serialNo = (serialInputs[unit.id] || "").trim();
+    if (!serialNo) return;
+    const expected = unitExpectedSerials(unit).join(", ") || "assigned serial";
+    const confirmed = window.confirm(
+      `Return this service request to Admin/INDcool?\n\nAssigned serial: ${expected}\nScanned/entered serial: ${serialNo}`,
+    );
+    if (!confirmed) return;
+    const defaultRemark = `Engineer scanned/entered serial ${serialNo}, which does not match assigned serial ${expected}.`;
+    const typedRemark = (returnRemarks[unit.id] || "").trim();
+    await run(
+      () => servicesApi.returnSerialMismatch(service.id, {
+        unit_id: unit.id,
+        scanned_serial_no: serialNo,
+        remarks: typedRemark || defaultRemark,
+      }),
+      { successMessage: `Returned for serial mismatch with scanned serial ${serialNo}.` },
+    );
+    updateReturnRemark(unit.id, "");
+    closeModal();
+  }
+
   async function verifyAll() {
     await run(
       () => servicesApi.verifySerialsBulk(service.id, { unit_ids: unverifiedUnits.map((unit) => unit.id) }),
@@ -334,10 +382,15 @@ export default function EngineerUnitWorkflowPanel({
   async function addSerialToVisit() {
     const serial = newVisitSerial.trim();
     if (!serial || busy) return;
-    setNewVisitSerial("");
+    setFailedVisitSerial(serial);
+    setReturnUnitId((current) => current || String(unverifiedUnits[0]?.id || workUnits[0]?.id || ""));
     await run(
       async () => {
         const updated = await servicesApi.addUnitBySerial(service.id, { serial_no: serial });
+        setNewVisitSerial("");
+        setFailedVisitSerial("");
+        setReturnUnitId("");
+        setFailedReturnRemark("");
         const assignedToYou = (updated.units || []).some(
           (unit) => engineerIdsMatch(unit.assigned_engineer_id, userId),
         );
@@ -348,6 +401,30 @@ export default function EngineerUnitWorkflowPanel({
       },
       { scrollToId: "engineer-serial-workflow-table" },
     );
+  }
+
+  async function returnFailedVisitSerial() {
+    const serialNo = (failedVisitSerial || newVisitSerial).trim();
+    const unit = workUnits.find((row) => String(row.id) === String(returnUnitId));
+    if (!serialNo || !unit) return;
+    const expected = unitExpectedSerials(unit).join(", ") || "assigned serial";
+    const confirmed = window.confirm(
+      `Return this service request to Admin/INDcool?\n\nSelected assigned serial: ${expected}\nScanned/entered serial: ${serialNo}`,
+    );
+    if (!confirmed) return;
+    const defaultRemark = `Engineer scanned/entered serial ${serialNo}, which does not match selected assigned serial ${expected}.`;
+    await run(
+      () => servicesApi.returnSerialMismatch(service.id, {
+        unit_id: unit.id,
+        scanned_serial_no: serialNo,
+        remarks: failedReturnRemark.trim() || defaultRemark,
+      }),
+      { successMessage: `Returned for serial mismatch with scanned serial ${serialNo}.` },
+    );
+    setFailedVisitSerial("");
+    setNewVisitSerial("");
+    setReturnUnitId("");
+    setFailedReturnRemark("");
   }
 
   function openSerialReview(unit) {
@@ -975,6 +1052,15 @@ export default function EngineerUnitWorkflowPanel({
     const unit = activeUnit();
     if (!unit || activeModal?.type !== "serial") return null;
     const isChange = unit.unit_status === "Serial Verification Pending";
+    const enteredSerial = (serialInputs[unit.id] || "").trim();
+    const expectedSerials = unitExpectedSerials(unit);
+    const serialMismatch = Boolean(
+      isEngineer
+      && !isChange
+      && enteredSerial
+      && expectedSerials.length > 0
+      && !serialMatchesExpectedUnit(unit, enteredSerial),
+    );
     return (
       <Modal open onClose={closeModal} title={isChange ? "Change serial for admin review" : "Verify serial"} maxWidth="max-w-md">
         <div className="space-y-3">
@@ -990,8 +1076,35 @@ export default function EngineerUnitWorkflowPanel({
             placeholder="Serial number"
             autoFocus
           />
+          {serialMismatch && (
+            <div className="space-y-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+              <p>
+                Scanned serial does not match assigned serial {expectedSerials.join(", ")}. Return it to Admin/INDcool
+                with this scanned serial for review.
+              </p>
+              <div>
+                <label className="mb-1 block text-xs font-medium uppercase text-amber-900">Return remark</label>
+                <textarea
+                  value={returnRemarks[unit.id] || ""}
+                  onChange={(event) => updateReturnRemark(unit.id, event.target.value)}
+                  rows={2}
+                  placeholder="Why is this request being returned?"
+                  className="w-full rounded-md border border-amber-300 bg-white px-3 py-2 text-sm text-slate-800"
+                />
+              </div>
+            </div>
+          )}
           <div className="flex justify-end gap-2">
             <button type="button" onClick={closeModal} className="rounded-md border border-slate-300 px-3 py-2 text-sm">Cancel</button>
+            {serialMismatch && (
+              <button
+                type="button"
+                onClick={() => returnSerialMismatch(unit)}
+                className="rounded-md border border-amber-400 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-800"
+              >
+                Return with scanned serial
+              </button>
+            )}
             <button
               type="button"
               onClick={() => verifyOne(unit).then(closeModal)}
@@ -1028,6 +1141,13 @@ export default function EngineerUnitWorkflowPanel({
           ) : (
             <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
               Engineer submitted serial <strong className="font-mono">{unit.serial_no}</strong> for approval.
+            </div>
+          )}
+
+          {unit.return_remarks && (
+            <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+              <div className="text-xs font-medium uppercase text-amber-800">Engineer return remark</div>
+              <div className="mt-1 whitespace-pre-wrap">{unit.return_remarks}</div>
             </div>
           )}
 
@@ -1734,7 +1854,53 @@ export default function EngineerUnitWorkflowPanel({
         </button>
       </div>
       {actionError && (
-        <p className="text-sm text-rose-700">{actionError}</p>
+        <div className="space-y-2">
+          <p className="text-sm text-rose-700">{actionError}</p>
+          {isEngineer && (failedVisitSerial || newVisitSerial.trim()) && workUnits.length > 0 && (
+            <div className="rounded-md border border-amber-300 bg-amber-50 p-3">
+              <div className="text-sm font-medium text-amber-900">
+                Return with scanned serial
+              </div>
+              <p className="mt-1 text-xs text-amber-800">
+                Select the assigned serial row that the engineer visited. The scanned/entered serial will be sent to
+                Admin/INDcool for review.
+              </p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <select
+                  value={returnUnitId}
+                  onChange={(event) => setReturnUnitId(event.target.value)}
+                  className="min-w-[16rem] flex-1 rounded-md border border-amber-300 bg-white px-3 py-2 text-sm"
+                >
+                  <option value="">Choose assigned serial</option>
+                  {workUnits.map((unit) => {
+                    const serials = unitExpectedSerials(unit);
+                    const label = serials.length ? serials.join(" / ") : `Unit ${unit.id}`;
+                    return (
+                      <option key={unit.id} value={unit.id}>
+                        {label}
+                      </option>
+                    );
+                  })}
+                </select>
+                <textarea
+                  value={failedReturnRemark}
+                  onChange={(event) => setFailedReturnRemark(event.target.value)}
+                  rows={2}
+                  placeholder="Return remark for Admin/INDcool"
+                  className="min-w-[16rem] flex-1 rounded-md border border-amber-300 bg-white px-3 py-2 text-sm"
+                />
+                <button
+                  type="button"
+                  onClick={returnFailedVisitSerial}
+                  disabled={busy || !returnUnitId || !(failedVisitSerial || newVisitSerial.trim())}
+                  className="rounded-md border border-amber-500 bg-white px-4 py-2 text-sm font-bold text-amber-800 disabled:opacity-50"
+                >
+                  Return {failedVisitSerial || newVisitSerial.trim()}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
       )}
     </div>
   );
@@ -1748,7 +1914,7 @@ export default function EngineerUnitWorkflowPanel({
         {!busy && (service?.units || []).length > 0 && workUnits.length === 0 && isEngineer && (
           <p className="text-sm text-amber-800">
             This order has {service.units.length} unit(s) on the request, but none are assigned to you yet. Adding a serial
-            here assigns that unit to you and opens the verify → service steps.
+            here assigns that unit to you and opens the verify to service steps.
           </p>
         )}
       </section>
@@ -1762,7 +1928,7 @@ export default function EngineerUnitWorkflowPanel({
           Serial workflow (per unit)
         </h2>
         <p className="mt-1 text-sm text-slate-600">
-          Each serial moves step by step: verify → observation → approval → <strong>complete service (with proof)</strong> → <strong>raise payment</strong> → admin payment approval. Only admin closes the request.
+          Each serial moves step by step: verify to observation to approval to <strong>complete service (with proof)</strong> to <strong>raise payment</strong> to admin payment approval. Only admin closes the request.
         </p>
       </div>
 
@@ -1831,16 +1997,24 @@ export default function EngineerUnitWorkflowPanel({
                 )}
               </div>
               {isServiceTeam && (
-                <select
-                  value={unitBillingValue(unit)}
-                  disabled={busy || unitBillingLocked(unit) || !unit.serial_no}
-                  onChange={(event) => saveUnitBilling(unit, event.target.value)}
-                  className="mt-2 w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm disabled:bg-slate-100"
-                  aria-label="Free or paid service"
-                >
-                  <option value="Free">Free service</option>
-                  <option value="Paid">Paid service</option>
-                </select>
+                <>
+                  <select
+                    value={unitBillingValue(unit)}
+                    disabled={busy || unitBillingLocked(unit) || !unit.serial_no}
+                    onChange={(event) => saveUnitBilling(unit, event.target.value)}
+                    className="mt-2 w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm disabled:bg-slate-100"
+                    aria-label="Free or paid service"
+                  >
+                    <option value="Free">Free service</option>
+                    <option value="Paid">Paid service</option>
+                  </select>
+                  {unit.return_remarks && (
+                    <div className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                      <div className="font-medium">Return remark</div>
+                      <div className="mt-1 whitespace-pre-wrap">{unit.return_remarks}</div>
+                    </div>
+                  )}
+                </>
               )}
               {!isEngineer && (
                 <div className="mt-2 space-y-1 text-xs text-slate-600">
@@ -1876,6 +2050,7 @@ export default function EngineerUnitWorkflowPanel({
               <th className="px-3 py-2">Serial</th>
               <th className="px-3 py-2">Photos</th>
               <th className="px-3 py-2">Status</th>
+              {isServiceTeam && <th className="px-3 py-2">Return remark</th>}
               <th className="px-3 py-2">Verify</th>
               {!isEngineer && <th className="px-3 py-2">Steps</th>}
               {!isEngineer && <th className="px-3 py-2">Progress</th>}
@@ -1916,6 +2091,15 @@ export default function EngineerUnitWorkflowPanel({
                     />
                   </td>
                   <td className="px-3 py-2"><StatusBadge value={unit.unit_status || "Assigned"} /></td>
+                  {isServiceTeam && (
+                    <td className="max-w-xs px-3 py-2 text-xs text-slate-700">
+                      {unit.return_remarks ? (
+                        <span className="whitespace-pre-wrap">{unit.return_remarks}</span>
+                      ) : (
+                        <span className="text-slate-400">-</span>
+                      )}
+                    </td>
+                  )}
                   <td className="px-3 py-2">
                     {verified ? (
                       <span className="text-xs text-emerald-700">Verified</span>

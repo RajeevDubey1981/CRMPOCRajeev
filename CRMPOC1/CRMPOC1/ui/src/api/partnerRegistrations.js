@@ -32,6 +32,15 @@ export const partnerRegistrationsApi = {
   resendEmail: (id) => api.post(`/api/partner-registrations/${id}/resend-email`).then((r) => r.data),
   invite: (body) => api.post("/api/partner-registrations/invite", body).then((r) => r.data),
   update: (id, body) => api.put(`/api/partner-registrations/${id}`, body).then((r) => r.data),
+  uploadDocument: (id, documentKey, file) => {
+    const body = new FormData();
+    body.append("file", file);
+    return api
+      .post(`/api/partner-registrations/${id}/documents/${documentKey}`, body, {
+        headers: { "Content-Type": "multipart/form-data" },
+      })
+      .then((r) => r.data);
+  },
   reject: (id, body) => api.post(`/api/partner-registrations/${id}/reject`, body).then((r) => r.data),
   agreement: (id) => api.get(`/api/partner-registrations/${id}/agreement`).then((r) => r.data),
   downloadAgreement: async (id) => {

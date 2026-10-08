@@ -25,6 +25,7 @@ export const servicesApi = {
   assign: (id, body) => api.post(`/api/services/${id}/assign`, body).then((r) => r.data),
   cancelAssignment: (id) => api.post(`/api/services/${id}/assignment-cancel`).then((r) => r.data),
   verifySerial: (id, body) => api.post(`/api/services/${id}/verify-serial`, body).then((r) => r.data),
+  returnSerialMismatch: (id, body) => api.post(`/api/services/${id}/return-serial-mismatch`, body).then((r) => r.data),
   reviewSerial: (id, body) => api.post(`/api/services/${id}/serial-verification-review`, body).then((r) => r.data),
   verifySerialsBulk: (id, body) => api.post(`/api/services/${id}/verify-serials-bulk`, body).then((r) => r.data),
   submitObservation: (id, body) => api.post(`/api/services/${id}/observations`, body).then((r) => r.data),

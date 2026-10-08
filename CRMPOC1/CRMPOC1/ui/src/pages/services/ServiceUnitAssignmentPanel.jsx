@@ -2,10 +2,25 @@ import { useEffect, useMemo, useState } from "react";
 import { servicesApi } from "../../api/services.js";
 import WarrantyBadge from "../../components/WarrantyBadge.jsx";
 import { formatApiError } from "../../utils/apiError.js";
-import { ENGINEER_ASSIGNMENT_HINT, formatEngineerOptionLabel } from "../../utils/engineerAssignment.js";
+import { ENGINEER_ASSIGNMENT_HINT, engineerIdsMatch, formatEngineerOptionLabel } from "../../utils/engineerAssignment.js";
 
 function serialCell(value) {
-  return value ? <span className="font-mono text-xs">{value}</span> : <span className="text-slate-400">—</span>;
+  return value ? <span className="font-mono text-xs">{value}</span> : <span className="text-slate-400">-</span>;
+}
+
+function displayCode(value) {
+  const text = String(value || "").trim();
+  if (!text) return "-";
+  if (/^\d+(?:\.\d+)?e\+\d+$/i.test(text)) {
+    const numberValue = Number(text);
+    if (Number.isFinite(numberValue)) {
+      return numberValue.toLocaleString("en-US", {
+        useGrouping: false,
+        maximumFractionDigits: 0,
+      });
+    }
+  }
+  return text;
 }
 
 export default function ServiceUnitAssignmentPanel({
@@ -13,6 +28,7 @@ export default function ServiceUnitAssignmentPanel({
   engineers,
   isServiceTeam,
   isEngineer,
+  userId,
   onRefresh,
   run,
   workflowUnlocked = true,
@@ -76,8 +92,8 @@ export default function ServiceUnitAssignmentPanel({
 
   const engineerUnits = useMemo(() => {
     if (!isEngineer) return [];
-    return allUnits;
-  }, [allUnits, isEngineer]);
+    return allUnits.filter((unit) => engineerIdsMatch(unit.assigned_engineer_id, userId));
+  }, [allUnits, isEngineer, userId]);
 
   const engineerGroups = useMemo(() => {
     const map = new Map();
@@ -179,7 +195,7 @@ export default function ServiceUnitAssignmentPanel({
             {engineerGroups.map((group) => (
               <div key={group.item_code} className="rounded-md border border-slate-200">
                 <div className="border-b border-slate-200 bg-slate-50 px-4 py-3 text-sm">
-                  <div className="font-medium text-slate-800">{group.item_code} — {group.item_name}</div>
+                  <div className="font-medium text-slate-800">{displayCode(group.item_code)} - {group.item_name || "-"}</div>
                   <div className="text-slate-500">Assigned quantity: {group.units.length}</div>
                 </div>
                 <div className="overflow-x-auto">

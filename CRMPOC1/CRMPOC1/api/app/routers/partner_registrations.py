@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Query, UploadFile, status
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
@@ -24,12 +24,14 @@ from app.schemas.partner_registration import (
     PartnerRegistrationUpdate,
 )
 from app.services.partner_registration import (
+    DOCUMENT_KEYS,
     build_public_registration_url,
     generate_access_token,
     generate_registration_no,
     hydrate_partner,
     refresh_form_progress,
 )
+from app.services.file_service import save_upload
 from app.services.email_service import (
     send_partner_registration_invite_email,
     send_partner_agreement_invite_email,
@@ -91,6 +93,9 @@ OPTIONAL_TEXT_FIELDS = ADMIN_EDITABLE_REGISTRATION_FIELDS - {
 }
 
 UPPERCASE_TEXT_FIELDS = {"gst_no", "pan_no", "udyam_no", "cin_no", "ifsc_code"}
+SHOP_PHOTO_UPLOAD_EXTENSIONS = {".pdf", ".jpg", ".jpeg", ".png"}
+SHOP_PHOTO_UPLOAD_MIME_TYPES = {"application/pdf", "image/jpeg", "image/jpg", "image/png"}
+SHOP_PHOTO_MAX_BYTES = 2 * 1024 * 1024
 
 
 def _normalize_mobile(value: str) -> str:
@@ -413,6 +418,40 @@ def validate_partner_gstin(
     if not gstin:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "This registration has no GSTIN submitted")
     return validate_gstin(gstin)
+
+
+@router.post("/{registration_id}/documents/{document_key}", response_model=PartnerRegistrationOut)
+async def upload_partner_registration_document(
+    registration_id: int,
+    document_key: str,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_partner_permission(db, user, "can_edit", "You do not have permission to edit partner registrations")
+    if document_key not in DOCUMENT_KEYS:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid document type")
+
+    row = db.get(PartnerRegistration, registration_id)
+    if row is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Partner registration not found")
+    if not file.filename:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "File is required")
+
+    is_shop_photo = document_key.startswith("shop_photo_")
+    path = await save_upload(
+        file,
+        module="partners",
+        allowed_ext=SHOP_PHOTO_UPLOAD_EXTENSIONS if is_shop_photo else None,
+        allowed_mime=SHOP_PHOTO_UPLOAD_MIME_TYPES if is_shop_photo else None,
+        max_bytes=SHOP_PHOTO_MAX_BYTES if is_shop_photo else 2 * 1024 * 1024,
+    )
+    setattr(row, f"{document_key}_path", path)
+    row.current_form_step = max(row.current_form_step, 8)
+    refresh_form_progress(row)
+    db.commit()
+    db.refresh(row)
+    return hydrate_partner(row)
 
 
 @router.post("/{registration_id}/reject", response_model=PartnerRegistrationOut)

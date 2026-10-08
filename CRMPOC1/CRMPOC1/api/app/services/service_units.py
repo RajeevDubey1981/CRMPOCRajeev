@@ -437,6 +437,7 @@ def build_unit_rows(
             "observation_submitted_at": observation.submitted_at if observation else None,
             "unit_status": unit.unit_status,
             "serial_not_in_order": serial_not_in_order,
+            "return_remarks": unit.remarks,
             "approval_id": approval.id if approval else None,
             "approval_decision": approval.decision if approval else None,
             "completion_id": completion.id if completion else None,

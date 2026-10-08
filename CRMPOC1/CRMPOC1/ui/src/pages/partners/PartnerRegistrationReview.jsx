@@ -109,6 +109,36 @@ function DocumentLink({ label, path }) {
   );
 }
 
+function DocumentUploadCard({ doc, path, accept, disabled, busy, error, onUpload }) {
+  return (
+    <div className="rounded-md border border-dashed border-slate-300 bg-white p-3">
+      <div className="text-sm font-medium text-slate-800">
+        {doc.label}
+        {doc.required ? <span className="text-rose-600"> *</span> : null}
+      </div>
+      {path ? (
+        <a href={toDownloadUrl(path)} target="_blank" rel="noreferrer" className="mt-1 inline-block text-xs text-sky-700 underline">
+          View uploaded file
+        </a>
+      ) : (
+        <div className="mt-1 text-xs text-slate-500">No file uploaded.</div>
+      )}
+      <input
+        type="file"
+        accept={accept}
+        disabled={disabled}
+        onChange={(event) => {
+          onUpload(doc.key, event.target.files?.[0] || null);
+          event.target.value = "";
+        }}
+        className="mt-2 block w-full text-sm text-slate-700"
+      />
+      {busy && <div className="mt-2 text-xs text-sky-700">Uploading...</div>}
+      {error && <div className="mt-2 text-xs text-rose-700">{error}</div>}
+    </div>
+  );
+}
+
 // Fields the vendor submitted vs. what the GST registry says for that GSTIN.
 // Shown side-by-side so the admin can spot mismatches before approving.
 const COMPARISON_ROWS = [
@@ -135,6 +165,11 @@ const REVIEW_STEPS = [
 
 const PARTNER_TYPE_OPTIONS = ["Gem Partner", "CSD Dealer", "Distributor", "Service Partner", "Retailer", "Partner"];
 const BUSINESS_TYPE_OPTIONS = ["Proprietorship", "Partnership", "LLP", "Private Limited", "Public Limited", "Trust / Society", "Other"];
+const DOCUMENT_FILE_EXTENSIONS = new Set(["pdf", "jpg", "jpeg", "png", "doc", "docx"]);
+const SHOP_PHOTO_FILE_EXTENSIONS = new Set(["pdf", "jpg", "jpeg", "png"]);
+const SHOP_PHOTO_MAX_BYTES = 2 * 1024 * 1024;
+const DOCUMENT_ACCEPT = ".pdf,.jpg,.jpeg,.png,.doc,.docx";
+const SHOP_PHOTO_ACCEPT = ".pdf,.jpg,.jpeg,.png";
 const SELECT_OPTIONS = {
   partner_type: PARTNER_TYPE_OPTIONS,
   business_type: BUSINESS_TYPE_OPTIONS,
@@ -197,6 +232,8 @@ export default function PartnerRegistrationReview() {
   const [editingReview, setEditingReview] = useState(false);
   const [reviewDraft, setReviewDraft] = useState({});
   const [reviewSaving, setReviewSaving] = useState(false);
+  const [documentErrors, setDocumentErrors] = useState({});
+  const [uploadingDocumentKey, setUploadingDocumentKey] = useState("");
 
   const shopPhotoDocs = useMemo(() => {
     if (!detail) return [];
@@ -228,9 +265,15 @@ export default function PartnerRegistrationReview() {
   useEffect(() => {
     setEditingReview(false);
     setReviewDraft({});
+    setDocumentErrors({});
   }, [reviewStep]);
 
   function startReviewEdit() {
+    if (reviewStep === 7) {
+      setDocumentErrors({});
+      setEditingReview(true);
+      return;
+    }
     const draft = {};
     reviewStepFields(REVIEW_STEPS[reviewStep], detail).forEach(([, key]) => {
       draft[key] = toDraftValue(detail[key]);
@@ -271,6 +314,40 @@ export default function PartnerRegistrationReview() {
       setErr(error.response?.data?.detail || "Failed to save registration changes");
     } finally {
       setReviewSaving(false);
+    }
+  }
+
+  async function uploadReviewDocument(documentKey, file) {
+    if (!file) return;
+    const extension = file.name.split(".").pop()?.toLowerCase() || "";
+    const isShopPhoto = documentKey.startsWith("shop_photo_");
+    const allowedExtensions = isShopPhoto ? SHOP_PHOTO_FILE_EXTENSIONS : DOCUMENT_FILE_EXTENSIONS;
+    if (!allowedExtensions.has(extension)) {
+      const supported = isShopPhoto ? "PDF, JPG, or PNG" : "PDF, DOC, DOCX, JPG, or PNG";
+      setDocumentErrors((current) => ({ ...current, [documentKey]: `Unsupported file type. Please upload ${supported}.` }));
+      return;
+    }
+    if (isShopPhoto && file.size > SHOP_PHOTO_MAX_BYTES) {
+      setDocumentErrors((current) => ({ ...current, [documentKey]: "Shop photograph file exceeds 2MB limit." }));
+      return;
+    }
+
+    setDocumentErrors((current) => {
+      const next = { ...current };
+      delete next[documentKey];
+      return next;
+    });
+    setUploadingDocumentKey(documentKey);
+    setErr("");
+    try {
+      const updated = await partnerRegistrationsApi.uploadDocument(id, documentKey, file);
+      setDetail(updated);
+      setAdminRemark(updated.admin_remark || "");
+    } catch (error) {
+      const message = error.response?.data?.detail || "Document upload failed";
+      setDocumentErrors((current) => ({ ...current, [documentKey]: message }));
+    } finally {
+      setUploadingDocumentKey("");
     }
   }
 
@@ -435,28 +512,31 @@ export default function PartnerRegistrationReview() {
           </div>
           <div className="flex flex-wrap items-center justify-end gap-2">
             <div className="text-sm font-medium text-slate-500">Step {reviewStep + 1} of {REVIEW_STEPS.length}</div>
-            {canEditPartnerRegistration && reviewStep !== 7 && (
+            {canEditPartnerRegistration && (
               editingReview ? (
                 <>
                   <button
                     type="button"
-                    disabled={reviewSaving}
+                    disabled={reviewSaving || Boolean(uploadingDocumentKey)}
                     onClick={() => {
                       setEditingReview(false);
                       setReviewDraft({});
+                      setDocumentErrors({});
                     }}
                     className="rounded-md border border-slate-300 px-3 py-2 text-xs font-medium text-slate-700 disabled:opacity-50"
                   >
-                    Cancel
+                    {reviewStep === 7 ? "Done" : "Cancel"}
                   </button>
-                  <button
-                    type="button"
-                    disabled={reviewSaving}
-                    onClick={saveReviewStep}
-                    className="rounded-md bg-sky-700 px-3 py-2 text-xs font-medium text-white disabled:opacity-50"
-                  >
-                    {reviewSaving ? "Saving..." : "Save changes"}
-                  </button>
+                  {reviewStep !== 7 && (
+                    <button
+                      type="button"
+                      disabled={reviewSaving}
+                      onClick={saveReviewStep}
+                      className="rounded-md bg-sky-700 px-3 py-2 text-xs font-medium text-white disabled:opacity-50"
+                    >
+                      {reviewSaving ? "Saving..." : "Save changes"}
+                    </button>
+                  )}
                 </>
               ) : (
                 <button
@@ -490,24 +570,61 @@ export default function PartnerRegistrationReview() {
             <div className="mt-3 space-y-3">
               <div>
                 <div className="mb-1 text-xs uppercase tracking-wide text-slate-500">Documents</div>
-                <div className="flex flex-wrap gap-2">
-                  {PARTNER_DOCUMENTS.map((doc) => (
-                    <DocumentLink key={doc.key} label={doc.label} path={detail[`${doc.key}_path`]} />
-                  ))}
-                  {!PARTNER_DOCUMENTS.some((doc) => detail[`${doc.key}_path`]) && (
-                    <span className="text-sm text-slate-500">No documents uploaded.</span>
-                  )}
-                </div>
+                {editingReview ? (
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                    {PARTNER_DOCUMENTS.map((doc) => (
+                      <DocumentUploadCard
+                        key={doc.key}
+                        doc={doc}
+                        path={detail[`${doc.key}_path`]}
+                        accept={DOCUMENT_ACCEPT}
+                        disabled={Boolean(uploadingDocumentKey)}
+                        busy={uploadingDocumentKey === doc.key}
+                        error={documentErrors[doc.key]}
+                        onUpload={uploadReviewDocument}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    {PARTNER_DOCUMENTS.map((doc) => (
+                      <DocumentLink key={doc.key} label={doc.label} path={detail[`${doc.key}_path`]} />
+                    ))}
+                    {!PARTNER_DOCUMENTS.some((doc) => detail[`${doc.key}_path`]) && (
+                      <span className="text-sm text-slate-500">No documents uploaded.</span>
+                    )}
+                  </div>
+                )}
               </div>
               <div>
                 <div className="mb-1 text-xs uppercase tracking-wide text-slate-500">
                   Shop photographs ({detail.partner_type === "CSD Dealer" ? "5 required for CSD Dealer" : "1 required"})
                 </div>
-                <div className="flex flex-wrap gap-2">
-                  {shopPhotoDocs.map((doc) => (
-                    <DocumentLink key={doc.key} label={doc.label} path={detail[`${doc.key}_path`]} />
-                  ))}
-                </div>
+                {editingReview ? (
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                    {shopPhotoDocs.map((doc) => (
+                      <DocumentUploadCard
+                        key={doc.key}
+                        doc={doc}
+                        path={detail[`${doc.key}_path`]}
+                        accept={SHOP_PHOTO_ACCEPT}
+                        disabled={Boolean(uploadingDocumentKey)}
+                        busy={uploadingDocumentKey === doc.key}
+                        error={documentErrors[doc.key]}
+                        onUpload={uploadReviewDocument}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    {shopPhotoDocs.map((doc) => (
+                      <DocumentLink key={doc.key} label={doc.label} path={detail[`${doc.key}_path`]} />
+                    ))}
+                    {!shopPhotoDocs.some((doc) => detail[`${doc.key}_path`]) && (
+                      <span className="text-sm text-slate-500">No shop photographs uploaded.</span>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           ) : editingReview ? (

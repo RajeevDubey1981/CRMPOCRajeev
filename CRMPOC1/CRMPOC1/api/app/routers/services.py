@@ -68,6 +68,7 @@ from app.schemas.service import (
     ServicePublicDocumentContext,
     ServiceRequestUnitOut,
     ServiceUnitBillingIn,
+    ServiceSerialMismatchReturnIn,
     ServiceSerialVerifyIn,
     ServiceSerialReviewIn,
     ServiceSummary,
@@ -1718,6 +1719,61 @@ def verify_serial(service_id: int, body: ServiceSerialVerifyIn, db: Session = De
     return _hydrate_service(db, service)
 
 
+@router.post("/{service_id}/return-serial-mismatch", response_model=ServiceOut)
+def return_serial_mismatch(
+    service_id: int,
+    body: ServiceSerialMismatchReturnIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    service = _load_visible_service(db, service_id, user)
+    if not _is_engineer(user):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only engineer can return serial mismatches")
+    if not _engineer_can_work_on_service(db, service, user):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "This request is not assigned to you")
+
+    unit = db.get(ServiceRequestUnit, body.unit_id)
+    if unit is None or unit.service_request_id != service.id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Unit not found on this service request")
+    if unit.assigned_engineer_id != user.id:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "This serial is not assigned to you")
+
+    scanned_serial = body.scanned_serial_no.strip()
+    if not scanned_serial:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Scanned serial number is required")
+    expected_serials = [value for value in (unit.serial_no, unit.serial_no_2) if (value or "").strip()]
+    if serial_matches_unit(unit, scanned_serial):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Scanned serial matches this assigned unit. Use Verify serial.")
+    if unit.serial_verified_at is not None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Serial is already verified for this unit")
+
+    old_status = service.status
+    unit.serial_no = scanned_serial
+    unit.serial_no_2 = None
+    unit.serial_verified_at = None
+    unit.unit_status = "Serial Verification Pending"
+    remarks = body.remarks or "Engineer returned request because scanned serial does not match assigned serial."
+    unit.remarks = remarks
+    sync_service_request_from_units(db, service, engineer_id=user.id)
+    _log_status(
+        db,
+        service,
+        action="Serial Mismatch Returned",
+        user=user,
+        old_status=old_status,
+        new_status=service.status,
+        remarks=remarks,
+        metadata={
+            "unit_id": unit.id,
+            "scanned_serial_no": scanned_serial,
+            "expected_serials": expected_serials,
+        },
+    )
+    db.commit()
+    db.refresh(service)
+    return _hydrate_service(db, service)
+
+
 @router.post("/{service_id}/serial-verification-review", response_model=ServiceOut)
 def review_serial_verification(
     service_id: int,
@@ -1797,6 +1853,7 @@ def review_serial_verification(
             unit.service_type = context["service_type"]
         unit.unit_status = "Serial Verified"
         action = "Serial Verification Approved" if decision == "approve" else "Serial Override Approved"
+    unit.remarks = None
     sync_service_request_from_units(db, service, engineer_id=unit.assigned_engineer_id)
     _log_status(
         db,

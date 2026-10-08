@@ -861,6 +861,7 @@ export default function ServiceRequestDetail() {
           engineers={engineers}
           isServiceTeam={isServiceTeam}
           isEngineer={isEngineer}
+          userId={user?.id}
           onRefresh={load}
           run={run}
           workflowUnlocked={documentsWorkflowUnlocked}
