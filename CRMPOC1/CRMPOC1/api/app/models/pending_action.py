@@ -37,3 +37,5 @@ class UserPendingAction(Base, TimestampMixin):
     is_read: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # a card with a time limit (a bid to accept or reject, a bid to mark submitted): when it runs out
+    due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

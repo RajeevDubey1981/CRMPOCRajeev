@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import { servicesApi } from "../../api/services.js";
 import WarrantyBadge from "../../components/WarrantyBadge.jsx";
 import { formatApiError } from "../../utils/apiError.js";
-import { ENGINEER_ASSIGNMENT_HINT, engineerIdsMatch, formatEngineerOptionLabel } from "../../utils/engineerAssignment.js";
+import EngineerSelect from "../../components/EngineerSelect.jsx";
+import { ENGINEER_ASSIGNMENT_HINT, engineerIdsMatch } from "../../utils/engineerAssignment.js";
 
 function serialCell(value) {
   return value ? <span className="font-mono text-xs">{value}</span> : <span className="text-slate-400">-</span>;
@@ -558,16 +559,13 @@ export default function ServiceUnitAssignmentPanel({
           </div>
 
           <div className="grid gap-3 md:grid-cols-4">
-            <select
+            <EngineerSelect
+              engineers={engineers}
               value={assignEngineerId}
               onChange={(e) => setAssignEngineerId(e.target.value)}
-              className="rounded-md border border-slate-300 px-3 py-2 text-sm"
-            >
-              <option value="">— Choose engineer —</option>
-              {engineers.map((engineer) => (
-                <option key={engineer.id} value={engineer.id}>{formatEngineerOptionLabel(engineer)}</option>
-              ))}
-            </select>
+              emptyLabel="- Choose engineer -"
+              selectClassName="rounded-md border border-slate-300 px-3 py-2 text-sm"
+            />
             <input
               type="number"
               min="1"

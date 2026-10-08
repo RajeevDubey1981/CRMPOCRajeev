@@ -7,6 +7,7 @@ import { usersApi } from "../../api/complaints.js";
 import { useAuth } from "../../auth/AuthContext.jsx";
 import { isOperationsAdminRole } from "../../utils/roles.js";
 import { ENGINEER_ASSIGNMENT_HINT, formatEngineerOptionLabel } from "../../utils/engineerAssignment.js";
+import EngineerSelect from "../../components/EngineerSelect.jsx";
 
 const BASE_STATUSES = ["Pending", "Assigned", "In Progress", "Installation Completed", "Payment Pending", "Completed", "Settlement Pending", "Settlement Approved", "Returned", "Rejected"];
 const SEND_BACK_VALUE = "Send Back to Admin";
@@ -85,7 +86,7 @@ export default function InstallationStatusEdit({ installation, onClose, onSaved,
   const isUpiPaymentApproval = paymentApprovalMode && isCompleted && form.payment_type === "UPI";
 
   useEffect(() => {
-    installationsApi.engineerAssignmentOptions()
+    installationsApi.engineerAssignmentOptions(installation.address, installation)
       .then(setEngineers)
       .catch(() => setEngineers([]));
 
@@ -241,16 +242,7 @@ export default function InstallationStatusEdit({ installation, onClose, onSaved,
         {!isEngineer && (
           <div>
             <label className={labelClass}>Assign Engineer</label>
-            <select
-              value={form.assigned_engineer}
-              onChange={(e) => set("assigned_engineer", e.target.value ? Number(e.target.value) : "")}
-              className={fieldClass}
-            >
-              <option value="">-- Unassigned --</option>
-              {engineers.map((engineer) => (
-                <option key={engineer.id} value={engineer.id}>{formatEngineerOptionLabel(engineer)}</option>
-              ))}
-            </select>
+            <EngineerSelect engineers={engineers} value={form.assigned_engineer} onChange={(e) => set("assigned_engineer", e.target.value ? Number(e.target.value) : "")} emptyLabel="-- Unassigned --" selectClassName={fieldClass} />
             <p className="mt-1 text-xs text-slate-500">{ENGINEER_ASSIGNMENT_HINT}</p>
             {installation.assigned_engineer_name && (
               <p className="mt-1 text-xs text-slate-500">Current engineer: {installation.assigned_engineer_name}</p>

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useAuth } from "../auth/AuthContext.jsx";
 import { NavLink } from "react-router-dom";
 import { isIndcoolServiceRole, isOperationsAdminRole, isSystemAdminRole } from "../utils/roles.js";
+import useQuerySummary from "../components/queries/useQuerySummary.js";
 
 /** w-64 (16rem) reduced by 40% → 9.6rem */
 const SIDEBAR_WIDTH_CLASS = "w-[9.6rem] min-w-[9.6rem]";
@@ -9,6 +10,7 @@ const SIDEBAR_WIDTH_CLASS = "w-[9.6rem] min-w-[9.6rem]";
 const NAV = [
   { to: "/dashboard", label: "Dashboard", module: "dashboard" },
   { to: "/vendor-dashboard", label: "Vendor Dashboard", vendorOnly: true },
+  { to: "/queries", label: "Queries", everyone: true, badge: "queries" },
   {
     label: "Admin",
     children: [
@@ -34,6 +36,7 @@ const NAV = [
       { to: "/bids", label: "Bids", module: "bids", bidSide: "manager" },
       { to: "/bids/allocation", label: "Allocation", module: "bids", bidSide: "manager" },
       { to: "/bids/requests", label: "Vendor requests", module: "bids", bidSide: "manager" },
+      { to: "/bids/stats", label: "Stats", module: "bids" },
       { to: "/bids/calendar", label: "Calendar", module: "bids" },
       { to: "/bids", label: "My bids", module: "bids", bidSide: "vendor" },
       { to: "/bids/request", label: "Request a bid", module: "bids", bidSide: "vendor" },
@@ -54,7 +57,7 @@ const NAV = [
   },
 ];
 
-function LeafLink({ to, label, disabled, onNavigate }) {
+function LeafLink({ to, label, disabled, onNavigate, badge }) {
   if (disabled) {
     return (
       <span className="block rounded-md px-2 py-1.5 text-xs text-slate-500 cursor-not-allowed select-none leading-snug">
@@ -75,6 +78,7 @@ function LeafLink({ to, label, disabled, onNavigate }) {
       }
     >
       {label}
+      {badge > 0 && <span className="ml-1.5 rounded-full bg-rose-600 px-1.5 py-0.5 text-[10px] font-bold text-white">{badge}</span>}
     </NavLink>
   );
 }
@@ -105,6 +109,7 @@ function Group({ label, children, defaultOpen = false, onNavigate }) {
 export default function Sidebar({ collapsed, mobileOpen = false, onNavigate }) {
   const { user } = useAuth();
   const role = user?.role?.toLowerCase?.() || "";
+  const { summary: queriesSummary } = useQuerySummary();
 
   const isVendor = role === "vendor";
   const isEngineer = role === "engineer";
@@ -128,6 +133,7 @@ export default function Sidebar({ collapsed, mobileOpen = false, onNavigate }) {
   function canShow(item) {
     if (item.bidSide === "manager" && !bidsManager) return false;
     if (item.bidSide === "vendor" && bidsManager) return false;
+    if (item.everyone) return true;
     if (item.vendorOnly) return isVendor;
     if (item.engineerOnly) return isEngineer;
     if (item.operationsOnly) return isCourierAdmin;
@@ -168,7 +174,7 @@ export default function Sidebar({ collapsed, mobileOpen = false, onNavigate }) {
           item.children ? (
             <Group key={item.label} label={item.label} children={item.children} onNavigate={onNavigate} />
           ) : (
-            <LeafLink key={item.label} to={item.to} label={item.label} disabled={item.disabled} onNavigate={onNavigate} />
+            <LeafLink key={item.label} to={item.to} label={item.label} disabled={item.disabled} onNavigate={onNavigate} badge={item.badge === "queries" ? queriesSummary?.unread : 0} />
           ),
         )}
       </nav>

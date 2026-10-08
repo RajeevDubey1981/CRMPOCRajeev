@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.models.bid import Bid
 from app.models.call import Call
 from app.models.claim import Claim
 from app.models.complaint import Complaint, ComplaintStatusLog
@@ -408,6 +409,74 @@ def sync_call_pending_actions(db: Session, call: Call) -> None:
         href=f"/calls/{call.id}",
         entity_status=call.follow_up_status or "Pending",
         occurred_at=occurred,
+    )
+
+
+HIGH = "HIGH PRIORITY - "  # the popup groups a card whose text starts like this under "High priority - handle first"
+
+
+def sync_bid_pending_actions(db: Session, bid: Bid) -> None:
+    """The vendor's card in the login popup for one bid: accept or reject it (while it is Allocated), or mark it submitted
+    (from 2 days before the closing date, while it is Confirmed). Rebuilt on every change and every few minutes, so the
+    hours left and the urgency stay right. The card has a time limit (due_at), so the popup does not let it be ticked away."""
+    from datetime import time as clock
+
+    from app.services import bid_service as svc
+
+    resolve_all_for_entity(db, module="bids", entity_id=bid.id)
+    if bid.is_self or bid.vendor_id is None or bid.status not in ("Allocated", "Confirmed"):
+        return
+    user = _vendor_user(db, bid.vendor_id)
+    if user is None:
+        return
+    now = svc.moment()
+    href = f"/bids/{bid.id}"
+    if bid.status == "Allocated":
+        due = svc.aware(bid.confirm_due_at)
+        if due is None and bid.confirm_by:  # a bid allocated before the hours rule: until the end of its confirm-by day
+            due = datetime.combine(bid.confirm_by, clock(23, 59, 59), svc.IST).astimezone(timezone.utc)
+        if due is None:
+            return
+        left = (due - now).total_seconds() / 3600
+        if left <= 0:
+            return
+        when = svc.fmt_moment(due)
+        tail = "the bid is withdrawn and opened for allocation to another eligible vendor."
+        if left > 24:
+            urgent, text = False, f"Allocated to you. Please accept or reject by {when}. If there is no answer, {tail}"
+        elif left > 2:
+            urgent, text = True, f"Still waiting for your answer. About {round(left)} hours left (until {when}). After that {tail}"
+        else:
+            span = f"{max(1, int(left * 60))} minutes" if left < 1 else f"{left:.1f} hours".replace(".0 ", " ")
+            urgent, text = True, f"LAST WARNING: {span} left. If you do not accept or reject by {when}, {tail}"
+        upsert_pending_action(
+            db, recipient_user_id=user.id, recipient_vendor_id=bid.vendor_id, module="bids", entity_id=bid.id,
+            action_type="bid_accept", title=f"Accept or reject bid {bid.bid_number}", message=(HIGH if urgent else "") + text,
+            action_label="Accept or reject", href=href, entity_status=bid.status,
+            occurred_at=_coalesce_dt(bid.allocated_at), due_at=due,
+        )
+        return
+    days = (bid.end_date - svc.today_ist()).days
+    if days < 0 or days > 2:
+        return
+    end = svc.fmt_date(bid.end_date)
+    tail = "withdrawn from you and opened for allocation to another eligible vendor."
+    if days == 2:
+        urgent = False
+        text = (f"You accepted this bid but it is not marked submitted. The last date is {end}. Please submit and update the CRM by "
+                f"{svc.fmt_date(bid.submit_by)}, or it is {tail}")
+    elif days == 1:
+        urgent = True
+        text = f"Your bid is not yet submitted. The last date is tomorrow. If it is not marked submitted today, the bid will be {tail}"
+    else:
+        urgent = True
+        text = f"Your bid is not yet submitted and the last date is TODAY. It is being {tail} Already submitted on the portal? Mark it submitted now."
+    upsert_pending_action(
+        db, recipient_user_id=user.id, recipient_vendor_id=bid.vendor_id, module="bids", entity_id=bid.id,
+        action_type="bid_submit", title=f"Mark as submitted: {bid.bid_number}", message=(HIGH if urgent else "") + text,
+        action_label="Mark submitted", href=href, entity_status=bid.status,
+        occurred_at=_coalesce_dt(bid.confirmed_at, bid.allocated_at),
+        due_at=datetime.combine(bid.end_date, clock(23, 59, 59), svc.IST).astimezone(timezone.utc),
     )
 
 

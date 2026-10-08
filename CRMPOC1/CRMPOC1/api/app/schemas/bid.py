@@ -1,7 +1,38 @@
 from datetime import date, datetime
 from decimal import Decimal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+
+class BidLineIn(BaseModel):
+    item: str = Field(min_length=1, max_length=255)
+    quantity: int | None = Field(None, ge=0)
+
+    @field_validator("item")
+    @classmethod
+    def _trim(cls, value: str) -> str:
+        value = " ".join(value.split())
+        if not value:
+            raise ValueError("Item cannot be empty")
+        return value
+
+
+class BidLineOut(BaseModel):
+    item: str
+    quantity: int | None = None
+
+
+class BidMini(BaseModel):
+    id: int
+    bid_number: str
+    title: str
+    status: str
+    end_date: date
+
+
+class BidNumberCheck(BaseModel):
+    exact: BidMini | None = None  # the same number is already entered: saving is refused
+    similar: list[BidMini] = Field(default_factory=list)  # shares the long number part: check it is not the same bid
 
 
 class BidIn(BaseModel):
@@ -23,6 +54,7 @@ class BidIn(BaseModel):
     epbg_details: str | None = Field(None, max_length=255)
     tender_fee: Decimal | None = Field(None, ge=0)
     notes: str | None = None
+    lines: list[BidLineIn] = Field(default_factory=list, max_length=30)
 
 
 class BidUpdate(BaseModel):
@@ -44,6 +76,7 @@ class BidUpdate(BaseModel):
     epbg_details: str | None = None
     tender_fee: Decimal | None = Field(None, ge=0)
     notes: str | None = None
+    lines: list[BidLineIn] | None = Field(None, max_length=30)  # None = leave as is, a list replaces them
 
 
 class BidEventOut(BaseModel):
@@ -79,6 +112,7 @@ class BidOut(BaseModel):
     vendor_name: str | None = None
     is_self: bool = False
     confirm_by: date | None = None
+    confirm_due_at: datetime | None = None
     submit_by: date | None = None
     confirmed_at: datetime | None = None
     submitted_at: datetime | None = None
@@ -87,6 +121,7 @@ class BidOut(BaseModel):
     days_left: int | None = None
     pending_requests: int = 0
     created_at: datetime | None = None
+    lines: list[BidLineOut] = Field(default_factory=list)
     events: list[BidEventOut] = Field(default_factory=list)
 
 
@@ -146,6 +181,41 @@ class VendorLookupOut(BaseModel):
     availability: str  # available | mine | allocated | closed
     already_requested: bool = False
     bid_id: int | None = None  # only set for the vendor's own bid
+
+
+class BidStatRow(BaseModel):
+    """One vendor's bid figures (or the totals row): see services/bid_stats.py for what each number means."""
+
+    vendor_id: int | None = None
+    vendor_name: str = ""
+    allocated: int = 0
+    confirmed: int = 0
+    submitted: int = 0
+    won: int = 0
+    lost: int = 0
+    declined: int = 0
+    expired: int = 0
+    holding: int = 0
+    confirm_rate: float | None = None  # confirmed out of allocated, per cent
+    submit_rate: float | None = None  # submitted out of confirmed
+    win_rate: float | None = None  # won out of won + lost
+
+
+class BidStatMonth(BaseModel):
+    month: str  # 2026-10
+    label: str  # Oct 26
+    allocated: int = 0
+    confirmed: int = 0
+    submitted: int = 0
+    won: int = 0
+
+
+class BidStatsOut(BaseModel):
+    date_from: date | None = None
+    date_to: date | None = None
+    totals: BidStatRow
+    vendors: list[BidStatRow] = Field(default_factory=list)
+    monthly: list[BidStatMonth] = Field(default_factory=list)
 
 
 class VendorPick(BaseModel):

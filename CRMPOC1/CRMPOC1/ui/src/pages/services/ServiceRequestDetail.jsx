@@ -19,6 +19,7 @@ import { installationsApi } from "../../api/installations.js";
 import ServiceUnitAssignmentPanel from "./ServiceUnitAssignmentPanel.jsx";
 import EngineerUnitWorkflowPanel from "./EngineerUnitWorkflowPanel.jsx";
 import { engineerIdsMatch, formatEngineerOptionLabel, ENGINEER_ASSIGNMENT_HINT } from "../../utils/engineerAssignment.js";
+import EngineerSelect from "../../components/EngineerSelect.jsx";
 
 const PAYMENT_TYPES = ["Cash", "UPI"];
 const SERVICE_STATUSES = [
@@ -184,10 +185,14 @@ export default function ServiceRequestDetail() {
 
   useEffect(() => {
     load();
-    installationsApi.engineerAssignmentOptions().then(setEngineers).catch(() => setEngineers([]));
     servicesApi.serviceUsers().then(setServiceUsers).catch(() => setServiceUsers([]));
     servicesApi.vendors().then(setVendors).catch(() => null);
   }, [id]);
+
+  // engineers to assign: the ones nearest the customer first (the address is known once the request has loaded)
+  useEffect(() => {
+    installationsApi.engineerAssignmentOptions(service?.customer_address, service).then(setEngineers).catch(() => setEngineers([]));
+  }, [service?.customer_address, service?.pincode, service?.state, service?.district]);
 
   useEffect(() => {
     if (!customerSearch.trim()) {
@@ -970,12 +975,7 @@ export default function ServiceRequestDetail() {
                     </div>
                   )}
                   {roleCanViewAllServices && <>
-                    <select value={assignForm.assignee_id} onChange={(e) => setAssignForm((current) => ({ ...current, assignee_id: e.target.value }))} disabled={assignmentLocked} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-100 disabled:text-slate-500">
-                      <option value="">Select engineer</option>
-                      {activeAssigneeOptions.map((option) => (
-                        <option key={option.id} value={option.id}>{formatEngineerOptionLabel(option)}</option>
-                      ))}
-                    </select>
+                    <EngineerSelect engineers={activeAssigneeOptions} value={assignForm.assignee_id} onChange={(e) => setAssignForm((current) => ({ ...current, assignee_id: e.target.value }))} disabled={assignmentLocked} emptyLabel="Select engineer" selectClassName="w-full rounded-md border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-100 disabled:text-slate-500" />
                     <p className="text-xs text-slate-500">{ENGINEER_ASSIGNMENT_HINT}</p>
                     <textarea value={assignForm.remarks} onChange={(e) => setAssignForm((current) => ({ ...current, remarks: e.target.value }))} disabled={assignmentLocked} rows={3} placeholder="Assignment remarks" className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-100 disabled:text-slate-500" />
                     <button

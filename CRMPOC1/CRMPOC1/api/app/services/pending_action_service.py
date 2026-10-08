@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -37,6 +37,7 @@ def upsert_pending_action(
     occurred_at: datetime | None = None,
     recipient_vendor_id: int | None = None,
     entity_ref: str = "",
+    due_at: datetime | None = None,
 ) -> UserPendingAction:
     entity_ref = (entity_ref or "").strip()
     occurred = occurred_at or _now()
@@ -69,6 +70,7 @@ def upsert_pending_action(
                     is_read=False,
                     read_at=None,
                     resolved_at=None,
+                    due_at=due_at,
                 )
                 db.add(row)
                 db.flush([row])
@@ -97,6 +99,7 @@ def upsert_pending_action(
     row.is_read = False
     row.read_at = None
     row.resolved_at = None
+    row.due_at = due_at
     return row
 
 
@@ -206,7 +209,11 @@ def list_pending_actions(db: Session, user: User, limit: int = 15) -> tuple[int,
                 UserPendingAction.recipient_user_id == user.id,
                 UserPendingAction.is_active.is_(True),
             )
-            .order_by(UserPendingAction.is_read.asc(), UserPendingAction.occurred_at.desc())
+            .order_by(
+                UserPendingAction.is_read.asc(),
+                case((UserPendingAction.due_at.is_(None), 1), else_=0),  # cards with a time limit first
+                UserPendingAction.occurred_at.desc(),
+            )
             .limit(limit)
         )
     )
@@ -218,6 +225,7 @@ def mark_actions_read(db: Session, user: User, action_ids: list[int] | None = No
         UserPendingAction.recipient_user_id == user.id,
         UserPendingAction.is_active.is_(True),
         UserPendingAction.is_read.is_(False),
+        UserPendingAction.due_at.is_(None),  # reminders with a time limit stay until the work is done
     )
     if action_ids:
         stmt = stmt.where(UserPendingAction.id.in_(action_ids))

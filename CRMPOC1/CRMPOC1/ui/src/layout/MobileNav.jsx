@@ -11,6 +11,7 @@ const ICONS = {
   box: "M21 8l-9-5-9 5v8l9 5 9-5V8zM3 8l9 5 9-5M12 13v8",
   tool: "M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18v3h3l6.3-6.3a4 4 0 0 0 5.4-5.4l-2.4 2.4-2.1-.6-.6-2.1 2.1-2.7z",
   doc: "M7 3h7l5 5v13H7zM14 3v5h5M10 13h6M10 17h6",
+  chat: "M4 5h16v11H9l-5 4V5zM8 10h8M8 13h5",
   menu: "M4 6h16M4 12h16M4 18h16",
 };
 
@@ -35,6 +36,7 @@ export function mobileNavItems(user) {
       { to: "/services", label: "Jobs", icon: "list", end: true },
       { to: "/services/my-units", label: "My units", icon: "box" },
       ...(canView(user, "installations") ? [{ to: "/installations", label: "Install", icon: "tool" }] : []),
+      { to: "/queries", label: "Queries", icon: "chat" },
     ];
   }
   if (role === "vendor") {
@@ -43,6 +45,7 @@ export function mobileNavItems(user) {
       ...(canView(user, "orders") ? [{ to: "/orders", label: "Orders", icon: "box" }] : []),
       ...(canView(user, "services") ? [{ to: "/services", label: "Service", icon: "tool" }] : []),
       ...(canView(user, "bids") ? [{ to: "/bids", label: "Bids", icon: "doc" }] : []),
+      { to: "/queries", label: "Queries", icon: "chat" },
     ];
   }
   return [];

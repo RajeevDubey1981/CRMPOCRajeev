@@ -12,6 +12,8 @@ const ICONS = {
   installations: '<rect x="3" y="4" width="18" height="8" rx="2"/><path d="M7 16c0 1.5-1 2-1 4M12 16c0 1.5-1 2-1 4M17 16c0 1.5-1 2-1 4"/>',
   claims: '<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M9 12l2 2 4-4"/>',
   orders: '<path d="M21 8l-9-5-9 5v8l9 5 9-5z"/><path d="M3 8l9 5 9-5M12 13v8"/>',
+  bids: '<path d="M7 3h7l5 5v13H7z"/><path d="M14 3v5h5M10 13h6M10 17h6"/>',
+  lock: '<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>',
   partner_registrations: '<circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><path d="M17 8v6M14 11h6"/>',
   flag: '<path d="M5 21V4M5 4h11l-2 4 2 4H5"/>',
   clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
@@ -26,6 +28,7 @@ const MODULE_LABELS = {
   installations: "Installation",
   services: "Service",
   orders: "Order",
+  bids: "Bid",
   claims: "Claim",
   calls: "Call",
   partner_registrations: "Partner",
@@ -35,6 +38,7 @@ const TAB_LABELS = {
   installations: "Installation",
   services: "Service",
   orders: "Orders",
+  bids: "Bids",
   claims: "Claims",
   calls: "Calls",
   partner_registrations: "Partners",
@@ -59,6 +63,32 @@ function formatWhen(value) {
   const days = Math.floor(hours / 24);
   if (days < 7) return `${days}d ago`;
   return date.toLocaleString();
+}
+
+// the server sends times in UTC without a zone mark
+function serverTime(value) {
+  const text = String(value || "");
+  return new Date(/[zZ]|[+-]\d\d:?\d\d$/.test(text) ? text : `${text}Z`);
+}
+
+const isoDay = (date) => date.toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
+
+// A bid reminder has a time limit (due_at). The pill says how much is left, and goes from blue to orange to red.
+function timePill(item) {
+  if (!item.due_at || !/^bid_/.test(item.action_type || "")) return null;
+  const due = serverTime(item.due_at);
+  if (Number.isNaN(due.getTime())) return null;
+  if (item.action_type === "bid_accept") {
+    const ms = due.getTime() - Date.now();
+    if (ms <= 0) return { tone: "red", text: "Time is up" };
+    const hours = ms / 3600000;
+    const text = hours >= 1 ? `${Math.ceil(hours)} h left` : `${Math.max(1, Math.ceil(ms / 60000))} min left`;
+    return { tone: hours > 24 ? "blue" : hours > 2 ? "orange" : "red", text };
+  }
+  const days = Math.round((new Date(isoDay(due)) - new Date(isoDay(new Date()))) / 86400000);
+  if (days <= 0) return { tone: "red", text: "LAST DAY" };
+  if (days === 1) return { tone: "orange", text: "Last date tomorrow" };
+  return { tone: "amber", text: `${days} days left` };
 }
 
 function dayGroup(value) {
@@ -173,13 +203,16 @@ export default function PendingActionsModal({
   }
 
   function openAction(item) {
-    setLeaving((s) => new Set(s).add(item.id));
-    setHandled((h) => h + 1);
+    const locked = !!item.due_at;
+    if (!locked) {
+      setLeaving((s) => new Set(s).add(item.id));
+      setHandled((h) => h + 1);
+    }
     setTimeout(() => {
-      onMarkRead?.([item.id]);
+      if (!locked) onMarkRead?.([item.id]);  // a bid reminder stays until the vendor answers
       onClose?.();
       navigate(item.href);
-    }, 260);
+    }, locked ? 0 : 260);
   }
 
   function proceed() {
@@ -249,6 +282,8 @@ export default function PendingActionsModal({
               <div className={`pa-gh${g.key === "pri" ? " pri" : ""}`}>{g.key === "pri" && <Icon name="flag" />}{GROUP_TITLES[g.key]}</div>
               {g.list.map((item) => {
                 const i = n++;
+                const pill = timePill(item);
+                const locked = !!item.due_at;
                 const cls = ["pa-card", item.priority && "pri", item.is_read && "read", leaving.has(item.id) && "gone", picked.has(item.id) && "picked"].filter(Boolean).join(" ");
                 return (
                   <div key={item.id} className={cls} style={{ "--i": Math.min(i, 14) }}>
@@ -262,16 +297,20 @@ export default function PendingActionsModal({
                         {item.priority && <span className="pa-hp">High priority</span>}
                         <span className="pa-tm"><Icon name="clock" />{formatWhen(item.occurred_at)}</span>
                       </div>
-                      <div className="pa-tt">{item.title}</div>
+                      <div className="pa-tt">{item.title}{pill && <span className={`pa-time ${pill.tone}`}>{pill.text}</span>}</div>
                       <div className="pa-ms">{item.text}</div>
                       {item.entity_status && <span className="pa-st">Status: {item.entity_status}</span>}
                     </div>
                     <div className="pa-ac">
+                      {locked ? (
+                        <span className="pa-lock" title="This stays here until you answer"><Icon name="lock" />Stays until you answer</span>
+                      ) : (
                       <label className={`pa-pick${item.is_read ? " is-read" : ""}`} title={item.is_read ? "Already read" : "Tick to mark as read"}>
                         <input type="checkbox" checked={item.is_read || picked.has(item.id)} disabled={item.is_read} onChange={() => toggle(item)} />
                         <span className="pa-box"><Icon name="check" /></span>
                         <span className="pa-pick-t">{item.is_read ? "Read" : "Mark read"}</span>
                       </label>
+                      )}
                       <button type="button" className="pa-go" onClick={() => openAction(item)}>{item.action_label}<Icon name="arrow" /></button>
                     </div>
                   </div>

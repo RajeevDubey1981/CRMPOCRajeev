@@ -8,6 +8,7 @@ from app.models.installation import InstallationRequest
 from app.models.service import ServiceRequest, ServiceRequestUnit
 from app.models.user import User
 from app.schemas.installation import InstallationEngineerAssignmentOption
+from app.services.geo import match_engineer, match_rank, split_pincodes
 
 INSTALLATION_PENDING_STATUSES = ("Assigned", "In Progress", "Payment Pending", "Settlement Pending")
 INSTALLATION_SUCCESS_STATUSES = ("Completed", "Settlement Approved")
@@ -17,7 +18,17 @@ SERVICE_TERMINAL_STATUSES = ("Closed", "Cancelled", "Rejected")
 COMPLAINT_TERMINAL_STATUSES = ("Resolved", "Rejected")
 
 
-def get_engineer_assignment_options(db: Session) -> list[InstallationEngineerAssignmentOption]:
+def get_engineer_assignment_options(
+    db: Session,
+    address: str | None = None,
+    pincode: str | None = None,
+    state: str | None = None,
+    district: str | None = None,
+) -> list[InstallationEngineerAssignmentOption]:
+    """Engineers to pick from. With the customer's address, the nearest come first: same pin code, same area (first 3
+    digits), same district, same state, then the rest; within a group the one with the fewest pending jobs first.
+    The pin code, state and district typed for the customer count first; the address text is used for what is missing."""
+    where = bool((address or "").strip() or pincode or state or district)
     engineers = db.scalars(
         select(User)
         .where(User.deleted_at.is_(None), User.is_active.is_(True), User.role == "engineer")
@@ -139,6 +150,13 @@ def get_engineer_assignment_options(db: Session) -> list[InstallationEngineerAss
                 pending_requests=pending_requests,
                 rating=rating,
                 completed_requests=completed_count,
+                pincode=engineer.pincode,
+                state=engineer.state,
+                district=engineer.district,
+                extra_pincodes=split_pincodes(engineer.extra_pincodes),
+                match=match_engineer(address, engineer.pincode, engineer.state, engineer.district, pincode, state, district, split_pincodes(engineer.extra_pincodes)) if where else "",
             )
         )
+    if where:
+        options.sort(key=lambda o: (match_rank(o.match), o.pending_requests, o.name.lower()))
     return options

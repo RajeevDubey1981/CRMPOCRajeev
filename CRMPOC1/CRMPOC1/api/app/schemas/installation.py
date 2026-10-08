@@ -1,8 +1,10 @@
 from datetime import datetime
 from pydantic import BaseModel, Field
 
+from app.schemas.place import PlaceIn
 
-class InstallationCreate(BaseModel):
+
+class InstallationCreate(PlaceIn):
     customer_name: str
     contact_number: str
     customer_email: str | None = None
@@ -14,7 +16,7 @@ class InstallationCreate(BaseModel):
     source: str | None = None
 
 
-class InstallationStatusUpdate(BaseModel):
+class InstallationStatusUpdate(PlaceIn):
     customer_name: str | None = None
     contact_number: str | None = None
     address: str | None = None
@@ -139,6 +141,11 @@ class InstallationEngineerAssignmentOption(BaseModel):
     pending_requests: int = 0
     rating: float = 0.0
     completed_requests: int = 0
+    pincode: str | None = None
+    state: str | None = None
+    district: str | None = None
+    extra_pincodes: list[str] = []
+    match: str = ""  # pincode | area | district | state | empty: how near the engineer is to the customer asked about
 
 
 class InstallationCompletionProofOut(BaseModel):
@@ -183,6 +190,9 @@ class InstallationOut(BaseModel):
     contact_number: str
     customer_email: str | None = None
     address: str | None
+    pincode: str | None = None
+    state: str | None = None
+    district: str | None = None
     order_id: int | None = None
     order_item_id: int | None
     item_code: str | None = None

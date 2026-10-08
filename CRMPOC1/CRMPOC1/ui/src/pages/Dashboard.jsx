@@ -21,6 +21,7 @@ import { servicesApi } from "../api/services.js";
 import { useAuth } from "../auth/AuthContext.jsx";
 import { isOperationsAdminRole } from "../utils/roles.js";
 import ComplaintEdit from "./complaints/ComplaintEdit.jsx";
+import QueriesPanel from "../components/queries/QueriesPanel.jsx";
 import { getComplaintOpenPath } from "../utils/complaintLinks.js";
 import {
   getComplaintWorkflowAction,
@@ -567,6 +568,8 @@ export default function Dashboard() {
           <span>Dashboard</span>
         </nav>
       </div>
+
+      <QueriesPanel />
 
       {dashboardPanelOpen && (
         <>

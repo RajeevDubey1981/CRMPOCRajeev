@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { bidsApi } from "../../api/bids.js";
-import { BidTabs, DaysLeft, Notice, PageTitle, StatusPill, btnGhost, btnPrimary, errText, fmtDate } from "./bidUi.jsx";
+import { BidTabs, DaysLeft, Notice, PageTitle, StatusPill, btnGhost, btnPrimary, errText, fmtDate, fmtDateTime } from "./bidUi.jsx";
 
 export default function VendorBids() {
   const [bids, setBids] = useState([]);
@@ -50,7 +50,7 @@ export default function VendorBids() {
             <div className="mt-1 text-sm text-slate-700">{b.title}</div>
             <div className="text-xs text-slate-500">{b.product_category}{b.product_type && b.product_type !== "Other" ? ` / ${b.product_type}` : ""}</div>
             <div className="mt-2 text-sm">Closes {fmtDate(b.end_date)}<DaysLeft bid={b} /></div>
-            {b.status === "Allocated" && <p className="mt-1 text-xs text-slate-600">Please confirm by {fmtDate(b.confirm_by)}. After that it goes back to INDcool.</p>}
+            {b.status === "Allocated" && <p className="mt-1 text-xs text-slate-600">Please accept or reject by {b.confirm_due_at ? fmtDateTime(b.confirm_due_at) : fmtDate(b.confirm_by)}. After that it is withdrawn and opened for another eligible vendor.</p>}
             {b.status === "Confirmed" && <p className="mt-1 text-xs text-slate-600">Submit on the portal by {fmtDate(b.submit_by)}, then mark it submitted.</p>}
             {b.status === "Submitted" && <p className="mt-1 text-xs text-slate-600">Submitted. Waiting for the result.</p>}
             <div className="mt-3 flex gap-2">

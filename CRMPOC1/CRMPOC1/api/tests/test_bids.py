@@ -205,9 +205,10 @@ class BidApiTests(unittest.TestCase):
         today = svc.today_ist()
         self.assertEqual(out["status"], "Allocated")
         self.assertEqual(out["vendor_name"], "Frost Point")
-        self.assertEqual(out["confirm_by"], (today + timedelta(days=1)).isoformat())
+        self.assertEqual(out["confirm_by"], (today + timedelta(days=2)).isoformat(), "48 hours to accept or reject")
+        self.assertIsNotNone(out["confirm_due_at"])
         self.assertEqual(out["submit_by"], (today + timedelta(days=9)).isoformat())
-        self.assertIn(("frost@t.com", "Bid allocated to you: GEM/2026/B/5821904"), self.sent)
+        self.assertIn(("frost@t.com", "Bid allocated to you: GEM/2026/B/5821904. Accept or reject within 48 hours"), self.sent)
 
     def test_second_vendor_is_refused_while_locked(self):
         bid = self.enter()
@@ -239,6 +240,134 @@ class BidApiTests(unittest.TestCase):
         self.assertEqual(r.status_code, 200, r.text)
         self.assertEqual((r.json()["status"], r.json()["vendor_name"]), ("Confirmed", "INDcool (Self)"))
         self.assertEqual(self.sent, [])
+
+    def test_allocation_list_has_one_entry_per_vendor_login(self):
+        # a second record for the same firm and login, a firm with no login, an inactive record, and a same-name firm with another login
+        self.db.add_all([
+            Vendor(vendor_code="V001-DUP", name_of_firm="FROST POINT", email="frost@t.com", is_active=True),
+            Vendor(vendor_code="V900", name_of_firm="Nobody Has A Login", email="nologin@t.com", is_active=True),
+        ])
+        old = Vendor(vendor_code="V901", name_of_firm="Switched Off Traders", email="off@t.com", is_active=False)
+        self.db.add(old)
+        self.db.flush()
+        self._user("off@t.com", "vendor", "Switched Off Traders")
+        self.db.add(Vendor(vendor_code="V902", name_of_firm="Arctic Sales", email="arctic2@t.com", is_active=True))
+        self._user("arctic2@t.com", "vendor", "Arctic Sales Two")
+        self.db.commit()
+        rows = self.client.get("/api/bids/vendors", headers=self.h(self.sub)).json()
+        names = [r["name"] for r in rows]
+        self.assertEqual(len([r for r in rows if r["email"] == "frost@t.com"]), 1)
+        newest = self.db.scalars(select(Vendor).where(Vendor.email == "frost@t.com").order_by(Vendor.id.desc())).first()
+        self.assertEqual([r["id"] for r in rows if r["email"] == "frost@t.com"], [newest.id])
+        self.assertFalse(any("Nobody" in n for n in names))
+        self.assertFalse(any("Switched Off" in n for n in names))
+        arctics = [n for n in names if n.startswith("Arctic Sales")]
+        self.assertEqual(len(arctics), 2)
+        self.assertEqual(len(set(arctics)), 2, "same firm name with two logins must be told apart")
+        firms = [n.split(" (")[0].lower() for n in names]
+        self.assertEqual(firms, sorted(firms))
+        # a bid given from this list is the bid the vendor sees after logging in
+        pick = next(r for r in rows if r["email"] == "frost@t.com")
+        bid = self.enter()
+        self.client.post(f"/api/bids/{bid['id']}/allocate", json={"vendor_id": pick["id"]}, headers=self.h(self.sub))
+        mine = self.client.get("/api/bids", headers=self.h(self.vu1)).json()
+        self.assertEqual([b["bid_number"] for b in mine], [bid["bid_number"]])
+
+    def test_a_bid_can_have_several_items(self):
+        bid = self.enter(number="GEM/2026/B/7960553", title="Split AC in three sizes", lines=[
+            {"item": "Split AC 1.3 Ton - 1.7 Ton", "quantity": 10}, {"item": "1.8-2.2 Ton", "quantity": 8}, {"item": "0.8-1.2 Ton", "quantity": None}])
+        self.assertEqual([(l["item"], l["quantity"]) for l in bid["lines"]], [("Split AC 1.3 Ton - 1.7 Ton", 10), ("1.8-2.2 Ton", 8), ("0.8-1.2 Ton", None)])
+        self.assertEqual(bid["quantity"], 18, "the bid quantity is the total of the lines")
+        listed = self.client.get("/api/bids", headers=self.h(self.sub)).json()
+        self.assertEqual(len(listed[0]["lines"]), 3)
+        self.assertEqual(len(self.client.get("/api/bids", params={"q": "1.8 2.2 ton"}, headers=self.h(self.sub)).json()), 1)
+        self.assertEqual(len(self.client.get("/api/bids", params={"q": "7960553"}, headers=self.h(self.sub)).json()), 1)
+
+    def test_item_lines_can_be_changed_and_cleared(self):
+        bid = self.enter(lines=[{"item": "Window AC", "quantity": 4}])
+        two = [{"item": "Window AC", "quantity": 4}, {"item": "Cassette AC", "quantity": 6}]
+        r = self.client.put(f"/api/bids/{bid['id']}", json={"lines": two}, headers=self.h(self.sub))
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual((len(r.json()["lines"]), r.json()["quantity"]), (2, 10))
+        self.assertTrue(any(e["action"] == "edited" and "items" in e["text"] for e in r.json()["events"]))
+        same = self.client.put(f"/api/bids/{bid['id']}", json={"lines": two}, headers=self.h(self.sub))
+        self.assertEqual(len([e for e in same.json()["events"] if e["action"] == "edited"]), 1, "saving the same lines again logs nothing")
+        untouched = self.client.put(f"/api/bids/{bid['id']}", json={"title": "Window AC, new title"}, headers=self.h(self.sub))
+        self.assertEqual(len(untouched.json()["lines"]), 2)
+        cleared = self.client.put(f"/api/bids/{bid['id']}", json={"lines": []}, headers=self.h(self.sub))
+        self.assertEqual(cleared.json()["lines"], [])
+
+    def test_item_lines_are_checked(self):
+        today = svc.today_ist()
+        base = {"bid_number": "GEM/2026/B/1", "title": "Split AC", "end_date": (today + timedelta(days=5)).isoformat()}
+        twice = self.client.post("/api/bids", json={**base, "lines": [{"item": "1.5 Ton", "quantity": 2}, {"item": " 1.5  ton ", "quantity": 3}]}, headers=self.h(self.sub))
+        self.assertEqual(twice.status_code, 400)
+        self.assertIn("listed twice", twice.json()["detail"])
+        self.assertEqual(self.client.post("/api/bids", json={**base, "lines": [{"item": "   ", "quantity": 2}]}, headers=self.h(self.sub)).status_code, 422)
+        self.assertEqual(self.client.post("/api/bids", json={**base, "lines": [{"item": "1.5 Ton", "quantity": -1}]}, headers=self.h(self.sub)).status_code, 422)
+        self.assertEqual(self.client.get("/api/bids", headers=self.h(self.sub)).json(), [], "a refused bid is not kept")
+
+    def test_vendor_sees_the_items_of_their_bid(self):
+        bid = self.enter(lines=[{"item": "Split AC 1.5 Ton", "quantity": 4}])
+        self.allocate(bid["id"], self.v1)
+        mine = self.client.get(f"/api/bids/{bid['id']}", headers=self.h(self.vu1)).json()
+        self.assertEqual([l["item"] for l in mine["lines"]], ["Split AC 1.5 Ton"])
+
+    def test_bid_number_check_while_typing(self):
+        bid = self.enter(number="GEM/2026/B/7960553")
+        check = lambda number, **kw: self.client.get("/api/bids/check-number", params={"number": number, **kw}, headers=self.h(self.sub)).json()
+        same = check("gem 2026 b 7960553")
+        self.assertEqual(same["exact"]["id"], bid["id"], "spaces, case and slashes do not hide a repeat")
+        self.assertEqual(check("GEM/2026/B/7960553", exclude_id=bid["id"])["exact"], None, "editing a bid does not clash with itself")
+        near = check("GEM/2025/B/7960553")
+        self.assertIsNone(near["exact"])
+        self.assertEqual([b["id"] for b in near["similar"]], [bid["id"]])
+        self.assertEqual([b["id"] for b in check("7960553")["similar"]], [bid["id"]], "just the number part is found too")
+        fresh = check("GEM/2026/B/1234567")
+        self.assertEqual((fresh["exact"], fresh["similar"]), (None, []))
+        self.assertEqual(check("ab")["exact"], None)
+        self.assertEqual(self.client.get("/api/bids/check-number", params={"number": "x"}, headers=self.h(self.vu1)).status_code, 403)
+        self.assertEqual(self.client.get("/api/bids/check-number", params={"number": "x"}).status_code, 401)
+        again = self.client.post("/api/bids", json={"bid_number": "gem/2026/b/7960553", "title": "Again", "end_date": "2030-01-01"}, headers=self.h(self.sub))
+        self.assertEqual(again.status_code, 409, "saving a repeat is still refused")
+
+    def test_override_and_release_remarks_are_internal(self):
+        bid = self.enter()
+        self.allocate(bid["id"], self.v1)
+        mails = []
+        original = svc._deliver
+        svc._deliver = lambda to, subject, lines: (mails.append((to, subject, " ".join(lines))) or True)
+        try:
+            r = self.allocate(bid["id"], self.v2, who=self.admin, reason="Vendor technical mismatch")
+        finally:
+            svc._deliver = original
+        self.assertEqual(r.status_code, 200, r.text)
+        team = " ".join(e["text"] for e in r.json()["events"])
+        self.assertIn("ADMIN OVERRIDE", team)
+        self.assertIn("Frost Point", team)
+        self.assertIn("Vendor technical mismatch", team)
+        # the vendor now holding the bid sees a plain allocation line, never the old bidder or the reason
+        new_vendor = self.client.get(f"/api/bids/{bid['id']}", headers=self.h(self.vu2)).json()
+        seen = " ".join(e["text"] for e in new_vendor["events"])
+        self.assertIn("Allocated to Arctic Sales", seen)
+        for secret in ("Frost Point", "OVERRIDE", "mismatch", "reassigned"):
+            self.assertNotIn(secret, seen)
+        # the vendor it was taken from can no longer open the bid, and the mail it gets does not carry the reason
+        self.assertEqual(self.client.get(f"/api/bids/{bid['id']}", headers=self.h(self.vu1)).status_code, 404)
+        to_old = [m for m in mails if m[0] == "frost@t.com"]
+        self.assertTrue(to_old)
+        self.assertIn("taken", to_old[0][2].lower())
+        self.assertNotIn("mismatch", " ".join(m[2] for m in to_old))
+        self.assertNotIn("Arctic", " ".join(m[2] for m in to_old))
+        # a manual release: the reason is for the team
+        released = self.client.post(f"/api/bids/{bid['id']}/release", json={"reason": "Customer changed the specification"}, headers=self.h(self.sub)).json()
+        self.assertIn("Customer changed the specification", " ".join(e["text"] for e in released["events"]))
+        # nothing a vendor could ever be shown (events carrying their vendor id) holds the reason
+        self.db.expire_all()
+        shown = " ".join(e.text for e in self.db.scalars(select(BidEvent).where(BidEvent.bid_id == bid["id"], BidEvent.vendor_id.isnot(None))).all())
+        self.assertIn("Released by INDcool", shown)
+        for secret in ("specification", "OVERRIDE", "mismatch", "reassigned"):
+            self.assertNotIn(secret, shown)
 
     def test_vendor_cannot_allocate(self):
         bid = self.enter()
@@ -292,8 +421,8 @@ class BidApiTests(unittest.TestCase):
         today = svc.today_ist()
         self.db.expire_all()
         out = svc.run_rules(self.db, today + timedelta(days=1), send_reminders=False)
-        self.assertEqual(out["released"], 0)  # the confirm-by day itself is still fine
-        out = svc.run_rules(self.db, today + timedelta(days=2), send_reminders=False)
+        self.assertEqual(out["released"], 0)  # still inside the 48 hours
+        out = svc.run_rules(self.db, today + timedelta(days=3), send_reminders=False)
         self.assertEqual(out["released"], 1)
         b = self.bid(bid["id"])
         self.assertEqual((b.status, b.vendor_id), ("Open", None))
@@ -340,24 +469,23 @@ class BidApiTests(unittest.TestCase):
         self.assertEqual(r.status_code, 409)
 
     # --- reminders
-    def test_reminders_daily_from_three_days_to_closing_vendor_only_once_a_day(self):
+    def test_reminders_daily_from_two_days_to_closing_vendor_only_once_a_day(self):
         bid = self.enter(days=6)
         self.allocate(bid["id"], self.v1)
         self.client.post(f"/api/bids/{bid['id']}/confirm", headers=self.h(self.vu1))
         end = svc.today_ist() + timedelta(days=6)
-        for offset, expected in ((5, 0), (4, 0), (3, 1), (2, 1), (1, 1), (0, 0)):  # on closing day an unsubmitted bid has already gone back to INDcool
+        for offset, expected in ((5, 0), (4, 0), (3, 0), (2, 1), (1, 1), (0, 0)):  # on closing day an unsubmitted bid has already gone back to INDcool
             self.sent.clear()
             day = end - timedelta(days=offset)
             out = svc.run_rules(self.db, day, send_reminders=True)
             self.assertEqual(out["reminders"], expected, f"{offset} days before")
-            reminder_mails = [m for m in self.sent if m[1].startswith("Reminder:")]
+            reminder_mails = [m for m in self.sent if m[0] == "frost@t.com" and bid["bid_number"] in m[1] and "allocated" not in m[1] and "released" not in m[1]]
             self.assertEqual(len(reminder_mails), expected)
             if expected:
                 self.assertEqual(reminder_mails[0][0], "frost@t.com")
-                self.assertIn(bid["bid_number"], reminder_mails[0][1])
             self.sent.clear()
             self.assertEqual(svc.run_rules(self.db, day, send_reminders=True)["reminders"], 0)  # no double send same day
-        self.assertEqual(len(self.db.scalars(select(BidReminder)).all()), 3)
+        self.assertEqual(len(self.db.scalars(select(BidReminder)).all()), 2)
         self.assertEqual(self.bid(bid["id"]).status, "Open")
 
     def test_no_reminder_after_submission_or_for_self_bids(self):
@@ -464,6 +592,180 @@ class BidApiTests(unittest.TestCase):
         self.assertEqual(self.client.post("/api/bids/run-rules", headers=self.h(self.vu1)).status_code, 403)
         self.assertEqual(self.client.post("/api/bids/run-rules", headers=self.h(self.admin)).status_code, 200)
 
+    # --- vendor-wise figures
+    def _journey(self, number, vendor, vendor_user, *, confirm=True, submit=False, result=None):
+        bid = self.enter(number=number)
+        self.allocate(bid["id"], vendor)
+        if confirm:
+            self.client.post(f"/api/bids/{bid['id']}/confirm", headers=self.h(vendor_user))
+        if submit:
+            self.client.post(f"/api/bids/{bid['id']}/submit", json={}, headers=self.h(vendor_user))
+        if result:
+            self.client.post(f"/api/bids/{bid['id']}/result", json={"result": result}, headers=self.h(self.sub))
+        return bid
+
+    def test_vendor_wise_figures(self):
+        self._journey("GEM/2026/B/1000001", self.v1, self.vu1, submit=True, result="Won")
+        self._journey("GEM/2026/B/1000002", self.v1, self.vu1, submit=True, result="Lost")
+        self._journey("GEM/2026/B/1000003", self.v1, self.vu1)  # confirmed, still to submit
+        self._journey("GEM/2026/B/1000004", self.v1, self.vu1, confirm=False)  # waiting to confirm
+        declined = self._journey("GEM/2026/B/1000005", self.v2, self.vu2, confirm=False)
+        self.client.post(f"/api/bids/{declined['id']}/decline", json={"reason": "No stock"}, headers=self.h(self.vu2))
+        late = self._journey("GEM/2026/B/1000006", self.v2, self.vu2, confirm=False)
+        svc.run_rules(self.db, svc.today_ist() + timedelta(days=2), send_reminders=False)  # nobody confirmed in time
+        self.assertEqual(self.bid(late["id"]).status, "Open")
+
+        out = self.client.get("/api/bids/stats", headers=self.h(self.admin)).json()
+        rows = {r["vendor_name"]: r for r in out["vendors"]}
+        one, two = rows["Frost Point"], rows["Arctic Sales"]
+        self.assertEqual((one["allocated"], one["confirmed"], one["submitted"], one["won"], one["lost"]), (4, 3, 2, 1, 1))
+        self.assertEqual(one["holding"], 1, "only the confirmed bid is still held; the unconfirmed one went back")
+        self.assertEqual((one["declined"], one["expired"]), (0, 1))
+        self.assertEqual((two["allocated"], two["confirmed"], two["declined"], two["expired"]), (2, 0, 1, 1))
+        self.assertEqual((one["confirm_rate"], one["submit_rate"], one["win_rate"]), (75.0, 66.7, 50.0))
+        self.assertIsNone(two["win_rate"])
+        t = out["totals"]
+        self.assertEqual((t["allocated"], t["confirmed"], t["won"], t["declined"], t["expired"]), (6, 3, 1, 1, 2))
+        this_month = out["monthly"][-1]
+        self.assertEqual((this_month["allocated"], this_month["confirmed"], this_month["submitted"], this_month["won"]), (6, 3, 2, 1))
+        self.assertEqual(len(out["monthly"]), 6)
+
+        # one vendor picked, and a vendor can only ever see their own
+        only = self.client.get("/api/bids/stats", params={"vendor_id": self.v2.id}, headers=self.h(self.sub)).json()
+        self.assertEqual([r["vendor_name"] for r in only["vendors"]], ["Arctic Sales"])
+        mine = self.client.get("/api/bids/stats", params={"vendor_id": self.v1.id}, headers=self.h(self.vu2)).json()
+        self.assertEqual([r["vendor_name"] for r in mine["vendors"]], ["Arctic Sales"], "asking for another vendor gives the vendor their own figures")
+        self.assertEqual(self.client.get("/api/bids/stats", headers=self.h(self.sales_plain)).status_code, 403)
+
+    def test_figures_respect_the_dates_and_an_empty_vendor_still_has_a_row(self):
+        self._journey("GEM/2026/B/1000007", self.v1, self.vu1, submit=True)
+        today = svc.today_ist()
+        past = self.client.get("/api/bids/stats", params={"from": (today - timedelta(days=60)).isoformat(), "to": (today - timedelta(days=30)).isoformat()}, headers=self.h(self.admin)).json()
+        self.assertEqual((past["totals"]["allocated"], past["totals"]["submitted"]), (0, 0), "nothing happened in those dates")
+        now = self.client.get("/api/bids/stats", params={"from": today.isoformat(), "to": today.isoformat()}, headers=self.h(self.admin)).json()
+        self.assertEqual((now["totals"]["allocated"], now["totals"]["submitted"]), (1, 1))
+        bad = self.client.get("/api/bids/stats", params={"from": today.isoformat(), "to": (today - timedelta(days=1)).isoformat()}, headers=self.h(self.admin))
+        self.assertEqual(bad.status_code, 400)
+        empty = self.client.get("/api/bids/stats", headers=self.h(self.vu3)).json()
+        self.assertEqual([(r["vendor_name"], r["allocated"]) for r in empty["vendors"]], [("Cool Zone", 0)])
+    # --- 48 hours to accept or reject, the reminders and the login popup cards
+    def _cards(self, user):
+        r = self.client.get("/api/pending-actions", headers=self.h(user))
+        self.assertEqual(r.status_code, 200, r.text)
+        return [i for i in r.json()["items"] if i["module"] == "bids"]
+
+    def test_accept_time_is_48_hours_but_never_past_the_day_before_closing(self):
+        from datetime import datetime, timezone
+
+        bid = self.enter(days=10)
+        self.allocate(bid["id"], self.v1)
+        due = svc.aware(self.bid(bid["id"]).confirm_due_at)
+        self.assertAlmostEqual((due - datetime.now(timezone.utc)).total_seconds() / 3600, 48, delta=0.1)
+        near = self.enter(number="GEM/2026/B/6000001", days=1)
+        self.allocate(near["id"], self.v2)
+        b = self.bid(near["id"])
+        end_of_closing_day = svc.datetime.combine(b.end_date, svc.clock(23, 59, 59), svc.IST)
+        self.assertLessEqual(svc.aware(b.confirm_due_at), end_of_closing_day)
+        self.assertLess(svc.aware(b.confirm_due_at), datetime.now(timezone.utc) + svc.timedelta(hours=48))
+
+    def test_accept_reminders_at_24_and_2_hours_left_each_sent_once(self):
+        bid = self.enter(days=10)
+        self.allocate(bid["id"], self.v1)
+        due = svc.aware(self.bid(bid["id"]).confirm_due_at)
+        self.sent.clear()
+        self.assertEqual(svc.send_accept_reminders(self.db, due - svc.timedelta(hours=30)), 0)
+        self.assertEqual(svc.send_accept_reminders(self.db, due - svc.timedelta(hours=23)), 1)
+        self.db.commit()
+        svc.flush_outbox()
+        self.assertEqual([m[1] for m in self.sent], [f"Reminder: accept or reject bid {bid['bid_number']}. 24 hours left"])
+        self.assertEqual(svc.send_accept_reminders(self.db, due - svc.timedelta(hours=22)), 0, "once")
+        self.sent.clear()
+        self.assertEqual(svc.send_accept_reminders(self.db, due - svc.timedelta(hours=1.5)), 1)
+        self.db.commit()
+        svc.flush_outbox()
+        self.assertEqual([m[1] for m in self.sent], [f"LAST WARNING: bid {bid['bid_number']} will be withdrawn in 2 hours"])
+        self.assertEqual(svc.send_accept_reminders(self.db, due - svc.timedelta(hours=1)), 0, "once")
+        self.assertEqual(svc.send_accept_reminders(self.db, due + svc.timedelta(hours=1)), 0, "nothing after the time is up")
+
+    def test_accept_reminders_skipped_when_the_window_is_short(self):
+        near = self.enter(days=1)
+        self.allocate(near["id"], self.v1)
+        b = self.bid(near["id"])
+        due = svc.aware(b.confirm_due_at)
+        window = (due - svc.aware(b.allocated_at)).total_seconds() / 3600
+        self.sent.clear()
+        sent = svc.send_accept_reminders(self.db, due - svc.timedelta(hours=23))
+        self.assertEqual(sent, 1 if window > 26 else 0, "no 24 hour mail when the vendor was given less than 26 hours")
+
+    def test_popup_cards_for_accept_then_submit_and_they_cannot_be_ticked_away(self):
+        from datetime import datetime, timezone
+
+        bid = self.enter(days=2)
+        self.allocate(bid["id"], self.v1)
+        cards = self._cards(self.vu1)
+        self.assertEqual([(c["action_type"], c["action_label"]) for c in cards], [("bid_accept", "Accept or reject")])
+        self.assertFalse(cards[0]["message"].startswith("HIGH PRIORITY"), "plenty of time left")
+        self.assertEqual(cards[0]["href"], f"/bids/{bid['id']}")
+        self.assertIsNotNone(cards[0]["due_at"])
+        self.assertEqual(self._cards(self.vu2), [], "only the vendor the bid is with")
+        # 20 hours left: urgent
+        b = self.bid(bid["id"])
+        b.confirm_due_at = datetime.now(timezone.utc) + svc.timedelta(hours=20)
+        self.db.commit()
+        svc.run_rules(self.db, send_reminders=False, accept_reminders=False)
+        self.assertTrue(self._cards(self.vu1)[0]["message"].startswith("HIGH PRIORITY - "))
+        # a vendor cannot hide it: marking everything read leaves it
+        self.client.post("/api/pending-actions/mark-read", json={"ids": None}, headers=self.h(self.vu1))
+        self.client.post("/api/pending-actions/mark-read", json={"ids": [cards[0]["id"]]}, headers=self.h(self.vu1))
+        self.assertFalse(self._cards(self.vu1)[0]["is_read"])
+        # accepted: the closing date is 2 days away, so the submit card comes
+        self.client.post(f"/api/bids/{bid['id']}/confirm", headers=self.h(self.vu1))
+        cards = self._cards(self.vu1)
+        self.assertEqual([c["action_type"] for c in cards], ["bid_submit"])
+        self.assertIn("not marked submitted", cards[0]["message"])
+        # submitted: nothing left
+        self.client.post(f"/api/bids/{bid['id']}/submit", json={}, headers=self.h(self.vu1))
+        self.assertEqual(self._cards(self.vu1), [])
+
+    def test_no_submit_card_until_two_days_before_closing_and_declining_removes_the_card(self):
+        far = self.enter(days=10)
+        self.allocate(far["id"], self.v1)
+        self.client.post(f"/api/bids/{far['id']}/confirm", headers=self.h(self.vu1))
+        self.assertEqual(self._cards(self.vu1), [], "10 days to go: no submit card yet")
+        other = self.enter(number="GEM/2026/B/6000002", days=10)
+        self.allocate(other["id"], self.v1)
+        self.assertEqual([c["action_type"] for c in self._cards(self.vu1)], ["bid_accept"])
+        self.client.post(f"/api/bids/{other['id']}/decline", json={"reason": "No stock"}, headers=self.h(self.vu1))
+        self.assertEqual(self._cards(self.vu1), [])
+
+    def test_mails_are_laid_out_with_banner_rows_and_buttons(self):
+        from app.config import settings
+
+        bid = self.enter(days=10)
+        self.allocate(bid["id"], self.v1)
+        b = self.bid(bid["id"])
+        old = settings.app_public_url
+        settings.app_public_url = "https://crm.example.test"
+        try:
+            html, text = svc._render(svc._accept_mail(b, "#1d4ed8", "A bid has been allocated to you", "Accept or reject within 48 hours", "Please <b>answer</b>.", "No answer: withdrawn."))
+            self.assertIn("background:#1d4ed8", html)
+            self.assertIn(f'href="https://crm.example.test/bids/{b.id}"', html)
+            self.assertIn("Accept: I will bid", html)
+            self.assertIn(b.bid_number, html)
+            self.assertNotIn("@banner", html + text)
+            self.assertNotIn("<b>", text)
+            self.assertIn(f"Accept: I will bid: https://crm.example.test/bids/{b.id}", text)
+            subject, lines = svc._submit_mail(b, 1)
+            self.assertIn("Last date is tomorrow", subject)
+            html, _ = svc._render(lines)
+            self.assertIn("Mark as submitted in the CRM", html)
+            self.assertIn("withdrawn from you and opened for allocation to another eligible vendor", html)
+            settings.app_public_url = ""
+            html, _ = svc._render(svc._accept_mail(b, "#1d4ed8", "x", "y", "z", "w"))
+            self.assertNotIn("<a href", html)
+            self.assertIn("Open the CRM", html)
+        finally:
+            settings.app_public_url = old
 
 if __name__ == "__main__":
     unittest.main()

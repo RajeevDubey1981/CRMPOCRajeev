@@ -18,6 +18,7 @@ import {
   labelClass,
   money,
   useBidSide,
+  fmtDateTime,
 } from "./bidUi.jsx";
 
 function Row({ label, children }) {
@@ -130,6 +131,15 @@ export default function BidDetail() {
               <Row label="Item">{bid.title}</Row>
               <Row label="Buyer / department">{bid.department}</Row>
               <Row label="Product">{bid.product_category}{bid.product_type && bid.product_type !== "Other" ? ` / ${bid.product_type}` : ""}</Row>
+              {bid.lines?.length > 0 && (
+                <Row label="Items">
+                  <ul className="space-y-0.5">
+                    {bid.lines.map((l, i) => (
+                      <li key={i}>{l.item}{l.quantity != null ? <span className="text-slate-500"> × {l.quantity}</span> : null}</li>
+                    ))}
+                  </ul>
+                </Row>
+              )}
               <Row label="Quantity">{bid.quantity}</Row>
               <Row label="Estimated value">{money(bid.estimated_value)}</Row>
               <Row label="Published">{fmtDate(bid.publish_date)}</Row>
@@ -160,24 +170,24 @@ export default function BidDetail() {
             <Card title="Deadlines">
               <dl className="divide-y divide-slate-100">
                 <Row label="Bidder">{bid.vendor_name}</Row>
-                {bid.status === "Allocated" && <Row label="Confirm by">{fmtDate(bid.confirm_by)}</Row>}
+                {bid.status === "Allocated" && <Row label="Accept or reject by">{bid.confirm_due_at ? fmtDateTime(bid.confirm_due_at) : fmtDate(bid.confirm_by)}</Row>}
                 {bid.status !== "Submitted" && <Row label="Submit by">{fmtDate(bid.submit_by)}</Row>}
                 <Row label="Bid ends">{fmtDate(bid.end_date)}</Row>
                 {bid.submission_ref && <Row label="Acknowledgement">{bid.submission_ref}</Row>}
               </dl>
-              {bid.status === "Allocated" && <p className="mt-2 text-xs text-slate-500">If it is not confirmed in time the bid goes back to the bid team and is free for another vendor.</p>}
-              {bid.status === "Confirmed" && !bid.is_self && <p className="mt-2 text-xs text-slate-500">If it is not submitted on the portal in time the bid goes back to the bid team.</p>}
+              {bid.status === "Allocated" && <p className="mt-2 text-xs text-slate-500">If there is no answer in time, the bid is withdrawn and opened for allocation to another eligible vendor.</p>}
+              {bid.status === "Confirmed" && !bid.is_self && <p className="mt-2 text-xs text-slate-500">If it is not marked submitted in time, the bid is withdrawn and opened for allocation to another eligible vendor.</p>}
             </Card>
           )}
 
           {/* vendor actions */}
           {!manager && bid.status === "Allocated" && (
             <Card title="Your answer" tone="ring-2 ring-brand-500">
-              <p className="mb-3 text-sm text-slate-700">INDcool has allocated this bid to you. Please confirm that you will bid, by {fmtDate(bid.confirm_by)}.</p>
+              <p className="mb-3 text-sm text-slate-700">INDcool has allocated this bid to you. Please accept or reject it by {bid.confirm_due_at ? fmtDateTime(bid.confirm_due_at) : fmtDate(bid.confirm_by)}.</p>
               <div className="space-y-2">
-                <button type="button" disabled={busy} onClick={() => run(() => bidsApi.confirm(bid.id), "Confirmed. Please submit on the portal by " + fmtDate(bid.submit_by) + ".")} className={`${btnPrimary} w-full`}>Confirm bidding</button>
-                <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Reason, if you cannot bid" className={fieldClass} />
-                <button type="button" disabled={busy} onClick={() => run(() => bidsApi.decline(bid.id, reason), "You declined. The bid went back to INDcool.")} className={`${btnGhost} w-full`}>I cannot bid on this</button>
+                <button type="button" disabled={busy} onClick={() => run(() => bidsApi.confirm(bid.id), "Confirmed. Please submit on the portal by " + fmtDate(bid.submit_by) + ".")} className={`${btnPrimary} w-full`}>Accept: I will bid</button>
+                <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Reason, if you reject (optional)" className={fieldClass} />
+                <button type="button" disabled={busy} onClick={() => run(() => bidsApi.decline(bid.id, reason), "You rejected the bid. It went back to INDcool.")} className={`${btnGhost} w-full`}>Reject this bid</button>
               </div>
             </Card>
           )}

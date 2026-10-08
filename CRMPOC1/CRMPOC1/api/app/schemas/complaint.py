@@ -3,13 +3,15 @@ from typing import Literal
 
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
+from app.schemas.place import PlaceIn
+
 QUERY_TYPES = ("Service", "Installation", "Sales", "Others")
 STATUSES = ("Pending", "Under Process", "In Process", "Resolved", "Rejected")
 ACTIONS = ("Ask for Invoice", "Request Sent", "Documents Received")
 PRIORITIES = ("Normal", "High")
 
 
-class ComplaintCreate(BaseModel):
+class ComplaintCreate(PlaceIn):
     comp_date: date | None = None
     customer_name: str = Field(min_length=1, max_length=255)
     customer_mobile: str = Field(min_length=10, max_length=20)
@@ -31,7 +33,7 @@ class ComplaintCreate(BaseModel):
         return digits
 
 
-class ComplaintUpdate(BaseModel):
+class ComplaintUpdate(PlaceIn):
     customer_name: str | None = None
     customer_mobile: str | None = None
     customer_email: EmailStr | None = None
@@ -80,6 +82,9 @@ class ComplaintOut(BaseModel):
     customer_mobile: str
     customer_email: str | None
     customer_address: str | None
+    pincode: str | None = None
+    state: str | None = None
+    district: str | None = None
     model_details: str | None
     problem_description: str | None
     query_type: str | None

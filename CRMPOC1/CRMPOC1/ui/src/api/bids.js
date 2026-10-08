@@ -2,8 +2,10 @@ import { api } from "./client.js";
 
 export const bidsApi = {
   meta: () => api.get("/api/bids/meta").then((r) => r.data),
+  checkNumber: (number, excludeId) => api.get("/api/bids/check-number", { params: { number, exclude_id: excludeId || undefined } }).then((r) => r.data),
   detect: (text) => api.get("/api/bids/detect", { params: { text } }).then((r) => r.data),
   vendors: () => api.get("/api/bids/vendors").then((r) => r.data),
+  stats: (params) => api.get("/api/bids/stats", { params }).then((r) => r.data),
   list: (params) => api.get("/api/bids", { params }).then((r) => r.data),
   get: (id) => api.get(`/api/bids/${id}`).then((r) => r.data),
   create: (body) => api.post("/api/bids", body).then((r) => r.data),
