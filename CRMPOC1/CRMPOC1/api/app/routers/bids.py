@@ -20,6 +20,7 @@ from app.schemas.bid import (
     BidNumberCheck,
     BidOut,
     BidRequestOut,
+    BidStatsOut,
     BidUpdate,
     ReasonIn,
     RequestDecisionIn,
@@ -30,6 +31,7 @@ from app.schemas.bid import (
     VendorPick,
 )
 from app.services import bid_service as svc
+from app.services.bid_stats import vendor_stats
 from app.services.bid_access import BidAccess, bid_access
 from app.services.bid_service import BidError
 
@@ -193,6 +195,22 @@ def meta(access: BidAccess = Depends(get_access)):
 @router.get("/detect")
 def detect(text: str = Query(""), _: BidAccess = Depends(manager_access)):
     return svc.detect_category(text)
+
+
+@router.get("/stats", response_model=BidStatsOut)
+def stats(
+    vendor_id: int | None = Query(None, description="One vendor. A vendor always gets their own figures"),
+    date_from: date | None = Query(None, alias="from"),
+    date_to: date | None = Query(None, alias="to"),
+    access: BidAccess = Depends(get_access),
+    db: Session = Depends(get_db),
+):
+    """Vendor-wise figures: allocated, confirmed, submitted, won, lost, declined, expired and what is held now."""
+    if date_from and date_to and date_to < date_from:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "The end date is before the start date")
+    if not access.is_manager:
+        vendor_id = access.vendor.id
+    return vendor_stats(db, vendor_id=vendor_id, date_from=date_from, date_to=date_to, today=svc.today_ist())
 
 
 @router.get("/check-number", response_model=BidNumberCheck)

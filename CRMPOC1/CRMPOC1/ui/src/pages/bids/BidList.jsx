@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 
 import { bidsApi } from "../../api/bids.js";
 import {
@@ -35,15 +35,25 @@ function Kpi({ label, value, tone, active, onClick, hint }) {
 
 export default function BidList() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [meta, setMeta] = useState(null);
+  const [vendors, setVendors] = useState([]);
   const [all, setAll] = useState([]);
   const [rows, setRows] = useState([]);
   const [requestsOpen, setRequestsOpen] = useState(0);
-  const [filters, setFilters] = useState({ q: "", state: "Live", bid_type: "", category: "", product_type: "" });
+  const [filters, setFilters] = useState({
+    q: "",
+    state: searchParams.get("state") || "Live",
+    bid_type: "",
+    category: "",
+    product_type: "",
+    vendor_id: searchParams.get("vendor_id") || "",
+  });
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
 
   useEffect(() => { bidsApi.meta().then(setMeta).catch(() => {}); }, []);
+  useEffect(() => { bidsApi.vendors().then(setVendors).catch(() => {}); }, []);
 
   const loadAll = useCallback(() => {
     bidsApi.list({}).then(setAll).catch(() => {});
@@ -108,6 +118,10 @@ export default function BidList() {
             className={`${fieldClass} md:max-w-md`}
             aria-label="Search bids"
           />
+          <select value={filters.vendor_id} onChange={(e) => set("vendor_id", e.target.value)} className={`${fieldClass} md:w-56`} aria-label="Vendor">
+            <option value="">All vendors</option>
+            {vendors.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
+          </select>
           <select value={filters.bid_type} onChange={(e) => set("bid_type", e.target.value)} className={`${fieldClass} md:w-40`} aria-label="Bid category">
             <option value="">GeM and State govt</option>
             {(meta?.bid_types || ["GeM", "State govt"]).map((t) => <option key={t} value={t}>{t}</option>)}

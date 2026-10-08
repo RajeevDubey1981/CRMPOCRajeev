@@ -47,6 +47,13 @@ export function BidStatCard({ bids }) {
         <h5 className="text-base font-semibold text-white">Bids allocated to you</h5>
         <p className="mt-0.5 text-sm text-white/85">{bids.length} {bids.length === 1 ? "bid" : "bids"}</p>
         <p className="text-xs text-white/80">{next ? `Next closes ${fmtDate(next.end_date)}` : "Nothing open"}</p>
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); navigate("/bids/stats"); }}
+          className="mt-1.5 rounded bg-white/20 px-2 py-0.5 text-xs font-medium text-white hover:bg-white/30"
+        >
+          📊 My bid stats
+        </button>
       </div>
     </div>
   );

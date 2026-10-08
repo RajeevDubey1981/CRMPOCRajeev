@@ -182,6 +182,41 @@ class VendorLookupOut(BaseModel):
     bid_id: int | None = None  # only set for the vendor's own bid
 
 
+class BidStatRow(BaseModel):
+    """One vendor's bid figures (or the totals row): see services/bid_stats.py for what each number means."""
+
+    vendor_id: int | None = None
+    vendor_name: str = ""
+    allocated: int = 0
+    confirmed: int = 0
+    submitted: int = 0
+    won: int = 0
+    lost: int = 0
+    declined: int = 0
+    expired: int = 0
+    holding: int = 0
+    confirm_rate: float | None = None  # confirmed out of allocated, per cent
+    submit_rate: float | None = None  # submitted out of confirmed
+    win_rate: float | None = None  # won out of won + lost
+
+
+class BidStatMonth(BaseModel):
+    month: str  # 2026-10
+    label: str  # Oct 26
+    allocated: int = 0
+    confirmed: int = 0
+    submitted: int = 0
+    won: int = 0
+
+
+class BidStatsOut(BaseModel):
+    date_from: date | None = None
+    date_to: date | None = None
+    totals: BidStatRow
+    vendors: list[BidStatRow] = Field(default_factory=list)
+    monthly: list[BidStatMonth] = Field(default_factory=list)
+
+
 class VendorPick(BaseModel):
     id: int
     vendor_code: str

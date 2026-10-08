@@ -107,8 +107,8 @@ export function Steps({ bid }) {
 /** Row of links shown at the top of every bids page. Managers and vendors see different tabs. */
 export function BidTabs({ manager }) {
   const tabs = manager
-    ? [["/bids", "Bids", true], ["/bids/allocation", "Allocation"], ["/bids/requests", "Vendor requests"], ["/bids/calendar", "Calendar"]]
-    : [["/bids", "My bids", true], ["/bids/request", "Request a bid"], ["/bids/calendar", "Calendar"]];
+    ? [["/bids", "Bids", true], ["/bids/allocation", "Allocation"], ["/bids/requests", "Vendor requests"], ["/bids/stats", "Stats"], ["/bids/calendar", "Calendar"]]
+    : [["/bids", "My bids", true], ["/bids/request", "Request a bid"], ["/bids/stats", "My stats"], ["/bids/calendar", "Calendar"]];
   return (
     <div className="mb-4 flex flex-wrap gap-1 border-b border-slate-200">
       {tabs.map(([to, label, end]) => (

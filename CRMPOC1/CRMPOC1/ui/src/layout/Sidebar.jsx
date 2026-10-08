@@ -36,6 +36,7 @@ const NAV = [
       { to: "/bids", label: "Bids", module: "bids", bidSide: "manager" },
       { to: "/bids/allocation", label: "Allocation", module: "bids", bidSide: "manager" },
       { to: "/bids/requests", label: "Vendor requests", module: "bids", bidSide: "manager" },
+      { to: "/bids/stats", label: "Stats", module: "bids" },
       { to: "/bids/calendar", label: "Calendar", module: "bids" },
       { to: "/bids", label: "My bids", module: "bids", bidSide: "vendor" },
       { to: "/bids/request", label: "Request a bid", module: "bids", bidSide: "vendor" },

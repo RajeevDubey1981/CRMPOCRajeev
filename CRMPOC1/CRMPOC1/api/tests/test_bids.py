@@ -592,6 +592,62 @@ class BidApiTests(unittest.TestCase):
         self.assertEqual(self.client.post("/api/bids/run-rules", headers=self.h(self.vu1)).status_code, 403)
         self.assertEqual(self.client.post("/api/bids/run-rules", headers=self.h(self.admin)).status_code, 200)
 
+    # --- vendor-wise figures
+    def _journey(self, number, vendor, vendor_user, *, confirm=True, submit=False, result=None):
+        bid = self.enter(number=number)
+        self.allocate(bid["id"], vendor)
+        if confirm:
+            self.client.post(f"/api/bids/{bid['id']}/confirm", headers=self.h(vendor_user))
+        if submit:
+            self.client.post(f"/api/bids/{bid['id']}/submit", json={}, headers=self.h(vendor_user))
+        if result:
+            self.client.post(f"/api/bids/{bid['id']}/result", json={"result": result}, headers=self.h(self.sub))
+        return bid
+
+    def test_vendor_wise_figures(self):
+        self._journey("GEM/2026/B/1000001", self.v1, self.vu1, submit=True, result="Won")
+        self._journey("GEM/2026/B/1000002", self.v1, self.vu1, submit=True, result="Lost")
+        self._journey("GEM/2026/B/1000003", self.v1, self.vu1)  # confirmed, still to submit
+        self._journey("GEM/2026/B/1000004", self.v1, self.vu1, confirm=False)  # waiting to confirm
+        declined = self._journey("GEM/2026/B/1000005", self.v2, self.vu2, confirm=False)
+        self.client.post(f"/api/bids/{declined['id']}/decline", json={"reason": "No stock"}, headers=self.h(self.vu2))
+        late = self._journey("GEM/2026/B/1000006", self.v2, self.vu2, confirm=False)
+        svc.run_rules(self.db, svc.today_ist() + timedelta(days=2), send_reminders=False)  # nobody confirmed in time
+        self.assertEqual(self.bid(late["id"]).status, "Open")
+
+        out = self.client.get("/api/bids/stats", headers=self.h(self.admin)).json()
+        rows = {r["vendor_name"]: r for r in out["vendors"]}
+        one, two = rows["Frost Point"], rows["Arctic Sales"]
+        self.assertEqual((one["allocated"], one["confirmed"], one["submitted"], one["won"], one["lost"]), (4, 3, 2, 1, 1))
+        self.assertEqual(one["holding"], 1, "only the confirmed bid is still held; the unconfirmed one went back")
+        self.assertEqual((one["declined"], one["expired"]), (0, 1))
+        self.assertEqual((two["allocated"], two["confirmed"], two["declined"], two["expired"]), (2, 0, 1, 1))
+        self.assertEqual((one["confirm_rate"], one["submit_rate"], one["win_rate"]), (75.0, 66.7, 50.0))
+        self.assertIsNone(two["win_rate"])
+        t = out["totals"]
+        self.assertEqual((t["allocated"], t["confirmed"], t["won"], t["declined"], t["expired"]), (6, 3, 1, 1, 2))
+        this_month = out["monthly"][-1]
+        self.assertEqual((this_month["allocated"], this_month["confirmed"], this_month["submitted"], this_month["won"]), (6, 3, 2, 1))
+        self.assertEqual(len(out["monthly"]), 6)
+
+        # one vendor picked, and a vendor can only ever see their own
+        only = self.client.get("/api/bids/stats", params={"vendor_id": self.v2.id}, headers=self.h(self.sub)).json()
+        self.assertEqual([r["vendor_name"] for r in only["vendors"]], ["Arctic Sales"])
+        mine = self.client.get("/api/bids/stats", params={"vendor_id": self.v1.id}, headers=self.h(self.vu2)).json()
+        self.assertEqual([r["vendor_name"] for r in mine["vendors"]], ["Arctic Sales"], "asking for another vendor gives the vendor their own figures")
+        self.assertEqual(self.client.get("/api/bids/stats", headers=self.h(self.sales_plain)).status_code, 403)
+
+    def test_figures_respect_the_dates_and_an_empty_vendor_still_has_a_row(self):
+        self._journey("GEM/2026/B/1000007", self.v1, self.vu1, submit=True)
+        today = svc.today_ist()
+        past = self.client.get("/api/bids/stats", params={"from": (today - timedelta(days=60)).isoformat(), "to": (today - timedelta(days=30)).isoformat()}, headers=self.h(self.admin)).json()
+        self.assertEqual((past["totals"]["allocated"], past["totals"]["submitted"]), (0, 0), "nothing happened in those dates")
+        now = self.client.get("/api/bids/stats", params={"from": today.isoformat(), "to": today.isoformat()}, headers=self.h(self.admin)).json()
+        self.assertEqual((now["totals"]["allocated"], now["totals"]["submitted"]), (1, 1))
+        bad = self.client.get("/api/bids/stats", params={"from": today.isoformat(), "to": (today - timedelta(days=1)).isoformat()}, headers=self.h(self.admin))
+        self.assertEqual(bad.status_code, 400)
+        empty = self.client.get("/api/bids/stats", headers=self.h(self.vu3)).json()
+        self.assertEqual([(r["vendor_name"], r["allocated"]) for r in empty["vendors"]], [("Cool Zone", 0)])
 
 if __name__ == "__main__":
     unittest.main()

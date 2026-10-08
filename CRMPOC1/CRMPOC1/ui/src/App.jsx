@@ -59,6 +59,7 @@ import BidDetail from "./pages/bids/BidDetail.jsx";
 import BidAllocation from "./pages/bids/BidAllocation.jsx";
 import BidRequests from "./pages/bids/BidRequests.jsx";
 import QueriesPage from "./pages/queries/QueriesPage.jsx";
+import BidStats from "./pages/bids/BidStats.jsx";
 import VendorRequest from "./pages/bids/VendorRequest.jsx";
 import BidCalendar from "./pages/bids/BidCalendar.jsx";
 import { isOperationsAdminRole, isSubAdminRole, isSystemAdminRole } from "./utils/roles.js";
@@ -196,6 +197,7 @@ export default function App() {
         <Route path="/bids/allocation" element={<BidsRoute side="manager"><BidAllocation /></BidsRoute>} />
         <Route path="/bids/requests" element={<BidsRoute side="manager"><BidRequests /></BidsRoute>} />
         <Route path="/bids/request" element={<BidsRoute side="vendor"><VendorRequest /></BidsRoute>} />
+        <Route path="/bids/stats" element={<BidsRoute><BidStats /></BidsRoute>} />
         <Route path="/bids/calendar" element={<BidsRoute><BidCalendar /></BidsRoute>} />
         <Route path="/bids/:id/edit" element={<BidsRoute side="manager"><BidForm /></BidsRoute>} />
         <Route path="/bids/:id" element={<BidsRoute><BidDetail /></BidsRoute>} />
