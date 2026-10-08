@@ -220,7 +220,7 @@ def sync_service_request_from_units(
         service.serial_no = unit_primary_serial(primary) or service.serial_no
         service.warranty_status = primary.warranty_status or service.warranty_status
         service.service_type = primary.service_type or service.service_type
-        order_item = db.get(OrderItem, primary.order_item_id)
+        order_item = db.get(OrderItem, primary.order_item_id) if primary.order_item_id else None
         if order_item is not None:
             service.order_item_id = order_item.id
             service.order_id = order_item.order_id
@@ -261,6 +261,7 @@ def verify_unit_serial(
     find_order_item_by_serial: Callable,
     *,
     serial_no: str | None = None,
+    serial_no_2: str | None = None,
 ) -> ServiceRequestUnit:
     if unit.service_request_id != service.id:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Unit does not belong to this service request")
@@ -270,6 +271,7 @@ def verify_unit_serial(
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Serial verification is awaiting admin review")
 
     resolved_serial = (serial_no or "").strip() or unit_primary_serial(unit)
+    resolved_serial_2 = (serial_no_2 or "").strip() or None
     if not resolved_serial:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Serial number is required for this unit")
 
@@ -288,6 +290,7 @@ def verify_unit_serial(
     if lookup_item is None:
         if submits_for_review:
             unit.serial_no = resolved_serial
+            unit.serial_no_2 = resolved_serial_2
             unit.unit_status = UNIT_STATUS_SERIAL_PENDING
             engineer_id = user.id if role_key == "engineer" else unit.assigned_engineer_id
             sync_service_request_from_units(db, service, engineer_id=engineer_id if engineer_id else None)
@@ -295,7 +298,25 @@ def verify_unit_serial(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Serial number not found in order records")
 
     context = derive_context(db, lookup_item)
+    existing_for_serial = db.scalar(
+        select(ServiceRequestUnit).where(
+            ServiceRequestUnit.service_request_id == service.id,
+            ServiceRequestUnit.order_item_id == lookup_item.id,
+            ServiceRequestUnit.id != unit.id,
+        )
+    )
+    if existing_for_serial is not None:
+        if existing_for_serial.assigned_engineer_id is not None:
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                "This serial is already assigned on this service request",
+            )
+        db.delete(existing_for_serial)
+        db.flush()
+
     unit.serial_no = resolved_serial
+    unit.serial_no_2 = resolved_serial_2 or lookup_item.serial_no_2
+    unit.order_item_id = lookup_item.id
     unit.warranty_status = context["warranty_status"]
     unit.service_type = context["service_type"]
     if submits_for_review:

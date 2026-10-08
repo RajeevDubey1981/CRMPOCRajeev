@@ -226,7 +226,7 @@ class ServiceRequestUnit(Base, TimestampMixin):
     id: Mapped[int] = mapped_column(primary_key=True)
     service_request_id: Mapped[int] = mapped_column(ForeignKey("service_requests.id"), nullable=False, index=True)
     service_request_item_id: Mapped[int] = mapped_column(ForeignKey("service_request_items.id"), nullable=False, index=True)
-    order_item_id: Mapped[int] = mapped_column(ForeignKey("order_items.id"), nullable=False, index=True)
+    order_item_id: Mapped[int | None] = mapped_column(ForeignKey("order_items.id"), nullable=True, index=True)
     serial_no: Mapped[str | None] = mapped_column(String(100), nullable=True)
     serial_no_2: Mapped[str | None] = mapped_column(String(100), nullable=True)
     assigned_engineer_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
@@ -236,6 +236,7 @@ class ServiceRequestUnit(Base, TimestampMixin):
     warranty_status: Mapped[str | None] = mapped_column(String(50), nullable=True)
     service_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
     unit_status: Mapped[str] = mapped_column(String(50), nullable=False, default="Assigned")
+    remarks: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class ServiceUnitAssignment(Base):

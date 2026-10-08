@@ -43,8 +43,10 @@ export default function ServiceUnitAssignmentPanel({
   const [selectedItemCode, setSelectedItemCode] = useState("");
   const [selectedUnitIds, setSelectedUnitIds] = useState(new Set());
   const [assignEngineerId, setAssignEngineerId] = useState("");
+  const [assignQuantity, setAssignQuantity] = useState("");
   const [assignBillingType, setAssignBillingType] = useState("Free");
   const [assignRemarks, setAssignRemarks] = useState("");
+  const [assignmentNotice, setAssignmentNotice] = useState(null);
   const orderItems = service?.order_items || [];
   const allUnits = service?.units || [];
   const orderVerified = (orderItems.length > 0)
@@ -170,6 +172,7 @@ export default function ServiceUnitAssignmentPanel({
   async function assignSelectedUnits() {
     if (!assignEngineerId || selectedUnitIds.size === 0) return;
     const engineer = engineers.find((row) => String(row.id) === String(assignEngineerId));
+    setAssignmentNotice(null);
     await run(
       () => servicesApi.assignUnits(service.id, {
         unit_ids: Array.from(selectedUnitIds),
@@ -180,6 +183,63 @@ export default function ServiceUnitAssignmentPanel({
       { successMessage: `Assigned ${selectedUnitIds.size} unit(s) to ${engineer?.name || "engineer"}.` },
     );
     setSelectedUnitIds(new Set());
+    setAssignQuantity("");
+    setAssignRemarks("");
+    onRefresh?.();
+  }
+
+  async function assignQuantityUnits() {
+    const quantity = Number(assignQuantity);
+    const engineer = engineers.find((row) => String(row.id) === String(assignEngineerId));
+    setAssignmentNotice(null);
+    if (!assignEngineerId || !selectedItemCode || !Number.isInteger(quantity) || quantity <= 0) {
+      setAssignmentNotice({
+        type: "error",
+        title: "Quantity assignment not started",
+        details: ["Choose an engineer and enter a valid quantity."],
+      });
+      return;
+    }
+    const maxAvailable = Number(selectedItem?.unassigned_count || 0);
+    if (quantity > maxAvailable) {
+      setAssignmentNotice({
+        type: "error",
+        title: "Quantity exceeds available units",
+        details: [
+          `Requested quantity: ${quantity}`,
+          `Available unassigned quantity for ${selectedItemCode}: ${maxAvailable}`,
+        ],
+      });
+      return;
+    }
+    await run(
+      async () => {
+        const updated = await servicesApi.assignUnitsByQuantity(service.id, {
+          item_code: selectedItemCode,
+          quantity,
+          engineer_id: Number(assignEngineerId),
+          remarks: assignRemarks || null,
+          billing_type: assignBillingType,
+        });
+        const serialFields = Number(selectedItem?.serial_count || 1);
+        setAssignmentNotice({
+          type: "success",
+          title: "Quantity assigned successfully",
+          details: [
+            `Engineer: ${engineer?.name || "Engineer"}`,
+            `Item: ${displayCode(selectedItemCode)}${selectedItem?.item_name ? ` - ${selectedItem.item_name}` : ""}`,
+            `Assigned quantity: ${quantity}`,
+            `Billing: ${assignBillingType}`,
+            `Available before assignment: ${maxAvailable}`,
+            `Engineer will see ${quantity} row(s), with ${serialFields} serial field(s) per row.`,
+          ],
+        });
+        return updated;
+      },
+      { successMessage: `Assigned ${quantity} unit(s) of ${selectedItemCode} to ${engineer?.name || "engineer"}.` },
+    );
+    setSelectedUnitIds(new Set());
+    setAssignQuantity("");
     setAssignRemarks("");
     onRefresh?.();
   }
@@ -213,7 +273,9 @@ export default function ServiceUnitAssignmentPanel({
                         <tr key={unit.id}>
                           <td className="px-3 py-2">{idx + 1}</td>
                           {(unit.serial_values?.length ? unit.serial_values : [unit.serial_no]).map((value, colIdx) => (
-                            <td key={colIdx} className="px-3 py-2">{serialCell(value)}</td>
+                            <td key={colIdx} className="px-3 py-2">
+                              {value ? serialCell(value) : <span className="text-slate-400">Enter/Select</span>}
+                            </td>
                           ))}
                         </tr>
                       ))}
@@ -414,6 +476,8 @@ export default function ServiceUnitAssignmentPanel({
                       onClick={() => {
                         setSelectedItemCode(item.item_code);
                         setSelectedUnitIds(new Set());
+                        setAssignQuantity("");
+                        setAssignmentNotice(null);
                       }}
                       className="rounded-md border border-slate-300 px-3 py-1 text-xs hover:bg-slate-50"
                     >
@@ -493,7 +557,7 @@ export default function ServiceUnitAssignmentPanel({
             </table>
           </div>
 
-          <div className="grid gap-3 md:grid-cols-3">
+          <div className="grid gap-3 md:grid-cols-4">
             <select
               value={assignEngineerId}
               onChange={(e) => setAssignEngineerId(e.target.value)}
@@ -504,6 +568,15 @@ export default function ServiceUnitAssignmentPanel({
                 <option key={engineer.id} value={engineer.id}>{formatEngineerOptionLabel(engineer)}</option>
               ))}
             </select>
+            <input
+              type="number"
+              min="1"
+              max={selectedItem?.unassigned_count || undefined}
+              value={assignQuantity}
+              onChange={(e) => setAssignQuantity(e.target.value)}
+              placeholder={`Quantity${selectedItem?.unassigned_count != null ? ` (max ${selectedItem.unassigned_count})` : ""}`}
+              className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+            />
             <select
               value={assignBillingType}
               onChange={(e) => setAssignBillingType(e.target.value)}
@@ -521,14 +594,39 @@ export default function ServiceUnitAssignmentPanel({
             />
           </div>
           <p className="text-xs text-slate-500">{ENGINEER_ASSIGNMENT_HINT}</p>
-          <button
-            type="button"
-            onClick={assignSelectedUnits}
-            disabled={!assignEngineerId || selectedUnitIds.size === 0}
-            className="rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-50"
-          >
-            Assign Engineer ({selectedUnitIds.size})
-          </button>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={assignSelectedUnits}
+              disabled={!assignEngineerId || selectedUnitIds.size === 0}
+              className="rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-50"
+            >
+              Assign selected serials ({selectedUnitIds.size})
+            </button>
+            <button
+              type="button"
+              onClick={assignQuantityUnits}
+              disabled={!assignEngineerId || selectedUnitIds.size > 0 || !Number(assignQuantity)}
+              className="rounded-md border border-brand-500 bg-white px-4 py-2 text-sm font-medium text-brand-700 hover:bg-brand-50 disabled:opacity-50"
+              title={selectedUnitIds.size > 0 ? "Clear selected serials to assign by quantity" : "Assign without selecting serial numbers"}
+            >
+              Assign quantity ({Number(assignQuantity) || 0})
+            </button>
+          </div>
+          {assignmentNotice && (
+            <div className={`rounded-md border px-3 py-2 text-sm ${
+              assignmentNotice.type === "error"
+                ? "border-rose-200 bg-rose-50 text-rose-800"
+                : "border-emerald-200 bg-emerald-50 text-emerald-800"
+            }`}>
+              <div className="font-medium">{assignmentNotice.title}</div>
+              <ul className="mt-1 list-disc space-y-0.5 pl-5">
+                {assignmentNotice.details.map((detail) => (
+                  <li key={detail}>{detail}</li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
       )}
     </section>

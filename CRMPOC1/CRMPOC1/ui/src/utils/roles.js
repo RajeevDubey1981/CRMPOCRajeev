@@ -18,7 +18,7 @@ export function isSubAdminRole(role) {
 
 export function isServiceManagerRole(role) {
   const key = roleKey(role);
-  return key === "service_manager" || key === "sub_admin" || key === "admin";
+  return key === "service_manager" || key === "admin" || key === "sub_admin";
 }
 
 export function isSystemAdminRole(role) {

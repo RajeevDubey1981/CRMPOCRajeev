@@ -66,6 +66,7 @@ from app.schemas.service import (
     ServicePaymentCompleteIn,
     AdminServicePaymentUpdate,
     ServicePublicDocumentContext,
+    ServiceAssignUnitsByQuantityIn,
     ServiceRequestUnitOut,
     ServiceUnitBillingIn,
     ServiceSerialMismatchReturnIn,
@@ -126,6 +127,7 @@ from app.services.service_units import (
     add_service_unit_by_serial,
     apply_service_billing_choice,
     apply_unit_billing_choice,
+    assign_units_to_engineer_by_quantity,
     assign_units_to_engineer,
     BILLING_LOCKED_UNIT_STATUSES,
     build_engineer_unit_groups,
@@ -1317,6 +1319,78 @@ def assign_service_units(
     return _hydrate_service(db, service)
 
 
+@router.post("/{service_id}/assign-units-by-quantity", response_model=ServiceOut)
+def assign_service_units_by_quantity(
+    service_id: int,
+    body: ServiceAssignUnitsByQuantityIn,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    service = _load_visible_service(db, service_id, user)
+    if not _is_service_team(user):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only Admin/Indcool Service can assign units")
+    _ensure_order_workflow_unlocked(db, service)
+
+    completion_code, should_send_happy_code = issue_completion_code(service)
+    old_status = service.status
+    units = assign_units_to_engineer_by_quantity(
+        db,
+        service,
+        item_code=body.item_code,
+        quantity=body.quantity,
+        engineer_id=body.engineer_id,
+        assigned_by_user_id=user.id,
+        remarks=body.remarks,
+        billing_type=body.billing_type,
+    )
+    order = db.get(Order, service.order_id) if service.order_id else None
+    engineer = db.get(User, body.engineer_id)
+    assigned_rows = [
+        row for row in build_unit_rows(db, service.id)
+        if row["id"] in {unit.id for unit in units}
+    ]
+    _log_status(
+        db,
+        service,
+        action="Units Assigned By Quantity",
+        user=user,
+        old_status=old_status,
+        new_status=service.status,
+        remarks=body.remarks,
+        metadata={
+            "engineer_id": body.engineer_id,
+            "item_code": body.item_code,
+            "quantity": body.quantity,
+            "unit_ids": [unit.id for unit in units],
+        },
+    )
+    db.commit()
+    db.refresh(service)
+
+    if engineer and engineer.email:
+        background_tasks.add_task(
+            send_service_unit_assignment_email,
+            to=engineer.email,
+            engineer_name=engineer.name,
+            request_no=service.request_no,
+            order_no=order.order_no if order else None,
+            customer_name=service.customer_name,
+            customer_address=service.customer_address,
+            problem_description=service.problem_description,
+            assigned_units=assigned_rows,
+        )
+
+    if should_send_happy_code:
+        notify_customer_happy_code(
+            background_tasks,
+            service,
+            completion_code=completion_code,
+        )
+
+    return _hydrate_service(db, service)
+
+
 @router.post("/{service_id}/units/add-by-serial", response_model=ServiceOut)
 def add_service_unit_by_serial_endpoint(
     service_id: int,
@@ -1667,6 +1741,7 @@ def verify_serial(service_id: int, body: ServiceSerialVerifyIn, db: Session = De
             _derive_service_context,
             _find_order_item_by_serial,
             serial_no=body.serial_no,
+            serial_no_2=body.serial_no_2,
         )
     elif work_units:
         serial_no = (body.serial_no or "").strip()
@@ -1683,6 +1758,7 @@ def verify_serial(service_id: int, body: ServiceSerialVerifyIn, db: Session = De
             _derive_service_context,
             _find_order_item_by_serial,
             serial_no=serial_no,
+            serial_no_2=body.serial_no_2,
         )
     else:
         serial_no = (body.serial_no or "").strip()
@@ -1842,6 +1918,18 @@ def review_serial_verification(
                 item.serial_no_2 = serial_no_2
 
         context = _derive_service_context(db, item)
+        existing_unit = db.scalar(
+            select(ServiceRequestUnit).where(
+                ServiceRequestUnit.service_request_id == service.id,
+                ServiceRequestUnit.order_item_id == item.id,
+                ServiceRequestUnit.id != unit.id,
+            )
+        )
+        if existing_unit is not None:
+            if existing_unit.assigned_engineer_id is not None:
+                raise HTTPException(status.HTTP_409_CONFLICT, "This serial is already assigned on this service request")
+            db.delete(existing_unit)
+            db.flush()
         unit.serial_no = serial_no
         unit.serial_no_2 = serial_no_2
         unit.order_item_id = item.id

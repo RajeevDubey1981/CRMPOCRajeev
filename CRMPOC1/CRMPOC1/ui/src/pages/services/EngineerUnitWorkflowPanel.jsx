@@ -156,6 +156,11 @@ function serialMatchesExpectedUnit(unit, serial) {
   return Boolean(normalized) && unitExpectedSerials(unit).some((value) => normalizeSerial(value) === normalized);
 }
 
+function displayUnitSerials(unit) {
+  const serials = unitExpectedSerials(unit);
+  return serials.length ? serials.join(" / ") : "";
+}
+
 const DONE_COMPLETE = ["Service Completed", "Payment Requested", "Payment Completed", "Closed"];
 const DONE_PAYMENT = ["Payment Requested", "Payment Completed", "Closed"];
 const GUIDE_STEPS = [
@@ -244,6 +249,7 @@ export default function EngineerUnitWorkflowPanel({
   const [photoCounts, setPhotoCounts] = useState({}); // photos taken per serial, reported by the Photos button
   const [rows, setRows] = useState([]);
   const [serialInputs, setSerialInputs] = useState({});
+  const [serialInputs2, setSerialInputs2] = useState({});
   const [completionRows, setCompletionRows] = useState({});
   const [paymentRows, setPaymentRows] = useState({});
   const [completionProofs, setCompletionProofs] = useState({});
@@ -262,6 +268,7 @@ export default function EngineerUnitWorkflowPanel({
   useEffect(() => {
     setRows(workUnits.map((unit) => emptyRow(unit)));
     setSerialInputs(Object.fromEntries(workUnits.map((unit) => [unit.id, unit.serial_no || ""])));
+    setSerialInputs2(Object.fromEntries(workUnits.map((unit) => [unit.id, unit.serial_no_2 || ""])));
     const completionMap = {};
     const paymentMap = {};
     const approvalMap = {};
@@ -337,9 +344,14 @@ export default function EngineerUnitWorkflowPanel({
 
   async function verifyOne(unit) {
     const serialNo = (serialInputs[unit.id] || "").trim();
+    const serialNo2 = (serialInputs2[unit.id] || "").trim();
     if (!serialNo) return;
     await run(async () => {
-      const updated = await servicesApi.verifySerial(service.id, { unit_id: unit.id, serial_no: serialNo });
+      const updated = await servicesApi.verifySerial(service.id, {
+        unit_id: unit.id,
+        serial_no: serialNo,
+        serial_no_2: serialNo2 || null,
+      });
       const updatedUnit = (updated.units || []).find((row) => row.id === unit.id);
       const notInOrder = Boolean(updatedUnit?.serial_not_in_order);
       return {
@@ -433,6 +445,7 @@ export default function EngineerUnitWorkflowPanel({
       [unit.id]: {
         remarks: current[unit.id]?.remarks || (unit.serial_not_in_order ? "" : "Approved"),
         override_serial: unit.serial_no || "",
+        override_serial_2: unit.serial_no_2 || "",
         associate_with_order: Boolean(unit.serial_not_in_order),
         billing_type: current[unit.id]?.billing_type || unitBillingValue(unit),
       },
@@ -469,6 +482,7 @@ export default function EngineerUnitWorkflowPanel({
       decision,
       remarks: remarks || null,
       serial_no: (form.override_serial || unit.serial_no || "").trim() || null,
+      serial_no_2: (form.override_serial_2 || unit.serial_no_2 || "").trim() || null,
       associate_serial_with_order: Boolean(form.associate_with_order),
       billing_type: form.billing_type || unitBillingValue(unit),
     };
@@ -1054,6 +1068,7 @@ export default function EngineerUnitWorkflowPanel({
     const isChange = unit.unit_status === "Serial Verification Pending";
     const enteredSerial = (serialInputs[unit.id] || "").trim();
     const expectedSerials = unitExpectedSerials(unit);
+    const needsSecondSerial = Number(unit.serial_count || 1) >= 2;
     const serialMismatch = Boolean(
       isEngineer
       && !isChange
@@ -1073,9 +1088,17 @@ export default function EngineerUnitWorkflowPanel({
             value={serialInputs[unit.id] || ""}
             onValue={(value) => setSerialInputs((current) => ({ ...current, [unit.id]: value }))}
             className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-            placeholder="Serial number"
+            placeholder={needsSecondSerial ? "Serial number 1" : "Serial number"}
             autoFocus
           />
+          {needsSecondSerial && (
+            <ScanInput
+              value={serialInputs2[unit.id] || ""}
+              onValue={(value) => setSerialInputs2((current) => ({ ...current, [unit.id]: value }))}
+              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+              placeholder="Serial number 2"
+            />
+          )}
           {serialMismatch && (
             <div className="space-y-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
               <p>
@@ -1108,7 +1131,7 @@ export default function EngineerUnitWorkflowPanel({
             <button
               type="button"
               onClick={() => verifyOne(unit).then(closeModal)}
-              disabled={!serialInputs[unit.id]?.trim()}
+              disabled={!serialInputs[unit.id]?.trim() || (needsSecondSerial && !serialInputs2[unit.id]?.trim())}
               className="rounded-md bg-brand-600 px-3 py-2 text-sm text-white disabled:opacity-50"
             >
               {isChange ? "Submit changed serial" : "Submit serial for review"}
@@ -1125,9 +1148,11 @@ export default function EngineerUnitWorkflowPanel({
     const form = serialReviewForms[unit.id] || {
       remarks: unit.serial_not_in_order ? "" : "Approved",
       override_serial: unit.serial_no || "",
+      override_serial_2: unit.serial_no_2 || "",
       associate_with_order: Boolean(unit.serial_not_in_order),
       billing_type: unitBillingValue(unit),
     };
+    const needsSecondSerial = Number(unit.serial_count || 1) >= 2;
 
     return (
       <Modal open onClose={closeModal} title="Review engineer serial" maxWidth="max-w-lg">
@@ -1152,14 +1177,28 @@ export default function EngineerUnitWorkflowPanel({
           )}
 
           <div>
-            <label className="mb-1 block text-sm font-medium text-slate-700">Serial to approve</label>
+            <label className="mb-1 block text-sm font-medium text-slate-700">
+              {needsSecondSerial ? "Serial 1 to approve" : "Serial to approve"}
+            </label>
             <ScanInput
               value={form.override_serial || ""}
               onValue={(value) => updateSerialReview(unit.id, "override_serial", value)}
               className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm font-mono"
-              placeholder="Serial number"
+              placeholder={needsSecondSerial ? "Serial number 1" : "Serial number"}
             />
           </div>
+
+          {needsSecondSerial && (
+            <div>
+              <label className="mb-1 block text-sm font-medium text-slate-700">Serial 2 to approve</label>
+              <ScanInput
+                value={form.override_serial_2 || ""}
+                onValue={(value) => updateSerialReview(unit.id, "override_serial_2", value)}
+                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm font-mono"
+                placeholder="Serial number 2"
+              />
+            </div>
+          )}
 
           <div>
             <label className="mb-1 block text-sm font-medium text-slate-700">Service billing</label>
@@ -1214,7 +1253,7 @@ export default function EngineerUnitWorkflowPanel({
               <button
                 type="button"
                 onClick={() => submitSerialReview("override")}
-                disabled={!form.override_serial?.trim()}
+                disabled={!form.override_serial?.trim() || (needsSecondSerial && !form.override_serial_2?.trim())}
                 className="rounded-md border border-sky-300 px-3 py-2 text-sm text-sky-700 disabled:opacity-50"
               >
                 Override &amp; approve
@@ -1223,7 +1262,7 @@ export default function EngineerUnitWorkflowPanel({
             <button
               type="button"
               onClick={() => submitSerialReview("approve")}
-              disabled={!form.override_serial?.trim()}
+              disabled={!form.override_serial?.trim() || (needsSecondSerial && !form.override_serial_2?.trim())}
               className="rounded-md bg-emerald-600 px-3 py-2 text-sm text-white disabled:opacity-50"
             >
               Approve serial
@@ -1983,7 +2022,9 @@ export default function EngineerUnitWorkflowPanel({
           return (
             <div key={unit.id} className="rounded-md border border-slate-200 bg-white p-3">
               <div className="flex items-start justify-between gap-2">
-                <span className="break-all font-mono text-sm font-semibold text-slate-800">{unit.serial_no || "—"}</span>
+                <span className="break-all font-mono text-sm font-semibold text-slate-800">
+                  {displayUnitSerials(unit) || <span className="font-sans text-slate-400">Enter/Select</span>}
+                </span>
                 <StatusBadge value={unit.unit_status || "Assigned"} />
               </div>
               <div className="mt-1 text-xs text-slate-500">
@@ -2080,7 +2121,9 @@ export default function EngineerUnitWorkflowPanel({
                       </select>
                     </td>
                   )}
-                  <td className="px-3 py-2 font-mono text-xs">{unit.serial_no || "—"}</td>
+                  <td className="px-3 py-2 font-mono text-xs">
+                    {displayUnitSerials(unit) || <span className="font-sans text-slate-400">Enter/Select</span>}
+                  </td>
                   <td className="px-3 py-2">
                     <FieldPhotos
                       kind="service-units"
