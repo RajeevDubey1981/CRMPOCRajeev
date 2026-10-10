@@ -51,6 +51,8 @@ HEAT_RULES = (
     ("soon", "Bid or tender closes within 7 days", 3),
     ("budget", "Budget is confirmed", 2),
     ("boss", "Spoke to the decision maker", 2),
+    ("onboard", "Onboarding process explained", 2),
+    ("greet", "Greeting mail sent", 1),
     ("time45", "Needs it within 45 days", 1),
     ("noans", "No answer on the last calls", -2),
     ("stale", "No contact for 7 days or more", -2),

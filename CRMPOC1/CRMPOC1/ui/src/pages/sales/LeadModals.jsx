@@ -148,6 +148,8 @@ export function CallModal({ lead, open, onClose, onDone, rateOnly = false }) {
           {box("quote", "Asked for a quote or price")}
           {box("budget", "Budget is confirmed")}
           {box("boss", "Spoke to the decision maker")}
+          {box("onboard", "Onboarding process explained")}
+          {box("greet", "Greeting mail sent")}
           {govt && box("soon", "Bid or tender closes within 7 days")}
           {box("noans", "No answer on the last calls")}
           {box("stale", "No contact for 7 days or more")}

@@ -34,6 +34,9 @@ class RulesTests(unittest.TestCase):
     def test_heat_follows_the_points(self):
         self.assertEqual(rules.suggest_heat({})[0], "cold")
         self.assertEqual(rules.suggest_heat({"quote": True})[0], "warm")
+        self.assertEqual(rules.suggest_heat({"boss": True, "onboard": True, "greet": True}), ("warm", ["Spoke to the decision maker", "Onboarding process explained", "Greeting mail sent"], 5))
+        self.assertEqual(rules.suggest_heat({"quote": True, "time15": True, "onboard": True})[0], "hot")
+        self.assertEqual(rules.suggest_heat({"greet": True})[0], "cold")
         level, why, score = rules.suggest_heat({"quote": True, "time15": True, "budget": True})
         self.assertEqual((level, score), ("hot", 8))
         self.assertIn("Budget is confirmed", why)
