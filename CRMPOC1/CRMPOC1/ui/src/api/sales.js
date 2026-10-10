@@ -19,6 +19,7 @@ export const salesApi = {
   call: (id, body) => post(`/api/sales/leads/${id}/call`, body),
   rate: (id, body) => post(`/api/sales/leads/${id}/rate`, body),
   priority: (id, body) => post(`/api/sales/leads/${id}/priority`, body),
+  followUp: (id, day) => post(`/api/sales/leads/${id}/follow-up`, { day }),
   stage: (id, body) => post(`/api/sales/leads/${id}/stage`, body),
   dispose: (id, body) => post(`/api/sales/leads/${id}/dispose`, body),
   approveDisposal: (id) => post(`/api/sales/leads/${id}/disposal/approve`),

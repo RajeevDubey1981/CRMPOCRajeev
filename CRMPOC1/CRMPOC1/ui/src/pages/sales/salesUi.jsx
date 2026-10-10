@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { NavLink } from "react-router-dom";
 
 import { salesApi } from "../../api/sales.js";
@@ -37,11 +37,54 @@ export const QUOTE_TONE = {
 
 export const fieldClass = "w-full rounded border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 disabled:bg-slate-100";
 export const btn = {
-  primary: "rounded bg-indcool-blue px-3 py-2 text-sm font-semibold text-white hover:bg-indcool-navy disabled:opacity-50",
-  go: "rounded bg-emerald-600 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50",
-  danger: "rounded bg-rose-600 px-3 py-2 text-sm font-semibold text-white hover:bg-rose-700 disabled:opacity-50",
-  plain: "rounded border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50",
+  primary: "s-press rounded bg-indcool-blue px-3 py-2 text-sm font-semibold text-white hover:bg-indcool-navy disabled:opacity-50",
+  go: "s-press rounded bg-emerald-600 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50",
+  danger: "s-press rounded bg-rose-600 px-3 py-2 text-sm font-semibold text-white hover:bg-rose-700 disabled:opacity-50",
+  plain: "s-press rounded border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50",
 };
+
+// ---- small line icons (one style everywhere) ----
+const ICON_PATHS = {
+  phone: "M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8.1 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2z",
+  phoneOff: "M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8.1 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2zM3 3l18 18",
+  mail: "M3 7a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2zM3 7l9 6 9-6",
+  pin: "M12 21s7-6.2 7-11.5A7 7 0 0 0 5 9.5C5 14.8 12 21 12 21zM12 7a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5z",
+  check: "M5 12.5l4.5 4.5L19 7",
+  trophy: "M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0V4zM17 5h3v2a3 3 0 0 1-3 3M7 5H4v2a3 3 0 0 0 3 3",
+  calendar: "M5 4h14a2 2 0 0 1 2 2v13a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zM16 2v4M8 2v4M3 10h18",
+  left: "M15 6l-6 6 6 6",
+  right: "M9 6l6 6-6 6",
+  chat: "M21 11.5a8.4 8.4 0 0 1-9 8.4 8.5 8.5 0 0 1-3.8-.9L3 20l1.1-4.9A8.4 8.4 0 1 1 21 11.5z",
+};
+export function Icon({ name, size = 16, className = "" }) {
+  return (
+    <svg viewBox="0 0 24 24" width={size} height={size} fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className={`inline-block shrink-0 ${className}`}>
+      <path d={ICON_PATHS[name]} />
+    </svg>
+  );
+}
+
+// A number that counts up to its value when it first shows, and eases to a new value when it changes.
+export function CountUp({ value, className = "" }) {
+  const target = Number(value) || 0;
+  const [shown, setShown] = useState(0);
+  const from = useRef(0);
+  useEffect(() => {
+    const calm = typeof window !== "undefined" && window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (calm || from.current === target) { from.current = target; setShown(target); return undefined; }
+    const start = from.current;
+    const t0 = performance.now();
+    let raf = 0;
+    const tick = (now) => {
+      const p = Math.min(1, (now - t0) / 800);
+      setShown(Math.round(start + (target - start) * (1 - (1 - p) ** 3)));
+      if (p < 1) raf = requestAnimationFrame(tick); else from.current = target;
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [target]);
+  return <span className={className}>{shown}</span>;
+}
 
 export function HeatChip({ lead }) {
   if (!lead || lead.closed) return null;
@@ -85,7 +128,7 @@ export const STAGES = [["new", "New"], ["con", "Contacted"], ["int", "Interested
 export function AttendedChip({ lead }) {
   if (!lead || lead.closed) return null;
   if (lead.attended) {
-    return <span title="The person who has this lead has acted on it" className="inline-block whitespace-nowrap rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-800">✓ Attended {timeAgo(lead.last_action_at)}{lead.attempts > 1 ? ` · ${lead.attempts} calls` : ""}</span>;
+    return <span title="The person who has this lead has acted on it" className="s-pop inline-block whitespace-nowrap rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-800"><Icon name="check" size={11} className="mr-0.5 -mt-0.5" />Attended {timeAgo(lead.last_action_at)}{lead.attempts > 1 ? ` · ${lead.attempts} calls` : ""}</span>;
   }
   if (!lead.owner_user_id) return null;
   return <span title="Nobody has acted on this lead yet" className="inline-block whitespace-nowrap rounded-full bg-rose-100 px-2 py-0.5 text-[11px] font-semibold text-rose-700">Not attended yet</span>;
@@ -148,6 +191,7 @@ export function SalesTabs() {
   const dash = m.company_dashboard || m.team_dashboard || (status?.ticks || []).includes("my_dash");
   const tabs = [
     ["/sales", "My day", true],
+    ["/sales/calendar", "Calendar"],
     ["/sales/leads", m.leads_all ? "All leads" : "My leads"],
     ...(m.quotations ? [["/sales/quotations", "Quotations"]] : []),
     ...(m.export_desk ? [["/sales/export", "Export desk"]] : []),
@@ -161,7 +205,7 @@ export function SalesTabs() {
   return (
     <nav className="mb-4 flex flex-wrap gap-1 border-b border-slate-200 pb-2">
       {tabs.map(([to, label, end]) => (
-        <NavLink key={to} to={to} end={!!end} className={({ isActive }) => `rounded-md px-3 py-1.5 text-sm font-medium ${isActive ? "bg-indcool-blue text-white" : "text-slate-600 hover:bg-slate-100"}`}>
+        <NavLink key={to} to={to} end={!!end} className={({ isActive }) => `s-press rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${isActive ? "bg-indcool-blue text-white" : "text-slate-600 hover:bg-slate-100"}`}>
           {label}
         </NavLink>
       ))}

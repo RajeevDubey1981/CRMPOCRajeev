@@ -6,7 +6,7 @@ import Modal from "../../components/Modal.jsx";
 import { CallModal, DisposeModal, Footer, GiveModal, PriorityModal, StageModal } from "./LeadModals.jsx";
 import { waLink } from "./MyDay.jsx";
 import {
-  AttendedChip, FirstCallChip, HEAT, HeatChip, Notice, PRIORITY, PageTitle, PriorityChip, QUOTE_TONE, STAGES, SalesTabs, StatusChip, TypeChip, btn, errText,
+  AttendedChip, FirstCallChip, HEAT, HeatChip, Icon, Notice, PRIORITY, PageTitle, PriorityChip, QUOTE_TONE, STAGES, SalesTabs, StatusChip, TypeChip, btn, errText,
   fieldClass, fmtDate, fmtDateTime, useAsync, useSales, valueText,
 } from "./salesUi.jsx";
 
@@ -111,7 +111,7 @@ function WorkflowPanel({ lead, can, busy, quick, moveTo, logCall }) {
   const ended = lead.closed;
   const acting = can.work && !ended;
   return (
-    <section className="mb-3 rounded-lg border border-slate-200 bg-white p-4">
+    <section className="s-fade mb-3 rounded-lg border border-slate-200 bg-white p-4">
       <div className="flex flex-wrap items-center gap-2">
         <h3 className="text-sm font-semibold text-slate-800">Workflow</h3>
         <AttendedChip lead={lead} />
@@ -119,7 +119,8 @@ function WorkflowPanel({ lead, can, busy, quick, moveTo, logCall }) {
         {!lead.attended && !ended && lead.owner_name && <span className="text-xs text-slate-500">{lead.owner_name} has not acted on it yet</span>}
         {!lead.owner_user_id && !ended && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800">Not given to anyone yet</span>}
       </div>
-      <ol className="mt-3 grid grid-cols-2 gap-1.5 sm:grid-cols-6">
+      <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-slate-100"><div className="s-bar h-full rounded-full bg-indcool-blue" style={{ width: `${ended ? 100 : Math.max(0, idx) / STAGES.length * 100 + (idx >= 0 ? 100 / STAGES.length / 2 : 0)}%` }} /></div>
+      <ol className="mt-2 grid grid-cols-2 gap-1.5 sm:grid-cols-6">
         {STAGES.map(([key, label], i) => {
           const done = idx > i || (ended && lead.status === "won");
           const now = idx === i && !ended;
@@ -127,8 +128,8 @@ function WorkflowPanel({ lead, can, busy, quick, moveTo, logCall }) {
           const tone = now ? "border-indcool-blue bg-sky-50 text-indcool-navy ring-1 ring-indcool-blue" : done ? "border-emerald-300 bg-emerald-50 text-emerald-800" : "border-slate-200 bg-white text-slate-400";
           return (
             <li key={key}>
-              <button type="button" disabled={!canMove || busy} onClick={() => moveTo(key, label)} className={`w-full rounded-md border px-2 py-1.5 text-left text-xs ${tone} ${canMove ? "cursor-pointer hover:border-indcool-blue" : "cursor-default"}`}>
-                <div className="font-semibold">{done ? "✓ " : `${i + 1}. `}{label}</div>
+              <button type="button" disabled={!canMove || busy} onClick={() => moveTo(key, label)} className={`s-press s-cell w-full rounded-md border px-2 py-1.5 text-left text-xs ${tone} ${canMove ? "cursor-pointer hover:border-indcool-blue" : "cursor-default"}`}>
+                <div className="font-semibold">{done ? <Icon name="check" size={12} className="mr-1 -mt-0.5" /> : `${i + 1}. `}{label}</div>
                 <div className="text-[10px] font-normal">{now ? "the lead is here" : canMove ? "press to move here" : ""}</div>
               </button>
             </li>
@@ -136,7 +137,7 @@ function WorkflowPanel({ lead, can, busy, quick, moveTo, logCall }) {
         })}
         <li>
           <div className={`rounded-md border px-2 py-1.5 text-xs ${ended ? (lead.status === "won" ? "border-emerald-600 bg-emerald-600 text-white" : "border-slate-400 bg-slate-200 text-slate-700") : "border-slate-200 bg-white text-slate-400"}`}>
-            <div className="font-semibold">{ended ? (lead.status === "won" ? "✓ Won" : lead.status === "rev" ? "Waiting for the manager" : "Closed") : "Won or closed"}</div>
+            <div className="font-semibold">{ended ? (lead.status === "won" ? "Won" : lead.status === "rev" ? "Waiting for the manager" : "Closed") : "Won or closed"}</div>
             <div className="text-[10px] font-normal">{ended ? "" : "the end of the workflow"}</div>
           </div>
         </li>
@@ -146,11 +147,11 @@ function WorkflowPanel({ lead, can, busy, quick, moveTo, logCall }) {
         <div className="mt-3">
           <div className="mb-1 text-xs font-semibold text-slate-600">What did you do? One press marks the lead as attended and writes it in the history.</div>
           <div className="flex flex-wrap gap-2">
-            <button type="button" className={btn.go} disabled={busy} onClick={logCall}>📞 Called and spoke</button>
-            <button type="button" className={btn.plain} disabled={busy} onClick={() => quick("No answer", "Marked: called, no answer. Follow-up set for tomorrow.")}>📵 Called, no answer</button>
-            <button type="button" className={btn.plain} disabled={busy} onClick={() => quick("Sent a WhatsApp", "Marked: WhatsApp sent")}>💬 WhatsApp sent</button>
-            <button type="button" className={btn.plain} disabled={busy} onClick={() => quick("Sent a mail", "Marked: mail sent")}>✉ Mail sent</button>
-            <button type="button" className={btn.plain} disabled={busy} onClick={() => quick("Visit done", "Marked: visit done")}>🚗 Visit done</button>
+            <button type="button" className={btn.go} disabled={busy} onClick={logCall}><Icon name="phone" size={14} className="mr-1.5 -mt-0.5" />Called and spoke</button>
+            <button type="button" className={btn.plain} disabled={busy} onClick={() => quick("No answer", "Marked: called, no answer. Follow-up set for tomorrow.")}><Icon name="phoneOff" size={14} className="mr-1.5 -mt-0.5" />Called, no answer</button>
+            <button type="button" className={btn.plain} disabled={busy} onClick={() => quick("Sent a WhatsApp", "Marked: WhatsApp sent")}><Icon name="chat" size={14} className="mr-1.5 -mt-0.5" />WhatsApp sent</button>
+            <button type="button" className={btn.plain} disabled={busy} onClick={() => quick("Sent a mail", "Marked: mail sent")}><Icon name="mail" size={14} className="mr-1.5 -mt-0.5" />Mail sent</button>
+            <button type="button" className={btn.plain} disabled={busy} onClick={() => quick("Visit done", "Marked: visit done")}><Icon name="pin" size={14} className="mr-1.5 -mt-0.5" />Visit done</button>
           </div>
           {lead.attempts >= 4 && !lead.is_prospect && <p className="mt-2 text-xs text-amber-700">{lead.attempts} attempts so far. After 5 with no answer you can dispose the lead as "Not reachable".</p>}
         </div>

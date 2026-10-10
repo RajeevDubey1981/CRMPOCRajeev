@@ -103,6 +103,15 @@ def log(sdb: Session, lead: SalesLead, kind: str, text: str, user: User | None =
         lead.last_action_by = user.id
 
 
+def set_follow_up(sdb: Session, lead: SalesLead, *, day: date, user: User) -> None:
+    """Move the follow-up date of a lead (from the calendar). Written in the history; it counts as attending only for the owner."""
+    if is_closed(lead):
+        raise HTTPException(400, "This lead is closed")
+    old = lead.follow_up_on
+    lead.follow_up_on = day
+    log(sdb, lead, "note", f"Follow-up moved from {old.strftime('%d %b %Y') if old else 'no date'} to {day.strftime('%d %b %Y')}", user)
+
+
 def is_closed(lead: SalesLead) -> bool:
     return lead.status in CLOSED_STATUSES
 

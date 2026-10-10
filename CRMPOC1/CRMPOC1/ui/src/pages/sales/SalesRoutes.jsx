@@ -1,5 +1,6 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 
+import CalendarPage from "./CalendarPage.jsx";
 import ExportDesk from "./ExportDesk.jsx";
 import LeadDetail from "./LeadDetail.jsx";
 import LeadList from "./LeadList.jsx";
@@ -29,6 +30,7 @@ export default function SalesRoutes() {
     <SalesProvider>
       <Routes>
         <Route index element={<Gate><MyDay /></Gate>} />
+        <Route path="calendar" element={<Gate><CalendarPage /></Gate>} />
         <Route path="leads" element={<Gate><LeadList /></Gate>} />
         <Route path="leads/:id" element={<Gate><LeadDetail /></Gate>} />
         <Route path="quotations" element={<Gate any={["make_quote", "approve_quote"]}><QuotationList /></Gate>} />

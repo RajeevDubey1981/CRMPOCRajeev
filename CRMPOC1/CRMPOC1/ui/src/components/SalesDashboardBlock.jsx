@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 
 import { salesApi } from "../api/sales.js";
 import { useAuth } from "../auth/AuthContext.jsx";
+import { CountUp } from "../pages/sales/salesUi.jsx";
 
 // The Sales block on the main dashboard. The numbers are asked from the Sales database each time the dashboard
 // opens and kept for 60 seconds; the CRM stores none of them. If Sales is offline or slow the block shows a calm
@@ -37,15 +38,15 @@ export default function SalesDashboardBlock() {
   }
   const s = state.data;
   return (
-    <div className="rounded bg-white p-4 shadow-sm">
+    <div className="s-fade rounded bg-white p-4 shadow-sm">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h3 className="text-sm font-semibold text-slate-600">{s.title}</h3>
-        <Link to="/sales" className="rounded bg-indigo-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-800">Open Sales</Link>
+        <Link to="/sales" className="s-press rounded bg-indcool-blue px-3 py-1.5 text-sm font-medium text-white hover:bg-indcool-navy">Open Sales</Link>
       </div>
       <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6">
-        {s.tiles.map((t) => (
-          <div key={t.key} className="rounded border border-slate-200 p-2">
-            <div className={`text-2xl font-semibold tabular-nums ${["hot", "urgent", "overdue", "first_overdue", "unassigned"].includes(t.key) && t.value ? "text-rose-600" : t.key === "won" ? "text-emerald-700" : "text-slate-800"}`}>{t.value}</div>
+        {s.tiles.map((t, i) => (
+          <div key={t.key} style={{ "--i": i }} className="s-rise s-lift rounded border border-slate-200 p-2">
+            <div className={`text-2xl font-semibold tabular-nums ${["hot", "urgent", "overdue", "first_overdue", "unassigned"].includes(t.key) && t.value ? "text-rose-600" : t.key === "won" ? "text-emerald-700" : "text-slate-800"}`}><CountUp value={t.value} /></div>
             <div className="text-xs text-slate-600">{t.label}</div>
             {t.sub && <div className="text-[11px] text-slate-400">{t.sub}</div>}
           </div>

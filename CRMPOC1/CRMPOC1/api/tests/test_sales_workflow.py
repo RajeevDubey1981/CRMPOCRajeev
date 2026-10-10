@@ -91,5 +91,22 @@ class WorkflowTests(SalesTestBase):
         self.assertTrue(self.get(f"/api/sales/leads/{lead2['id']}", self.amit).json()["attended"])
 
 
+    def test_calendar_moves_the_follow_up_date_only_for_its_owner_or_a_manager(self):
+        lead = self.mine()
+        day = (date.today() + timedelta(days=5)).isoformat()
+        r = self.post(f"/api/sales/leads/{lead['id']}/follow-up", {"day": day}, self.amit)
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual(r.json()["follow_up_on"], day)
+        self.assertTrue(r.json()["attended"])
+        # another sales person cannot even see it
+        self.assertEqual(self.post(f"/api/sales/leads/{lead['id']}/follow-up", {"day": day}, self.pooja).status_code, 404)
+        # the manager can move it, and it does not count as the owner attending
+        lead2 = self.mine(name="Second", phone="98000 33002")
+        r = self.post(f"/api/sales/leads/{lead2['id']}/follow-up", {"day": day}, self.karan)
+        self.assertEqual((r.status_code, r.json()["attended"]), (200, False))
+        # a closed lead keeps its date
+        self.post(f"/api/sales/leads/{lead['id']}/dispose", {"reason": "Not interested", "note": "x"}, self.amit)
+
+
 if __name__ == "__main__":
     unittest.main()

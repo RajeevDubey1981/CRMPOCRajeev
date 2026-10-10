@@ -425,6 +425,20 @@ def stage(lead_id: int, body: StageIn, ctx: Ctx = Depends(get_ctx), sdb: Session
     return L.lead_out(lead, names_for(main_db, [lead.owner_user_id]))
 
 
+class FollowUpIn(BaseModel):
+    day: date
+
+
+@router.post("/leads/{lead_id}/follow-up")
+def follow_up(lead_id: int, body: FollowUpIn, ctx: Ctx = Depends(get_ctx), sdb: Session = Depends(get_sales_db), main_db: Session = Depends(get_db)):
+    lead = get_visible_lead(sdb, ctx, lead_id)
+    if not (ctx.has("see_all") or lead.owner_user_id == ctx.user.id):
+        raise HTTPException(403, "Only the person who has this lead can change its follow-up")
+    L.set_follow_up(sdb, lead, day=body.day, user=ctx.user)
+    commit(main_db, sdb)
+    return L.lead_out(lead, names_for(main_db, [lead.owner_user_id]))
+
+
 @router.post("/leads/{lead_id}/priority")
 def priority(lead_id: int, body: PriorityIn, ctx: Ctx = Depends(get_ctx), sdb: Session = Depends(get_sales_db), main_db: Session = Depends(get_db)):
     lead = get_visible_lead(sdb, ctx, lead_id)
