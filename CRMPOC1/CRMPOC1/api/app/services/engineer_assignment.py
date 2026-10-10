@@ -8,6 +8,9 @@ from app.models.installation import InstallationRequest
 from app.models.service import ServiceRequest, ServiceRequestUnit
 from app.models.user import User
 from app.schemas.installation import InstallationEngineerAssignmentOption
+import json
+
+from app.services import coverage as coverage_service
 from app.services.geo import match_engineer, match_rank, split_pincodes
 
 INSTALLATION_PENDING_STATUSES = ("Assigned", "In Progress", "Payment Pending", "Settlement Pending")
@@ -18,12 +21,20 @@ SERVICE_TERMINAL_STATUSES = ("Closed", "Cancelled", "Rejected")
 COMPLAINT_TERMINAL_STATUSES = ("Resolved", "Rejected")
 
 
+def _skills(engineer: User) -> list[str]:
+    try:
+        return [str(s) for s in json.loads(engineer.skills)] if engineer.skills else []
+    except ValueError:
+        return []
+
+
 def get_engineer_assignment_options(
     db: Session,
     address: str | None = None,
     pincode: str | None = None,
     state: str | None = None,
     district: str | None = None,
+    category: str | None = None,
 ) -> list[InstallationEngineerAssignmentOption]:
     """Engineers to pick from. With the customer's address, the nearest come first: same pin code, same area (first 3
     digits), same district, same state, then the rest; within a group the one with the fewest pending jobs first.
@@ -134,6 +145,12 @@ def get_engineer_assignment_options(
 
     options: list[InstallationEngineerAssignmentOption] = []
     for engineer in engineers:
+        skills = _skills(engineer)
+        # 0 = the engineer works on this category, 1 = no skills set (any category), 2 = works on other categories only
+        wanted = (category or "").strip().lower()
+        skill_fit = 1 if not wanted or not skills else (0 if wanted in {s.lower() for s in skills} else 2)
+        if wanted and not skills:
+            skill_fit = 1
         completed_count, unsuccessful_count = performance_map.get(engineer.id, (0, 0))
         rated_jobs = completed_count + unsuccessful_count
         rating = 0.0 if rated_jobs == 0 else round((completed_count / rated_jobs) * 5, 1)
@@ -154,9 +171,14 @@ def get_engineer_assignment_options(
                 state=engineer.state,
                 district=engineer.district,
                 extra_pincodes=split_pincodes(engineer.extra_pincodes),
-                match=match_engineer(address, engineer.pincode, engineer.state, engineer.district, pincode, state, district, split_pincodes(engineer.extra_pincodes)) if where else "",
+                coverage=coverage_service.load(engineer.coverage),
+                skills=skills,
+                skill_fit=skill_fit,
+                match=match_engineer(address, engineer.pincode, engineer.state, engineer.district, pincode, state, district, split_pincodes(engineer.extra_pincodes), coverage_service.load(engineer.coverage)) if where else "",
             )
         )
     if where:
-        options.sort(key=lambda o: (match_rank(o.match), o.pending_requests, o.name.lower()))
+        options.sort(key=lambda o: (match_rank(o.match), o.skill_fit, o.pending_requests, o.name.lower()))
+    elif category:
+        options.sort(key=lambda o: (o.skill_fit, o.pending_requests, o.name.lower()))
     return options

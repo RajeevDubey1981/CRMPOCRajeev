@@ -145,7 +145,10 @@ class InstallationEngineerAssignmentOption(BaseModel):
     state: str | None = None
     district: str | None = None
     extra_pincodes: list[str] = []
-    match: str = ""  # pincode | area | district | state | empty: how near the engineer is to the customer asked about
+    coverage: dict | None = None
+    skills: list[str] = []
+    skill_fit: int = 1  # 0 works on the category asked about, 1 no skills set or no category asked, 2 other categories only
+    match: str = ""  # pincode | area | district | state | india | empty: how near the engineer is to the customer asked about
 
 
 class InstallationCompletionProofOut(BaseModel):

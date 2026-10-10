@@ -3,7 +3,7 @@ import { useState } from "react";
 import { salesApi } from "../../api/sales.js";
 import { useAuth } from "../../auth/AuthContext.jsx";
 import Modal from "../../components/Modal.jsx";
-import CoveragePicker, { coverageProblem, coverageText, startCoverage } from "./CoveragePicker.jsx";
+import CoveragePicker, { coverageProblem, coverageText, startCoverage } from "../../components/CoveragePicker.jsx";
 import { Footer } from "./LeadModals.jsx";
 import { Field, Notice, PageTitle, SalesTabs, TYPE_COLOR, btn, errText, fieldClass, useAsync, useSales } from "./salesUi.jsx";
 

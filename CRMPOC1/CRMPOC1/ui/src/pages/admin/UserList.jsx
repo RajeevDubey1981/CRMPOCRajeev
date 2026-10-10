@@ -6,6 +6,9 @@ import { useAuth } from "../../auth/AuthContext.jsx";
 import { INDIAN_STATES } from "../../constants/indianStates.js";
 import { districtsOf } from "../../constants/indianDistricts.js";
 import PlaceFields from "../../components/PlaceFields.jsx";
+import CoveragePicker, { coverageProblem, coverageText, startCoverage } from "../../components/CoveragePicker.jsx";
+import { DEFAULT_ITEM_CATEGORIES } from "../../data/itemCategories.js";
+import { itemsApi } from "../../api/items.js";
 
 function fmtDate(s) {
   if (!s) return "—";
@@ -31,7 +34,15 @@ function UserForm({ initial, roles, busy, onCancel, onSubmit }) {
     extra_pincodes: initial?.extra_pincodes || [],
     state: initial?.state || "",
     district: initial?.district || "",
+    skills: initial?.skills || [],
+    coverage: (() => { const c = startCoverage(initial || {}); return { mode: c.mode, states: c.states }; })(),
   });
+  const [categories, setCategories] = useState(DEFAULT_ITEM_CATEGORIES);
+  useEffect(() => {
+    let live = true;
+    itemsApi.categories().then((list) => { if (live && Array.isArray(list)) setCategories([...new Set([...DEFAULT_ITEM_CATEGORIES, ...list])]); }).catch(() => {});
+    return () => { live = false; };
+  }, []);
   const [err, setErr] = useState("");
 
   function set(field, value) { setForm((f) => ({ ...f, [field]: value })); }
@@ -47,8 +58,10 @@ function UserForm({ initial, roles, busy, onCancel, onSubmit }) {
     }
     // where an engineer works: sent for engineers only, an empty box clears it
     const placeBody = form.role === "engineer"
-      ? { pincode: form.pincode.trim(), state: form.state, district: form.district.trim(), extra_pincodes: form.extra_pincodes }
+      ? { pincode: form.pincode.trim(), state: form.state, district: form.district.trim(), extra_pincodes: form.state ? [] : form.extra_pincodes, coverage: form.coverage, skills: form.skills }
       : {};
+    const problem = form.role === "engineer" ? coverageProblem(form.coverage) : "";
+    if (problem) { setErr(problem); return; }
     if (placeBody.pincode && !/^[1-9]\d{5}$/.test(placeBody.pincode.replace(/\s+/g, ""))) {
       setErr("Pin code must be 6 digits");
       return;
@@ -123,7 +136,27 @@ function UserForm({ initial, roles, busy, onCancel, onSubmit }) {
         {form.role === "engineer" && (
           <div className="grid grid-cols-1 gap-3 rounded-md border border-sky-200 bg-sky-50 p-3 md:col-span-2 md:grid-cols-3">
             <div className="md:col-span-3 text-xs font-semibold uppercase tracking-wide text-sky-800">Where this engineer works</div>
-            <PlaceFields multiPin className="md:col-span-3" value={form} onChange={(patch) => setForm((f) => ({ ...f, ...patch }))} />
+            <PlaceFields className="md:col-span-3" value={form} onChange={(patch) => setForm((f) => ({ ...f, ...patch }))} />
+            <div className="md:col-span-3 border-t border-sky-200 pt-3">
+              <div className="text-sm font-semibold text-slate-800">Which jobs does this engineer get?</div>
+              <p className="mb-2 text-xs text-slate-600">New jobs are offered first to engineers who cover the customer place. The place above is where the engineer lives.</p>
+              <CoveragePicker value={form.coverage} onChange={(coverage) => set("coverage", coverage)} noun="job" person="engineer" />
+            </div>
+            <div className="md:col-span-3 border-t border-sky-200 pt-3">
+              <div className="text-sm font-semibold text-slate-800">Skills: item categories this engineer works on</div>
+              <p className="mb-2 text-xs text-slate-600">Leave all unticked if the engineer works on any category. When a job has a category, engineers who work on it come first.</p>
+              <div className="flex flex-wrap gap-2">
+                {categories.map((c) => {
+                  const on = form.skills.includes(c);
+                  return (
+                    <button key={c} type="button" onClick={() => set("skills", on ? form.skills.filter((x) => x !== c) : [...form.skills, c])}
+                      className={`s-press rounded-full border px-3 py-1 text-xs font-semibold transition-colors ${on ? "border-indcool-blue bg-indcool-blue text-white" : "border-slate-300 bg-white text-slate-600 hover:border-indcool-blue"}`}>
+                      {on ? "✓ " : ""}{c}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
           </div>
         )}
         {!isEdit && (
@@ -373,6 +406,8 @@ export default function UserList() {
                       {(u.pincode || (u.extra_pincodes || []).length > 0) && <div className="font-mono text-slate-500">{[u.pincode, ...(u.extra_pincodes || [])].filter(Boolean).join(", ")}</div>}
                     </>
                   ) : "—"}
+                  {u.coverage && <div className="mt-0.5 text-[11px] text-sky-800" title="Which jobs this engineer gets">Covers: {coverageText(u)}</div>}
+                  {(u.skills || []).length > 0 && <div className="mt-0.5 flex flex-wrap gap-1">{u.skills.map((s) => <span key={s} className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-600">{s}</span>)}</div>}
                 </td>
                 <td className="px-3 py-2">
                   {u.is_active ? (

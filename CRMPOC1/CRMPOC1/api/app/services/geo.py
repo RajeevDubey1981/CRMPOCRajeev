@@ -78,12 +78,12 @@ def state_in(text: str | None) -> str | None:
 
 
 # how near an engineer is to the customer, nearest first
-MATCH_PINCODE, MATCH_AREA, MATCH_DISTRICT, MATCH_STATE, MATCH_NONE = "pincode", "area", "district", "state", ""
-_RANK = {MATCH_PINCODE: 0, MATCH_AREA: 1, MATCH_DISTRICT: 2, MATCH_STATE: 3, MATCH_NONE: 4}
+MATCH_PINCODE, MATCH_AREA, MATCH_DISTRICT, MATCH_STATE, MATCH_INDIA, MATCH_NONE = "pincode", "area", "district", "state", "india", ""
+_RANK = {MATCH_PINCODE: 0, MATCH_AREA: 1, MATCH_DISTRICT: 2, MATCH_STATE: 3, MATCH_INDIA: 4, MATCH_NONE: 5}
 
 
 def match_rank(match: str) -> int:
-    return _RANK.get(match, 4)
+    return _RANK.get(match, 5)
 
 
 def _plain(text: str | None) -> str:
@@ -99,10 +99,23 @@ def match_engineer(
     customer_state: str | None = None,
     customer_district: str | None = None,
     extra_pincodes: list[str] | None = None,
+    coverage: dict | None = None,
 ) -> str:
     """How an engineer's place fits the customer: same pin code, same area (first 3 digits), district or state.
     The customer's typed pin code, state and district are used first, the address text for what is missing."""
     customer_pin = customer_pincode or pincode_in(address)
+    best = _home_match(address, pincode, state, district, customer_pin, customer_state, customer_district, extra_pincodes)
+    if coverage:
+        from app.services import coverage as cov
+
+        level, kind = cov.fit(coverage, state=customer_state or state_in(address), district=customer_district, pin=customer_pin, text=address or "")
+        found = {"pin": MATCH_PINCODE, "district": MATCH_DISTRICT, "state": MATCH_STATE}.get(kind) if level == cov.NAMED else (MATCH_INDIA if level == cov.ANYWHERE else MATCH_NONE)
+        if match_rank(found or MATCH_NONE) < match_rank(best):
+            best = found or MATCH_NONE
+    return best
+
+
+def _home_match(address, pincode, state, district, customer_pin, customer_state, customer_district, extra_pincodes) -> str:
     low = " " + re.sub(r"\s+", " ", re.sub(r"[^a-z0-9 ]", " ", (address or "").lower())) + " "
     own = [p for p in [pincode, *(extra_pincodes or [])] if p]
     if own and customer_pin:

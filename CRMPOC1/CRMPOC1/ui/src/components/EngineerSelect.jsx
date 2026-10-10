@@ -12,6 +12,8 @@ const TAG_STYLE = {
   "Same area": "bg-sky-600 text-white",
   "Same district": "bg-indigo-600 text-white",
   "Same state": "bg-slate-600 text-white",
+  "Covers it": "bg-teal-600 text-white",
+  "Covers all India": "bg-slate-500 text-white",
 };
 
 function pinsOf(engineer) {
@@ -23,7 +25,30 @@ function pinsOf(engineer) {
  * Lower rank is nearer: same pin code, pin code starting with the digits typed, same area (first 3 digits),
  * then district and state alone.
  */
+// does the engineer coverage (All India, or states with districts and extra pin codes) take in what was typed?
+function coverFit(engineer, pin, state, district) {
+  const c = engineer.coverage;
+  if (!c) return null;
+  if (c.mode === "all") return { rank: 5, tag: "Covers all India" };
+  const rows = Object.entries(c.states || {});
+  if (pin && rows.some(([, r]) => (r.pins || []).includes(pin))) return { rank: 0, tag: "Covers it" };
+  if (!state && !district) return null;
+  const row = rows.find(([name]) => !state || name === state);
+  if (!row) return null;
+  const r = row[1];
+  if (r.all) return { rank: district ? 3 : 4, tag: "Covers it" };
+  if (district && (r.districts || []).some((d) => sameDistrict(d, district))) return { rank: 3, tag: "Covers it" };
+  return null;
+}
+
 function fit(engineer, pin, state, district) {
+  const home = fitHome(engineer, pin, state, district);
+  const cover = coverFit(engineer, pin, state, district);
+  if (home && cover) return cover.rank < home.rank ? cover : home;
+  return home || cover;
+}
+
+function fitHome(engineer, pin, state, district) {
   let rank = 9;
   let tag = "";
   if (pin) {

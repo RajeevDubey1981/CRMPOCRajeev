@@ -5,7 +5,7 @@ export function engineerIdsMatch(a, b) {
 }
 
 // how near an engineer is to the customer, as the server works it out from the customer's address
-export const ENGINEER_MATCH_TEXT = { pincode: "Same pin code", area: "Same area", district: "Same district", state: "Same state" };
+export const ENGINEER_MATCH_TEXT = { pincode: "Same pin code", area: "Same area", district: "Same district", state: "Same state", india: "Covers all India" };
 
 export function formatEngineerOptionLabel(engineer) {
   const name = engineer?.name || "Engineer";
@@ -14,7 +14,8 @@ export function formatEngineerOptionLabel(engineer) {
   const near = ENGINEER_MATCH_TEXT[engineer?.match];
   const pins = [engineer?.pincode, ...(engineer?.extra_pincodes || [])].filter(Boolean).join("/");
   const place = [engineer?.district, engineer?.state, pins].filter(Boolean).join(", ");
-  return `${near ? `${near} | ` : ""}${name} | ${place ? `${place} | ` : ""}Pending: ${pending} | Rating: ${rating.toFixed(1)}/5`;
+  const skills = (engineer?.skills || []).length ? ` | Works on: ${engineer.skills.join(", ")}` : "";
+  return `${near ? `${near} | ` : ""}${name} | ${place ? `${place} | ` : ""}Pending: ${pending} | Rating: ${rating.toFixed(1)}/5${skills}`;
 }
 
 export const ENGINEER_ASSIGNMENT_HINT =

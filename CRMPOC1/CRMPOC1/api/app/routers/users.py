@@ -1,3 +1,5 @@
+import json
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
@@ -9,6 +11,7 @@ from app.services.role_access import PROTECTED_USER_ROLES, is_sub_admin, role_ke
 from app.models.user import User
 from app.schemas.user import ResetPasswordRequest, UserCreate, UserOut, UserUpdate
 from app.security import hash_password
+from app.services import coverage as coverage_service
 from app.services.geo import canonical_state, split_pincodes
 from app.services.vendor_accounts import (
     ensure_vendor_for_user,
@@ -45,6 +48,13 @@ def _normalized_email(value: str | None) -> str:
     return (value or "").strip().lower()
 
 
+def _skills_of(user: User) -> list[str]:
+    try:
+        return [str(s) for s in json.loads(user.skills)] if user.skills else []
+    except ValueError:
+        return []
+
+
 def _user_out(db: Session, user: User) -> UserOut:
     vendor = vendor_master_for_user(db, user)
     return UserOut(
@@ -59,6 +69,8 @@ def _user_out(db: Session, user: User) -> UserOut:
         state=user.state,
         district=user.district,
         extra_pincodes=split_pincodes(user.extra_pincodes),
+        coverage=coverage_service.load(user.coverage),
+        skills=_skills_of(user),
         created_at=user.created_at,
         updated_at=user.updated_at,
         vendor_id=vendor.id if vendor else None,
@@ -140,6 +152,8 @@ def create_user(
         state=body.state,
         district=body.district,
         extra_pincodes=",".join(body.extra_pincodes or []) or None,
+        coverage=json.dumps(body.coverage) if body.coverage else None,
+        skills=json.dumps(body.skills) if body.skills else None,
     )
     db.add(user)
     db.flush()
@@ -180,6 +194,10 @@ def update_user(
         data.pop("can_manage_bids", None)
     if "extra_pincodes" in data:
         data["extra_pincodes"] = ",".join(data["extra_pincodes"] or []) or None
+    if "coverage" in data:
+        data["coverage"] = json.dumps(data["coverage"]) if data["coverage"] else None
+    if "skills" in data:
+        data["skills"] = json.dumps(data["skills"]) if data["skills"] else None
     for field, value in data.items():
         setattr(user, field, value)
     if role_key(user.role) == "vendor":

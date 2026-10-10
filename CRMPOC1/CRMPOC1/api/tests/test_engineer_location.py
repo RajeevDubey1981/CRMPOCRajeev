@@ -196,6 +196,35 @@ class EngineerLocationApiTests(unittest.TestCase):
         cleared = self.client.put(f"/api/users/{uid}", json={"extra_pincodes": []}, headers=self.h(self.admin)).json()
         self.assertEqual(cleared["extra_pincodes"], [])
 
+    def put(self, eng, body):
+        return self.client.put(f"/api/users/{eng['id']}", json=body, headers=self.h(self.admin))
+
+    def test_coverage_and_skills_are_saved_checked_and_used_for_the_nearest_first_order(self):
+        url = "/api/installations/engineer-assignment-options"
+        address = "House 4, Sector 15, Gurugram, Haryana 122001"
+        near = self.add("Near Home", "110044", "Delhi", "South Delhi")        # home is far away, but covers Gurugram by district
+        wide = self.add("All India Man", None, None, None)
+        other = self.add("Jaipur Man", "302001", "Rajasthan", "Jaipur")
+        r = self.put(near, {"coverage": {"mode": "states", "states": {"Haryana": {"all": False, "districts": ["Gurugram"], "pins": []}}}, "skills": ["Split AC", "Geyser", "Split AC"]})
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual(r.json()["skills"], ["Split AC", "Geyser"])
+        self.assertEqual(self.put(wide, {"coverage": {"mode": "all"}}).json()["coverage"], {"mode": "all", "states": {}})
+        self.assertEqual(self.put(other, {"coverage": {"mode": "states", "states": {"Haryana": {"all": False, "districts": [], "pins": ["12200"]}}}}).status_code, 422)
+        self.assertEqual(self.put(other, {"coverage": {"mode": "states", "states": {"Haryana": {"all": False}}}}).status_code, 422)
+        rows = self.client.get(url, params={"address": address, "district": "Gurugram", "state": "Haryana"}, headers=self.h(self.admin)).json()
+        self.assertEqual([(x["name"], x["match"]) for x in rows], [("Near Home", "district"), ("All India Man", "india"), ("Jaipur Man", "")])
+        # a covered pin code beats a covered district
+        self.put(wide, {"coverage": {"mode": "states", "states": {"Haryana": {"all": False, "districts": [], "pins": ["122001"]}}}})
+        rows = self.client.get(url, params={"address": address}, headers=self.h(self.admin)).json()
+        self.assertEqual(rows[0]["name"], "All India Man")
+        self.assertEqual(rows[0]["match"], "pincode")
+        # skills: with a category, the engineers who work on it come first among equals
+        self.put(wide, {"coverage": {"mode": "all"}, "skills": ["Refrigerator"]})
+        rows = self.client.get(url, params={"category": "refrigerator"}, headers=self.h(self.admin)).json()
+        self.assertEqual([(x["name"], x["skill_fit"]) for x in rows][:3], [("All India Man", 0), ("Jaipur Man", 1), ("Near Home", 2)])
+        # clearing
+        self.assertIsNone(self.put(near, {"coverage": None, "skills": []}).json()["coverage"])
+
 
 if __name__ == "__main__":
     unittest.main()

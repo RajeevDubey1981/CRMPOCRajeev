@@ -1,11 +1,13 @@
 import { useMemo, useState } from "react";
 
-import { INDIAN_STATES_UTS } from "../../data/indianStates.js";
-import { districtsOf, sameDistrict } from "../../constants/indianDistricts.js";
-import { fieldClass } from "./salesUi.jsx";
+import { INDIAN_STATES_UTS } from "../data/indianStates.js";
+import { districtsOf, sameDistrict } from "../constants/indianDistricts.js";
+
+const fieldClass = "w-full rounded border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 disabled:bg-slate-100";
 
 const plain = (t) => String(t || "").toLowerCase().replace(/[^a-z0-9]/g, "");
 
+// The coverage picker used on the Sales profile and the Engineer profile.
 // What the profile starts with: the saved coverage, or the older list of areas turned into whole states.
 export function startCoverage(person) {
   if (person.coverage) return { mode: person.coverage.mode, states: { ...(person.coverage.states || {}) } };
@@ -121,7 +123,7 @@ function StateCard({ name, row, onChange, onRemove }) {
 }
 
 // All India, or selected states; each state is the whole state or some districts, with extra pin codes.
-export default function CoveragePicker({ value, onChange, disabled = false, noun = "lead" }) {
+export default function CoveragePicker({ value, onChange, disabled = false, noun = "lead", person = "person" }) {
   const { mode, states } = value;
   const names = Object.keys(states);
   const set = (patch) => onChange({ ...value, ...patch });
@@ -159,16 +161,16 @@ export default function CoveragePicker({ value, onChange, disabled = false, noun
         </div>
       )}
       <div className="s-fade mt-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-800">
-        {mode === "all" ? `Covers all of India. Every new ${noun} can come to this person.` : names.length ? `Covers ${names.length} state${names.length > 1 ? "s" : ""}: ${wholeCount} whole, ${districts} district${districts === 1 ? "" : "s"} in the others, ${pins} extra pin code${pins === 1 ? "" : "s"}` : "Nothing selected yet"}
+        {mode === "all" ? `Covers all of India. Every new ${noun} can come to this ${person}.` : names.length ? `Covers ${names.length} state${names.length > 1 ? "s" : ""}: ${wholeCount} whole, ${districts} district${districts === 1 ? "" : "s"} in the others, ${pins} extra pin code${pins === 1 ? "" : "s"}` : "Nothing selected yet"}
       </div>
       <details className="mt-2 rounded-lg border border-dashed border-slate-300 px-3 py-2 text-sm">
-        <summary className="cursor-pointer font-semibold text-slate-600">Try a lead</summary>
+        <summary className="cursor-pointer font-semibold text-slate-600">Try a place</summary>
         <div className="mt-2 grid gap-2 sm:grid-cols-3">
           <select className={fieldClass} value={tState} onChange={(e) => { setTState(e.target.value); setTDist(""); }}><option value="">State</option>{INDIAN_STATES_UTS.map((s) => <option key={s}>{s}</option>)}</select>
           <select className={fieldClass} value={tDist} onChange={(e) => setTDist(e.target.value)}><option value="">District (optional)</option>{districtsOf(tState).map((d) => <option key={d}>{d}</option>)}</select>
           <input className={fieldClass} value={tPin} maxLength={6} inputMode="numeric" placeholder="Pin code (optional)" onChange={(e) => setTPin(e.target.value.replace(/\D/g, ""))} />
         </div>
-        {tested !== null && <div className={`s-pop mt-2 inline-block rounded-md px-3 py-1 text-sm font-semibold ${tested ? "bg-emerald-100 text-emerald-800" : "bg-rose-100 text-rose-700"}`}>{tested ? "Yes, this lead would come to this person" : "No, this lead is outside the coverage"}</div>}
+        {tested !== null && <div className={`s-pop mt-2 inline-block rounded-md px-3 py-1 text-sm font-semibold ${tested ? "bg-emerald-100 text-emerald-800" : "bg-rose-100 text-rose-700"}`}>{tested ? `Yes, this ${noun} would come to this ${person}` : `No, this ${noun} is outside the coverage`}</div>}
       </details>
     </fieldset>
   );

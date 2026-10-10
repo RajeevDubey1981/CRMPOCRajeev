@@ -713,6 +713,7 @@ def engineer_assignment_options(
     pincode: str | None = Query(None, max_length=10),
     state: str | None = Query(None, max_length=100),
     district: str | None = Query(None, max_length=100),
+    category: str | None = Query(None, max_length=100, description="The item category of the job: engineers who work on it come first"),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -728,7 +729,7 @@ def engineer_assignment_options(
         pincode, state = clean_pincode(pincode), canonical_state(state)
     except ValueError:
         pincode = state = None
-    return get_engineer_assignment_options(db, address, pincode, state, " ".join((district or "").split()) or None)
+    return get_engineer_assignment_options(db, address, pincode, state, " ".join((district or "").split()) or None, category)
 
 
 @router.get("/lookup/service-users")

@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session, object_session
 
 from app.models.user import User
 from app.sales import crm_link
+from app.services import coverage as coverage_service
 from app.sales import types as T
 from app.sales.models import SalesLead, SalesLeadActivity, SalesProfile, SalesSetting
 from app.sales.rules import (
@@ -140,36 +141,12 @@ def csv_list(text: str | None) -> list[str]:
     return [x.strip() for x in (text or "").split(",") if x.strip()]
 
 
-def _plain(text) -> str:
-    return re.sub(r"[^a-z0-9]", "", str(text or "").lower())
-
-
 def clean_coverage(raw) -> dict:
     """The coverage as it is stored: All India, or states each with the whole state, some districts, and extra pin codes."""
-    if not isinstance(raw, dict) or raw.get("mode") not in ("all", "states"):
-        raise HTTPException(400, "Choose All India or Selected states")
-    if raw["mode"] == "all":
-        return {"mode": "all", "states": {}}
-    out: dict = {}
-    states = raw.get("states") or {}
-    if not isinstance(states, dict) or len(states) > 40:
-        raise HTTPException(400, "The states are not valid")
-    for name, row in states.items():
-        name = str(name).strip()
-        if not name or not isinstance(row, dict):
-            raise HTTPException(400, "The states are not valid")
-        districts = [str(d).strip() for d in (row.get("districts") or []) if str(d).strip()]
-        pins = [str(p).strip() for p in (row.get("pins") or []) if str(p).strip()]
-        if len(districts) > 100 or len(pins) > 500:
-            raise HTTPException(400, f"Too many districts or pin codes for {name}")
-        bad = [p for p in pins if not re.fullmatch(r"\d{6}", p)]
-        if bad:
-            raise HTTPException(400, f"Pin codes have 6 digits: {', '.join(bad[:5])}")
-        whole = bool(row.get("all"))
-        if not whole and not districts and not pins:
-            raise HTTPException(400, f"{name}: choose the whole state, some districts, or add pin codes")
-        out[name] = {"all": whole, "districts": [] if whole else list(dict.fromkeys(districts)), "pins": list(dict.fromkeys(pins))}
-    return {"mode": "states", "states": out}
+    try:
+        return coverage_service.clean(raw)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
 
 
 def coverage_of(p: SalesProfile) -> dict | None:
@@ -185,24 +162,13 @@ def coverage_of(p: SalesProfile) -> dict | None:
 def area_match(p: SalesProfile, lead: SalesLead) -> int:
     """0 = the lead is outside this person's area, 1 = the person covers all India, 2 = the place is covered by name."""
     cov = coverage_of(p)
-    countries = {_plain(a) for a in csv_list(p.areas)}
-    if lead.country and _plain(lead.country) in countries:
+    countries = {coverage_service.plain(a) for a in csv_list(p.areas)}
+    if lead.country and coverage_service.plain(lead.country) in countries:
         return 2
     if cov is None:  # the older way: states or countries listed in areas, and the home state
         keys = {a.lower() for a in csv_list(p.areas)} | ({p.state.lower()} if p.state else set())
         return 2 if {x.lower() for x in (lead.state, lead.country, lead.district) if x} & keys else 0
-    if cov.get("mode") == "all":
-        return 1
-    pin = (lead.pincode or "").strip()
-    for name, row in (cov.get("states") or {}).items():
-        if pin and pin in (row.get("pins") or []):
-            return 2
-        if lead.state and _plain(lead.state) == _plain(name):
-            if row.get("all"):
-                return 2
-            if lead.district and any(_plain(lead.district) == _plain(d) for d in row.get("districts") or []):
-                return 2
-    return 0
+    return coverage_service.fit(cov, state=lead.state, district=lead.district, pin=lead.pincode)[0]
 
 
 def pick_owner(sdb: Session, lead: SalesLead) -> int | None:
