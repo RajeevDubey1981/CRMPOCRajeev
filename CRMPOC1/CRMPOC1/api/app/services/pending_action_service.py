@@ -194,7 +194,35 @@ def notify_users(
         )
 
 
+def drop_unviewable_complaint_actions(db: Session, user: User) -> int:
+    """Close the person's notifications about complaints of a type their role may no longer see (for example Sales
+    complaints after the Sales box was unticked on their role). Notifications made earlier would otherwise stay."""
+    from app.models.complaint import Complaint
+    from app.services.permissions import can_act_on, sub_module_scope
+
+    if sub_module_scope(db, user, "complaints", "can_view") is None:
+        return 0
+    rows = list(db.scalars(select(UserPendingAction).where(
+        UserPendingAction.recipient_user_id == user.id,
+        UserPendingAction.module == "complaints",
+        UserPendingAction.is_active.is_(True),
+    )))
+    if not rows:
+        return 0
+    types = {cid: qt for cid, qt in db.execute(select(Complaint.id, Complaint.query_type).where(Complaint.id.in_({r.entity_id for r in rows})))}
+    closed = 0
+    now = _now()
+    for row in rows:
+        if row.entity_id in types and not can_act_on(db, user, "complaints", "can_view", types[row.entity_id]):
+            row.is_active = False
+            row.resolved_at = now
+            closed += 1
+    return closed
+
+
 def list_pending_actions(db: Session, user: User, limit: int = 15) -> tuple[int, list[UserPendingAction]]:
+    if drop_unviewable_complaint_actions(db, user):
+        db.commit()
     total = db.scalar(
         select(func.count()).select_from(UserPendingAction).where(
             UserPendingAction.recipient_user_id == user.id,

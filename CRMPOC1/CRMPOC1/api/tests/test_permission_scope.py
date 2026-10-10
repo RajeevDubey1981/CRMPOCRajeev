@@ -60,6 +60,24 @@ class SubModuleScopeTests(unittest.TestCase):
         nobody = self.role("vendor", False, set())
         self.assertEqual(sub_module_scope(self.db, nobody, "complaints", "can_view"), set())
 
+    def test_old_notifications_about_a_hidden_complaint_type_are_closed(self):
+        from app.models import Complaint
+        from app.models.pending_action import UserPendingAction
+        from app.services.pending_action_service import list_pending_actions
+
+        u = self.role("indcool_service", True, {"Service", "Installation", "Others"})
+        ids = {}
+        for qt in ("Sales", "Service"):
+            c = Complaint(comp_no=f"IDC_{qt}", customer_name="x", customer_mobile="1", problem_description="p", query_type=qt, status="Pending", comp_date=__import__("datetime").date.today())
+            self.db.add(c)
+            self.db.flush()
+            ids[qt] = c.id
+            self.db.add(UserPendingAction(recipient_user_id=u.id, module="complaints", entity_id=c.id, entity_ref="", action_type="triage_complaint",
+                                          title=f"Complaint {qt}", message="m", action_label="Open", href="/x", entity_status="Pending", occurred_at=__import__("datetime").datetime.now(), is_active=True, is_read=False))
+        self.db.commit()
+        total, items = list_pending_actions(self.db, u)
+        self.assertEqual((total, [i.entity_id for i in items]), (1, [ids["Service"]]))
+
 
 if __name__ == "__main__":
     unittest.main()
