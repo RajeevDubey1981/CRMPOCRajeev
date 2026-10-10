@@ -59,9 +59,9 @@ def run_local(cmd: list[str], *, cwd: Path | None = None, check: bool = True, en
     return subprocess.run(cmd, cwd=cwd or ROOT, check=check, env=run_env)
 
 
-def run_alembic_upgrade(api_python: Path, *, cwd: Path, env: dict[str, str] | None = None) -> None:
+def run_alembic_upgrade(api_python: Path, *, cwd: Path, env: dict[str, str] | None = None, config: str = "alembic.ini") -> None:
     """Run alembic upgrade head, auto-recovering if the DB schema already exists but is unstamped."""
-    cmd = [str(api_python), "-m", "alembic", "-c", "alembic.ini", "upgrade", "head"]
+    cmd = [str(api_python), "-m", "alembic", "-c", config, "upgrade", "head"]
     print(f"\n> {' '.join(cmd)}")
     run_env = os.environ.copy()
     if env:
@@ -74,7 +74,7 @@ def run_alembic_upgrade(api_python: Path, *, cwd: Path, env: dict[str, str] | No
     if "already exists" not in result.stderr:
         raise subprocess.CalledProcessError(result.returncode, cmd, output=result.stdout, stderr=result.stderr)
     print("\nSchema already present but unstamped; running 'alembic stamp head' and retrying...")
-    run_local([str(api_python), "-m", "alembic", "-c", "alembic.ini", "stamp", "head"], cwd=cwd, env=env)
+    run_local([str(api_python), "-m", "alembic", "-c", config, "stamp", "head"], cwd=cwd, env=env)
     run_local(cmd, cwd=cwd, env=env)
 
 
@@ -324,6 +324,16 @@ def deploy_local() -> None:
 
     print("\n=== Local database migrations ===")
     run_alembic_upgrade(api_python, cwd=API_DIR, env=local_env)
+
+    # Sales module: its own database, upgraded only when SALES_DATABASE_URL is set (local .env or environment).
+    # A problem here is reported loudly but never stops the CRM: the CRM does not depend on Sales.
+    sales_url = (local_env.get("SALES_DATABASE_URL") or os.environ.get("SALES_DATABASE_URL") or "").strip()
+    if sales_url:
+        print("\n=== Local database migrations (Sales) ===")
+        run_alembic_upgrade(api_python, cwd=API_DIR, env=local_env, config="alembic_sales.ini")
+    else:
+        print("\nSales database: not set up (SALES_DATABASE_URL is empty), Sales stays switched off")
+
     print("\n=== Local seed (safe bootstrap) ===")
     seed_cmd = [str(api_python), "-m", "app.seed"]
     if not ask_seed_demo_data():
@@ -484,14 +494,20 @@ if result.returncode != 0:
     subprocess.run([alembic_bin, "-c", "alembic.ini", "upgrade", "head"], check=True)
 
 # The Sales module keeps its data in its own database. It is switched on by SALES_DATABASE_URL in the .env file.
-# A problem there is reported loudly but never stops the CRM: the CRM does not depend on Sales.
+# The CRM migration above has already run either way, so a Sales failure here stops the deploy without
+# touching the CRM, instead of silently leaving Sales half-migrated.
 if os.environ.get("SALES_DATABASE_URL", "").strip():
     print("Sales database: upgrading")
     sales = subprocess.run([alembic_bin, "-c", "alembic_sales.ini", "upgrade", "head"], capture_output=True, text=True)
     print(sales.stdout, end="")
     print(sales.stderr, end="")
     if sales.returncode != 0:
-        print("!!! Sales database update FAILED. The CRM is not affected; Sales stays unavailable until this is fixed.")
+        if "already exists" not in sales.stderr:
+            print("!!! Sales database update FAILED.")
+            raise SystemExit(sales.returncode or 1)
+        print("Sales schema already present but unstamped; running 'alembic stamp head' and retrying...")
+        subprocess.run([alembic_bin, "-c", "alembic_sales.ini", "stamp", "head"], check=True)
+        subprocess.run([alembic_bin, "-c", "alembic_sales.ini", "upgrade", "head"], check=True)
 else:
     print("Sales database: not set up (SALES_DATABASE_URL is empty), Sales stays switched off")
 """.replace("/var/www/indcool/api", remote_api)
