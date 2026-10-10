@@ -616,7 +616,11 @@ def check_github_in_sync() -> None:
 def mark_live_on_github(build_id: str) -> None:
     """After a good deploy, tag the commit that is live (live-<build>) and push the tag, so GitHub shows what is live."""
     tag = f"live-{build_id}"
-    made = _git("tag", "-a", tag, "-m", f"Live on the site since {build_id}")
+    # An annotated tag needs a name and an email. A PC that has none set (git "Committer identity unknown") still
+    # gets its tag: a fixed deploy identity is used for this one command only, nothing is saved in git's settings.
+    has_identity = bool((_git("config", "user.email").stdout or "").strip()) and bool((_git("config", "user.name").stdout or "").strip())
+    identity = [] if has_identity else ["-c", "user.name=INDcool deploy", "-c", "user.email=deploy@localhost"]
+    made = _git(*identity, "tag", "-a", tag, "-m", f"Live on the site since {build_id}")
     if made.returncode != 0:
         print(f"Note: could not tag the live version ({(made.stderr or '').strip()[:120]}).")
         return
