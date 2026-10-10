@@ -113,7 +113,7 @@ export default function LeadDetail() {
   const [modal, setModal] = useState("");
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
-  const people = (team.data || []).filter((p) => p.is_active && p.role === "sales");
+  const people = (team.data || []).filter((p) => p.is_active && (p.role || "").trim().toLowerCase() === "sales");
 
   if (error) return <div><SalesTabs /><Notice tone="bad">{error}</Notice></div>;
   if (!lead) return <div><SalesTabs />{loading && <p className="text-sm text-slate-500">Loading...</p>}</div>;

@@ -30,7 +30,7 @@ export default function LeadList() {
   const [giving, setGiving] = useState(null);
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
-  const people = (team.data || []).filter((p) => p.is_active && p.role === "sales");
+  const people = (team.data || []).filter((p) => p.is_active && (p.role || "").trim().toLowerCase() === "sales");
 
   async function run(fn, done) {
     setBusy(true);
