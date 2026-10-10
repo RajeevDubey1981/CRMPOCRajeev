@@ -25,6 +25,11 @@ export default function TicksPage() {
   const members = isRole ? data.people.filter((p) => p.role_key === roleKey) : [];
 
   async function toggle(key, on) {
+    // "See all leads" lets a person read every lead, including other people's. Ask before it is given, most of all to a whole role.
+    if (key === "see_all" && on) {
+      const who = isRole ? `EVERY person in the role ${roleKey === "mgr" ? "Sales Manager" : "Sales Team"} (${members.length} people)` : person.name;
+      if (!window.confirm(`Give "See all leads" to ${who}?\n\nThey will see every lead in Sales, including the leads of other people. Normally only a Sales Manager has this.`)) return;
+    }
     setBusy(true); setMsg("");
     try {
       if (isRole) await salesApi.setRoleTicks(roleKey, { [key]: on });
