@@ -472,7 +472,7 @@ class TeamAndMigrationTests(ConnectionBase):
                 self.assertIn(t, names)
             with eng.connect() as c:
                 self.assertEqual(c.execute(text("select count(*) from sales_lead_type where is_builtin=1")).scalar(), 8)
-                self.assertEqual(c.execute(text("select version_num from sales_alembic_version")).scalar(), "0003_sales_lead_attended")
+                self.assertEqual(c.execute(text("select version_num from sales_alembic_version")).scalar(), "0004_sales_profile_coverage")
             eng.dispose()
             command.downgrade(cfg, "0001_sales_initial")
             eng = create_engine(settings.sales_database_url)

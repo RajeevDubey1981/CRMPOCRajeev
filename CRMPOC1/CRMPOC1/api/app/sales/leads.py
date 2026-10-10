@@ -140,6 +140,71 @@ def csv_list(text: str | None) -> list[str]:
     return [x.strip() for x in (text or "").split(",") if x.strip()]
 
 
+def _plain(text) -> str:
+    return re.sub(r"[^a-z0-9]", "", str(text or "").lower())
+
+
+def clean_coverage(raw) -> dict:
+    """The coverage as it is stored: All India, or states each with the whole state, some districts, and extra pin codes."""
+    if not isinstance(raw, dict) or raw.get("mode") not in ("all", "states"):
+        raise HTTPException(400, "Choose All India or Selected states")
+    if raw["mode"] == "all":
+        return {"mode": "all", "states": {}}
+    out: dict = {}
+    states = raw.get("states") or {}
+    if not isinstance(states, dict) or len(states) > 40:
+        raise HTTPException(400, "The states are not valid")
+    for name, row in states.items():
+        name = str(name).strip()
+        if not name or not isinstance(row, dict):
+            raise HTTPException(400, "The states are not valid")
+        districts = [str(d).strip() for d in (row.get("districts") or []) if str(d).strip()]
+        pins = [str(p).strip() for p in (row.get("pins") or []) if str(p).strip()]
+        if len(districts) > 100 or len(pins) > 500:
+            raise HTTPException(400, f"Too many districts or pin codes for {name}")
+        bad = [p for p in pins if not re.fullmatch(r"\d{6}", p)]
+        if bad:
+            raise HTTPException(400, f"Pin codes have 6 digits: {', '.join(bad[:5])}")
+        whole = bool(row.get("all"))
+        if not whole and not districts and not pins:
+            raise HTTPException(400, f"{name}: choose the whole state, some districts, or add pin codes")
+        out[name] = {"all": whole, "districts": [] if whole else list(dict.fromkeys(districts)), "pins": list(dict.fromkeys(pins))}
+    return {"mode": "states", "states": out}
+
+
+def coverage_of(p: SalesProfile) -> dict | None:
+    """The stored coverage, or None for a profile that still only has the older areas list."""
+    if not p.coverage:
+        return None
+    try:
+        return json.loads(p.coverage)
+    except ValueError:
+        return None
+
+
+def area_match(p: SalesProfile, lead: SalesLead) -> int:
+    """0 = the lead is outside this person's area, 1 = the person covers all India, 2 = the place is covered by name."""
+    cov = coverage_of(p)
+    countries = {_plain(a) for a in csv_list(p.areas)}
+    if lead.country and _plain(lead.country) in countries:
+        return 2
+    if cov is None:  # the older way: states or countries listed in areas, and the home state
+        keys = {a.lower() for a in csv_list(p.areas)} | ({p.state.lower()} if p.state else set())
+        return 2 if {x.lower() for x in (lead.state, lead.country, lead.district) if x} & keys else 0
+    if cov.get("mode") == "all":
+        return 1
+    pin = (lead.pincode or "").strip()
+    for name, row in (cov.get("states") or {}).items():
+        if pin and pin in (row.get("pins") or []):
+            return 2
+        if lead.state and _plain(lead.state) == _plain(name):
+            if row.get("all"):
+                return 2
+            if lead.district and any(_plain(lead.district) == _plain(d) for d in row.get("districts") or []):
+                return 2
+    return 0
+
+
 def pick_owner(sdb: Session, lead: SalesLead) -> int | None:
     """The team member who handles this lead type and covers the place; the one with the fewest open leads wins a tie."""
     members = [
@@ -151,14 +216,10 @@ def pick_owner(sdb: Session, lead: SalesLead) -> int | None:
     open_counts = dict(sdb.execute(
         select(SalesLead.owner_user_id, func.count()).where(SalesLead.status.notin_(tuple(CLOSED_STATUSES))).group_by(SalesLead.owner_user_id)
     ).all())
-    place_keys = {x.lower() for x in (lead.state, lead.country, lead.district) if x}
-
     def score(p: SalesProfile):
         types = csv_list(p.types_handled)
         type_match = 2 if lead.lead_type in types else (1 if not types else 0)
-        areas = {a.lower() for a in csv_list(p.areas)} | ({p.state.lower()} if p.state else set())
-        area_match = 1 if place_keys & areas else 0
-        return (type_match, area_match, -open_counts.get(p.crm_user_id, 0))
+        return (type_match, area_match(p, lead), -open_counts.get(p.crm_user_id, 0))
 
     best = max(members, key=score)
     if score(best)[0] == 0:

@@ -37,6 +37,7 @@ class SalesProfile(SalesBase, Stamped):
     district: Mapped[str | None] = mapped_column(String(100), nullable=True)
     extra_pincodes: Mapped[str | None] = mapped_column(Text, nullable=True)  # comma separated
     areas: Mapped[str | None] = mapped_column(Text, nullable=True)  # states or countries covered, comma separated
+    coverage: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON: {"mode": "all"|"states", "states": {name: {"all": bool, "districts": [], "pins": []}}}; empty = the older areas list
     types_handled: Mapped[str | None] = mapped_column(Text, nullable=True)  # lead type keys, comma separated
     target_lakh: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)

@@ -3,10 +3,11 @@ import { useState } from "react";
 import { salesApi } from "../../api/sales.js";
 import { useAuth } from "../../auth/AuthContext.jsx";
 import Modal from "../../components/Modal.jsx";
+import CoveragePicker, { coverageProblem, coverageText, startCoverage } from "./CoveragePicker.jsx";
 import { Footer } from "./LeadModals.jsx";
 import { Field, Notice, PageTitle, SalesTabs, TYPE_COLOR, btn, errText, fieldClass, useAsync, useSales } from "./salesUi.jsx";
 
-const STATES = ["Uttar Pradesh", "Delhi", "Haryana", "Rajasthan", "Gujarat", "Maharashtra", "Madhya Pradesh", "Bihar", "West Bengal", "Punjab", "Uttarakhand", "Karnataka", "Tamil Nadu", "Telangana", "Kerala", "Odisha", "Jharkhand", "Chhattisgarh", "Assam"];
+import { INDIAN_STATES_UTS as STATES } from "../../data/indianStates.js";
 
 function ProfileModal({ person, onClose, onDone }) {
   const { status, has } = useSales();
@@ -16,19 +17,22 @@ function ProfileModal({ person, onClose, onDone }) {
   const canTarget = has("targets");
   const [f, setF] = useState({
     phone: person.phone || "", pincode: person.pincode || "", state: person.state || "", district: person.district || "",
-    extra_pincodes: (person.extra_pincodes || []).join(", "), areas: (person.areas || []).join(", "),
+    countries: (startCoverage(person).countries ?? person.areas ?? []).join(", "),
     types: new Set(person.types_handled || []), target_lakh: person.target_lakh ?? "", is_active: person.is_active,
   });
+  const [cov, setCov] = useState(() => { const c = startCoverage(person); return { mode: c.mode, states: c.states }; });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const set = (k) => (e) => setF((s) => ({ ...s, [k]: e.target.value }));
 
   async function save() {
+    const problem = canTypes ? coverageProblem(cov) : "";
+    if (problem) { setError(problem); return; }
     setBusy(true);
     setError("");
     try {
-      const body = { phone: f.phone, pincode: f.pincode, state: f.state, district: f.district, extra_pincodes: f.extra_pincodes.split(/[,\s]+/).filter(Boolean).join(",") };
-      if (canTypes) { body.types_handled = [...f.types].join(","); body.areas = f.areas; }
+      const body = { phone: f.phone, pincode: f.pincode, state: f.state, district: f.district };
+      if (canTypes) { body.types_handled = [...f.types].join(","); body.areas = f.countries; body.coverage = cov; }
       if (canTarget && f.target_lakh !== "") body.target_lakh = Number(f.target_lakh);
       if (!own && has("others_profile")) body.is_active = f.is_active;
       await salesApi.updateProfile(person.crm_user_id, body);
@@ -48,10 +52,12 @@ function ProfileModal({ person, onClose, onDone }) {
         <Field label="State *"><select className={fieldClass} value={f.state} onChange={set("state")}><option value="">Choose</option>{STATES.map((s) => <option key={s}>{s}</option>)}</select></Field>
         <Field label="District *"><input className={fieldClass} value={f.district} onChange={set("district")} /></Field>
       </div>
-      <Field label="Also covers these pin codes (optional)"><input className={fieldClass} value={f.extra_pincodes} onChange={set("extra_pincodes")} placeholder="110001, 122001" /></Field>
-      <Field label="States or countries covered" hint={canTypes ? "Comma separated. A new lead goes first to a member who covers its state." : "Set by your manager"}>
-        <input className={fieldClass} value={f.areas} disabled={!canTypes} onChange={set("areas")} placeholder="Uttar Pradesh, Delhi" />
-      </Field>
+      <div className="mb-3 border-t border-slate-200 pt-3">
+        <div className="text-sm font-semibold text-slate-800">Which leads does this person get?</div>
+        <p className="mb-2 text-xs text-slate-500">{canTypes ? "A new lead goes first to a member who handles its type and covers its place." : "Set by your manager"}</p>
+        <CoveragePicker value={cov} onChange={setCov} disabled={!canTypes} />
+      </div>
+      <Field label="Countries covered (for export leads)" hint="Comma separated, for example Nepal, Ghana"><input className={fieldClass} value={f.countries} disabled={!canTypes} onChange={set("countries")} placeholder="Nepal, Ghana" /></Field>
       <div className="mb-3">
         <div className="mb-1 text-sm font-medium text-slate-700">Lead types handled {!canTypes && <span className="font-normal text-slate-500">(set by your manager)</span>}</div>
         <div className="flex flex-wrap gap-x-4 gap-y-1">
@@ -87,7 +93,7 @@ export default function TeamPage() {
                 <td className="px-3 py-2"><b>{p.name}</b><div className="text-xs text-slate-500">{p.phone}</div>{!p.is_active && <span className="text-[11px] text-rose-600">not getting leads</span>}</td>
                 <td className="px-3 py-2">{p.role === "sales_manager" ? "Sales Manager" : "Sales Team"}</td>
                 <td className="px-3 py-2">{p.pincode || "—"}</td><td className="px-3 py-2">{p.state || "—"}</td><td className="px-3 py-2">{p.district || "—"}</td>
-                <td className="px-3 py-2">{p.extra_pincodes.join(", ") || "—"}{p.areas.length > 0 && <div className="text-xs text-slate-500">Areas: {p.areas.join(", ")}</div>}</td>
+                <td className="px-3 py-2 text-xs">{coverageText(p) || (p.extra_pincodes.join(", ") || "—")}{p.areas.length > 0 && <div className="text-xs text-slate-500">{p.coverage ? "Countries" : "Areas"}: {p.areas.join(", ")}</div>}</td>
                 <td className="px-3 py-2">{p.types_handled.length ? p.types_handled.map((t) => { const info = typeInfo[t] || {}; const c = info.color || TYPE_COLOR[t] || "#64748b"; return <span key={t} className="mr-1 rounded-full px-2 py-0.5 text-[11px] font-semibold" style={{ background: `${c}1f`, color: c }}>{info.label || t}</span>; }) : "All types"}</td>
                 <td className="px-3 py-2">{p.target_lakh != null ? `₹${p.target_lakh} L` : "—"}</td>
                 <td className="px-3 py-2">{(has("others_profile") || (p.crm_user_id === user?.id && has("own_profile"))) && <button type="button" className={btn.plain} onClick={() => setEdit(p)}>Edit profile</button>}</td>

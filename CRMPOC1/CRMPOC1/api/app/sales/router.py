@@ -1,3 +1,4 @@
+import json
 from datetime import date
 from typing import Optional
 
@@ -142,6 +143,7 @@ class ProfilePatch(BaseModel):
     district: Optional[str] = None
     extra_pincodes: Optional[str] = None
     areas: Optional[str] = None
+    coverage: Optional[dict] = None
     types_handled: Optional[str] = None
     target_lakh: Optional[float] = None
     is_active: Optional[bool] = None
@@ -612,7 +614,7 @@ def quotation_action(qid: int, action: str, body: ActionIn = ActionIn(), ctx: Ct
 def _profile_out(p: SalesProfile, ticks: set[str] | None = None) -> dict:
     return {
         "crm_user_id": p.crm_user_id, "name": p.name_cache, "role": (p.role_cache or "").strip().lower(), "phone": p.phone, "pincode": p.pincode, "state": p.state,
-        "district": p.district, "extra_pincodes": L.csv_list(p.extra_pincodes), "areas": L.csv_list(p.areas),
+        "district": p.district, "extra_pincodes": L.csv_list(p.extra_pincodes), "areas": L.csv_list(p.areas), "coverage": L.coverage_of(p),
         "types_handled": L.csv_list(p.types_handled), "target_lakh": float(p.target_lakh) if p.target_lakh is not None else None,
         "is_active": p.is_active, **({"ticks": sorted(ticks)} if ticks is not None else {}),
     }
@@ -646,7 +648,7 @@ def update_profile(user_id: int, body: ProfilePatch, ctx: Ctx = Depends(get_ctx)
         raise HTTPException(403, "You do not have this tick in Sales")
     p = L.ensure_profile(sdb, u)
     data = body.model_dump(exclude_unset=True)
-    if ("types_handled" in data or "areas" in data) and not ctx.has("types_edit"):
+    if ("types_handled" in data or "areas" in data or "coverage" in data) and not ctx.has("types_edit"):
         raise HTTPException(403, "Only the manager changes the lead types and areas")
     if "target_lakh" in data and not ctx.has("targets"):
         raise HTTPException(403, "You do not have this tick in Sales")
@@ -658,6 +660,8 @@ def update_profile(user_id: int, body: ProfilePatch, ctx: Ctx = Depends(get_ctx)
         bad = [t for t in L.csv_list(data["types_handled"]) if not T.valid_type(sdb, t, active_only=False)]
         if bad:
             raise HTTPException(400, f"Unknown lead type: {', '.join(bad)}")
+    if "coverage" in data:
+        data["coverage"] = json.dumps(L.clean_coverage(data["coverage"])) if data["coverage"] is not None else None
     for k, v in data.items():
         setattr(p, k, v)
     commit(main_db, sdb)
