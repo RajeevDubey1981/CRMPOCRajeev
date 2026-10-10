@@ -6,7 +6,7 @@ import Modal from "../../components/Modal.jsx";
 import { CallModal, DisposeModal, Footer, GiveModal, PriorityModal, StageModal } from "./LeadModals.jsx";
 import { waLink } from "./MyDay.jsx";
 import {
-  AttendedChip, FirstCallChip, HEAT, HeatChip, Icon, Notice, burst, PRIORITY, PageTitle, PriorityChip, QUOTE_TONE, STAGES, SalesTabs, StatusChip, TypeChip, btn, errText,
+  AttendedChip, FirstCallChip, HEAT, HeatChip, Icon, Notice, TYPE_COLOR, burst, PRIORITY, PageTitle, PriorityChip, QUOTE_TONE, STAGES, SalesTabs, StatusChip, TypeChip, btn, errText,
   fieldClass, fmtDate, fmtDateTime, useAsync, useSales, valueText,
 } from "./salesUi.jsx";
 
@@ -111,9 +111,9 @@ function WorkflowPanel({ lead, can, busy, quick, moveTo, logCall }) {
   const ended = lead.closed;
   const acting = can.work && !ended;
   return (
-    <section className="s-fade mb-3 rounded-lg border border-slate-200 bg-white p-4">
+    <div className="s-fade mt-4 border-t border-slate-100 pt-4">
       <div className="flex flex-wrap items-center gap-2">
-        <h3 className="text-sm font-semibold text-slate-800">Workflow</h3>
+        <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">Workflow</h3>
         {lead.attended && !ended ? <span key={String(lead.last_action_at)} className="s-stamp"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="s-check" aria-hidden="true"><path d="M5 12.500l4.500 4.500L19 7" /></svg>Attended</span> : <AttendedChip lead={lead} />}
         {lead.attended && !ended && <span className="text-xs text-slate-500">last action {fmtDateTime(lead.last_action_at)} · {lead.attempts} call{lead.attempts === 1 ? "" : "s"}</span>}
         {!lead.attended && !ended && lead.owner_name && <span className="text-xs text-slate-500">{lead.owner_name} has not acted on it yet</span>}
@@ -158,7 +158,7 @@ function WorkflowPanel({ lead, can, busy, quick, moveTo, logCall }) {
           {lead.attempts >= 4 && !lead.is_prospect && <p className="mt-2 text-xs text-amber-700">{lead.attempts} attempts so far. After 5 with no answer you can dispose the lead as "Not reachable".</p>}
         </div>
       )}
-    </section>
+    </div>
   );
 }
 
@@ -191,13 +191,24 @@ export default function LeadDetail() {
 
   return (
     <div>
-      <PageTitle title={lead.name} sub={`${lead.lead_no || ""} · ${lead.lead_type_label}`} right={<StatusChip status={lead.status} />} />
       <SalesTabs />
       {msg && <Notice>{msg}</Notice>}
       {lead.asked_again_at && !lead.closed && <Notice tone="warn">This customer asked again on {fmtDateTime(lead.asked_again_at)}. See the history.</Notice>}
-      <WorkflowPanel lead={lead} can={c} busy={busy} quick={(outcome, ok) => run(() => salesApi.call(lead.id, { outcome, note: "" }), ok)} moveTo={(key, label) => setStageTo({ key, label })} logCall={() => setModal("call")} />
+      <section className="s-rise mb-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-3">
+            <span style={{ background: lead.lead_type_color || TYPE_COLOR[lead.lead_type] || "#2f5bb5" }} className="s-pop grid h-12 w-12 shrink-0 place-items-center rounded-xl text-lg font-semibold text-white">{String(lead.name || "?").split(/[ ,]+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase()}</span>
+            <div className="min-w-0">
+              <h1 className="truncate text-xl font-semibold text-slate-800">{lead.name}</h1>
+              <div className="text-sm text-slate-500">{lead.lead_no} · {lead.lead_type_label}</div>
+              <div className="mt-1 flex flex-wrap items-center gap-1.5"><PriorityChip lead={lead} /><HeatChip lead={lead} /><StatusChip status={lead.status} /></div>
+            </div>
+          </div>
+        </div>
+        <WorkflowPanel lead={lead} can={c} busy={busy} quick={(outcome, ok) => run(() => salesApi.call(lead.id, { outcome, note: "" }), ok)} moveTo={(key, label) => setStageTo({ key, label })} logCall={() => setModal("call")} />
+      </section>
       <div className="grid gap-3 lg:grid-cols-2">
-        <section className="rounded-lg border border-slate-200 bg-white p-4">
+        <section style={{ "--i": 1 }} className="s-rise rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
           <h3 className="mb-2 text-sm font-semibold text-slate-800">The lead</h3>
           <dl className="grid grid-cols-[8rem_1fr] gap-y-1 text-sm">
             <dt className="text-slate-500">Type</dt><dd><TypeChip lead={lead} /></dd>
@@ -239,11 +250,11 @@ export default function LeadDetail() {
             </div>
           )}
         </section>
-        <section className="rounded-lg border border-slate-200 bg-white p-4">
-          <h3 className="mb-2 text-sm font-semibold text-slate-800">History</h3>
-          <ol className="max-h-[28rem] space-y-2 overflow-y-auto border-l-2 border-slate-200 pl-3">
+        <section style={{ "--i": 2 }} className="s-rise rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <h3 className="mb-3 text-sm font-semibold text-slate-800">History</h3>
+          <ol className="ml-1 max-h-[28rem] space-y-3 overflow-y-auto border-l-2 border-slate-200 pl-4">
             {lead.activities.map((a, n) => (
-              <li key={a.id} style={{ "--i": Math.min(n, 12) }} className="s-slide text-sm"><span className={a.kind === "call" ? "font-medium text-slate-800" : "text-slate-700"}>{a.text}</span><div className="text-xs text-slate-400">{fmtDateTime(a.at)} · {a.by}</div></li>
+              <li key={a.id} style={{ "--i": Math.min(n, 12) }} className="s-slide relative text-sm"><span className={`absolute -left-[23px] top-1.5 h-3 w-3 rounded-full border-[3px] bg-white ${n === 0 ? "s-pop border-emerald-500" : "border-indcool-blue"}`} /><span className={a.kind === "call" ? "font-medium text-slate-800" : "text-slate-700"}>{a.text}</span><div className="text-xs text-slate-400">{fmtDateTime(a.at)} · {a.by}</div></li>
             ))}
           </ol>
         </section>
