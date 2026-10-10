@@ -4,7 +4,7 @@ import { Link } from "react-router-dom";
 import { salesApi } from "../../api/sales.js";
 import { AddLeadModal, CallModal } from "./LeadModals.jsx";
 import {
-  AttendedChip, CountUp, FirstCallChip, HeatChip, Icon, Notice, PageTitle, PriorityChip, SalesTabs, StatusChip, TypeChip, btn, errText, fmtDate, useAsync, useSales, valueText,
+  AttendedChip, CountUp, FirstCallChip, HeatChip, Icon, Notice, PageTitle, PriorityChip, Ring, SalesTabs, STAGES, StatusChip, TypeChip, btn, errText, fmtDate, useAsync, useSales, valueText,
 } from "./salesUi.jsx";
 
 export function waLink(phone) {
@@ -26,6 +26,12 @@ function LeadCard({ lead, onCall, onQuick, index = 0 }) {
         <AttendedChip lead={lead} />
         {lead.crm_kind && <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-600">Auto · {lead.source}</span>}
       </div>
+      {!lead.closed && (
+        <div className="mt-2 flex items-center gap-1" title={`Stage: ${STAGES.find(([k]) => k === lead.status)?.[1] || ""}`}>
+          {STAGES.map(([k], i) => <span key={k} style={{ "--i": i }} className={`s-grow h-1.5 w-8 rounded-full ${i <= STAGES.findIndex(([x]) => x === lead.status) ? "bg-indcool-blue" : "bg-slate-200"}`} />)}
+          <span className="ml-1 text-[11px] text-slate-500">{STAGES.find(([k]) => k === lead.status)?.[1]}</span>
+        </div>
+      )}
       <div className="mt-1 text-sm text-slate-700">{lead.item}</div>
       {lead.details && <div className="text-xs text-slate-500">{lead.details}</div>}
       <div className="text-xs text-slate-500">{[lead.place, lead.phone, lead.source].filter(Boolean).join(" · ")}{lead.follow_up_on ? ` · follow-up ${fmtDate(lead.follow_up_on)}` : ""} · {valueText(lead)}</div>
@@ -77,6 +83,15 @@ export default function MyDay() {
       {note && <Notice>{note}</Notice>}
       {error && <Notice tone="bad">{error}</Notice>}
       {loading && !data && <p className="text-sm text-slate-500">Loading...</p>}
+      {data && items.length > 0 && (
+        <div className="s-rise mb-3 flex items-center gap-4 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+          <Ring value={items.filter((l) => l.attended).length / items.length} label={`${items.filter((l) => l.attended).length}/${items.length}`} sub="attended" size={84} />
+          <div>
+            <div className="text-base font-semibold text-slate-800">{items.filter((l) => !l.attended).length ? `${items.filter((l) => !l.attended).length} lead${items.filter((l) => !l.attended).length === 1 ? " is" : "s are"} waiting for you` : "Every lead has been attended. Well done."}</div>
+            <div className="text-sm text-slate-500">{data.counts.due_today} due today, {data.counts.overdue} late. Work the top of the list first.</div>
+          </div>
+        </div>
+      )}
       {data && (
         <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-6">
           {[["Open leads", data.counts.open, ""], ["Urgent or high", data.counts.urgent, "text-rose-600"], ["Hot", data.counts.hot, "text-rose-600"], ["Due today", data.counts.due_today, ""], ["Overdue", data.counts.overdue, "text-rose-600"], ["First calls late", data.counts.first_overdue, "text-rose-600"], ["Not attended", data.counts.not_attended, "text-rose-600"]].map(([l, v, c], i) => (

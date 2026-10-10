@@ -64,13 +64,57 @@ export function Icon({ name, size = 16, className = "" }) {
   );
 }
 
+// Whether motion is off: the person's switch in Sales wins, otherwise the device setting.
+export function motionOff() {
+  if (typeof document === "undefined") return false;
+  const pick = document.documentElement.getAttribute("data-s-motion");
+  if (pick === "off") return true;
+  if (pick === "on") return false;
+  return !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+}
+
+function MotionSwitch() {
+  const [pick, setPick] = useState(() => { try { return localStorage.getItem("sales_motion") || ""; } catch { return ""; } });
+  useEffect(() => {
+    if (pick) document.documentElement.setAttribute("data-s-motion", pick); else document.documentElement.removeAttribute("data-s-motion");
+  }, [pick]);
+  const on = !motionOff();
+  const toggle = () => {
+    const next = on ? "off" : "on";
+    try { localStorage.setItem("sales_motion", next); } catch { /* the choice just is not remembered */ }
+    setPick(next);
+  };
+  return (
+    <button type="button" onClick={toggle} title="Switch the movement on this page on or off" className="s-press ml-auto rounded-md border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-500 hover:bg-slate-50">
+      Movement: {on ? "on" : "off"}
+    </button>
+  );
+}
+
+// A ring that fills to a share (0 to 1).
+export function Ring({ value, size = 72, label, sub }) {
+  const [v, setV] = useState(0);
+  useEffect(() => { const t = setTimeout(() => setV(Math.max(0, Math.min(1, value || 0))), 150); return () => clearTimeout(t); }, [value]);
+  const r = (size - 10) / 2;
+  const c = 2 * Math.PI * r;
+  return (
+    <div className="relative shrink-0" style={{ width: size, height: size }}>
+      <svg width={size} height={size} className="-rotate-90">
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#e2e8f0" strokeWidth="7" />
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#2f5bb5" strokeWidth="7" strokeLinecap="round" strokeDasharray={c} strokeDashoffset={c * (1 - v)} className="s-ring" />
+      </svg>
+      <div className="absolute inset-0 grid place-items-center text-center leading-tight"><div><div className="text-base font-semibold text-slate-800">{label}</div>{sub && <div className="text-[9px] text-slate-500">{sub}</div>}</div></div>
+    </div>
+  );
+}
+
 // A number that counts up to its value when it first shows, and eases to a new value when it changes.
 export function CountUp({ value, className = "" }) {
   const target = Number(value) || 0;
   const [shown, setShown] = useState(0);
   const from = useRef(0);
   useEffect(() => {
-    const calm = typeof window !== "undefined" && window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const calm = motionOff();
     if (calm || from.current === target) { from.current = target; setShown(target); return undefined; }
     const start = from.current;
     const t0 = performance.now();
@@ -202,6 +246,7 @@ export function SalesTabs() {
     ...((status?.ticks || []).includes("reglog") ? [["/sales/log", "Registered-first log"]] : []),
     ...(m.ticks ? [["/sales/types", "Lead types"]] : []),
   ];
+  // the movement switch sits at the end of the row
   return (
     <nav className="mb-4 flex flex-wrap gap-1 border-b border-slate-200 pb-2">
       {tabs.map(([to, label, end]) => (
@@ -209,6 +254,7 @@ export function SalesTabs() {
           {label}
         </NavLink>
       ))}
+      <MotionSwitch />
     </nav>
   );
 }
