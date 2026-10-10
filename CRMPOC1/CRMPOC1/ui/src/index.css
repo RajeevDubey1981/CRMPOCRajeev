@@ -209,3 +209,4 @@ html[data-s-motion="off"] :is(.s-lift, .s-press, .s-bar, .s-cell, .s-ring) { tra
 .s-spark { stroke-dasharray: 160; stroke-dashoffset: 160; animation: s-draw 1.2s .3s ease-out forwards; }
 @media (prefers-reduced-motion: reduce) { html:not([data-s-motion="on"]) .s-spark { animation: none !important; stroke-dashoffset: 0; } }
 html[data-s-motion="off"] .s-spark { animation: none !important; stroke-dashoffset: 0; }
+.s-disp { font-family: "Sora", "Lato", system-ui, sans-serif; letter-spacing: -.01em; }

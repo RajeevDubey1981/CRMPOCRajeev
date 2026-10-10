@@ -23,36 +23,47 @@ function look(key) {
 
 // A small line of the last seven days, drawn in when the tile shows.
 function Spark({ values, color }) {
-  if (!values || values.length < 2 || values.every((v) => v === values[0])) return null;
+  if (!values || values.length < 2) return null;
   const w = 64, h = 26;
   const mx = Math.max(...values), mn = Math.min(...values);
-  const pts = values.map((v, i) => `${((i * w) / (values.length - 1)).toFixed(1)},${(h - 4 - ((v - mn) / (mx - mn || 1)) * (h - 8)).toFixed(1)}`).join(" ");
+  const flat = mx === mn;
+  const pts = values.map((v, i) => `${((i * w) / (values.length - 1)).toFixed(1)},${(flat ? h / 2 : h - 4 - ((v - mn) / (mx - mn)) * (h - 8)).toFixed(1)}`).join(" ");
   return (
     <svg className="absolute bottom-2 right-2" width={w} height={h} viewBox={`0 0 ${w} ${h}`} aria-hidden="true">
-      <polyline className="s-spark" points={pts} fill="none" stroke={color} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+      <polyline className="s-spark" points={pts} fill="none" stroke={color} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" opacity={flat ? 0.45 : 1} />
     </svg>
   );
 }
 
 // The month target: a ring that fills to the share won so far.
 function Target({ t }) {
-  const share = t.target_lakh > 0 ? Math.min(1, t.won_lakh / t.target_lakh) : 0;
+  const set = t.target_lakh > 0;
+  const share = set ? Math.min(1, t.won_lakh / t.target_lakh) : 0;
   const [v, setV] = useState(0);
   useEffect(() => { const id = setTimeout(() => setV(share), 200); return () => clearTimeout(id); }, [share]);
   const size = 84, r = (size - 10) / 2, c = 2 * Math.PI * r;
   const left = Math.max(0, t.target_lakh - t.won_lakh);
   return (
-    <div className="s-rise mt-4 flex flex-wrap items-center gap-4 rounded-xl bg-lime-50 p-3">
+    <div className="s-rise mt-4 flex flex-wrap items-center gap-4 rounded-2xl bg-lime-50 p-4">
       <div className="relative shrink-0" style={{ width: size, height: size }}>
         <svg width={size} height={size} className="-rotate-90">
           <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#e2e8f0" strokeWidth="9" />
           <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#65a30d" strokeWidth="9" strokeLinecap="round" strokeDasharray={c} strokeDashoffset={c * (1 - v)} className="s-ring" />
         </svg>
-        <div className="absolute inset-0 grid place-items-center text-center leading-tight"><div><div className="text-lg font-bold text-slate-800"><CountUp value={Math.round(share * 100)} />%</div><div className="text-[9px] text-slate-500">of target</div></div></div>
+        <div className="absolute inset-0 grid place-items-center text-center leading-tight"><div><div className="s-disp text-lg font-extrabold text-slate-800"><CountUp value={Math.round(share * 100)} />%</div><div className="text-[9px] text-slate-500">of target</div></div></div>
       </div>
       <div>
-        <div className="text-base font-bold text-slate-800">₹{t.won_lakh} lakh won of ₹{t.target_lakh} lakh</div>
-        <div className="text-sm text-slate-500">{left > 0 ? `₹${left.toFixed(1)} lakh to go this month` : "Target reached this month"} · {t.days_left} day{t.days_left === 1 ? "" : "s"} left</div>
+        {set ? (
+          <>
+            <div className="s-disp text-base font-extrabold text-slate-800">₹{t.won_lakh} lakh won of ₹{t.target_lakh} lakh</div>
+            <div className="text-sm text-slate-500">{left > 0 ? `₹${left.toFixed(1)} lakh to go this month` : "Target reached this month"} · {t.days_left} day{t.days_left === 1 ? "" : "s"} left</div>
+          </>
+        ) : (
+          <>
+            <div className="s-disp text-base font-extrabold text-slate-800">₹{t.won_lakh} lakh won this month</div>
+            <div className="text-sm text-slate-500">No month target set yet. A manager sets it in Sales, Team and profiles. {t.days_left} day{t.days_left === 1 ? "" : "s"} left in the month.</div>
+          </>
+        )}
       </div>
     </div>
   );
@@ -68,10 +79,15 @@ function Needs({ items }) {
   }, [items.length]);
   if (!items.length) return null;
   return (
-    <div className="mt-3 overflow-hidden rounded-lg bg-sky-100 px-3 py-2 text-sm font-semibold text-indcool-navy">
+    <div className="mt-3 overflow-hidden rounded-xl bg-sky-100 px-4 py-2.5 text-sm font-semibold text-indcool-navy">
       <div key={i} className="s-slide truncate">{items[i]}</div>
     </div>
   );
+}
+
+function daysLeft() {
+  const d = new Date();
+  return new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate() - d.getDate() + 1;
 }
 
 export default function SalesDashboardBlock() {
@@ -101,20 +117,22 @@ export default function SalesDashboardBlock() {
     );
   }
   const s = state.data;
+  const wonTile = s.tiles.find((t) => t.key === "won");
+  const wonFromTiles = Number(String(wonTile?.sub || "").replace(/[^0-9.]/g, "")) || 0;
   return (
-    <div className="s-fade rounded-xl bg-white p-4 shadow-sm">
+    <div className="s-fade rounded-2xl bg-white p-5 shadow-sm">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h3 className="text-base font-bold text-slate-800">{s.title}</h3>
-        <Link to="/sales" className="s-press s-shine inline-flex items-center rounded-lg bg-indcool-blue px-4 py-2 text-sm font-semibold text-white shadow hover:bg-indcool-navy">Open Sales</Link>
+        <h3 className="s-disp text-base font-extrabold text-slate-800">{s.title}</h3>
+        <Link to="/sales" className="s-press s-shine inline-flex items-center rounded-xl bg-indcool-navy px-4 py-2 text-sm font-semibold text-white shadow-lg hover:bg-indcool-blue">Open Sales</Link>
       </div>
       <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
         {s.tiles.map((t, i) => {
           const l = look(t.key);
           const alarm = ["hot", "urgent", "overdue", "first_overdue", "unassigned"].includes(t.key) && t.value > 0;
           return (
-            <div key={t.key} style={{ "--i": i }} className="s-rise s-lift relative min-h-[104px] overflow-hidden rounded-xl border border-slate-200 bg-white p-3">
-              <span style={{ "--i": i, background: l.color }} className="s-grow absolute inset-x-0 top-0 h-1" />
-              <div className={`mt-1 text-3xl font-extrabold tabular-nums ${alarm ? "text-rose-600" : t.key === "won" ? "text-emerald-600" : "text-slate-800"}`}><CountUp value={t.value} /></div>
+            <div key={t.key} style={{ "--i": i }} className="s-rise s-lift relative min-h-[110px] overflow-hidden rounded-2xl border border-slate-200 bg-white p-3.5">
+              <span style={{ "--i": i, background: l.color }} className="s-grow absolute inset-x-0 top-0 h-1.5" />
+              <div className={`s-disp mt-1 text-[32px] font-extrabold leading-tight tabular-nums ${alarm ? "text-rose-600" : t.key === "won" ? "text-emerald-600" : "text-slate-800"}`}><CountUp value={t.value} /></div>
               <div className="pr-14 text-sm text-slate-600">{t.label}</div>
               {t.sub && <div className="pr-14 text-[11px] text-slate-400">{t.sub}</div>}
               <Spark values={t.trend} color={l.color} />
@@ -122,7 +140,7 @@ export default function SalesDashboardBlock() {
           );
         })}
       </div>
-      {s.target && <Target t={s.target} />}
+      <Target t={s.target || { won_lakh: wonFromTiles, target_lakh: 0, days_left: daysLeft() }} />
       <Needs items={s.need} />
     </div>
   );
