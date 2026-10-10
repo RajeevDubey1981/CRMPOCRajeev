@@ -63,7 +63,9 @@ def norm_phone(value: str | None) -> str:
     raw = (value or "").strip()
     digits = re.sub(r"\D", "", raw)
     if raw.startswith("+") or raw.startswith("00"):
-        return digits[2:] if raw.startswith("00") else digits
+        full = digits[2:] if raw.startswith("00") else digits
+        # an Indian number written with +91 is the same person as the 10 digit number
+        return full[-10:] if full.startswith("91") and len(full) == 12 else "+" + full
     return digits[-10:] if len(digits) > 10 else digits
 
 
@@ -415,7 +417,7 @@ def lead_out(lead: SalesLead, names: dict[int, str] | None = None) -> dict:
         "value_lakh": float(lead.value_lakh) if lead.value_lakh is not None else None,
         "value_usd": float(lead.value_usd) if lead.value_usd is not None else None,
         "price_basis": lead.price_basis, "closes_on": lead.closes_on.isoformat() if lead.closes_on else None,
-        "is_prospect": lead.is_prospect, "first_call_minutes": fc, "crm_kind": lead.crm_kind, "crm_ref": lead.crm_ref,
+        "is_prospect": lead.is_prospect, "first_called": lead.first_called_at is not None, "first_call_minutes": fc, "crm_kind": lead.crm_kind, "crm_ref": lead.crm_ref,
         "crm_close_pending": lead.crm_close_pending, "disposal_reason": lead.disposal_reason, "disposal_note": lead.disposal_note,
         "order_no": lead.order_no, "created_at": aware(lead.created_at).isoformat() if lead.created_at else None,
         "closed_at": aware(lead.closed_at).isoformat() if lead.closed_at else None,

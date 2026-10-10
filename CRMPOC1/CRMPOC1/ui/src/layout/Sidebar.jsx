@@ -42,6 +42,7 @@ const NAV = [
       { to: "/bids/request", label: "Request a bid", module: "bids", bidSide: "vendor" },
     ],
   },
+  { to: "/sales", label: "Sales", module: "sales" },
   {
     label: "Market Admin",
     systemAdminOnly: true,

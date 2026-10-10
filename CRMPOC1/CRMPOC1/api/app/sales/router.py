@@ -264,6 +264,8 @@ def list_leads(
             return False
         if owner == "none" and r.owner_user_id is not None:
             return False
+        if owner == "me" and r.owner_user_id != ctx.user.id:
+            return False
         if owner.isdigit() and r.owner_user_id != int(owner):
             return False
         if kpi == "hot" and not (open_(r) and r.heat == "hot"):

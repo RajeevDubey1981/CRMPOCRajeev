@@ -482,6 +482,18 @@ if result.returncode != 0:
     print("Schema already present but unstamped; running 'alembic stamp head' and retrying...")
     subprocess.run([alembic_bin, "-c", "alembic.ini", "stamp", "head"], check=True)
     subprocess.run([alembic_bin, "-c", "alembic.ini", "upgrade", "head"], check=True)
+
+# The Sales module keeps its data in its own database. It is switched on by SALES_DATABASE_URL in the .env file.
+# A problem there is reported loudly but never stops the CRM: the CRM does not depend on Sales.
+if os.environ.get("SALES_DATABASE_URL", "").strip():
+    print("Sales database: upgrading")
+    sales = subprocess.run([alembic_bin, "-c", "alembic_sales.ini", "upgrade", "head"], capture_output=True, text=True)
+    print(sales.stdout, end="")
+    print(sales.stderr, end="")
+    if sales.returncode != 0:
+        print("!!! Sales database update FAILED. The CRM is not affected; Sales stays unavailable until this is fixed.")
+else:
+    print("Sales database: not set up (SALES_DATABASE_URL is empty), Sales stays switched off")
 """.replace("/var/www/indcool/api", remote_api)
     ssh_run(client, f"cat > /tmp/indcool_migrate.py <<'PY'\n{remote_migrate}\nPY")
     print(ssh_run(client, f"sudo -u www-data {remote_api}/venv/bin/python /tmp/indcool_migrate.py"))

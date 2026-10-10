@@ -71,9 +71,9 @@ class RulesTests(unittest.TestCase):
 
     def test_phone_normal_form(self):
         self.assertEqual(L.norm_phone("98100 11223"), "9810011223")
-        self.assertEqual(L.norm_phone("+91 98100 11223"), "919810011223")
+        self.assertEqual(L.norm_phone("+91 98100 11223"), "9810011223")
         self.assertEqual(L.norm_phone("919810011223"), "9810011223")
-        self.assertEqual(L.norm_phone("+977 98510 22334"), "9779851022334")
+        self.assertEqual(L.norm_phone("+977 98510 22334"), "+9779851022334")
 
 
 class SalesApiTests(unittest.TestCase):

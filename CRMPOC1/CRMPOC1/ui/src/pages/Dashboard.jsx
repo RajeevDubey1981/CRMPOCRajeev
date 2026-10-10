@@ -1,4 +1,5 @@
 import { hasPermission } from "../utils/permissions.js";
+import SalesDashboardBlock from "../components/SalesDashboardBlock.jsx";
 import { useEffect, useMemo, useRef, useState } from "react";
 import PriorityBadge from "../components/complaints/PriorityBadge.jsx";
 import { BounceBadge } from "../components/EmailBounceNotice.jsx";
@@ -660,9 +661,14 @@ export default function Dashboard() {
                   {ql.label}
                 </Link>
               ))}
+              {Array.isArray(user?.permissions) && user.permissions.some((p) => p.module === "sales" && p.can_view) && (
+                <Link to="/sales" className="rounded bg-indigo-700 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-indigo-800">📈 Sales</Link>
+              )}
             </div>
           </div>
           )}
+
+          {!isEngineer && <SalesDashboardBlock />}
 
           {/* Filter */}
           <div className="rounded bg-white p-4 shadow-sm">
