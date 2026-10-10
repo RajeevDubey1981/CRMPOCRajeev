@@ -5,7 +5,12 @@ A row with ``sub_module="<value>"`` scopes the action to records where the
 relevant sub-module discriminator (e.g. complaint query_type) equals that value.
 
 A user is "unrestricted" for an action when ANY of their role's rows for the
-module has ``sub_module=None`` AND the action flag is true.
+module has ``sub_module=None`` AND the action flag is true, unless the role also
+has sub-module rows where the flag is ticked for some and unticked for others. That
+mix means someone ticked the whole module and then unticked a sub-module on purpose
+(for example Complaints ticked, but Sales unticked), so only the ticked sub-modules
+are in scope. A role whose sub-module rows are all unticked (the engineer) or all
+ticked (the admin) keeps the whole-module meaning.
 """
 from __future__ import annotations
 
@@ -42,16 +47,15 @@ def sub_module_scope(db: Session, user: User, module: str, flag: Flag) -> set[st
     role = _role_for(db, user)
     if role is None:
         return set()
-    rows = db.scalars(
-        select(Permission).where(
-            Permission.role_id == role.id,
-            Permission.module == module,
-            getattr(Permission, flag) == True,
-        )
-    ).all()
+    everything = db.scalars(select(Permission).where(Permission.role_id == role.id, Permission.module == module)).all()
+    rows = [r for r in everything if getattr(r, flag)]
     if not rows:
         return set()
     if any(r.sub_module is None for r in rows):
+        ticked = {r.sub_module for r in rows if r.sub_module is not None}
+        unticked = {r.sub_module for r in everything if r.sub_module is not None and not getattr(r, flag)}
+        if ticked and unticked:
+            return ticked
         return None
     return {r.sub_module for r in rows if r.sub_module is not None}
 
