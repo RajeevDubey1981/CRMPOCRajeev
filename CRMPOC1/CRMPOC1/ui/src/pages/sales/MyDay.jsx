@@ -4,7 +4,7 @@ import { Link } from "react-router-dom";
 import { salesApi } from "../../api/sales.js";
 import { AddLeadModal, CallModal } from "./LeadModals.jsx";
 import {
-  AttendedChip, CountUp, FirstCallChip, HeatChip, Icon, Notice, PageTitle, PriorityChip, Ring, SalesTabs, STAGES, StatusChip, TypeChip, btn, errText, fmtDate, useAsync, useSales, valueText,
+  AttendedChip, CountUp, FirstCallChip, HeatChip, Icon, Notice, PageTitle, PriorityChip, Ring, SalesTabs, STAGES, burst, greeting, StatusChip, TypeChip, btn, errText, fmtDate, useAsync, useSales, valueText,
 } from "./salesUi.jsx";
 
 export function waLink(phone) {
@@ -39,7 +39,7 @@ function LeadCard({ lead, onCall, onQuick, index = 0 }) {
         <a className={btn.go} href={`tel:${lead.phone}`}><Icon name="phone" size={14} className="mr-1.5 -mt-0.5" />Call</a>
         <a className={btn.plain} href={waLink(lead.phone)} target="_blank" rel="noreferrer">WhatsApp</a>
         <button type="button" className={btn.primary} onClick={() => onCall(lead)}>Log call</button>
-        <button type="button" className={btn.plain} onClick={() => onQuick(lead, "No answer")}><Icon name="phoneOff" size={14} className="mr-1.5 -mt-0.5" />No answer</button>
+        <button type="button" className={btn.plain} onClick={(e) => onQuick(lead, "No answer", e)}><Icon name="phoneOff" size={14} className="mr-1.5 -mt-0.5" />No answer</button>
         <Link className={btn.plain} to={`/sales/leads/${lead.id}`}>Open</Link>
       </div>
     </div>
@@ -63,8 +63,9 @@ export default function MyDay() {
   const [call, setCall] = useState(null);
   const [adding, setAdding] = useState(false);
   const [note, setNote] = useState("");
-  async function quick(lead, outcome) {
-    try { await salesApi.call(lead.id, { outcome, note: "" }); setNote(`${lead.name}: marked "${outcome}" (attended)`); reload(); } catch (e) { setNote(errText(e)); }
+  async function quick(lead, outcome, e) {
+    const at = e ? { x: e.clientX, y: e.clientY } : null;
+    try { await salesApi.call(lead.id, { outcome, note: "" }); if (at) burst(at.x, at.y, 16); setNote(`${lead.name}: marked "${outcome}" (attended)`); reload(); } catch (e) { setNote(errText(e)); }
   }
   const items = data?.items || [];
   const used = new Set();
@@ -84,11 +85,12 @@ export default function MyDay() {
       {error && <Notice tone="bad">{error}</Notice>}
       {loading && !data && <p className="text-sm text-slate-500">Loading...</p>}
       {data && items.length > 0 && (
-        <div className="s-rise mb-3 flex items-center gap-4 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-          <Ring value={items.filter((l) => l.attended).length / items.length} label={`${items.filter((l) => l.attended).length}/${items.length}`} sub="attended" size={84} />
+        <div className="s-hero s-rise mb-3 flex items-center gap-4 rounded-xl p-4 shadow-sm">
+          <Ring light value={items.filter((l) => l.attended).length / items.length} label={`${items.filter((l) => l.attended).length}/${items.length}`} sub="attended" size={88} />
           <div>
-            <div className="text-base font-semibold text-slate-800">{items.filter((l) => !l.attended).length ? `${items.filter((l) => !l.attended).length} lead${items.filter((l) => !l.attended).length === 1 ? " is" : "s are"} waiting for you` : "Every lead has been attended. Well done."}</div>
-            <div className="text-sm text-slate-500">{data.counts.due_today} due today, {data.counts.overdue} late. Work the top of the list first.</div>
+            <div className="text-xs font-semibold uppercase tracking-wider text-white/70">{greeting()}</div>
+            <div className="text-lg font-semibold">{items.filter((l) => !l.attended).length ? `${items.filter((l) => !l.attended).length} lead${items.filter((l) => !l.attended).length === 1 ? " is" : "s are"} waiting for you` : "Every lead has been attended. Well done."}</div>
+            <div className="text-sm text-white/80">{data.counts.due_today} due today, {data.counts.overdue} late. Work the top of the list first.</div>
           </div>
         </div>
       )}

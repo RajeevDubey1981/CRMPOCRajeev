@@ -54,6 +54,12 @@ const ICON_PATHS = {
   calendar: "M5 4h14a2 2 0 0 1 2 2v13a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zM16 2v4M8 2v4M3 10h18",
   left: "M15 6l-6 6 6 6",
   right: "M9 6l6 6-6 6",
+  bell: "M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0",
+  alert: "M12 3l10 18H2zM12 10v5M12 18v.5",
+  flame: "M12 22c4 0 7-2.8 7-7 0-3-1.8-5-3.4-6.6C14.600 6.900 14 5 14 3c-3 1.5-6 5-6 9-1.200-.600-2-1.800-2.200-3C4.500 10.500 5 13 5 15c0 4.200 3 7 7 7z",
+  file: "M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9zM14 3v6h6M8 13h8M8 17h5",
+  users: "M16 20v-1a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v1M9.500 11a3.500 3.500 0 1 0 0-7 3.500 3.500 0 0 0 0 7zM21 20v-1a4 4 0 0 0-3-3.900M16 4.100a3.500 3.500 0 0 1 0 6.800",
+  clock: "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 7v5l3 2",
   chat: "M21 11.5a8.4 8.4 0 0 1-9 8.4 8.5 8.5 0 0 1-3.8-.9L3 20l1.1-4.9A8.4 8.4 0 1 1 21 11.5z",
 };
 export function Icon({ name, size = 16, className = "" }) {
@@ -62,6 +68,29 @@ export function Icon({ name, size = 16, className = "" }) {
       <path d={ICON_PATHS[name]} />
     </svg>
   );
+}
+
+// A short burst of paper bits where the person pressed, to say "done". Skipped when movement is off.
+export function burst(x, y, n = 18) {
+  if (typeof document === "undefined" || motionOff()) return;
+  const cols = ["#b8d828", "#2f5bb5", "#18a999", "#f59e0b", "#e11d48", "#7c3aed"];
+  for (let i = 0; i < n; i += 1) {
+    const s = document.createElement("span");
+    s.className = "s-confetti";
+    s.style.left = `${x}px`; s.style.top = `${y}px`; s.style.background = cols[i % cols.length];
+    const a = Math.random() * Math.PI * 2;
+    const d = 60 + Math.random() * 150;
+    s.style.setProperty("--dx", `${Math.cos(a) * d}px`);
+    s.style.setProperty("--dy", `${Math.sin(a) * d - 50}px`);
+    s.style.setProperty("--rot", `${Math.random() * 720 - 360}deg`);
+    document.body.appendChild(s);
+    setTimeout(() => s.remove(), 1300);
+  }
+}
+
+export function greeting() {
+  const h = new Date().getHours();
+  return h < 12 ? "Good morning" : h < 17 ? "Good afternoon" : "Good evening";
 }
 
 // Whether motion is off: the person's switch in Sales wins, otherwise the device setting.
@@ -92,7 +121,7 @@ function MotionSwitch() {
 }
 
 // A ring that fills to a share (0 to 1).
-export function Ring({ value, size = 72, label, sub }) {
+export function Ring({ value, size = 72, label, sub, light = false }) {
   const [v, setV] = useState(0);
   useEffect(() => { const t = setTimeout(() => setV(Math.max(0, Math.min(1, value || 0))), 150); return () => clearTimeout(t); }, [value]);
   const r = (size - 10) / 2;
@@ -100,10 +129,10 @@ export function Ring({ value, size = 72, label, sub }) {
   return (
     <div className="relative shrink-0" style={{ width: size, height: size }}>
       <svg width={size} height={size} className="-rotate-90">
-        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#e2e8f0" strokeWidth="7" />
-        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#2f5bb5" strokeWidth="7" strokeLinecap="round" strokeDasharray={c} strokeDashoffset={c * (1 - v)} className="s-ring" />
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={light ? "rgba(255,255,255,.25)" : "#e2e8f0"} strokeWidth="7" />
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={light ? "#b8d828" : "#2f5bb5"} strokeWidth="7" strokeLinecap="round" strokeDasharray={c} strokeDashoffset={c * (1 - v)} className="s-ring" />
       </svg>
-      <div className="absolute inset-0 grid place-items-center text-center leading-tight"><div><div className="text-base font-semibold text-slate-800">{label}</div>{sub && <div className="text-[9px] text-slate-500">{sub}</div>}</div></div>
+      <div className="absolute inset-0 grid place-items-center text-center leading-tight"><div><div className={`text-base font-semibold ${light ? "text-white" : "text-slate-800"}`}>{label}</div>{sub && <div className={`text-[9px] ${light ? "text-white/80" : "text-slate-500"}`}>{sub}</div>}</div></div>
     </div>
   );
 }
@@ -172,7 +201,7 @@ export const STAGES = [["new", "New"], ["con", "Contacted"], ["int", "Interested
 export function AttendedChip({ lead }) {
   if (!lead || lead.closed) return null;
   if (lead.attended) {
-    return <span title="The person who has this lead has acted on it" className="s-pop inline-block whitespace-nowrap rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-800"><Icon name="check" size={11} className="mr-0.5 -mt-0.5" />Attended {timeAgo(lead.last_action_at)}{lead.attempts > 1 ? ` · ${lead.attempts} calls` : ""}</span>;
+    return <span title="The person who has this lead has acted on it" className="s-pop inline-block whitespace-nowrap rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-800"><svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="s-check mr-0.5 -mt-0.5 inline-block" aria-hidden="true"><path d="M5 12.500l4.500 4.500L19 7" /></svg>Attended {timeAgo(lead.last_action_at)}{lead.attempts > 1 ? ` · ${lead.attempts} calls` : ""}</span>;
   }
   if (!lead.owner_user_id) return null;
   return <span title="Nobody has acted on this lead yet" className="inline-block whitespace-nowrap rounded-full bg-rose-100 px-2 py-0.5 text-[11px] font-semibold text-rose-700">Not attended yet</span>;

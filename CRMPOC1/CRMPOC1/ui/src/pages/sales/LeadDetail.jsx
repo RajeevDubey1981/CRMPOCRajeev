@@ -6,7 +6,7 @@ import Modal from "../../components/Modal.jsx";
 import { CallModal, DisposeModal, Footer, GiveModal, PriorityModal, StageModal } from "./LeadModals.jsx";
 import { waLink } from "./MyDay.jsx";
 import {
-  AttendedChip, FirstCallChip, HEAT, HeatChip, Icon, Notice, PRIORITY, PageTitle, PriorityChip, QUOTE_TONE, STAGES, SalesTabs, StatusChip, TypeChip, btn, errText,
+  AttendedChip, FirstCallChip, HEAT, HeatChip, Icon, Notice, burst, PRIORITY, PageTitle, PriorityChip, QUOTE_TONE, STAGES, SalesTabs, StatusChip, TypeChip, btn, errText,
   fieldClass, fmtDate, fmtDateTime, useAsync, useSales, valueText,
 } from "./salesUi.jsx";
 
@@ -114,44 +114,46 @@ function WorkflowPanel({ lead, can, busy, quick, moveTo, logCall }) {
     <section className="s-fade mb-3 rounded-lg border border-slate-200 bg-white p-4">
       <div className="flex flex-wrap items-center gap-2">
         <h3 className="text-sm font-semibold text-slate-800">Workflow</h3>
-        <AttendedChip lead={lead} />
+        {lead.attended && !ended ? <span key={String(lead.last_action_at)} className="s-stamp"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="s-check" aria-hidden="true"><path d="M5 12.500l4.500 4.500L19 7" /></svg>Attended</span> : <AttendedChip lead={lead} />}
         {lead.attended && !ended && <span className="text-xs text-slate-500">last action {fmtDateTime(lead.last_action_at)} · {lead.attempts} call{lead.attempts === 1 ? "" : "s"}</span>}
         {!lead.attended && !ended && lead.owner_name && <span className="text-xs text-slate-500">{lead.owner_name} has not acted on it yet</span>}
         {!lead.owner_user_id && !ended && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800">Not given to anyone yet</span>}
       </div>
-      <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-slate-100"><div className="s-bar h-full rounded-full bg-indcool-blue" style={{ width: `${ended ? 100 : Math.max(0, idx) / STAGES.length * 100 + (idx >= 0 ? 100 / STAGES.length / 2 : 0)}%` }} /></div>
-      <ol className="mt-2 grid grid-cols-2 gap-1.5 sm:grid-cols-6">
-        {STAGES.map(([key, label], i) => {
-          const done = idx > i || (ended && lead.status === "won");
-          const now = idx === i && !ended;
-          const canMove = acting && !partner && key !== "new" && !now;
-          const tone = now ? "border-indcool-blue bg-sky-50 text-indcool-navy ring-1 ring-indcool-blue" : done ? "border-emerald-300 bg-emerald-50 text-emerald-800" : "border-slate-200 bg-white text-slate-400";
-          return (
-            <li key={key}>
-              <button type="button" disabled={!canMove || busy} onClick={() => moveTo(key, label)} className={`s-press s-cell w-full rounded-md border px-2 py-1.5 text-left text-xs ${tone} ${canMove ? "cursor-pointer hover:border-indcool-blue" : "cursor-default"}`}>
-                <div className="font-semibold">{done ? <Icon name="check" size={12} className="mr-1 -mt-0.5" /> : `${i + 1}. `}{label}</div>
-                <div className="text-[10px] font-normal">{now ? "the lead is here" : canMove ? "press to move here" : ""}</div>
-              </button>
-            </li>
-          );
-        })}
-        <li>
-          <div className={`rounded-md border px-2 py-1.5 text-xs ${ended ? (lead.status === "won" ? "border-emerald-600 bg-emerald-600 text-white" : "border-slate-400 bg-slate-200 text-slate-700") : "border-slate-200 bg-white text-slate-400"}`}>
-            <div className="font-semibold">{ended ? (lead.status === "won" ? "Won" : lead.status === "rev" ? "Waiting for the manager" : "Closed") : "Won or closed"}</div>
-            <div className="text-[10px] font-normal">{ended ? "" : "the end of the workflow"}</div>
-          </div>
-        </li>
-      </ol>
+      <div className="relative mt-5">
+        <div className="absolute left-[8.3%] right-[8.3%] top-[18px] h-1 rounded-full bg-slate-200" />
+        <div className="s-bar absolute left-[8.3%] top-[18px] h-1 rounded-full bg-indcool-blue" style={{ width: `calc(83.4% * ${ended && lead.status === "won" ? 1 : Math.max(0, idx) / STAGES.length})` }} />
+        <ol className="relative grid grid-cols-6">
+          {STAGES.map(([key, label], i) => {
+            const done = idx > i || (ended && lead.status === "won");
+            const now = idx === i && !ended;
+            const canMove = acting && !partner && key !== "new" && !now;
+            return (
+              <li key={key} className="text-center">
+                <button type="button" disabled={!canMove || busy} onClick={() => moveTo(key, label)} title={canMove ? "Press to move the lead here" : now ? "The lead is here" : ""} className={`s-press group mx-auto block w-full ${canMove ? "cursor-pointer" : "cursor-default"}`}>
+                  <span className={`mx-auto grid h-10 w-10 place-items-center rounded-full border-[3px] text-sm font-semibold transition-all duration-500 ${done ? "border-indcool-blue bg-indcool-blue text-white" : now ? "s-now scale-110 border-indcool-blue bg-white text-indcool-blue" : "border-slate-200 bg-white text-slate-400"} ${canMove ? "group-hover:-translate-y-0.5 group-hover:border-indcool-blue" : ""}`}>
+                    {done ? <Icon name="check" size={16} /> : i + 1}
+                  </span>
+                  <span className={`mt-1.5 block text-[11px] font-medium leading-tight ${now ? "text-indcool-navy" : done ? "text-slate-700" : "text-slate-400"}`}>{label}</span>
+                </button>
+              </li>
+            );
+          })}
+          <li className="text-center">
+            <span className={`mx-auto grid h-10 w-10 place-items-center rounded-full border-[3px] transition-all duration-500 ${ended ? (lead.status === "won" ? "s-pop border-emerald-600 bg-emerald-600 text-white" : "border-slate-400 bg-slate-300 text-slate-700") : "border-slate-200 bg-white text-slate-300"}`}><Icon name="trophy" size={17} /></span>
+            <span className={`mt-1.5 block text-[11px] font-medium leading-tight ${ended ? "text-slate-700" : "text-slate-400"}`}>{ended ? (lead.status === "won" ? "Won" : lead.status === "rev" ? "Waiting for the manager" : "Closed") : "Won"}</span>
+          </li>
+        </ol>
+      </div>
       {partner && !ended && <p className="mt-2 text-xs text-slate-500">This lead follows its partner registration in the CRM, so its stage is set there. You can still log calls and notes.</p>}
       {acting && (
         <div className="mt-3">
           <div className="mb-1 text-xs font-semibold text-slate-600">What did you do? One press marks the lead as attended and writes it in the history.</div>
           <div className="flex flex-wrap gap-2">
-            <button type="button" className={btn.go} disabled={busy} onClick={logCall}><Icon name="phone" size={14} className="mr-1.5 -mt-0.5" />Called and spoke</button>
-            <button type="button" className={btn.plain} disabled={busy} onClick={() => quick("No answer", "Marked: called, no answer. Follow-up set for tomorrow.")}><Icon name="phoneOff" size={14} className="mr-1.5 -mt-0.5" />Called, no answer</button>
-            <button type="button" className={btn.plain} disabled={busy} onClick={() => quick("Sent a WhatsApp", "Marked: WhatsApp sent")}><Icon name="chat" size={14} className="mr-1.5 -mt-0.5" />WhatsApp sent</button>
-            <button type="button" className={btn.plain} disabled={busy} onClick={() => quick("Sent a mail", "Marked: mail sent")}><Icon name="mail" size={14} className="mr-1.5 -mt-0.5" />Mail sent</button>
-            <button type="button" className={btn.plain} disabled={busy} onClick={() => quick("Visit done", "Marked: visit done")}><Icon name="pin" size={14} className="mr-1.5 -mt-0.5" />Visit done</button>
+            <button type="button" className={btn.go} disabled={busy} onClick={(e) => { burst(e.clientX, e.clientY, 14); logCall(); }}><Icon name="phone" size={14} className="mr-1.5 -mt-0.5" />Called and spoke</button>
+            <button type="button" className={btn.plain} disabled={busy} onClick={(e) => { burst(e.clientX, e.clientY, 14); quick("No answer", "Marked: called, no answer. Follow-up set for tomorrow."); }}><Icon name="phoneOff" size={14} className="mr-1.5 -mt-0.5" />Called, no answer</button>
+            <button type="button" className={btn.plain} disabled={busy} onClick={(e) => { burst(e.clientX, e.clientY, 14); quick("Sent a WhatsApp", "Marked: WhatsApp sent"); }}><Icon name="chat" size={14} className="mr-1.5 -mt-0.5" />WhatsApp sent</button>
+            <button type="button" className={btn.plain} disabled={busy} onClick={(e) => { burst(e.clientX, e.clientY, 14); quick("Sent a mail", "Marked: mail sent"); }}><Icon name="mail" size={14} className="mr-1.5 -mt-0.5" />Mail sent</button>
+            <button type="button" className={btn.plain} disabled={busy} onClick={(e) => { burst(e.clientX, e.clientY, 14); quick("Visit done", "Marked: visit done"); }}><Icon name="pin" size={14} className="mr-1.5 -mt-0.5" />Visit done</button>
           </div>
           {lead.attempts >= 4 && !lead.is_prospect && <p className="mt-2 text-xs text-amber-700">{lead.attempts} attempts so far. After 5 with no answer you can dispose the lead as "Not reachable".</p>}
         </div>
@@ -240,8 +242,8 @@ export default function LeadDetail() {
         <section className="rounded-lg border border-slate-200 bg-white p-4">
           <h3 className="mb-2 text-sm font-semibold text-slate-800">History</h3>
           <ol className="max-h-[28rem] space-y-2 overflow-y-auto border-l-2 border-slate-200 pl-3">
-            {lead.activities.map((a) => (
-              <li key={a.id} className="text-sm"><span className={a.kind === "call" ? "font-medium text-slate-800" : "text-slate-700"}>{a.text}</span><div className="text-xs text-slate-400">{fmtDateTime(a.at)} · {a.by}</div></li>
+            {lead.activities.map((a, n) => (
+              <li key={a.id} style={{ "--i": Math.min(n, 12) }} className="s-slide text-sm"><span className={a.kind === "call" ? "font-medium text-slate-800" : "text-slate-700"}>{a.text}</span><div className="text-xs text-slate-400">{fmtDateTime(a.at)} · {a.by}</div></li>
             ))}
           </ol>
         </section>

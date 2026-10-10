@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 
 import { salesApi } from "../../api/sales.js";
 import {
-  AttendedChip, HeatChip, Icon, Notice, PageTitle, PriorityChip, SalesTabs, TypeChip, btn, errText, fieldClass, useAsync, useSales, valueText,
+  AttendedChip, HeatChip, Icon, burst, Notice, PageTitle, PriorityChip, SalesTabs, TypeChip, btn, errText, fieldClass, useAsync, useSales, valueText,
 } from "./salesUi.jsx";
 
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
@@ -24,7 +24,7 @@ function Chip({ lead, onDragStart, late }) {
       draggable
       onDragStart={(e) => onDragStart(e, lead)}
       title={`${lead.name} · ${lead.item || ""}`}
-      className={`s-lift mt-1 flex cursor-grab items-center gap-1 truncate rounded border-l-4 px-1.5 py-0.5 text-[11px] font-medium active:cursor-grabbing ${HEAT_BAR[lead.heat] || HEAT_BAR.cold} ${late ? "ring-1 ring-rose-300" : ""}`}
+      className={`s-pop s-lift mt-1 flex cursor-grab items-center gap-1 truncate rounded border-l-4 px-1.5 py-0.5 text-[11px] font-medium active:cursor-grabbing ${HEAT_BAR[lead.heat] || HEAT_BAR.cold} ${late ? "ring-1 ring-rose-300" : ""}`}
     >
       {lead.priority === "urgent" && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-rose-600" />}
       <span className="truncate">{lead.name}</span>
@@ -91,7 +91,7 @@ export default function CalendarPage() {
     e.preventDefault();
     setOver("");
     const lead = (data?.items || []).find((l) => String(l.id) === e.dataTransfer.getData("text/plain"));
-    if (lead) move(lead, day);
+    if (lead) { burst(e.clientX, e.clientY, 14); move(lead, day); }
   };
   const dropProps = (day) => ({ onDragOver: (e) => { e.preventDefault(); if (over !== day) setOver(day); }, onDragLeave: () => setOver(""), onDrop: dropOn(day) });
 
@@ -155,7 +155,7 @@ export default function CalendarPage() {
         <div key={`m-${title}`} className="s-fade overflow-x-auto">
           <div className="grid min-w-[640px] grid-cols-7 gap-1">
             {DAYS.map((d) => <div key={d} className="px-1 text-center text-[11px] font-bold uppercase tracking-wide text-slate-500">{d}</div>)}
-            {monthCells.map((d) => {
+            {monthCells.map((d, n) => {
               const k = key(d);
               const items = byDay[k] || [];
               const out = d.getMonth() !== anchor.getMonth();
@@ -164,9 +164,10 @@ export default function CalendarPage() {
                   key={k}
                   onClick={() => setPicked(k)}
                   {...dropProps(k)}
-                  className={`s-cell min-h-[92px] cursor-pointer rounded-lg border p-1.5 ${out ? "border-slate-100 bg-slate-50 opacity-60" : "border-slate-200 bg-white"} ${k === picked ? "ring-2 ring-indcool-blue" : ""} ${over === k ? "s-drop" : ""}`}
+                  style={{ "--i": n * 0.3 }}
+                  className={`s-rise s-cell min-h-[92px] cursor-pointer rounded-lg border p-1.5 ${out ? "border-slate-100 bg-slate-50 opacity-60" : "border-slate-200 bg-white"} ${k === picked ? "ring-2 ring-indcool-blue" : ""} ${over === k ? "s-drop" : ""}`}
                 >
-                  <span className={`inline-grid h-6 w-6 place-items-center rounded-full text-xs font-semibold ${k === today ? "bg-indcool-blue text-white" : "text-slate-600"}`}>{d.getDate()}</span>
+                  <span className={`inline-grid h-6 w-6 place-items-center rounded-full text-xs font-semibold ${k === today ? "s-now bg-indcool-blue text-white" : "text-slate-600"}`}>{d.getDate()}</span>
                   {items.slice(0, 3).map((l) => <Chip key={l.id} lead={l} onDragStart={dragStart} late={k < today} />)}
                   {items.length > 3 && <div className="mt-1 text-[11px] font-semibold text-slate-500">+{items.length - 3} more</div>}
                 </div>
