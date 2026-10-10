@@ -9,6 +9,7 @@ import PlaceFields from "../../components/PlaceFields.jsx";
 import CoveragePicker, { coverageProblem, coverageText, startCoverage } from "../../components/CoveragePicker.jsx";
 import { DEFAULT_ITEM_CATEGORIES } from "../../data/itemCategories.js";
 import { itemsApi } from "../../api/items.js";
+import { INDCOOL_CATEGORY_GROUPS, VENDOR_TYPES } from "../../data/vendorTypes.js";
 
 function fmtDate(s) {
   if (!s) return "—";
@@ -35,6 +36,8 @@ function UserForm({ initial, roles, busy, onCancel, onSubmit }) {
     state: initial?.state || "",
     district: initial?.district || "",
     skills: initial?.skills || [],
+    vendor_types: initial?.vendor_types || [],
+    other_type: "",
     coverage: (() => { const c = startCoverage(initial || {}); return { mode: c.mode, states: c.states }; })(),
   });
   const [categories, setCategories] = useState(DEFAULT_ITEM_CATEGORIES);
@@ -60,6 +63,8 @@ function UserForm({ initial, roles, busy, onCancel, onSubmit }) {
     const placeBody = form.role === "engineer"
       ? { pincode: form.pincode.trim(), state: form.state, district: form.district.trim(), extra_pincodes: form.state ? [] : form.extra_pincodes, coverage: form.coverage, skills: form.skills }
       : {};
+    const typed = form.other_type.trim();
+    const vendorBody = form.role === "vendor" ? { vendor_types: typed && !form.vendor_types.includes(typed) ? [...form.vendor_types, typed] : form.vendor_types, skills: form.skills } : {};
     const problem = form.role === "engineer" ? coverageProblem(form.coverage) : "";
     if (problem) { setErr(problem); return; }
     if (placeBody.pincode && !/^[1-9]\d{5}$/.test(placeBody.pincode.replace(/\s+/g, ""))) {
@@ -76,6 +81,7 @@ function UserForm({ initial, roles, busy, onCancel, onSubmit }) {
             is_active: form.is_active,
             can_manage_bids: bidTickApplies && form.can_manage_bids,
             ...placeBody,
+            ...vendorBody,
           }
         : {
             name: form.name,
@@ -86,6 +92,7 @@ function UserForm({ initial, roles, busy, onCancel, onSubmit }) {
             is_active: form.is_active,
             can_manage_bids: bidTickApplies && form.can_manage_bids,
             ...placeBody,
+            ...vendorBody,
           };
       await onSubmit(body);
     } catch (e) {
@@ -156,6 +163,47 @@ function UserForm({ initial, roles, busy, onCancel, onSubmit }) {
                   );
                 })}
               </div>
+            </div>
+          </div>
+        )}
+        {form.role === "vendor" && (
+          <div className="rounded-md border border-indigo-200 bg-indigo-50 p-3 md:col-span-2">
+            <div className="text-sm font-semibold text-slate-800">Vendor type</div>
+            <p className="mb-2 text-xs text-slate-600">Tick every type this vendor works as. A vendor can be several at once, for example GeM and CSD. You can leave it empty and fill it in later.</p>
+            <div className="flex flex-wrap gap-2">
+              {[...VENDOR_TYPES.map((t) => t.key), ...form.vendor_types.filter((t) => !VENDOR_TYPES.some((x) => x.key === t))].map((t) => {
+                const on = form.vendor_types.includes(t);
+                const hint = VENDOR_TYPES.find((x) => x.key === t)?.hint;
+                return (
+                  <button key={t} type="button" title={hint} onClick={() => set("vendor_types", on ? form.vendor_types.filter((x) => x !== t) : [...form.vendor_types, t])}
+                    className={`s-press rounded-full border-2 px-3.5 py-1 text-sm font-bold transition-colors ${on ? "border-indcool-blue bg-indcool-blue text-white" : "border-slate-300 bg-white text-slate-700 hover:border-indcool-blue"}`}>
+                    {on ? "✓ " : ""}{t}
+                  </button>
+                );
+              })}
+            </div>
+            <div className="mt-2 max-w-xs"><input value={form.other_type} onChange={(e) => set("other_type", e.target.value)} placeholder="Another type, for this vendor only" className={fieldClass} maxLength={40} /></div>
+            <div className="mt-3 text-sm font-semibold text-slate-800">Categories this vendor supplies</div>
+            <p className="mb-2 text-xs text-slate-600">The product categories of indcool.in. Leave all unticked if the vendor can take any category.</p>
+            {INDCOOL_CATEGORY_GROUPS.map((g) => (
+              <div key={g.group} className="mb-2">
+                <div className="mb-1 text-[11px] font-bold uppercase tracking-wide text-slate-500">{g.group}</div>
+                <div className="flex flex-wrap gap-1.5">
+                  {g.items.map((c) => {
+                    const on = form.skills.includes(c);
+                    return (
+                      <button key={c} type="button" onClick={() => set("skills", on ? form.skills.filter((x) => x !== c) : [...form.skills, c])}
+                        className={`s-press rounded-full border px-3 py-1 text-xs font-semibold transition-colors ${on ? "border-indcool-blue bg-indcool-blue text-white" : "border-slate-300 bg-white text-slate-600 hover:border-indcool-blue"}`}>
+                        {on ? "✓ " : ""}{c}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+            <div className="s-fade rounded-md bg-emerald-50 px-3 py-1.5 text-sm font-semibold text-emerald-800">
+              {form.vendor_types.length || form.other_type.trim() ? [...form.vendor_types, form.other_type.trim()].filter(Boolean).join(" + ") : "No type chosen yet"}
+              <span className="block text-xs font-normal text-slate-600">{form.skills.length ? `Supplies: ${form.skills.join(", ")}` : "Any category"}</span>
             </div>
           </div>
         )}
@@ -232,7 +280,7 @@ export default function UserList() {
   const { user: me } = useAuth();
   const [users, setUsers] = useState([]);
   const [roles, setRoles] = useState([]);
-  const [filters, setFilters] = useState({ search: "", role: "", active: "", pincode: "", state: "", district: "" });
+  const [filters, setFilters] = useState({ search: "", role: "", active: "", pincode: "", state: "", district: "", vendor_type: "", category: "" });
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
   const [creating, setCreating] = useState(false);
@@ -248,6 +296,8 @@ export default function UserList() {
     pincode: filters.pincode || undefined,
     state: filters.state || undefined,
     district: filters.district || undefined,
+    vendor_type: filters.vendor_type || undefined,
+    category: filters.category || undefined,
   }), [filters]);
 
   async function load() {
@@ -353,6 +403,18 @@ export default function UserList() {
             <option value="">All states</option>
             {INDIAN_STATES.map((s) => <option key={s} value={s}>{s}</option>)}
           </select>
+          {filters.role === "vendor" && (
+            <>
+              <select value={filters.vendor_type} onChange={(e) => setFilters({ ...filters, vendor_type: e.target.value })} className={fieldClass} aria-label="Vendor type">
+                <option value="">All vendor types</option>
+                {VENDOR_TYPES.map((t) => <option key={t.key} value={t.key}>{t.key}</option>)}
+              </select>
+              <select value={filters.category} onChange={(e) => setFilters({ ...filters, category: e.target.value })} className={fieldClass} aria-label="Category">
+                <option value="">All categories</option>
+                {INDCOOL_CATEGORY_GROUPS.flatMap((g) => g.items).map((c) => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </>
+          )}
           {districtsOf(filters.state).length > 0 ? (
             <select value={filters.district} onChange={(e) => setFilters({ ...filters, district: e.target.value })} className={fieldClass}>
               <option value="">All districts of {filters.state}</option>
@@ -407,6 +469,7 @@ export default function UserList() {
                     </>
                   ) : "—"}
                   {u.coverage && <div className="mt-0.5 text-[11px] text-sky-800" title="Which jobs this engineer gets">Covers: {coverageText(u)}</div>}
+                  {(u.vendor_types || []).length > 0 && <div className="mt-0.5 flex flex-wrap gap-1">{u.vendor_types.map((t) => <span key={t} className="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-bold text-indcool-navy">{t}</span>)}</div>}
                   {(u.skills || []).length > 0 && <div className="mt-0.5 flex flex-wrap gap-1">{u.skills.map((s) => <span key={s} className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-600">{s}</span>)}</div>}
                 </td>
                 <td className="px-3 py-2">

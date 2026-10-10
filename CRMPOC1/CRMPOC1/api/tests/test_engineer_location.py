@@ -225,6 +225,40 @@ class EngineerLocationApiTests(unittest.TestCase):
         # clearing
         self.assertIsNone(self.put(near, {"coverage": None, "skills": []}).json()["coverage"])
 
+    def test_the_users_list_finds_an_engineer_by_where_he_is_covered_not_only_where_he_lives(self):
+        home = self.add("Home In Delhi", "110044", "Delhi", "South Delhi")
+        self.put(home, {"coverage": {"mode": "states", "states": {"Bihar": {"all": False, "districts": ["Patna"], "pins": ["800001"]}, "Odisha": {"all": True}}}})
+        wide = self.add("Everywhere", None, None, None)
+        self.put(wide, {"coverage": {"mode": "all"}})
+        self.add("Jaipur Only", "302001", "Rajasthan", "Jaipur")
+
+        def names(**p):
+            rows = self.client.get("/api/users", params={"role": "engineer", **p}, headers=self.h(self.admin)).json()
+            return sorted(u["name"] for u in rows)
+
+        self.assertEqual(names(state="Bihar"), ["Everywhere", "Home In Delhi"])
+        self.assertEqual(names(state="Bihar", district="Patna"), ["Everywhere", "Home In Delhi"])
+        self.assertEqual(names(state="Bihar", district="Gaya"), ["Everywhere"], "Gaya is not one of the covered districts")
+        self.assertEqual(names(state="Odisha", district="Puri"), ["Everywhere", "Home In Delhi"], "a whole state covers every district")
+        self.assertEqual(names(pincode="8000"), ["Home In Delhi"], "a covered pin code is found by its first digits")
+        self.assertEqual(names(state="Delhi"), ["Everywhere", "Home In Delhi"])
+        self.assertEqual(names(state="Rajasthan"), ["Everywhere", "Jaipur Only"])
+        self.assertEqual(names(search="bihar"), ["Home In Delhi"], "the name box also finds a covered state")
+
+    def test_vendor_types_and_categories_are_saved_filtered_and_given_to_the_bid_allocation_list(self):
+        v = self.client.post("/api/users", json={"name": "Comtech", "email": "comtech@t.com", "password": "pw123456", "role": "vendor",
+                                                  "vendor_types": ["GeM", "CSD", "GeM"], "skills": ["Split AC", "Window AC"]}, headers=self.h(self.admin))
+        self.assertEqual(v.status_code, 201, v.text)
+        self.assertEqual((v.json()["vendor_types"], v.json()["skills"]), (["GeM", "CSD"], ["Split AC", "Window AC"]))
+        self.client.post("/api/users", json={"name": "Plain", "email": "plain@t.com", "password": "pw123456", "role": "vendor"}, headers=self.h(self.admin))
+        got = lambda **p: sorted(u["name"] for u in self.client.get("/api/users", params={"role": "vendor", **p}, headers=self.h(self.admin)).json())
+        self.assertEqual(got(vendor_type="gem"), ["Comtech"])
+        self.assertEqual(got(category="Window AC"), ["Comtech"])
+        self.assertEqual(got(vendor_type="SSD"), [])
+        self.assertEqual(got(), ["Comtech", "Plain"])
+        cleared = self.client.put(f"/api/users/{v.json()['id']}", json={"vendor_types": []}, headers=self.h(self.admin))
+        self.assertEqual(cleared.json()["vendor_types"], [])
+
 
 if __name__ == "__main__":
     unittest.main()

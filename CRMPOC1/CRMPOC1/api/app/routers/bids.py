@@ -230,18 +230,26 @@ def check_number(
     )
 
 
+def _json_list(text: str | None) -> list[str]:
+    import json
+
+    try:
+        return [str(x) for x in json.loads(text)] if text else []
+    except ValueError:
+        return []
+
+
 @router.get("/vendors", response_model=list[VendorPick])
 def vendors(_: BidAccess = Depends(manager_access), db: Session = Depends(get_db)):
     """Allocation list: one entry per active vendor login, the same vendor record that login resolves to."""
-    login_emails = {
-        (e or "").strip().lower()
-        for e in db.scalars(
-            select(User.email).where(
-                func.lower(User.role) == "vendor", User.is_active.is_(True), User.deleted_at.is_(None)
-            )
+    logins = {
+        (u.email or "").strip().lower(): u
+        for u in db.scalars(
+            select(User).where(func.lower(User.role) == "vendor", User.is_active.is_(True), User.deleted_at.is_(None))
         ).all()
-        if e
+        if u.email
     }
+    login_emails = set(logins)
     # Pick the record the login itself resolves to (newest not-deleted record with that email, see
     # vendor_accounts), and only then drop it if it is switched off: a vendor must see the bids given to it.
     rows = db.scalars(select(Vendor).where(Vendor.deleted_at.is_(None))).all()
@@ -258,6 +266,8 @@ def vendors(_: BidAccess = Depends(manager_access), db: Session = Depends(get_db
             vendor_code=v.vendor_code,
             name=v.name_of_firm if names.count((v.name_of_firm or "").strip().lower()) == 1 else f"{v.name_of_firm} ({v.email})",
             email=v.email,
+            vendor_types=_json_list(logins[(v.email or "").strip().lower()].vendor_types),
+            categories=_json_list(logins[(v.email or "").strip().lower()].skills),
         )
         for v in picked
     ]

@@ -223,3 +223,5 @@ class VendorPick(BaseModel):
     vendor_code: str
     name: str
     email: str | None = None
+    vendor_types: list[str] = []  # GeM, CSD, Retail, SSD ...: what the vendor works as, set on the vendor login
+    categories: list[str] = []  # item categories the vendor supplies; empty = any

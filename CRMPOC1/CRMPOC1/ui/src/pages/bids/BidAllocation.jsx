@@ -18,8 +18,25 @@ import {
   fmtDateTime,
 } from "./bidUi.jsx";
 
+const plainText = (t) => String(t || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+
+// How well a vendor fits a bid: the bid type (GeM) among the vendor types, and the product category among the categories
+// the vendor supplies. A vendor with nothing set is "any" and is never hidden.
+function vendorFit(vendor, bid) {
+  const types = vendor.vendor_types || [];
+  const cats = vendor.categories || [];
+  const type = types.some((t) => plainText(t) === plainText(bid.bid_type));
+  const cat = !!bid.product_category && cats.some((c) => plainText(bid.product_category).includes(plainText(c)) || plainText(c).includes(plainText(bid.product_category)));
+  const score = (type ? 2 : 0) + (cat ? 1 : 0);
+  const note = [type ? `${bid.bid_type}` : "", cat ? "category" : ""].filter(Boolean).join(" + ");
+  return { score, note, set: types.length > 0 || cats.length > 0 };
+}
+
 function OpenRow({ bid, vendors, onDone, onMsg }) {
   const [vendorId, setVendorId] = useState("");
+  const ranked = vendors
+    .map((v) => ({ v, fit: vendorFit(v, bid) }))
+    .sort((a, b) => b.fit.score - a.fit.score || a.v.name.localeCompare(b.v.name));
   const [busy, setBusy] = useState(false);
 
   async function go(body, okText) {
@@ -43,7 +60,7 @@ function OpenRow({ bid, vendors, onDone, onMsg }) {
       <td className="px-3 py-2">
         <select value={vendorId} onChange={(e) => setVendorId(e.target.value)} className={`${fieldClass} min-w-[180px]`} aria-label={`Vendor for ${bid.bid_number}`}>
           <option value="">Choose a vendor</option>
-          {vendors.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
+          {ranked.map(({ v, fit }) => <option key={v.id} value={v.id}>{fit.score > 0 ? `★ ${v.name} (${fit.note})` : v.name}</option>)}
         </select>
       </td>
       <td className="px-3 py-2 whitespace-nowrap text-right">

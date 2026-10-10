@@ -48,11 +48,15 @@ def _normalized_email(value: str | None) -> str:
     return (value or "").strip().lower()
 
 
-def _skills_of(user: User) -> list[str]:
+def _list_of(text: str | None) -> list[str]:
     try:
-        return [str(s) for s in json.loads(user.skills)] if user.skills else []
+        return [str(s) for s in json.loads(text)] if text else []
     except ValueError:
         return []
+
+
+def _skills_of(user: User) -> list[str]:
+    return _list_of(user.skills)
 
 
 def _user_out(db: Session, user: User) -> UserOut:
@@ -71,11 +75,37 @@ def _user_out(db: Session, user: User) -> UserOut:
         extra_pincodes=split_pincodes(user.extra_pincodes),
         coverage=coverage_service.load(user.coverage),
         skills=_skills_of(user),
+        vendor_types=_list_of(user.vendor_types),
         created_at=user.created_at,
         updated_at=user.updated_at,
         vendor_id=vendor.id if vendor else None,
         vendor_code=vendor.vendor_code if vendor else None,
     )
+
+
+def _fits_filters(u: User, state: str | None, digits: str, part: str, vtype: str, cat: str) -> bool:
+    cov = coverage_service.load(u.coverage)
+    rows = (cov or {}).get("states") or {}
+    everywhere = bool(cov) and cov.get("mode") == "all"
+    if vtype and vtype not in {t.lower() for t in _list_of(u.vendor_types)}:
+        return False
+    if cat and cat not in {c.lower() for c in _list_of(u.skills)}:
+        return False
+    if digits:
+        pins = [p for p in [u.pincode, *split_pincodes(u.extra_pincodes)] if p] + [p for r in rows.values() for p in r.get("pins") or []]
+        if not any(p.startswith(digits) for p in pins):
+            return False
+    if state and not (u.state == state or everywhere or any(coverage_service.plain(n) == coverage_service.plain(state) for n in rows)):
+        return False
+    if part:
+        home = part in (u.district or "").lower()
+        covered = everywhere or any(
+            (not state or coverage_service.plain(n) == coverage_service.plain(state)) and (r.get("all") or any(part in d.lower() for d in r.get("districts") or []))
+            for n, r in rows.items()
+        )
+        if not (home or covered):
+            return False
+    return True
 
 
 @router.get("", response_model=list[UserOut])
@@ -86,6 +116,8 @@ def list_users(
     pincode: str | None = Query(None, description="Pin code, or its first digits"),
     state: str | None = Query(None),
     district: str | None = Query(None, description="Part of the district name"),
+    vendor_type: str | None = Query(None, description="A vendor type, for example GeM"),
+    category: str | None = Query(None, description="An item category the person works on or supplies"),
     db: Session = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
@@ -99,18 +131,22 @@ def list_users(
         stmt = stmt.where(or_(
             User.name.ilike(like), User.email.ilike(like),
             User.pincode.ilike(like), User.extra_pincodes.ilike(like), User.district.ilike(like), User.state.ilike(like),
+            User.coverage.ilike(like), User.vendor_types.ilike(like), User.skills.ilike(like),
         ))
-    if pincode and pincode.strip():
-        digits = pincode.strip()
-        stmt = stmt.where(or_(User.pincode.like(f"{digits}%"), User.extra_pincodes.like(f"{digits}%"), User.extra_pincodes.like(f"%,{digits}%")))
+    users = db.scalars(stmt.order_by(User.id)).all()
+    # the place filters also take in where a person is covered (All India, a state, a district or a pin code), not only the home place
+    want_state = None
     if state and state.strip():
         try:
-            stmt = stmt.where(User.state == (canonical_state(state) or state.strip()))
+            want_state = canonical_state(state) or state.strip()
         except ValueError:
-            stmt = stmt.where(User.state == state.strip())
-    if district and district.strip():
-        stmt = stmt.where(User.district.ilike(f"%{district.strip()}%"))
-    users = db.scalars(stmt.order_by(User.id)).all()
+            want_state = state.strip()
+    digits = (pincode or "").strip()
+    part = (district or "").strip().lower()
+    wanted_type = (vendor_type or "").strip().lower()
+    wanted_cat = (category or "").strip().lower()
+    if want_state or digits or part or wanted_type or wanted_cat:
+        users = [u for u in users if _fits_filters(u, want_state, digits, part, wanted_type, wanted_cat)]
     return [_user_out(db, user) for user in users]
 
 
@@ -154,6 +190,7 @@ def create_user(
         extra_pincodes=",".join(body.extra_pincodes or []) or None,
         coverage=json.dumps(body.coverage) if body.coverage else None,
         skills=json.dumps(body.skills) if body.skills else None,
+        vendor_types=json.dumps(body.vendor_types) if body.vendor_types else None,
     )
     db.add(user)
     db.flush()
@@ -198,6 +235,8 @@ def update_user(
         data["coverage"] = json.dumps(data["coverage"]) if data["coverage"] else None
     if "skills" in data:
         data["skills"] = json.dumps(data["skills"]) if data["skills"] else None
+    if "vendor_types" in data:
+        data["vendor_types"] = json.dumps(data["vendor_types"]) if data["vendor_types"] else None
     for field, value in data.items():
         setattr(user, field, value)
     if role_key(user.role) == "vendor":

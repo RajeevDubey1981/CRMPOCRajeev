@@ -13,6 +13,7 @@ class _Place(PlaceIn):
     extra_pincodes: list[str] | None = None
     coverage: dict | None = None
     skills: list[str] | None = None
+    vendor_types: list[str] | None = None
 
     @field_validator("extra_pincodes", mode="before")
     @classmethod
@@ -24,7 +25,7 @@ class _Place(PlaceIn):
     def _coverage(cls, value):
         return None if value is None else coverage_service.clean(value)
 
-    @field_validator("skills", mode="before")
+    @field_validator("skills", "vendor_types", mode="before")
     @classmethod
     def _skills(cls, value):
         if value is None:
@@ -72,6 +73,7 @@ class UserOut(BaseModel):
     extra_pincodes: list[str] = []
     coverage: dict | None = None
     skills: list[str] = []
+    vendor_types: list[str] = []
     created_at: datetime | None = None
     updated_at: datetime | None = None
     vendor_id: int | None = None

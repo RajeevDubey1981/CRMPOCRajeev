@@ -20,5 +20,6 @@ class User(Base, TimestampMixin, SoftDeleteMixin):
     district: Mapped[str | None] = mapped_column(String(100), nullable=True)
     extra_pincodes: Mapped[str | None] = mapped_column(Text, nullable=True)  # other pin codes an engineer covers, comma separated
     coverage: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON, see app/services/coverage.py
+    vendor_types: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON list: GeM, CSD, Retail, SSD ... a vendor can be several at once
     skills: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON list of item categories the engineer works on; empty = any
     can_manage_bids: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
