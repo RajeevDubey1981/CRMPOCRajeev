@@ -20,6 +20,7 @@ MODULES = (
     "payments",     # Payment History page (view only)
     "email_logs",   # email send logs and bounced addresses (view only)
     "bids",         # Bid management; vendors only, the bid team comes from the user tick
+    "sales",        # Sales menu (the ticks inside Sales are kept in the Sales database)
 )
 
 # Modules with sub-module scoping. A sub_module=None permission row means

@@ -14,6 +14,11 @@ class Settings(BaseSettings):
     database_backend: str = "mysql"
     sqlserver_database_url: str = "Server=DESKTOP-N7O68K8\\MYSQL,1433;Database=indcool;User Id=api_user;Password=test123;Encrypt=no;TrustServerCertificate=yes;Driver=ODBC Driver 17 for SQL Server;"
     mysql_database_url: str = "mysql+mysqlconnector://root:Sandhya%231981@host.docker.internal:3306/indcool"
+    # Sales module: its own database, linked to the CRM only by reference numbers. Empty = Sales is switched off
+    # and the CRM works exactly as before.
+    sales_database_url: str = ""
+    sales_sync_enabled: bool = True
+    sales_sync_seconds: int = 60
     jwt_secret: str = "change-me"
     jwt_algorithm: str = "HS256"
     jwt_expire_minutes: int = 480
