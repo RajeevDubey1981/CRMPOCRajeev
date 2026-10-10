@@ -88,6 +88,11 @@ class PriorityIn(BaseModel):
     flag: bool = False
 
 
+class StageIn(BaseModel):
+    stage: str
+    note: str = ""
+
+
 class DisposeIn(BaseModel):
     reason: str
     note: str = ""
@@ -239,6 +244,7 @@ def list_leads(
         "due_today": len([r for r in rows if open_(r) and r.follow_up_on == today]),
         "overdue": len([r for r in rows if open_(r) and r.follow_up_on and r.follow_up_on < today]),
         "first_overdue": len([r for r in rows if r.status == "new" and r.first_call_due_at and L.aware(r.first_call_due_at) < now_]),
+        "not_attended": len([r for r in rows if open_(r) and r.owner_user_id is not None and r.last_action_at is None]),
         "quo": len([r for r in rows if r.status == "quo"]),
         "rev": len([r for r in rows if r.status == "rev"]),
     }
@@ -283,6 +289,8 @@ def list_leads(
         if kpi == "first_overdue" and not (r.status == "new" and r.first_call_due_at and L.aware(r.first_call_due_at) < now_):
             return False
         if kpi == "quo" and r.status != "quo":
+            return False
+        if kpi == "not_attended" and not (open_(r) and r.owner_user_id is not None and r.last_action_at is None):
             return False
         if kpi == "rev" and r.status != "rev":
             return False
@@ -405,6 +413,14 @@ def rate(lead_id: int, body: RateIn, ctx: Ctx = Depends(require("rate")), sdb: S
     if L.is_closed(lead):
         raise HTTPException(400, "This lead is closed")
     L.rate_lead(sdb, lead, answers=body.answers, heat=body.heat, why=body.why, user=ctx.user)
+    commit(main_db, sdb)
+    return L.lead_out(lead, names_for(main_db, [lead.owner_user_id]))
+
+
+@router.post("/leads/{lead_id}/stage")
+def stage(lead_id: int, body: StageIn, ctx: Ctx = Depends(get_ctx), sdb: Session = Depends(get_sales_db), main_db: Session = Depends(get_db)):
+    lead = get_visible_lead(sdb, ctx, lead_id)
+    L.set_stage(sdb, lead, stage=body.stage, note=body.note, user=ctx.user)
     commit(main_db, sdb)
     return L.lead_out(lead, names_for(main_db, [lead.owner_user_id]))
 

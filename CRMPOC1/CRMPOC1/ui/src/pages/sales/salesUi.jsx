@@ -66,6 +66,31 @@ export function StatusChip({ status }) {
   return <span className={`inline-block whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-semibold ${s.cls}`}>{s.label}</span>;
 }
 
+export function timeAgo(iso) {
+  if (!iso) return "";
+  const text = String(iso);
+  const t = new Date(/[zZ]|[+-]\d\d:?\d\d$/.test(text) ? text : `${text}Z`).getTime();
+  if (Number.isNaN(t)) return "";
+  const m = Math.max(0, Math.round((Date.now() - t) / 60000));
+  if (m < 1) return "just now";
+  if (m < 60) return `${m} min ago`;
+  if (m < 1440) return `${Math.floor(m / 60)} h ago`;
+  return `${Math.floor(m / 1440)} day${Math.floor(m / 1440) > 1 ? "s" : ""} ago`;
+}
+
+// The workflow a lead goes through. Won and Disposed are the two ways it ends.
+export const STAGES = [["new", "New"], ["con", "Contacted"], ["int", "Interested"], ["quo", "Quote sent"], ["neg", "Negotiation"]];
+
+// The mark that someone has attended the lead: the person who has it did something about it.
+export function AttendedChip({ lead }) {
+  if (!lead || lead.closed) return null;
+  if (lead.attended) {
+    return <span title="The person who has this lead has acted on it" className="inline-block whitespace-nowrap rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-800">✓ Attended {timeAgo(lead.last_action_at)}{lead.attempts > 1 ? ` · ${lead.attempts} calls` : ""}</span>;
+  }
+  if (!lead.owner_user_id) return null;
+  return <span title="Nobody has acted on this lead yet" className="inline-block whitespace-nowrap rounded-full bg-rose-100 px-2 py-0.5 text-[11px] font-semibold text-rose-700">Not attended yet</span>;
+}
+
 export function firstCall(lead) {
   if (lead.first_call_minutes === null || lead.first_call_minutes === undefined || lead.status !== "new") return null;
   const m = lead.first_call_minutes;

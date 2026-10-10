@@ -135,7 +135,7 @@ export function CallModal({ lead, open, onClose, onDone, rateOnly = false }) {
         <>
           <Field label="What happened">
             <select className={fieldClass} value={outcome} onChange={(e) => setOutcome(e.target.value)}>
-              {["Spoke: interested", "Spoke: needs a quote", "Spoke: will think and call back", "No answer", "Phone switched off", "Sent a WhatsApp or mail"].map((o) => <option key={o}>{o}</option>)}
+              {["Spoke: interested", "Spoke: needs a quote", "Spoke: will think and call back", "No answer", "Phone switched off", "Sent a WhatsApp", "Sent a mail", "Visit done"].map((o) => <option key={o}>{o}</option>)}
             </select>
           </Field>
           <Field label="Note"><textarea className={fieldClass} rows={2} value={note} onChange={(e) => setNote(e.target.value)} placeholder="A line for the history" /></Field>
@@ -283,6 +283,25 @@ export function GiveModal({ lead, open, onClose, onDone, people }) {
         </select>
       </Field>
       <Footer onClose={onClose}><button type="button" className={btn.primary} disabled={busy} onClick={save}>Save</button></Footer>
+    </Modal>
+  );
+}
+
+// ---------------- move the lead along the workflow ----------------
+export function StageModal({ lead, stage, label, open, onClose, onDone }) {
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  async function save() {
+    setBusy(true);
+    setError("");
+    try { await salesApi.stage(lead.id, { stage, note }); onDone?.(); } catch (e) { setError(errText(e)); } finally { setBusy(false); }
+  }
+  return (
+    <Modal open={open} onClose={onClose} title={`Move to ${label}: ${lead.name}`}>
+      {error && <Notice tone="bad">{error}</Notice>}
+      <Field label="A note (optional)"><input className={fieldClass} value={note} onChange={(e) => setNote(e.target.value)} placeholder="For example: customer asked for a better price" /></Field>
+      <Footer onClose={onClose}><button type="button" className={btn.primary} disabled={busy} onClick={save}>Move to {label}</button></Footer>
     </Modal>
   );
 }

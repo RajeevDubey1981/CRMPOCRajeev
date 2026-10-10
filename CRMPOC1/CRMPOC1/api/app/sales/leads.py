@@ -21,6 +21,7 @@ from app.sales.rules import (
 )
 
 FIRST_CALL_HOURS = 2
+STATUS_LABEL = {"new": "New", "con": "Contacted", "int": "Interested", "quo": "Quote sent", "neg": "Negotiation", "won": "Won", "dis": "Disposed", "rev": "Waiting for the manager"}
 
 
 def now() -> datetime:
@@ -81,10 +82,25 @@ def jload(text: str | None) -> list:
         return []
 
 
+# What the person who has the lead does about it. Any of these marks the lead as attended.
+ATTEND_KINDS = frozenset({"call", "note", "rating", "stage", "quotation", "priority", "disposal"})
+STAGE_ORDER = {"new": 0, "con": 1, "int": 2, "quo": 3, "neg": 4}
+MANUAL_STAGES = ("con", "int", "quo", "neg")
+# what a call outcome means for the stage (a stage only moves forward by a call)
+OUTCOME_STAGE = {
+    "Spoke: interested": "int", "Spoke: needs a quote": "int", "Spoke: will think and call back": "con",
+    "No answer": "con", "Phone switched off": "con", "Sent a WhatsApp or mail": "con", "Visit done": "con", "Sent a WhatsApp": "con", "Sent a mail": "con",
+}
+NO_ANSWER = ("No answer", "Phone switched off")
+
+
 def log(sdb: Session, lead: SalesLead, kind: str, text: str, user: User | None = None) -> None:
     sdb.add(SalesLeadActivity(
         lead_id=lead.id, kind=kind, text=text, by_user_id=user.id if user else None, by_name=user.name if user else "automatic",
     ))
+    if user is not None and kind in ATTEND_KINDS and user.id == lead.owner_user_id:
+        lead.last_action_at = now()
+        lead.last_action_by = user.id
 
 
 def is_closed(lead: SalesLead) -> bool:
@@ -256,17 +272,40 @@ def give(main_db: Session | None, sdb: Session, lead: SalesLead, owner_id: int |
 def log_call(main_db: Session | None, sdb: Session, lead: SalesLead, *, outcome: str, note: str, next_follow_up: date | None, user: User) -> None:
     if is_closed(lead):
         bad("This lead is closed")
-    text = (outcome or "Call").strip() + (f". {note.strip()}" if (note or "").strip() else "")
+    outcome = (outcome or "Call").strip()
+    text = outcome + (f". {note.strip()}" if (note or "").strip() else "")
+    lead.attempts = (lead.attempts or 0) + 1
+    if outcome in NO_ANSWER and not next_follow_up:
+        next_follow_up = date.today() + timedelta(days=1)  # nobody picked up: try again tomorrow unless told otherwise
     log(sdb, lead, "call", text, user)
     lead.last_contact_at = now()
     if lead.first_called_at is None:
         lead.first_called_at = now()
         if main_db is not None:
             crm_link.resolve_cards(main_db, lead.id, ["sales_new_lead"])
-    if lead.status == "new":
-        lead.status = "con"
+    if lead.crm_kind != "partner":  # a partner registration lead follows the CRM, not the call
+        target = OUTCOME_STAGE.get(outcome, "con")
+        if lead.status == "new" or (lead.status in STAGE_ORDER and STAGE_ORDER[target] > STAGE_ORDER[lead.status]):
+            lead.status = target
     lead.follow_up_on = next_follow_up or lead.follow_up_on
     refresh_priority(lead)
+
+
+def set_stage(sdb: Session, lead: SalesLead, *, stage: str, note: str, user: User) -> None:
+    """The person moves the lead along the workflow by hand: Contacted, Interested, Quote sent, Negotiation."""
+    if lead.crm_kind == "partner":
+        bad("A partner registration lead follows the CRM: its stage is set there")
+    if is_closed(lead):
+        bad("This lead is closed")
+    if stage not in MANUAL_STAGES:
+        bad("Choose a stage: Contacted, Interested, Quote sent or Negotiation")
+    if stage == lead.status:
+        bad("The lead is already at this stage")
+    before = STATUS_LABEL.get(lead.status, lead.status)
+    lead.status = stage
+    if lead.first_called_at is None:
+        lead.first_called_at = now()  # moving a new lead along counts as the first attention
+    log(sdb, lead, "stage", f"Stage: {before} to {STATUS_LABEL[stage]}" + (f". {note.strip()}" if (note or "").strip() else ""), user)
 
 
 def rate_lead(sdb: Session, lead: SalesLead, *, answers: dict, heat: str | None, why: str, user: User) -> None:
@@ -418,7 +457,7 @@ def lead_out(lead: SalesLead, names: dict[int, str] | None = None) -> dict:
         "value_lakh": float(lead.value_lakh) if lead.value_lakh is not None else None,
         "value_usd": float(lead.value_usd) if lead.value_usd is not None else None,
         "price_basis": lead.price_basis, "closes_on": lead.closes_on.isoformat() if lead.closes_on else None,
-        "is_prospect": lead.is_prospect, "first_called": lead.first_called_at is not None, "first_call_minutes": fc, "crm_kind": lead.crm_kind, "crm_ref": lead.crm_ref,
+        "is_prospect": lead.is_prospect, "attended": lead.last_action_at is not None, "last_action_at": aware(lead.last_action_at).isoformat() if lead.last_action_at else None, "attempts": lead.attempts or 0, "first_called": lead.first_called_at is not None, "first_call_minutes": fc, "crm_kind": lead.crm_kind, "crm_ref": lead.crm_ref,
         "crm_close_pending": lead.crm_close_pending, "disposal_reason": lead.disposal_reason, "disposal_note": lead.disposal_note,
         "order_no": lead.order_no, "created_at": aware(lead.created_at).isoformat() if lead.created_at else None,
         "closed_at": aware(lead.closed_at).isoformat() if lead.closed_at else None,

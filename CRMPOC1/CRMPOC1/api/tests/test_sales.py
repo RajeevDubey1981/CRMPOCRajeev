@@ -227,7 +227,7 @@ class SalesApiTests(SalesTestBase):
         r = self.post(f"/api/sales/leads/{lid}/call", {"outcome": "Spoke: needs a quote", "note": "Wants it this month", "next_follow_up": date.today().isoformat(), "answers": {"quote": True, "time15": True, "boss": True}}, self.amit)
         self.assertEqual(r.status_code, 200, r.text)
         out = r.json()
-        self.assertEqual(out["status"], "con")
+        self.assertEqual(out["status"], "int")  # "needs a quote" means the lead is Interested
         self.assertEqual(out["heat"], "hot")
         self.assertIsNone(out["first_call_minutes"])
         # changing the suggestion needs a reason

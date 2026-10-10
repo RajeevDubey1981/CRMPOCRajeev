@@ -5,12 +5,12 @@ import { salesApi } from "../../api/sales.js";
 import { AddLeadModal, GiveModal } from "./LeadModals.jsx";
 import UploadModal from "./UploadModal.jsx";
 import {
-  FirstCallChip, HeatChip, Notice, PageTitle, PriorityChip, SalesTabs, StatusChip, TypeChip, btn, errText, fieldClass, fmtDate, useAsync, useSales, valueText,
+  AttendedChip, FirstCallChip, HeatChip, Notice, PageTitle, PriorityChip, SalesTabs, StatusChip, TypeChip, btn, errText, fieldClass, fmtDate, useAsync, useSales, valueText,
 } from "./salesUi.jsx";
 
 const KPIS = [
   ["urgent", "Urgent and high priority", true], ["hot", "Hot: ready to buy", true], ["unassigned", "New, not given to anyone", true],
-  ["due_today", "Follow-ups today"], ["overdue", "Overdue follow-ups", true], ["first_overdue", "First calls late", true], ["quo", "Quotes out"], ["rev", "Disposals to approve"],
+  ["due_today", "Follow-ups today"], ["overdue", "Overdue follow-ups", true], ["first_overdue", "First calls late", true], ["not_attended", "Not attended yet", true], ["quo", "Quotes out"], ["rev", "Disposals to approve"],
 ];
 
 export default function LeadList() {
@@ -55,7 +55,7 @@ export default function LeadList() {
       <SalesTabs />
       {msg && <Notice>{msg}</Notice>}
       {error && <Notice tone="bad">{error}</Notice>}
-      <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-8">
+      <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-9">
         {KPIS.filter(([k]) => has("see_all") || !["unassigned", "rev"].includes(k)).map(([k, label, red]) => (
           <button key={k} type="button" onClick={() => setF({ kpi: f.kpi === k ? "" : k })} className={`rounded-lg border p-2 text-left shadow-sm ${f.kpi === k ? "border-indcool-blue bg-sky-50 ring-1 ring-indcool-blue" : "border-slate-200 bg-white"}`}>
             <div className={`text-2xl font-semibold tabular-nums ${red && counts[k] ? "text-rose-600" : "text-slate-800"}`}>{counts[k] ?? 0}</div>
@@ -89,7 +89,7 @@ export default function LeadList() {
                 <td className="px-3 py-2">{l.source}{l.crm_ref && <div className="text-[11px] text-slate-400">{l.crm_ref}</div>}</td>
                 <td className="px-3 py-2">{l.place || "—"}</td>
                 <td className="px-3 py-2">{has("give") && !l.closed ? <button type="button" className="text-left text-indcool-blue hover:underline" onClick={() => setGiving(l)}>{l.owner_name || "Give it"}</button> : (l.owner_name || "—")}</td>
-                <td className="px-3 py-2"><StatusChip status={l.status} /><div className="mt-1"><FirstCallChip lead={l} /></div></td>
+                <td className="px-3 py-2"><StatusChip status={l.status} /><div className="mt-1"><FirstCallChip lead={l} /></div><div className="mt-1"><AttendedChip lead={l} /></div></td>
                 <td className="px-3 py-2">{l.follow_up_on ? <span className={l.follow_up_late ? "font-semibold text-rose-600" : ""}>{fmtDate(l.follow_up_on)}</span> : "—"}</td>
               </tr>
             ))}

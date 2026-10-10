@@ -125,6 +125,10 @@ class SalesLead(SalesBase, Stamped):
     first_called_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_contact_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     asked_again_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # the workflow mark: the person who has the lead did something about it (a call, a stage, a note ...)
+    last_action_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    last_action_by: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     # link into the CRM: reference only
     crm_kind: Mapped[str | None] = mapped_column(String(20), nullable=True)  # complaint | partner
     crm_ref: Mapped[str | None] = mapped_column(String(80), nullable=True, index=True)
