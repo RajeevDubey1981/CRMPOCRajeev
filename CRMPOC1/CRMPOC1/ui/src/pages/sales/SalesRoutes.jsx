@@ -8,6 +8,8 @@ import QuotationDetail from "./QuotationDetail.jsx";
 import QuotationList from "./QuotationList.jsx";
 import SalesDashboard from "./SalesDashboard.jsx";
 import SalesLog from "./SalesLog.jsx";
+import SourcesPage from "./SourcesPage.jsx";
+import TypesPage from "./TypesPage.jsx";
 import TeamPage from "./TeamPage.jsx";
 import TicksPage from "./TicksPage.jsx";
 import { Notice, SalesProvider, useSales } from "./salesUi.jsx";
@@ -36,6 +38,8 @@ export default function SalesRoutes() {
         <Route path="ticks" element={<Gate admin><TicksPage /></Gate>} />
         <Route path="dashboard" element={<Gate any={["my_dash", "team_dash", "co_dash"]}><SalesDashboard /></Gate>} />
         <Route path="log" element={<Gate tick="reglog"><SalesLog /></Gate>} />
+        <Route path="sources" element={<Gate tick="connect"><SourcesPage /></Gate>} />
+        <Route path="types" element={<Gate admin><TypesPage /></Gate>} />
         <Route path="*" element={<Navigate to="/sales" replace />} />
       </Routes>
     </SalesProvider>

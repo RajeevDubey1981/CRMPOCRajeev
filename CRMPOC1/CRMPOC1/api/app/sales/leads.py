@@ -9,13 +9,14 @@ from decimal import Decimal
 
 from fastapi import HTTPException, status
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, object_session
 
 from app.models.user import User
 from app.sales import crm_link
+from app.sales import types as T
 from app.sales.models import SalesLead, SalesLeadActivity, SalesProfile, SalesSetting
 from app.sales.rules import (
-    CLOSED_STATUSES, CRM_ONLY_DISPOSALS, DISPOSALS, GOOD_DISPOSALS, LEAD_TYPES, PRIORITIES,
+    CLOSED_STATUSES, CRM_ONLY_DISPOSALS, DISPOSALS, GOOD_DISPOSALS, PRIORITIES,
     detect_lead_type, heat_from_text, suggest_heat, suggest_priority,
 )
 
@@ -200,7 +201,7 @@ def create_lead(main_db: Session | None, sdb: Session, data: dict, created_by: U
             )
         return dup, False
 
-    lead_type = data.get("lead_type") if data.get("lead_type") in LEAD_TYPES else detect_lead_type(text, data.get("channel", ""))
+    lead_type = T.usable_type(sdb, data.get("lead_type") if T.valid_type(sdb, data.get("lead_type")) else detect_lead_type(text, data.get("channel", "")))
     lead = SalesLead(
         name=name, phone=phone, email=(data.get("email") or None), item=(data.get("item") or "")[:500], place=data.get("place"),
         state=data.get("state"), district=data.get("district"), pincode=data.get("pincode"), country=data.get("country"),
@@ -228,7 +229,7 @@ def create_lead(main_db: Session | None, sdb: Session, data: dict, created_by: U
         if main_db is not None:
             crm_link.push_card(
                 main_db, user_id=owner, lead_id=lead.id, lead_no=lead.lead_no, action_type="sales_new_lead",
-                title="New lead", message=f"{lead.name}: {lead.item or LEAD_TYPES.get(lead.lead_type, '')}. First call due in {FIRST_CALL_HOURS} hours.",
+                title="New lead", message=f"{lead.name}: {lead.item or T.label_of(sdb, lead.lead_type)}. First call due in {FIRST_CALL_HOURS} hours.",
                 label="Open the lead", status="new", due_at=lead.first_call_due_at,
             )
     return lead, True
@@ -408,7 +409,7 @@ def lead_out(lead: SalesLead, names: dict[int, str] | None = None) -> dict:
     return {
         "id": lead.id, "lead_no": lead.lead_no, "name": lead.name, "phone": lead.phone, "email": lead.email, "item": lead.item,
         "place": lead.place, "state": lead.state, "district": lead.district, "pincode": lead.pincode, "country": lead.country,
-        "source": lead.source, "channel": lead.channel, "lead_type": lead.lead_type, "lead_type_label": LEAD_TYPES.get(lead.lead_type, lead.lead_type),
+        "source": lead.source, "channel": lead.channel, "lead_type": lead.lead_type, "lead_type_label": T.label_of(object_session(lead), lead.lead_type), "lead_type_color": T.color_of(object_session(lead), lead.lead_type),
         "details": lead.details, "message": lead.message, "status": lead.status,
         "owner_user_id": lead.owner_user_id, "owner_name": names.get(lead.owner_user_id) if lead.owner_user_id else None,
         "follow_up_on": lead.follow_up_on.isoformat() if lead.follow_up_on else None, "follow_up_late": late,

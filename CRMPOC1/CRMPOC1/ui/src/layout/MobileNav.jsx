@@ -39,6 +39,14 @@ export function mobileNavItems(user) {
       { to: "/queries", label: "Queries", icon: "chat" },
     ];
   }
+  if (role === "sales" || role === "sales_manager") {
+    return [
+      { to: "/dashboard", label: "Home", icon: "home" },
+      { to: "/sales", label: "My day", icon: "list", end: true },
+      { to: "/sales/leads", label: "Leads", icon: "doc" },
+      { to: "/queries", label: "Queries", icon: "chat" },
+    ];
+  }
   if (role === "vendor") {
     return [
       { to: "/vendor-dashboard", label: "Home", icon: "home" },

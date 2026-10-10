@@ -39,4 +39,23 @@ export const salesApi = {
   setUserTicks: (userId, ticks) => put(`/api/sales/ticks/user/${userId}`, { ticks }),
   ticksHistory: () => get("/api/sales/ticks/history"),
   updateSettings: (body) => put("/api/sales/settings", body),
+  // lead types
+  types: () => get("/api/sales/types"),
+  addType: (body) => post("/api/sales/types", body),
+  patchType: (key, body) => patch(`/api/sales/types/${key}`, body),
+  // connections
+  sources: () => get("/api/sales/sources"),
+  addSource: (body) => post("/api/sales/sources", body),
+  patchSource: (id, body) => patch(`/api/sales/sources/${id}`, body),
+  deleteSource: (id) => api.delete(`/api/sales/sources/${id}`).then((r) => r.data),
+  testSource: (id) => post(`/api/sales/sources/${id}/test`),
+  runSource: (id) => post(`/api/sales/sources/${id}/run`),
+  newToken: (id) => post(`/api/sales/sources/${id}/new-token`),
+  // files and export-market lists
+  uploadPreview: (file) => { const f = new FormData(); f.append("file", file); return api.post("/api/sales/uploads/preview", f).then((r) => r.data); },
+  uploadImport: (file, options) => { const f = new FormData(); f.append("file", file); f.append("options", JSON.stringify(options)); return api.post("/api/sales/uploads/import", f).then((r) => r.data); },
+  prospects: (params) => get("/api/sales/prospects", params),
+  prospectFacets: () => get("/api/sales/prospects/facets"),
+  makeProspectLeads: (ids) => post("/api/sales/prospects/make-leads", { ids }),
+  deleteProspectBatch: (batch) => api.delete(`/api/sales/prospects/batch/${batch}`).then((r) => r.data),
 };

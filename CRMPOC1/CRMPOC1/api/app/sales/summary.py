@@ -12,7 +12,8 @@ from sqlalchemy.orm import Session
 from app.sales.access import Ctx
 from app.sales.leads import aware, now
 from app.sales.models import SalesLead, SalesQuotation
-from app.sales.rules import CLOSED_STATUSES, LEAD_TYPES
+from app.sales import types as T
+from app.sales.rules import CLOSED_STATUSES
 
 
 def scope_of(ctx: Ctx) -> str | None:
@@ -92,7 +93,7 @@ def summary(sdb: Session, ctx: Ctx, names: dict[int, str] | None = None) -> dict
         if rev:
             need.append(f"{len(rev)} disposal{'s' if len(rev) > 1 else ''} waiting for the manager")
         for l in [x for x in hot if x.first_called_at is None][:2]:
-            need.append(f"{l.name} ({LEAD_TYPES.get(l.lead_type)}) is Hot and has no call yet")
+            need.append(f"{l.name} ({T.label_of(sdb, l.lead_type)}) is Hot and has no call yet")
     elif scope == "team":
         q_wait = len([q for q in quotes if q.status == "wait"])
         if q_wait:
@@ -118,7 +119,7 @@ def summary(sdb: Session, ctx: Ctx, names: dict[int, str] | None = None) -> dict
     if scope != "mine":
         by_type: dict[str, dict] = {}
         for l in leads:
-            row = by_type.setdefault(l.lead_type, {"type": l.lead_type, "label": LEAD_TYPES.get(l.lead_type, l.lead_type), "leads": 0, "won": 0})
+            row = by_type.setdefault(l.lead_type, {"type": l.lead_type, "label": T.label_of(sdb, l.lead_type), "color": T.color_of(sdb, l.lead_type), "leads": 0, "won": 0})
             row["leads"] += 1
             row["won"] += 1 if l.status == "won" else 0
         by_source: dict[str, dict] = {}

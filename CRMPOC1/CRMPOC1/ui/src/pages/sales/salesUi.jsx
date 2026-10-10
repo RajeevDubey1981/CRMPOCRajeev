@@ -57,7 +57,7 @@ export function PriorityChip({ lead, always = false }) {
 }
 
 export function TypeChip({ lead }) {
-  const color = TYPE_COLOR[lead.lead_type] || "#64748b";
+  const color = lead.lead_type_color || TYPE_COLOR[lead.lead_type] || "#64748b";
   return <span className="inline-block whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-semibold" style={{ background: `${color}1f`, color }}>{lead.lead_type_label}</span>;
 }
 
@@ -129,7 +129,9 @@ export function SalesTabs() {
     ...(m.team ? [["/sales/team", "Team and profiles"]] : []),
     ...(m.ticks ? [["/sales/ticks", "Access ticks"]] : []),
     ...(dash ? [["/sales/dashboard", "Dashboard"]] : []),
+    ...((status?.ticks || []).includes("connect") ? [["/sales/sources", "Connections"]] : []),
     ...((status?.ticks || []).includes("reglog") ? [["/sales/log", "Registered-first log"]] : []),
+    ...(m.ticks ? [["/sales/types", "Lead types"]] : []),
   ];
   return (
     <nav className="mb-4 flex flex-wrap gap-1 border-b border-slate-200 pb-2">

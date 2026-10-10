@@ -46,4 +46,25 @@ All reads and writes on the CRM side go through `crm_link.py`.
   Sales asks for everything newer than the last enquiry it saw.
 * Quotation prices come from the item master `mrp`; GST per line defaults by HSN (8415 is 28%, others 18%) and can
   be changed on the line. Export quotations are in US dollars with no GST.
-* Not built yet: Meta, IndiaMART, marketplace and directory connections, Excel upload, the editable list of lead types.
+* Lead types are rows in `sales_lead_type` (the eight built-in ones are seeded). Admin adds, renames, recolours or switches
+  them off (screen "Lead types"). A type is never deleted.
+
+## Connections, upload and the export-market lists
+
+* `sources.py` holds the connections: IndiaMART (pull with the CRM key, or push), Meta lead forms (pull, or webhook),
+  a web address (webhook), any API (address, key header, path to the list, field map), a Google Sheet published as CSV, and
+  a mailbox (IMAP) for marketplaces that only send an e-mail (Alibaba.com, TradeWheel ...). Each enquiry is **registered
+  first in the CRM** as a Sales enquiry (`crm_link.register_enquiry`, an IDC_ number, no SMS or mail to the customer), and
+  the lead is made from it. `sales_inbound` remembers what each connection already brought in.
+* Keys and passwords are stored encrypted (`secrets_box.py`, key from `SALES_SECRET_KEY`, else `JWT_SECRET`) and are never sent
+  to a browser. If that key changes, saved keys cannot be read and must be typed again.
+* The connections are written from each company's published way of working and tested with sample answers only. They have not
+  been run with real accounts: use "Test" on the Connections screen after saving one.
+* `importer.py` reads .xlsx (no extra library) and .csv. A loaded lead list makes leads directly (not registered in the CRM
+  complaints). A loaded company list (Kompass, import records, a chamber list) goes into `sales_prospect`, is searched on the
+  Export desk, and becomes a cold lead only when someone presses "Make lead".
+
+## Not built yet
+
+* Direct connections to Alibaba.com's own seller API, JustDial, TradeIndia and other marketplaces that need an approved app:
+  use the mailbox, the any-API or the web-address connection for them.

@@ -57,7 +57,7 @@ export default function SalesDashboard() {
           {s.by_type && (
             <div className="mt-3 grid gap-3 lg:grid-cols-2">
               <Card title="Leads by type" sub="Leads and how many were won">
-                <Bars rows={s.by_type.map((r) => ({ label: r.label, value: r.leads, text: `${r.leads} · ${r.won} won`, color: TYPE_COLOR[r.type] }))} color="#3987e5" />
+                <Bars rows={s.by_type.map((r) => ({ label: r.label, value: r.leads, text: `${r.leads} · ${r.won} won`, color: r.color || TYPE_COLOR[r.type] }))} color="#3987e5" />
               </Card>
               <Card title="Where leads come from" sub="Leads and how many were won">
                 <Bars rows={s.by_source.map((r) => ({ label: r.source, value: r.leads, text: `${r.leads} · ${r.won} won` }))} color="#1c5cab" />

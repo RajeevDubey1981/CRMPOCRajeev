@@ -243,3 +243,28 @@ def notify_partner_admins(main_db: Session, *, lead_id: int, lead_no: str, title
         entity_status="open",
     )
     return len(admins)
+
+
+# ---------------- registering an enquiry that came from a connection ----------------
+def register_enquiry(main_db: Session, *, name: str, mobile: str, email: str | None, message: str, address: str | None,
+                     state: str | None, source_key: str, source_label: str) -> Complaint:
+    """Registered first: an enquiry that comes in from IndiaMART, Meta or a web address is first registered in the CRM
+    as a Sales enquiry (an IDC_ number, as for a website enquiry). No SMS or mail is sent to the customer."""
+    import secrets
+    import time
+    from datetime import date
+
+    n = int(time.time() * 1000)
+    while main_db.scalar(select(Complaint.id).where(Complaint.comp_no == f"IDC_{n}")):
+        n += 1
+    c = Complaint(
+        comp_no=f"IDC_{n}", comp_date=date.today(), customer_name=(name or "Unknown")[:255], customer_mobile=(mobile or "")[:20],
+        customer_email=(email or None), customer_address=(address or None), state=((state or "")[:100] or None),
+        problem_description=(message or "-"), query_type="Sales", send_sms=False, access_code=f"{secrets.randbelow(1_000_000):06d}",
+        status="Pending", created_by=None, source=(source_key or "connection")[:50],
+    )
+    main_db.add(c)
+    main_db.flush()
+    main_db.add(ComplaintStatusLog(complaint_id=c.id, old_status=None, new_status="Pending", changed_by=None, remark=f"Registered from {source_label} (Sales)"))
+    main_db.flush()
+    return c

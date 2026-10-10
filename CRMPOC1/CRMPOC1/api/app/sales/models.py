@@ -224,3 +224,74 @@ class SalesInboxLog(SalesBase):
     crm_ref: Mapped[str | None] = mapped_column(String(80), nullable=True)
     lead_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     result: Mapped[str] = mapped_column(Text, nullable=False, default="")
+
+
+class SalesLeadType(SalesBase):
+    """The list of lead types. The eight built-in ones are seeded; Admin can add more, rename, recolour or switch off."""
+
+    __tablename__ = "sales_lead_type"
+
+    key: Mapped[str] = mapped_column(String(30), primary_key=True)
+    label: Mapped[str] = mapped_column(String(80), nullable=False)
+    color: Mapped[str] = mapped_column(String(9), nullable=False, default="#475569")
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=100)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    is_builtin: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+
+
+class SalesSource(SalesBase, Stamped):
+    """A connection that brings enquiries in: IndiaMART, Meta lead forms, a web address, an API, a sheet, a mailbox.
+    config holds what is not secret; secret holds keys and passwords, encrypted."""
+
+    __tablename__ = "sales_source"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    kind: Mapped[str] = mapped_column(String(20), nullable=False)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    token: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    config: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    secret: Mapped[str | None] = mapped_column(Text, nullable=True)
+    default_lead_type: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    default_owner_user_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    interval_minutes: Mapped[int] = mapped_column(Integer, nullable=False, default=15)
+    last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_ok_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    received_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_by: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+
+class SalesInbound(SalesBase):
+    """What a source has already brought in, so the same enquiry is never made twice."""
+
+    __tablename__ = "sales_inbound"
+    __table_args__ = (UniqueConstraint("source_id", "external_id", name="uq_sales_inbound"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    source_id: Mapped[int] = mapped_column(ForeignKey("sales_source.id", ondelete="CASCADE"), nullable=False, index=True)
+    external_id: Mapped[str] = mapped_column(String(160), nullable=False)
+    lead_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    crm_ref: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class SalesProspect(SalesBase):
+    """A company found in a directory or an import-record list (Kompass, TradeInt ...) that has not asked us for anything."""
+
+    __tablename__ = "sales_prospect"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    company: Mapped[str] = mapped_column(String(255), nullable=False)
+    contact_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    phone: Mapped[str | None] = mapped_column(String(40), nullable=True, index=True)
+    email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    country: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    city: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    kind: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    products: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    source: Mapped[str] = mapped_column(String(120), nullable=False, default="")
+    why: Mapped[str | None] = mapped_column(Text, nullable=True)
+    batch: Mapped[str] = mapped_column(String(60), nullable=False, default="")
+    lead_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)

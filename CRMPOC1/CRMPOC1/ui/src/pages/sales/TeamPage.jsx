@@ -68,7 +68,8 @@ function ProfileModal({ person, onClose, onDone }) {
 }
 
 export default function TeamPage() {
-  const { has } = useSales();
+  const { has, status } = useSales();
+  const typeInfo = Object.fromEntries((status?.lead_types || []).map((t) => [t.key, t]));
   const { user } = useAuth();
   const { data, loading, error, reload } = useAsync(() => salesApi.team(), []);
   const [edit, setEdit] = useState(null);
@@ -87,7 +88,7 @@ export default function TeamPage() {
                 <td className="px-3 py-2">{p.role === "sales_manager" ? "Sales Manager" : "Sales Team"}</td>
                 <td className="px-3 py-2">{p.pincode || "—"}</td><td className="px-3 py-2">{p.state || "—"}</td><td className="px-3 py-2">{p.district || "—"}</td>
                 <td className="px-3 py-2">{p.extra_pincodes.join(", ") || "—"}{p.areas.length > 0 && <div className="text-xs text-slate-500">Areas: {p.areas.join(", ")}</div>}</td>
-                <td className="px-3 py-2">{p.types_handled.length ? p.types_handled.map((t) => <span key={t} className="mr-1 rounded-full px-2 py-0.5 text-[11px] font-semibold" style={{ background: `${TYPE_COLOR[t]}1f`, color: TYPE_COLOR[t] }}>{t}</span>) : "All types"}</td>
+                <td className="px-3 py-2">{p.types_handled.length ? p.types_handled.map((t) => { const info = typeInfo[t] || {}; const c = info.color || TYPE_COLOR[t] || "#64748b"; return <span key={t} className="mr-1 rounded-full px-2 py-0.5 text-[11px] font-semibold" style={{ background: `${c}1f`, color: c }}>{info.label || t}</span>; }) : "All types"}</td>
                 <td className="px-3 py-2">{p.target_lakh != null ? `₹${p.target_lakh} L` : "—"}</td>
                 <td className="px-3 py-2">{(has("others_profile") || (p.crm_user_id === user?.id && has("own_profile"))) && <button type="button" className={btn.plain} onClick={() => setEdit(p)}>Edit profile</button>}</td>
               </tr>

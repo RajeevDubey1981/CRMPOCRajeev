@@ -3,6 +3,7 @@ import { Link, useSearchParams } from "react-router-dom";
 
 import { salesApi } from "../../api/sales.js";
 import { AddLeadModal, GiveModal } from "./LeadModals.jsx";
+import UploadModal from "./UploadModal.jsx";
 import {
   FirstCallChip, HeatChip, Notice, PageTitle, PriorityChip, SalesTabs, StatusChip, TypeChip, btn, errText, fieldClass, fmtDate, useAsync, useSales, valueText,
 } from "./salesUi.jsx";
@@ -28,6 +29,7 @@ export default function LeadList() {
   const team = useAsync(() => (has("give") ? salesApi.team() : Promise.resolve([])), [has("give")]);
   const [adding, setAdding] = useState(false);
   const [giving, setGiving] = useState(null);
+  const [uploading, setUploading] = useState(false);
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
   const people = (team.data || []).filter((p) => p.is_active && (p.role || "").trim().toLowerCase() === "sales");
@@ -46,6 +48,7 @@ export default function LeadList() {
           {has("autogive") && <button type="button" className={btn.plain} disabled={busy} onClick={() => run(() => salesApi.autoGive(), (r) => (r.given ? `${r.given} new lead(s) given by type and place` : "No new lead is waiting"))}>Auto-give new leads</button>}
           {has("give") && <button type="button" className={btn.plain} disabled={busy} onClick={() => run(() => salesApi.sync({}), (r) => (r.started ? "Started. New enquiries from now on become leads." : `${r.complaints + r.partners} new lead(s) from the CRM`))}>Bring in enquiries now</button>}
           {has("upload") && <button type="button" className={btn.plain} disabled={busy} onClick={() => run(() => salesApi.sync({ backfill_days: 30 }), (r) => `${r.complaints + r.partners} lead(s) from the last 30 days`)}>Bring in the last 30 days</button>}
+          {has("upload") && <button type="button" className={btn.plain} onClick={() => setUploading(true)}>Upload Excel or CSV</button>}
           {has("add_lead") && <button type="button" className={btn.go} onClick={() => setAdding(true)}>+ Add lead</button>}
         </div>
       } />
@@ -95,6 +98,7 @@ export default function LeadList() {
         </table>
       </div>
       <AddLeadModal open={adding} onClose={() => setAdding(false)} onDone={() => { setAdding(false); reload(); }} />
+      {uploading && <UploadModal mode="leads" onClose={() => setUploading(false)} onDone={(r) => { setUploading(false); if (r) { setMsg(`${r.created} lead(s) made from the file`); reload(); } }} />}
       {giving && <GiveModal open lead={giving} people={people} onClose={() => setGiving(null)} onDone={() => { setGiving(null); reload(); }} />}
     </div>
   );

@@ -19,6 +19,8 @@ class Settings(BaseSettings):
     sales_database_url: str = ""
     sales_sync_enabled: bool = True
     sales_sync_seconds: int = 60
+    # Key that locks the keys and passwords of the Sales connections (IndiaMART, Meta ...). If empty, JWT_SECRET is used.
+    sales_secret_key: str = ""
     jwt_secret: str = "change-me"
     jwt_algorithm: str = "HS256"
     jwt_expire_minutes: int = 480

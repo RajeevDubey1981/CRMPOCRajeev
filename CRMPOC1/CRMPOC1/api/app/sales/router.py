@@ -9,14 +9,14 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.deps import get_current_user
 from app.models.user import User
-from app.sales import crm_link, leads as L, quotes as Q
+from app.sales import crm_link, leads as L, quotes as Q, types as T
 from app.sales.access import Ctx, get_ctx, menu_flags, require, role_ticks, user_ticks, has_sales_menu
 from app.sales.db import get_sales_db
 from app.sales.models import (
     SalesInboxLog, SalesLead, SalesLeadActivity, SalesProfile, SalesQuotation, SalesRoleTick, SalesTickHistory, SalesUserTick,
 )
 from app.sales.rules import (
-    ALL_TICKS, CLOSED_STATUSES, DISPOSALS, HEAT_RULES, HEAT_ORDER, LEAD_TYPES, LOCKED_TICKS, PRIORITY_ORDER, QUOTE_STATUSES,
+    ALL_TICKS, CLOSED_STATUSES, DISPOSALS, HEAT_RULES, HEAT_ORDER, LOCKED_TICKS, PRIORITY_ORDER, QUOTE_STATUSES,
     STATUSES, TICK_DEFAULTS, TICK_GROUPS,
 )
 from app.sales.summary import summary as build_summary
@@ -199,7 +199,7 @@ def sales_status(ctx: Ctx = Depends(get_ctx), sdb: Session = Depends(get_sales_d
             "home_state": L.get_setting(sdb, "home_state"), "company_name": L.get_setting(sdb, "company_name"),
             "company_address": L.get_setting(sdb, "company_address"), "company_gstin": L.get_setting(sdb, "company_gstin"),
         },
-        "lead_types": [{"key": k, "label": v} for k, v in LEAD_TYPES.items()],
+        "lead_types": [{"key": t["key"], "label": t["label"], "color": t["color"]} for t in T.active_types(sdb)],
         "statuses": STATUSES,
         "disposals": [{"key": k, "label": v[0], "needs_review": v[1], "crm_only": k in ("pr_won", "pr_can")} for k, v in DISPOSALS.items()],
         "heat_rules": [{"key": k, "label": lb, "points": pts} for k, lb, pts in HEAT_RULES],
@@ -309,7 +309,7 @@ def list_leads(
 @router.post("/leads", status_code=status.HTTP_201_CREATED)
 def add_lead(body: LeadIn, ctx: Ctx = Depends(require("add_lead")), sdb: Session = Depends(get_sales_db), main_db: Session = Depends(get_db)):
     data = body.model_dump()
-    if data.get("lead_type") and data["lead_type"] not in LEAD_TYPES:
+    if data.get("lead_type") and not T.valid_type(sdb, data["lead_type"]):
         raise HTTPException(400, "Unknown lead type")
     data["source"] = data.get("source") or "Typed in"
     data["channel"] = "hand"
@@ -350,7 +350,7 @@ def patch_lead(lead_id: int, body: LeadPatch, ctx: Ctx = Depends(get_ctx), sdb: 
     lead = get_visible_lead(sdb, ctx, lead_id)
     data = body.model_dump(exclude_unset=True)
     if "lead_type" in data:
-        if data["lead_type"] not in LEAD_TYPES:
+        if not T.valid_type(sdb, data["lead_type"]):
             raise HTTPException(400, "Unknown lead type")
         if not ctx.has("see_all"):
             raise HTTPException(403, "Only the manager changes the lead type")
@@ -581,7 +581,7 @@ def quotation_action(qid: int, action: str, body: ActionIn = ActionIn(), ctx: Ct
 # ---------------- team, profiles and ticks ----------------
 def _profile_out(p: SalesProfile, ticks: set[str] | None = None) -> dict:
     return {
-        "crm_user_id": p.crm_user_id, "name": p.name_cache, "role": p.role_cache, "phone": p.phone, "pincode": p.pincode, "state": p.state,
+        "crm_user_id": p.crm_user_id, "name": p.name_cache, "role": (p.role_cache or "").strip().lower(), "phone": p.phone, "pincode": p.pincode, "state": p.state,
         "district": p.district, "extra_pincodes": L.csv_list(p.extra_pincodes), "areas": L.csv_list(p.areas),
         "types_handled": L.csv_list(p.types_handled), "target_lakh": float(p.target_lakh) if p.target_lakh is not None else None,
         "is_active": p.is_active, **({"ticks": sorted(ticks)} if ticks is not None else {}),
@@ -625,7 +625,7 @@ def update_profile(user_id: int, body: ProfilePatch, ctx: Ctx = Depends(get_ctx)
     if data.get("pincode") not in (None, "") and not str(data["pincode"]).isdigit():
         raise HTTPException(400, "The pin code has digits only")
     if "types_handled" in data:
-        bad = [t for t in L.csv_list(data["types_handled"]) if t not in LEAD_TYPES]
+        bad = [t for t in L.csv_list(data["types_handled"]) if not T.valid_type(sdb, t, active_only=False)]
         if bad:
             raise HTTPException(400, f"Unknown lead type: {', '.join(bad)}")
     for k, v in data.items():

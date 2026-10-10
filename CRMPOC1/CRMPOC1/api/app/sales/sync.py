@@ -146,6 +146,10 @@ def _loop() -> None:
             if sales_enabled():
                 with SessionLocal() as main_db, new_sales_session() as sdb:
                     sync_now(main_db, sdb)
+                with SessionLocal() as main_db, new_sales_session() as sdb:
+                    from app.sales.sources import run_due_sources
+
+                    run_due_sources(main_db, sdb)
         except Exception:
             logger.exception("Sales sync failed")
         time.sleep(max(15, int(settings.sales_sync_seconds or 60)))
