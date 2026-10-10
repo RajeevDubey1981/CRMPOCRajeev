@@ -3,7 +3,7 @@ scope their ticks allow: the whole company, the team, or their own leads."""
 
 from __future__ import annotations
 
-from datetime import date, datetime, time, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal
 
 from sqlalchemy import func, select
@@ -29,6 +29,21 @@ def scope_of(ctx: Ctx) -> str | None:
 def _month_start() -> datetime:
     t = date.today().replace(day=1)
     return datetime.combine(t, time.min, tzinfo=timezone.utc)
+
+
+def _day(d) -> date | None:
+    if d is None:
+        return None
+    return aware(d).date() if isinstance(d, datetime) else d
+
+
+def _trend(days: list, start: date, cumulative: bool = False) -> list[int]:
+    """Seven numbers, one per day from `start`: how many of these dates fall on that day (or up to that day)."""
+    out = []
+    for i in range(7):
+        day = start + timedelta(days=i)
+        out.append(len([d for d in days if d and ((start <= d <= day) if cumulative else d == day)]))
+    return out
 
 
 def summary(sdb: Session, ctx: Ctx, names: dict[int, str] | None = None) -> dict | None:
@@ -108,10 +123,32 @@ def summary(sdb: Session, ctx: Ctx, names: dict[int, str] | None = None) -> dict
         for l in sorted([x for x in open_ if x.follow_up_on == today or x.status == "new"], key=lambda x: x.id)[:3]:
             need.append(f"{l.name}: " + ("first call due" if l.status == "new" else "follow-up today"))
 
+    first = today - timedelta(days=6)
+    created = lambda rows: [_day(getattr(r, "created_at", None)) for r in rows]
+    follow = lambda rows: [r.follow_up_on for r in rows]
+    window = today - timedelta(days=3)
+    trends = {
+        "open": _trend(created(open_), first), "new_today": _trend(created(leads), first), "hot": _trend(created(hot), first),
+        "urgent": _trend(created(urgent), first), "unassigned": _trend(created(unassigned), first), "quotes": _trend(created(quotes), first),
+        "disposals": _trend(created(rev), first), "first_overdue": _trend(created(first_overdue), first),
+        "overdue": _trend(follow(overdue), first),
+        "due_today": _trend(follow([l for l in open_ if l.follow_up_on]), window),
+        "won": _trend([_day(l.closed_at) for l in won_month], first, cumulative=True),
+    }
+    # the month target: the target set on the profile of each sales person in this scope
+    from app.sales.models import SalesProfile
+    profiles = list(sdb.scalars(select(SalesProfile).where(SalesProfile.is_active.is_(True))))
+    if mine:
+        profiles = [p for p in profiles if p.crm_user_id == ctx.user.id]
+    target_lakh = sum(float(p.target_lakh or 0) for p in profiles if (p.role_cache or "").strip().lower() == "sales" or mine)
+    nxt = (today.replace(day=28) + timedelta(days=4)).replace(day=1)
+    target = {"won_lakh": round(won_value, 1), "target_lakh": round(target_lakh, 1), "days_left": (nxt - today).days} if target_lakh > 0 else None
+
     out = {
         "scope": scope,
+        "target": target,
         "title": {"company": "Sales: the whole company", "team": "Sales: my team", "mine": "Sales: my day"}[scope],
-        "tiles": [{"key": k, "label": lb, "value": v, "sub": sub} for k, lb, v, sub in tiles],
+        "tiles": [{"key": k, "label": lb, "value": v, "sub": sub, "trend": trends.get(k, [])} for k, lb, v, sub in tiles],
         "need": need,
         "open_leads": len(open_),
         "export_open": len(exp_open) if scope != "mine" else None,

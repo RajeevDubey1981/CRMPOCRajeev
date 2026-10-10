@@ -205,3 +205,7 @@ html[data-s-motion="off"] .s-hero::before, html[data-s-motion="off"] .s-hero::af
 html[data-s-motion="off"] .s-check path { stroke-dashoffset: 0; }
 @media (prefers-reduced-motion: reduce) { html:not([data-s-motion="on"]) .s-check path { stroke-dashoffset: 0; } }
 html[data-s-motion="off"] :is(.s-lift, .s-press, .s-bar, .s-cell, .s-ring) { transition: none !important; }
+
+.s-spark { stroke-dasharray: 160; stroke-dashoffset: 160; animation: s-draw 1.2s .3s ease-out forwards; }
+@media (prefers-reduced-motion: reduce) { html:not([data-s-motion="on"]) .s-spark { animation: none !important; stroke-dashoffset: 0; } }
+html[data-s-motion="off"] .s-spark { animation: none !important; stroke-dashoffset: 0; }

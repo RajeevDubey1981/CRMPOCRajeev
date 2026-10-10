@@ -509,6 +509,14 @@ class SalesApiTests(SalesTestBase):
         s = self.get("/api/sales/summary", self.amit).json()
         self.assertEqual(s["scope"], "mine")
         self.assertEqual({t["key"]: t["value"] for t in s["tiles"]}["open"], 1)
+        tr = {t["key"]: t["trend"] for t in s["tiles"]}
+        self.assertEqual(len(tr["open"]), 7)
+        self.assertEqual(tr["open"][-1], 1)  # the lead was made today, the last of the seven days
+        self.assertIsNone(s["target"])  # nobody has a month target yet
+        self.put(f"/api/sales/team/{self.amit.id}/profile", {"target_lakh": 50}, self.admin)
+        t = self.get("/api/sales/summary", self.amit).json()["target"]
+        self.assertEqual((t["target_lakh"], t["won_lakh"]), (50.0, 0.0))
+        self.assertGreaterEqual(t["days_left"], 1)
         s = self.get("/api/sales/summary", self.karan).json()
         self.assertEqual(s["scope"], "team")
         self.assertIn("leaderboard", s)
