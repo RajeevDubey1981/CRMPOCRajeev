@@ -110,9 +110,9 @@ export default function MarketingChannels() {
             </div>
           </div>
           {s && s.configured && !s.connected && s.can_connect && <button type="button" className={btn.primary} disabled={busy} onClick={connect}>Connect Meta</button>}
-          {s?.connected && s.can_connect && <div className="flex gap-2">{s.days_left != null && s.days_left < 10 && <button type="button" className={btn.go} disabled={busy} onClick={connect}>Renew the login</button>}<button type="button" className={btn.plain} disabled={busy} onClick={disconnect}>Disconnect</button></div>}
+          {s?.connected && s.can_connect && <div className="flex gap-2"><button type="button" className={s.days_left != null && s.days_left < 10 ? btn.go : btn.primary} disabled={busy} onClick={connect} title="Log in with Facebook again, for example after you were given access to another ad account">Reconnect Meta</button><button type="button" className={btn.plain} disabled={busy} onClick={disconnect}>Disconnect</button></div>}
         </div>
-        {s?.connected && <p className="mt-2 text-xs text-slate-500">Allowed to: <b>read your ad accounts and their results</b>. It cannot create or change ads, and it cannot spend money.</p>}
+        {s?.connected && <p className="mt-2 text-xs text-slate-500">Missing an ad account? Press <b>Reconnect Meta</b> and, in the Facebook window, choose every ad account you want to share. Allowed to: <b>read your ad accounts and their results</b>. It cannot create or change ads, and it cannot spend money.</p>}
         {s && !s.configured && <div className="mt-3"><Steps status={s} /></div>}
       </div>
 
