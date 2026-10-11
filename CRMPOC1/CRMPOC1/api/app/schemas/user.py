@@ -44,6 +44,7 @@ class UserCreate(_Place):
     phone: str | None = None
     is_active: bool = True
     can_manage_bids: bool = False
+    can_manage_marketing: bool = False
 
 
 class UserUpdate(_Place):
@@ -53,6 +54,7 @@ class UserUpdate(_Place):
     phone: str | None = None
     is_active: bool | None = None
     can_manage_bids: bool | None = None
+    can_manage_marketing: bool | None = None
 
 
 class ResetPasswordRequest(BaseModel):
@@ -67,6 +69,7 @@ class UserOut(BaseModel):
     phone: str | None = None
     is_active: bool
     can_manage_bids: bool = False
+    can_manage_marketing: bool = False
     pincode: str | None = None
     state: str | None = None
     district: str | None = None

@@ -61,6 +61,14 @@ def _user_out(db: Session, user: User) -> UserOut:
             item.can_edit = flags.get("can_edit", False)
             item.can_delete = flags.get("can_delete", False)
             item.can_export = flags.get("can_export", False)
+    # Marketing: Admin, Sub Admin, the marketing role and users with the tick; nobody sees it while its database is not set up.
+    from app.marketing.access import has_marketing_menu
+
+    marketing_on = has_marketing_menu(user)
+    for item in out.permissions:
+        if item.module == "marketing" and item.sub_module is None:
+            item.can_view = marketing_on
+            item.can_create = item.can_edit = item.can_delete = item.can_export = False
     # Sales: admins always, other roles through their role card; nobody sees it while the Sales database is not set up.
     from app.sales.access import has_sales_menu
 

@@ -23,3 +23,4 @@ class User(Base, TimestampMixin, SoftDeleteMixin):
     vendor_types: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON list: GeM, CSD, Retail, SSD ... a vendor can be several at once
     skills: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON list of item categories the engineer works on; empty = any
     can_manage_bids: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
+    can_manage_marketing: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")

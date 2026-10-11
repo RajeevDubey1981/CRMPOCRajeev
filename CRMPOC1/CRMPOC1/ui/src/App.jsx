@@ -62,6 +62,7 @@ import QueriesPage from "./pages/queries/QueriesPage.jsx";
 import BidStats from "./pages/bids/BidStats.jsx";
 import VendorRequest from "./pages/bids/VendorRequest.jsx";
 import BidCalendar from "./pages/bids/BidCalendar.jsx";
+import MarketingRoutes from "./pages/marketing/MarketingRoutes.jsx";
 import SalesRoutes from "./pages/sales/SalesRoutes.jsx";
 import { isOperationsAdminRole, isSubAdminRole, isSystemAdminRole } from "./utils/roles.js";
 
@@ -192,6 +193,7 @@ export default function App() {
         <Route path="/claims/new" element={<PermissionRoute module="claims" action="can_create"><ClaimCreate /></PermissionRoute>} />
         <Route path="/claims/:id" element={<PermissionRoute module="claims"><ClaimDetail /></PermissionRoute>} />
         <Route path="/sales/*" element={<PermissionRoute module="sales"><SalesRoutes /></PermissionRoute>} />
+        <Route path="/marketing/*" element={<PermissionRoute module="marketing"><MarketingRoutes /></PermissionRoute>} />
         <Route path="/queries" element={<QueriesPage />} />
         <Route path="/queries/:id" element={<QueriesPage />} />
         <Route path="/bids" element={<BidsRoute><BidsHome /></BidsRoute>} />

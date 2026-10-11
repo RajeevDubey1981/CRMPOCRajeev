@@ -43,6 +43,7 @@ const NAV = [
     ],
   },
   { to: "/sales", label: "Sales", module: "sales" },
+  { to: "/marketing", label: "Marketing", module: "marketing" },
   {
     label: "Market Admin",
     systemAdminOnly: true,

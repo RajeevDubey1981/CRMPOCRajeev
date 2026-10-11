@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     # Sales module: its own database, linked to the CRM only by reference numbers. Empty = Sales is switched off
     # and the CRM works exactly as before.
     sales_database_url: str = ""
+    marketing_database_url: str = ""
     sales_sync_enabled: bool = True
     sales_sync_seconds: int = 60
     # Key that locks the keys and passwords of the Sales connections (IndiaMART, Meta ...). If empty, JWT_SECRET is used.

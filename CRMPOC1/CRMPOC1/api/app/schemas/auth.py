@@ -35,6 +35,7 @@ class UserOut(BaseModel):
     phone: str | None = None
     is_active: bool
     can_manage_bids: bool = False
+    can_manage_marketing: bool = False
     permissions: list[UserPermissionOut] = Field(default_factory=list)
 
     class Config:

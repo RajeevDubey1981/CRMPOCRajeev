@@ -69,6 +69,7 @@ def _user_out(db: Session, user: User) -> UserOut:
         phone=user.phone,
         is_active=user.is_active,
         can_manage_bids=bool(user.can_manage_bids),
+        can_manage_marketing=bool(user.can_manage_marketing),
         pincode=user.pincode,
         state=user.state,
         district=user.district,
@@ -184,6 +185,7 @@ def create_user(
         phone=body.phone,
         is_active=body.is_active,
         can_manage_bids=bool(body.can_manage_bids) and role_key(body.role) != "vendor",
+        can_manage_marketing=bool(body.can_manage_marketing) and role_key(body.role) not in ("vendor", "engineer"),
         pincode=body.pincode,
         state=body.state,
         district=body.district,
@@ -229,6 +231,8 @@ def update_user(
 
     if data.get("can_manage_bids") is None:
         data.pop("can_manage_bids", None)
+    if data.get("can_manage_marketing") is None:
+        data.pop("can_manage_marketing", None)
     if "extra_pincodes" in data:
         data["extra_pincodes"] = ",".join(data["extra_pincodes"] or []) or None
     if "coverage" in data:
@@ -241,6 +245,8 @@ def update_user(
         setattr(user, field, value)
     if role_key(user.role) == "vendor":
         user.can_manage_bids = False  # vendors use the vendor side of Bids, never the bid team side
+    if role_key(user.role) in ("vendor", "engineer"):
+        user.can_manage_marketing = False  # these two never get Marketing
     sync_vendor_for_user_email_update(db, user, previous_email)
     db.commit()
     db.refresh(user)

@@ -334,6 +334,14 @@ def deploy_local() -> None:
     else:
         print("\nSales database: not set up (SALES_DATABASE_URL is empty), Sales stays switched off")
 
+    # Marketing module: its own (third) database, upgraded only when MARKETING_DATABASE_URL is set.
+    marketing_url = (local_env.get("MARKETING_DATABASE_URL") or os.environ.get("MARKETING_DATABASE_URL") or "").strip()
+    if marketing_url:
+        print("\n=== Local database migrations (Marketing) ===")
+        run_alembic_upgrade(api_python, cwd=API_DIR, env=local_env, config="alembic_marketing.ini")
+    else:
+        print("\nMarketing database: not set up (MARKETING_DATABASE_URL is empty), Marketing stays switched off")
+
     print("\n=== Local seed (safe bootstrap) ===")
     seed_cmd = [str(api_python), "-m", "app.seed"]
     if not ask_seed_demo_data():
@@ -510,6 +518,22 @@ if os.environ.get("SALES_DATABASE_URL", "").strip():
         subprocess.run([alembic_bin, "-c", "alembic_sales.ini", "upgrade", "head"], check=True)
 else:
     print("Sales database: not set up (SALES_DATABASE_URL is empty), Sales stays switched off")
+
+# The Marketing module keeps its data in its own database. It is switched on by MARKETING_DATABASE_URL in the .env file.
+if os.environ.get("MARKETING_DATABASE_URL", "").strip():
+    print("Marketing database: upgrading")
+    mk = subprocess.run([alembic_bin, "-c", "alembic_marketing.ini", "upgrade", "head"], capture_output=True, text=True)
+    print(mk.stdout, end="")
+    print(mk.stderr, end="")
+    if mk.returncode != 0:
+        if "already exists" not in mk.stderr:
+            print("!!! Marketing database update FAILED.")
+            raise SystemExit(mk.returncode or 1)
+        print("Marketing schema already present but unstamped; running 'alembic stamp head' and retrying...")
+        subprocess.run([alembic_bin, "-c", "alembic_marketing.ini", "stamp", "head"], check=True)
+        subprocess.run([alembic_bin, "-c", "alembic_marketing.ini", "upgrade", "head"], check=True)
+else:
+    print("Marketing database: not set up (MARKETING_DATABASE_URL is empty), Marketing stays switched off")
 """.replace("/var/www/indcool/api", remote_api)
     ssh_run(client, f"cat > /tmp/indcool_migrate.py <<'PY'\n{remote_migrate}\nPY")
     print(ssh_run(client, f"sudo -u www-data {remote_api}/venv/bin/python /tmp/indcool_migrate.py"))

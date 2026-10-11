@@ -21,6 +21,7 @@ MODULES = (
     "email_logs",   # email send logs and bounced addresses (view only)
     "bids",         # Bid management; vendors only, the bid team comes from the user tick
     "sales",        # Sales menu (the ticks inside Sales are kept in the Sales database)
+    "marketing",    # Marketing menu: Admin, Sub Admin, the marketing role and users with the tick
 )
 
 # Modules with sub-module scoping. A sub_module=None permission row means

@@ -31,6 +31,7 @@ function UserForm({ initial, roles, busy, onCancel, onSubmit }) {
     password: "",
     is_active: initial?.is_active ?? true,
     can_manage_bids: initial?.can_manage_bids ?? false,
+    can_manage_marketing: initial?.can_manage_marketing ?? false,
     pincode: initial?.pincode || "",
     extra_pincodes: initial?.extra_pincodes || [],
     state: initial?.state || "",
@@ -51,6 +52,8 @@ function UserForm({ initial, roles, busy, onCancel, onSubmit }) {
   function set(field, value) { setForm((f) => ({ ...f, [field]: value })); }
   // Admin, Sub Admin and Vendor never need the tick: admins already manage bids and vendors have their own side.
   const bidTickApplies = !BID_TICK_EXCLUDED.includes((form.role || "").toLowerCase());
+  // Admin, Sub Admin and the marketing role already have Marketing; engineers and vendors never get it.
+  const marketingTickApplies = !["admin", "incool", "sub_admin", "marketing", "vendor", "engineer"].includes((form.role || "").toLowerCase());
 
   async function submit(e) {
     e.preventDefault();
@@ -80,6 +83,7 @@ function UserForm({ initial, roles, busy, onCancel, onSubmit }) {
             phone: form.phone || null,
             is_active: form.is_active,
             can_manage_bids: bidTickApplies && form.can_manage_bids,
+            can_manage_marketing: marketingTickApplies && form.can_manage_marketing,
             ...placeBody,
             ...vendorBody,
           }
@@ -91,6 +95,7 @@ function UserForm({ initial, roles, busy, onCancel, onSubmit }) {
             phone: form.phone || null,
             is_active: form.is_active,
             can_manage_bids: bidTickApplies && form.can_manage_bids,
+            can_manage_marketing: marketingTickApplies && form.can_manage_marketing,
             ...placeBody,
             ...vendorBody,
           };
@@ -232,6 +237,15 @@ function UserForm({ initial, roles, busy, onCancel, onSubmit }) {
           <span>
             Can manage bids
             <span className="block text-xs text-slate-500">Shows the Bids menu: enter bids, allocate them to vendors and answer vendor requests. Only an Admin or Sub Admin can override a locked bid.</span>
+          </span>
+        </label>
+      )}
+      {marketingTickApplies && (
+        <label className="flex items-start gap-2 text-sm text-slate-700">
+          <input type="checkbox" checked={form.can_manage_marketing} onChange={(e) => set("can_manage_marketing", e.target.checked)} className="mt-0.5 h-4 w-4" />
+          <span>
+            Can manage marketing
+            <span className="block text-xs text-slate-500">Shows the Marketing menu: build audiences, write campaigns and send them for approval. What this person can do inside is set on the Marketing Access ticks page.</span>
           </span>
         </label>
       )}
@@ -459,6 +473,7 @@ export default function UserList() {
                 <td className="px-3 py-2">
                   <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs">{u.role}</span>
                   {u.can_manage_bids && <span className="ml-1 rounded-full bg-indigo-100 px-2 py-0.5 text-xs text-indigo-700" title="Can manage bids">Bids</span>}
+                  {u.can_manage_marketing && <span className="ml-1 rounded-full bg-sky-100 px-2 py-0.5 text-xs text-sky-800" title="Can manage marketing">Marketing</span>}
                 </td>
                 <td className="px-3 py-2 font-mono text-xs">{u.phone || "—"}</td>
                 <td className="px-3 py-2 text-xs text-slate-700">
