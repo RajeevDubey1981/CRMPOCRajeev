@@ -74,3 +74,35 @@ class MkSetting(MarketingBase):
 
     key: Mapped[str] = mapped_column(String(80), primary_key=True)
     value: Mapped[str] = mapped_column(Text, nullable=False, default="")
+
+
+class MkChannel(MarketingBase, Stamped):
+    """A connected platform account holder (for example the Meta login of the person who connected). The token is kept
+    encrypted. crm_user_id points at users.id."""
+
+    __tablename__ = "mk_channel"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    platform: Mapped[str] = mapped_column(String(30), nullable=False, index=True)  # meta ...
+    ext_user_id: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    ext_name: Mapped[str] = mapped_column(String(255), nullable=False, default="")
+    token_enc: Mapped[str | None] = mapped_column(Text, nullable=True)
+    token_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    scopes: Mapped[str] = mapped_column(String(500), nullable=False, default="")
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="connected")  # connected | expired | removed
+    connected_by: Mapped[int] = mapped_column(Integer, nullable=False)  # crm user id
+
+
+class MkChannelAsset(MarketingBase, Stamped):
+    """Something the connected login can use: an ad account now; a Page or an Instagram account later."""
+
+    __tablename__ = "mk_channel_asset"
+    __table_args__ = (UniqueConstraint("channel_id", "kind", "ext_id", name="uq_mk_channel_asset"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    channel_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    kind: Mapped[str] = mapped_column(String(20), nullable=False)  # ad_account | page | instagram
+    ext_id: Mapped[str] = mapped_column(String(80), nullable=False)
+    name: Mapped[str] = mapped_column(String(255), nullable=False, default="")
+    currency: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    in_use: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)  # the ones the CRM works with

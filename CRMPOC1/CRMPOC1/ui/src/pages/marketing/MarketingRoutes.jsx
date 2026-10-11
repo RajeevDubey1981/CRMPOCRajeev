@@ -1,5 +1,6 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 
+import MarketingChannels from "./MarketingChannels.jsx";
 import MarketingHome from "./MarketingHome.jsx";
 import MarketingSettings from "./MarketingSettings.jsx";
 import MarketingTicks from "./MarketingTicks.jsx";
@@ -19,6 +20,7 @@ export default function MarketingRoutes() {
     <MarketingProvider>
       <Routes>
         <Route index element={<Gate><MarketingHome /></Gate>} />
+        <Route path="channels" element={<Gate menu="channels"><MarketingChannels /></Gate>} />
         <Route path="settings" element={<Gate menu="settings"><MarketingSettings /></Gate>} />
         <Route path="ticks" element={<Gate admin><MarketingTicks /></Gate>} />
         <Route path="*" element={<Navigate to="/marketing" replace />} />

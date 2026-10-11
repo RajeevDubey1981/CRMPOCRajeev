@@ -12,4 +12,10 @@ export const marketingApi = {
   setUserTicks: (userId, ticks) => put(`/api/marketing/ticks/user/${userId}`, { ticks }),
   ticksHistory: () => get("/api/marketing/ticks/history"),
   updateSettings: (body) => put("/api/marketing/settings", body),
+  metaStatus: () => get("/api/marketing/meta/status"),
+  metaConnect: () => get("/api/marketing/meta/connect"),
+  metaDisconnect: () => api.post("/api/marketing/meta/disconnect").then((r) => r.data),
+  metaAdAccounts: () => get("/api/marketing/meta/ad-accounts"),
+  metaUseAccount: (id, inUse) => api.put(`/api/marketing/meta/ad-accounts/${id}`, null, { params: { in_use: inUse } }).then((r) => r.data),
+  metaCampaigns: (account) => get("/api/marketing/meta/campaigns", { account }),
 };

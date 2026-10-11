@@ -34,6 +34,7 @@ export function MarketingTabs() {
   const m = status?.menu || {};
   const tabs = [
     ["/marketing", "Overview", true],
+    ...(m.channels ? [["/marketing/channels", "Channels"]] : []),
     ...(m.settings ? [["/marketing/settings", "Settings"]] : []),
     ...(m.ticks ? [["/marketing/ticks", "Access ticks"]] : []),
   ];

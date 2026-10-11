@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -12,10 +14,11 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.deps import get_current_user
 from app.marketing.access import (
-    Ctx, NEVER_ROLES, get_ctx, has_marketing_menu, kind_of, kind_ticks, menu_flags, user_ticks,
+    Ctx, NEVER_ROLES, get_ctx, has_marketing_menu, kind_of, kind_ticks, menu_flags, require, user_ticks,
 )
-from app.marketing.db import get_marketing_db, marketing_enabled
-from app.marketing.models import MkRoleTick, MkSetting, MkTickHistory, MkUserTick
+from app.marketing import meta, secrets_box
+from app.marketing.db import get_marketing_db, marketing_enabled, new_marketing_session
+from app.marketing.models import MkChannel, MkChannelAsset, MkRoleTick, MkSetting, MkTickHistory, MkUserTick
 from app.marketing.rules import ALL_TICKS, KINDS, KINDS_ORDER, LOCKED_TICKS, OPEN_SETTINGS, SETTING_DEFAULTS, TICK_DEFAULTS, TICK_GROUPS
 from app.models.user import User
 from app.services.role_access import role_key
@@ -191,3 +194,151 @@ def update_settings(body: SettingsIn, ctx: Ctx = Depends(get_ctx), mdb: Session 
             row.value = str(v)
     commit(main_db, mdb)
     return settings_out(mdb)
+
+
+# ---------------- Meta: log in, ad accounts, campaigns (read only in this release) ----------------
+def _meta_channel(mdb: Session) -> MkChannel | None:
+    return mdb.scalar(select(MkChannel).where(MkChannel.platform == "meta", MkChannel.status != "removed").order_by(MkChannel.id.desc()))
+
+
+def _meta_token(ch: MkChannel) -> str:
+    token = secrets_box.unseal(ch.token_enc).get("access_token")
+    if not token:
+        raise HTTPException(409, "The Meta login cannot be read: connect Meta again")
+    if ch.token_expires_at and ch.token_expires_at.replace(tzinfo=timezone.utc) < datetime.now(timezone.utc):
+        ch.status = "expired"
+        raise HTTPException(409, "The Meta login has expired: connect Meta again")
+    return token
+
+
+@router.get("/meta/status")
+def meta_status(ctx: Ctx = Depends(get_ctx), mdb: Session = Depends(get_marketing_db)):
+    if not (ctx.has("cost") or ctx.has("connect")):
+        raise HTTPException(403, "You do not have this tick in Marketing")
+    ch = _meta_channel(mdb)
+    days = None
+    if ch and ch.token_expires_at:
+        days = (ch.token_expires_at.replace(tzinfo=timezone.utc) - datetime.now(timezone.utc)).days
+    return {
+        "configured": meta.configured(),
+        "connected": bool(ch and ch.status == "connected"),
+        "status": ch.status if ch else "not connected",
+        "name": ch.ext_name if ch else None,
+        "scopes": ch.scopes.split(",") if ch and ch.scopes else [],
+        "days_left": days,
+        "can_connect": ctx.has("connect"),
+        "redirect_uri": meta.settings.meta_redirect_uri if ctx.has("connect") else None,
+    }
+
+
+@router.get("/meta/connect")
+def meta_connect(ctx: Ctx = Depends(require("connect"))):
+    """The address of Meta's own login page. Nothing is typed into the CRM."""
+    from app.security import create_access_token
+
+    state = create_access_token(subject=str(ctx.user.id), extra_claims={"purpose": "meta_connect"})
+    try:
+        return {"url": meta.login_url(state)}
+    except meta.MetaError as exc:
+        raise HTTPException(409, str(exc))
+
+
+@router.get("/meta/callback", include_in_schema=False)
+def meta_callback(code: str = "", state: str = "", error: str = "", error_description: str = ""):
+    """Meta sends the browser back here after the login. The state says who started it; no password or token is shown."""
+    from app.security import decode_token
+
+    base = "/marketing/channels"
+    if error or not code:
+        return RedirectResponse(f"{base}?meta=cancelled")
+    try:
+        claims = decode_token(state)
+        if claims.get("purpose") != "meta_connect":
+            raise ValueError("wrong purpose")
+        user_id = int(claims["sub"])
+    except Exception:
+        return RedirectResponse(f"{base}?meta=failed")
+    mdb = new_marketing_session()
+    try:
+        try:
+            got = meta.exchange_code(code)
+            who = meta.me(got["access_token"])
+            accounts = meta.ad_accounts(got["access_token"])
+        except meta.MetaError:
+            return RedirectResponse(f"{base}?meta=failed")
+        for old in mdb.scalars(select(MkChannel).where(MkChannel.platform == "meta", MkChannel.status != "removed")):
+            old.status = "removed"
+            old.token_enc = None
+        ch = MkChannel(
+            platform="meta", ext_user_id=who.get("id"), ext_name=who.get("name", ""), token_enc=secrets_box.seal({"access_token": got["access_token"]}),
+            token_expires_at=(datetime.now(timezone.utc) + timedelta(seconds=got["expires_in"])) if got["expires_in"] else None,
+            scopes=",".join(meta.SCOPES_READ), status="connected", connected_by=user_id,
+        )
+        mdb.add(ch)
+        mdb.flush()
+        for a in accounts:
+            mdb.add(MkChannelAsset(channel_id=ch.id, kind="ad_account", ext_id=str(a.get("account_id")), name=a.get("name", ""), currency=a.get("currency"), in_use=len(accounts) == 1))
+        mdb.add(MkTickHistory(role_key=None, crm_user_id=user_id, tick_key="meta_connected", allowed=True, by_user_id=user_id, by_name="Meta login"))
+        mdb.commit()
+    finally:
+        mdb.close()
+    return RedirectResponse(f"{base}?meta=connected")
+
+
+@router.post("/meta/disconnect")
+def meta_disconnect(ctx: Ctx = Depends(require("connect")), mdb: Session = Depends(get_marketing_db)):
+    ch = _meta_channel(mdb)
+    if ch:
+        ch.status = "removed"
+        ch.token_enc = None
+        mdb.add(MkTickHistory(role_key=None, crm_user_id=ctx.user.id, tick_key="meta_disconnected", allowed=False, by_user_id=ctx.user.id, by_name=ctx.user.name))
+        mdb.commit()
+    return {"connected": False}
+
+
+@router.get("/meta/ad-accounts")
+def meta_ad_accounts(ctx: Ctx = Depends(require("cost")), mdb: Session = Depends(get_marketing_db)):
+    ch = _meta_channel(mdb)
+    if ch is None or ch.status != "connected":
+        raise HTTPException(409, "Meta is not connected")
+    token = _meta_token(ch)
+    try:
+        live = {str(a.get("account_id")): a for a in meta.ad_accounts(token)}
+    except meta.MetaError as exc:
+        raise HTTPException(502, str(exc))
+    mine = {a.ext_id: a for a in mdb.scalars(select(MkChannelAsset).where(MkChannelAsset.channel_id == ch.id, MkChannelAsset.kind == "ad_account"))}
+    out = []
+    for ext_id, a in live.items():
+        row = mine.get(ext_id)
+        if row is None:
+            row = MkChannelAsset(channel_id=ch.id, kind="ad_account", ext_id=ext_id, name=a.get("name", ""), currency=a.get("currency"), in_use=False)
+            mdb.add(row)
+        out.append({"id": ext_id, "name": a.get("name", ""), "currency": a.get("currency"), "status": a.get("account_status"), "amount_spent": a.get("amount_spent"), "business": (a.get("business") or {}).get("name"), "in_use": row.in_use})
+    mdb.commit()
+    return out
+
+
+@router.put("/meta/ad-accounts/{ext_id}")
+def meta_use_ad_account(ext_id: str, in_use: bool = Query(...), ctx: Ctx = Depends(require("connect")), mdb: Session = Depends(get_marketing_db)):
+    ch = _meta_channel(mdb)
+    row = mdb.scalar(select(MkChannelAsset).where(MkChannelAsset.channel_id == (ch.id if ch else 0), MkChannelAsset.kind == "ad_account", MkChannelAsset.ext_id == ext_id))
+    if row is None:
+        raise HTTPException(404, "Ad account not found")
+    row.in_use = in_use
+    mdb.commit()
+    return {"id": ext_id, "in_use": in_use}
+
+
+@router.get("/meta/campaigns")
+def meta_campaigns(account: str = Query(..., min_length=3, max_length=40), ctx: Ctx = Depends(require("cost")), mdb: Session = Depends(get_marketing_db)):
+    ch = _meta_channel(mdb)
+    if ch is None or ch.status != "connected":
+        raise HTTPException(409, "Meta is not connected")
+    allowed = {a.ext_id for a in mdb.scalars(select(MkChannelAsset).where(MkChannelAsset.channel_id == ch.id, MkChannelAsset.kind == "ad_account", MkChannelAsset.in_use.is_(True)))}
+    if account.removeprefix("act_") not in allowed:
+        raise HTTPException(403, "This ad account is not switched on for the CRM")
+    token = _meta_token(ch)
+    try:
+        return meta.campaigns(token, account)
+    except meta.MetaError as exc:
+        raise HTTPException(502, str(exc))

@@ -19,6 +19,13 @@ class Settings(BaseSettings):
     # and the CRM works exactly as before.
     sales_database_url: str = ""
     marketing_database_url: str = ""
+    # Key that locks the platform tokens (Meta ...) kept in the Marketing database. If empty, JWT_SECRET is used.
+    marketing_secret_key: str = ""
+    # Meta (Facebook, Instagram, ads): the app is made at developers.facebook.com; its id and secret live only in the server .env
+    meta_app_id: str = ""
+    meta_app_secret: str = ""
+    meta_redirect_uri: str = "https://indcoolapplainces.com/api/marketing/meta/callback"
+    meta_graph_version: str = "v23.0"
     sales_sync_enabled: bool = True
     sales_sync_seconds: int = 60
     # Key that locks the keys and passwords of the Sales connections (IndiaMART, Meta ...). If empty, JWT_SECRET is used.

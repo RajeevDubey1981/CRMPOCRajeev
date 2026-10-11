@@ -211,7 +211,7 @@ class MarketingTests(unittest.TestCase):
         cfg = Config(str(Path(__file__).resolve().parents[1] / "alembic_marketing.ini"))
         cfg.set_main_option("script_location", str(Path(__file__).resolve().parents[1] / "marketing_alembic"))
         heads = ScriptDirectory.from_config(cfg).get_heads()
-        self.assertEqual(heads, ["0001_marketing_initial"])
+        self.assertEqual(heads, ["0002_marketing_channels"])
 
     def test_a_pymysql_url_is_read_as_the_projects_mysql_driver_and_a_bad_url_never_stops_the_crm(self):
         from app.config import Settings
