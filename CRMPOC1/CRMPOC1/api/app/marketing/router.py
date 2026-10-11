@@ -318,6 +318,19 @@ def meta_ad_accounts(ctx: Ctx = Depends(require("cost")), mdb: Session = Depends
     return out
 
 
+@router.get("/meta/diagnose")
+def meta_diagnose(ctx: Ctx = Depends(require("connect")), mdb: Session = Depends(get_marketing_db)):
+    """For Admin: what Meta gave the saved login, in words that help find why an ad account is missing."""
+    ch = _meta_channel(mdb)
+    if ch is None or ch.status != "connected":
+        raise HTTPException(409, "Meta is not connected")
+    token = _meta_token(ch)
+    try:
+        return meta.diagnose(token)
+    except meta.MetaError as exc:
+        raise HTTPException(502, str(exc))
+
+
 @router.put("/meta/ad-accounts/{ext_id}")
 def meta_use_ad_account(ext_id: str, in_use: bool = Query(...), ctx: Ctx = Depends(require("connect")), mdb: Session = Depends(get_marketing_db)):
     ch = _meta_channel(mdb)

@@ -140,6 +140,55 @@ class MetaTests(unittest.TestCase):
                 meta.get("me", "TOKEN-X")
         self.assertNotIn("TOKEN-X", str(ctx.exception))
 
+    def test_ad_accounts_are_also_found_through_the_businesses_of_the_person(self):
+        self.configure()
+
+        def fake_get(path, token, params=None):
+            if path == "me/adaccounts":
+                return {"data": [{"account_id": "111", "name": "Personal"}]}
+            if path == "me/businesses":
+                return {"data": [{"id": "900", "name": "Indcool"}]}
+            if path == "900/owned_ad_accounts":
+                return {"data": [{"account_id": "222", "name": "Business account"}, {"account_id": "111", "name": "Personal"}]}
+            if path == "900/client_ad_accounts":
+                raise meta.MetaError("not allowed")
+            return {"data": []}
+
+        with patch.object(meta, "get", side_effect=fake_get):
+            got = meta.ad_accounts("T")
+        self.assertEqual(sorted(a["account_id"] for a in got), ["111", "222"], "found once each, from both ways of asking")
+
+    def test_the_diagnosis_shows_permissions_chosen_accounts_and_businesses_without_a_token(self):
+        self.connect_as_admin()
+
+        def fake_get(path, token, params=None):
+            if path == "me/permissions":
+                return {"data": [{"permission": "ads_read", "status": "granted"}, {"permission": "business_management", "status": "declined"}]}
+            if path == "me/adaccounts":
+                return {"data": [{"account_id": "111"}]}
+            if path == "me/businesses":
+                return {"data": [{"id": "900", "name": "Indcool"}]}
+            if path == "900/owned_ad_accounts":
+                return {"data": []}
+            raise meta.MetaError("not allowed")
+
+        class Fake:
+            status_code = 200
+
+            def json(self):
+                return {"data": {"app_id": "123456", "is_valid": True, "granular_scopes": [{"scope": "ads_read", "target_ids": ["111"]}]}}
+
+        with patch.object(meta, "get", side_effect=fake_get), patch.object(meta.requests, "get", return_value=Fake()):
+            self.assertEqual(self.get("/api/marketing/meta/diagnose", self.mktm).status_code, 403, "only Admin")
+            r = self.get("/api/marketing/meta/diagnose", self.admin)
+        self.assertEqual(r.status_code, 200, r.text)
+        d = r.json()
+        self.assertEqual(d["direct_accounts"], 1)
+        self.assertEqual(d["granular"], [{"scope": "ads_read", "target_ids": ["111"]}])
+        self.assertEqual(d["businesses"][0]["name"], "Indcool")
+        self.assertIn({"name": "business_management", "status": "declined"}, d["permissions"])
+        self.assertNotIn("LONG-TOKEN-1", r.text)
+
 
 if __name__ == "__main__":
     unittest.main()

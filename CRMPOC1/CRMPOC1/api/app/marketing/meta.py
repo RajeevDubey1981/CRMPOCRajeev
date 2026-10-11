@@ -70,9 +70,62 @@ def me(token: str) -> dict:
     return get("me", token, {"fields": "id,name"})
 
 
+ACCOUNT_FIELDS = "account_id,name,currency,account_status,amount_spent,business{name}"
+
+
+def businesses(token: str) -> list[dict]:
+    return get("me/businesses", token, {"fields": "id,name", "limit": 50}).get("data", [])
+
+
 def ad_accounts(token: str) -> list[dict]:
-    out, page = [], get("me/adaccounts", token, {"fields": "account_id,name,currency,account_status,amount_spent,business{name}", "limit": 50})
-    out += page.get("data", [])
+    """Every ad account this login can see: the ones given to the person directly, and the ones of the businesses the
+    person belongs to (owned by the business, or shared with it by another business)."""
+    found: dict[str, dict] = {}
+    for a in get("me/adaccounts", token, {"fields": ACCOUNT_FIELDS, "limit": 50}).get("data", []):
+        found[str(a.get("account_id"))] = a
+    try:
+        for biz in businesses(token):
+            for edge in ("owned_ad_accounts", "client_ad_accounts"):
+                try:
+                    for a in get(f"{biz['id']}/{edge}", token, {"fields": ACCOUNT_FIELDS, "limit": 50}).get("data", []):
+                        found.setdefault(str(a.get("account_id")), a)
+                except MetaError:
+                    continue
+    except MetaError:
+        pass  # the business view needs business_management; the personal list above still works
+    return list(found.values())
+
+
+def diagnose(token: str) -> dict:
+    """What Meta actually gave this login: permissions, the ad accounts chosen in Facebook's window, the businesses, and
+    how many ad accounts each way of asking returns. No token is returned."""
+    out: dict = {"permissions": [], "granular": [], "businesses": [], "direct_accounts": None}
+    try:
+        out["permissions"] = [{"name": p.get("permission"), "status": p.get("status")} for p in get("me/permissions", token).get("data", [])]
+    except MetaError as exc:
+        out["permissions_error"] = str(exc)
+    try:
+        info = _check(requests.get(f"{_base()}/debug_token", params={"input_token": token}, headers={"Authorization": f"Bearer {settings.meta_app_id}|{settings.meta_app_secret}"}, timeout=TIMEOUT)).get("data", {})
+        out["granular"] = [{"scope": g.get("scope"), "target_ids": g.get("target_ids", [])} for g in info.get("granular_scopes", [])]
+        out["app_id"] = info.get("app_id")
+        out["is_valid"] = info.get("is_valid")
+    except MetaError as exc:
+        out["granular_error"] = str(exc)
+    try:
+        out["direct_accounts"] = len(get("me/adaccounts", token, {"fields": "account_id", "limit": 50}).get("data", []))
+    except MetaError as exc:
+        out["direct_error"] = str(exc)
+    try:
+        for biz in businesses(token):
+            row = {"id": biz.get("id"), "name": biz.get("name")}
+            for edge in ("owned_ad_accounts", "client_ad_accounts"):
+                try:
+                    row[edge] = len(get(f"{biz['id']}/{edge}", token, {"fields": "account_id", "limit": 50}).get("data", []))
+                except MetaError as exc:
+                    row[edge] = f"not allowed ({str(exc)[:80]})"
+            out["businesses"].append(row)
+    except MetaError as exc:
+        out["businesses_error"] = str(exc)
     return out
 
 

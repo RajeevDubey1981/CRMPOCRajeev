@@ -77,7 +77,13 @@ export default function MarketingChannels() {
   const accounts = useAsync(() => (st.data?.connected && has("cost") ? marketingApi.metaAdAccounts() : Promise.resolve([])), [st.data?.connected]);
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
+  const [diag, setDiag] = useState(null);
   const s = st.data;
+
+  async function check() {
+    setBusy(true); setMsg("");
+    try { setDiag(await marketingApi.metaDiagnose()); } catch (e) { setMsg(errText(e)); } finally { setBusy(false); }
+  }
 
   async function connect() {
     setBusy(true); setMsg("");
@@ -114,6 +120,19 @@ export default function MarketingChannels() {
         </div>
         {s?.connected && <p className="mt-2 text-xs text-slate-500">Missing an ad account? Press <b>Reconnect Meta</b> and, in the Facebook window, choose every ad account you want to share. Allowed to: <b>read your ad accounts and their results</b>. It cannot create or change ads, and it cannot spend money.</p>}
         {s && !s.configured && <div className="mt-3"><Steps status={s} /></div>}
+        {s?.connected && s.can_connect && (
+          <div className="mt-3">
+            <button type="button" className={btn.plain} disabled={busy} onClick={check}>Check why an ad account is missing</button>
+            {diag && (
+              <div className="s-pop mt-2 rounded-md border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
+                <div><b>Permissions Facebook gave this login:</b> {(diag.permissions || []).map((p) => `${p.name}: ${p.status}`).join(", ") || diag.permissions_error || "none"}</div>
+                <div className="mt-1"><b>Ad accounts chosen in Facebook's window:</b> {(diag.granular || []).map((g) => `${g.scope} for ${(g.target_ids || []).join(", ") || "all"}`).join("; ") || diag.granular_error || "no limit was set"}</div>
+                <div className="mt-1"><b>Ad accounts given to the person directly:</b> {diag.direct_accounts ?? diag.direct_error}</div>
+                <div className="mt-1"><b>Businesses the person belongs to:</b> {(diag.businesses || []).map((b) => `${b.name} (owns ${b.owned_ad_accounts}, client ${b.client_ad_accounts})`).join("; ") || diag.businesses_error || "none"}</div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {s?.connected && has("cost") && (
