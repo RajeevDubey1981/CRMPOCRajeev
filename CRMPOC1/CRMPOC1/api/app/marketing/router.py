@@ -285,6 +285,40 @@ def meta_callback(code: str = "", state: str = "", error: str = "", error_descri
     return RedirectResponse(f"{base}?meta=connected")
 
 
+class SystemTokenIn(BaseModel):
+    token: str
+
+
+@router.post("/meta/system-token")
+def meta_system_token(body: SystemTokenIn, ctx: Ctx = Depends(require("connect")), mdb: Session = Depends(get_marketing_db)):
+    """Connect with a System User token made in Business settings: it belongs to the company, not to one person's login, and does
+    not run out after 60 days. The token is checked with Meta, saved encrypted and never shown again."""
+    if not meta.configured():
+        raise HTTPException(409, "Meta is not set up on the server yet")
+    token = (body.token or "").strip()
+    if len(token) < 20 or " " in token:
+        raise HTTPException(422, "That does not look like a token")
+    try:
+        who = meta.me(token)
+        accounts = meta.ad_accounts(token)
+    except meta.MetaError as exc:
+        raise HTTPException(400, f"Meta did not accept this token: {exc}")
+    for old in mdb.scalars(select(MkChannel).where(MkChannel.platform == "meta", MkChannel.status != "removed")):
+        old.status = "removed"
+        old.token_enc = None
+    ch = MkChannel(
+        platform="meta", ext_user_id=who.get("id"), ext_name=who.get("name", "") or "System user", token_enc=secrets_box.seal({"access_token": token}),
+        token_expires_at=None, scopes=",".join(meta.SCOPES_READ), status="connected", connected_by=ctx.user.id,
+    )
+    mdb.add(ch)
+    mdb.flush()
+    for a in accounts:
+        mdb.add(MkChannelAsset(channel_id=ch.id, kind="ad_account", ext_id=str(a.get("account_id")), name=a.get("name", ""), currency=a.get("currency"), in_use=len(accounts) == 1))
+    mdb.add(MkTickHistory(role_key=None, crm_user_id=ctx.user.id, tick_key="meta_connected", allowed=True, by_user_id=ctx.user.id, by_name=ctx.user.name))
+    mdb.commit()
+    return {"connected": True, "name": ch.ext_name, "ad_accounts": len(accounts)}
+
+
 @router.post("/meta/disconnect")
 def meta_disconnect(ctx: Ctx = Depends(require("connect")), mdb: Session = Depends(get_marketing_db)):
     ch = _meta_channel(mdb)

@@ -15,6 +15,7 @@ export const marketingApi = {
   metaStatus: () => get("/api/marketing/meta/status"),
   metaConnect: () => get("/api/marketing/meta/connect"),
   metaDisconnect: () => api.post("/api/marketing/meta/disconnect").then((r) => r.data),
+  metaSystemToken: (token) => api.post("/api/marketing/meta/system-token", { token }).then((r) => r.data),
   metaDiagnose: () => get("/api/marketing/meta/diagnose"),
   metaAdAccounts: () => get("/api/marketing/meta/ad-accounts"),
   metaUseAccount: (id, inUse) => api.put(`/api/marketing/meta/ad-accounts/${id}`, null, { params: { in_use: inUse } }).then((r) => r.data),

@@ -78,11 +78,22 @@ export default function MarketingChannels() {
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
   const [diag, setDiag] = useState(null);
+  const [sysOpen, setSysOpen] = useState(false);
+  const [sysToken, setSysToken] = useState("");
   const s = st.data;
 
   async function check() {
     setBusy(true); setMsg("");
     try { setDiag(await marketingApi.metaDiagnose()); } catch (e) { setMsg(errText(e)); } finally { setBusy(false); }
+  }
+
+  async function saveSystemToken() {
+    setBusy(true); setMsg("");
+    try {
+      const r = await marketingApi.metaSystemToken(sysToken);
+      setSysToken(""); setSysOpen(false); setMsg(`Connected as ${r.name}. ${r.ad_accounts} ad account(s) found.`);
+      st.reload(); accounts.reload();
+    } catch (e) { setMsg(errText(e)); } finally { setBusy(false); }
   }
 
   async function connect() {
@@ -120,6 +131,20 @@ export default function MarketingChannels() {
         </div>
         {s?.connected && <p className="mt-2 text-xs text-slate-500">Missing an ad account? Press <b>Reconnect Meta</b> and, in the Facebook window, choose every ad account you want to share. Allowed to: <b>read your ad accounts and their results</b>. It cannot create or change ads, and it cannot spend money.</p>}
         {s && !s.configured && <div className="mt-3"><Steps status={s} /></div>}
+        {s?.configured && s.can_connect && (
+          <div className="mt-3">
+            <button type="button" className={btn.plain} onClick={() => setSysOpen((v) => !v)}>Connect with a System User token instead</button>
+            {sysOpen && (
+              <div className="s-pop mt-2 rounded-md border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
+                <p>In Business settings, open <b>Users, System users</b>, add a System User with Employee access, give it <b>View performance</b> on the ad accounts, then <b>Generate token</b> for this app with <b>ads_read</b>. Paste it here. It is saved encrypted and never shown again; it does not run out after 60 days.</p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <input type="password" autoComplete="off" value={sysToken} onChange={(e) => setSysToken(e.target.value)} placeholder="Paste the token" className="min-w-0 flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                  <button type="button" className={btn.primary} disabled={busy || sysToken.trim().length < 20} onClick={saveSystemToken}>Save token</button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
         {s?.connected && s.can_connect && (
           <div className="mt-3">
             <button type="button" className={btn.plain} disabled={busy} onClick={check}>Check why an ad account is missing</button>

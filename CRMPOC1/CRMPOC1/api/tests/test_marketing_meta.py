@@ -189,6 +189,26 @@ class MetaTests(unittest.TestCase):
         self.assertIn({"name": "business_management", "status": "declined"}, d["permissions"])
         self.assertNotIn("LONG-TOKEN-1", r.text)
 
+    def test_a_system_user_token_connects_without_expiry_and_is_never_shown(self):
+        self.configure()
+        accounts = [{"account_id": "2629", "name": "Indcool Ads", "currency": "INR"}]
+        tok = "SYSTEM-TOKEN-ABCDEFGHIJKLMNOP"
+        with patch.object(meta, "me", return_value={"id": "9", "name": "INDcool CRM"}), patch.object(meta, "ad_accounts", return_value=accounts):
+            self.assertEqual(self.client.post("/api/marketing/meta/system-token", json={"token": tok}, headers=self.h(self.mktm)).status_code, 403, "only Admin")
+            self.assertEqual(self.client.post("/api/marketing/meta/system-token", json={"token": "short"}, headers=self.h(self.admin)).status_code, 422)
+            r = self.client.post("/api/marketing/meta/system-token", json={"token": tok}, headers=self.h(self.admin))
+        self.assertEqual((r.status_code, r.json()["ad_accounts"]), (200, 1), r.text)
+        self.assertNotIn(tok, r.text)
+        st = self.get("/api/marketing/meta/status", self.admin)
+        self.assertTrue(st.json()["connected"])
+        self.assertIsNone(st.json()["days_left"])
+        self.assertNotIn(tok, st.text)
+        with self.Mk() as mdb:
+            ch = mdb.scalar(select(MkChannel))
+            self.assertNotIn(tok, str(ch.token_enc))
+        with patch.object(meta, "me", side_effect=meta.MetaError("bad")), patch.object(meta, "ad_accounts", return_value=[]):
+            self.assertEqual(self.client.post("/api/marketing/meta/system-token", json={"token": tok}, headers=self.h(self.admin)).status_code, 400)
+
 
 if __name__ == "__main__":
     unittest.main()
