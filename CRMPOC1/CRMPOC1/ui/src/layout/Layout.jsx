@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Outlet } from "react-router-dom";
+import { Outlet, useLocation } from "react-router-dom";
 
 import { fetchPendingActions, markPendingActionsRead } from "../api/pendingActions.js";
 import { useAuth } from "../auth/AuthContext.jsx";
@@ -22,6 +22,15 @@ function readSidebarCollapsed() {
 let _collapsed = readSidebarCollapsed();
 
 export default function Layout() {
+  const location = useLocation();
+  const pageRef = useRef(null);
+  useEffect(() => {
+    const el = pageRef.current;
+    if (!el) return;
+    el.classList.remove("crm-page");
+    void el.offsetWidth; // restart the animation without remounting the page
+    el.classList.add("crm-page");
+  }, [location.pathname]);
   const { user } = useAuth();
   const [collapsed, setCollapsed] = useState(_collapsed);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
@@ -116,7 +125,7 @@ export default function Layout() {
         />
         <main className={`min-w-0 flex-1 overflow-x-hidden overflow-y-auto p-3 sm:p-4 lg:p-6 ${mobileNavItems(user).length ? "pb-24 md:pb-4 lg:pb-6" : ""}`}>
           <CallcenterGuard>
-            <Outlet />
+            <div ref={pageRef}><Outlet /></div>
           </CallcenterGuard>
         </main>
       </div>

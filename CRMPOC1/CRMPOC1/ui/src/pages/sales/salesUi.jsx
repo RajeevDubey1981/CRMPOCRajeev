@@ -93,13 +93,10 @@ export function greeting() {
   return h < 12 ? "Good morning" : h < 17 ? "Good afternoon" : "Good evening";
 }
 
-// Whether motion is off: the person's switch in Sales wins, otherwise the device setting.
+// Whether motion is off: movement is on unless the person turned it off with the Movement switch.
 export function motionOff() {
   if (typeof document === "undefined") return false;
-  const pick = document.documentElement.getAttribute("data-s-motion");
-  if (pick === "off") return true;
-  if (pick === "on") return false;
-  return !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+  return document.documentElement.getAttribute("data-s-motion") === "off";
 }
 
 export function MotionSwitch() {
@@ -302,7 +299,7 @@ export function PageTitle({ title, sub, right }) {
 
 export function Notice({ tone = "info", children }) {
   const cls = tone === "bad" ? "border-rose-200 bg-rose-50 text-rose-800" : tone === "warn" ? "border-amber-200 bg-amber-50 text-amber-900" : tone === "good" ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-sky-200 bg-sky-50 text-sky-900";
-  return <div className={`mb-3 rounded-md border px-3 py-2 text-sm ${cls}`}>{children}</div>;
+  return <div className={`s-pop mb-3 rounded-md border px-3 py-2 text-sm ${cls}`}>{children}</div>;
 }
 
 export function Field({ label, children, hint }) {

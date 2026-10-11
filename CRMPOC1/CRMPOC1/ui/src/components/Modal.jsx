@@ -10,14 +10,14 @@ export default function Modal({ open, onClose, title, children, maxWidth = "max-
   if (!open) return null;
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4"
+      className="crm-backdrop fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4"
       onClick={onClose}
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) onClose?.();
       }}
     >
       <div
-        className={`flex max-h-[90vh] w-full flex-col overflow-hidden ${maxWidth} rounded-lg bg-white shadow-xl`}
+        className={`crm-modal-card flex max-h-[90vh] w-full flex-col overflow-hidden ${maxWidth} rounded-lg bg-white shadow-xl`}
         onClick={(e) => e.stopPropagation()}
         onMouseDown={(e) => e.stopPropagation()}
         onPointerDown={(e) => e.stopPropagation()}
