@@ -210,3 +210,24 @@ html[data-s-motion="off"] :is(.s-lift, .s-press, .s-bar, .s-cell, .s-ring) { tra
 @media (prefers-reduced-motion: reduce) { html:not([data-s-motion="on"]) .s-spark { animation: none !important; stroke-dashoffset: 0; } }
 html[data-s-motion="off"] .s-spark { animation: none !important; stroke-dashoffset: 0; }
 .s-disp { font-family: "Sora", "Lato", system-ui, sans-serif; letter-spacing: -.01em; }
+
+/* Marketing: its own violet look, same calm motion as Sales, switched off by the same Movement switch */
+@keyframes mk-wave { 0% { transform: scale(.35); opacity: .55; } 100% { transform: scale(1.5); opacity: 0; } }
+@keyframes mk-dash { to { stroke-dashoffset: -28; } }
+@keyframes mk-travel { 0% { transform: translateX(0); opacity: 0; } 8% { opacity: 1; } 92% { opacity: 1; } 100% { transform: translateX(var(--w, 620px)); opacity: 0; } }
+@keyframes mk-node { 0% { transform: scale(.4); opacity: 0; } 70% { transform: scale(1.08); opacity: 1; } 100% { transform: scale(1); opacity: 1; } }
+@keyframes mk-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
+.mk-hero.s-hero { background: #43238a; }
+.mk-hero.s-hero::before { background: rgba(196, 181, 253, .22); }
+.mk-hero.s-hero::after { background: rgba(255, 255, 255, .07); }
+.mk-ring { transform-box: fill-box; transform-origin: center; animation: mk-wave 3.6s ease-out infinite; animation-delay: calc(var(--i, 0) * 1.2s); }
+.mk-line { stroke-dasharray: 8 6; animation: mk-dash 1.2s linear infinite; }
+.mk-dot { animation: mk-travel 5.5s ease-in-out infinite; }
+.mk-node { transform-box: fill-box; transform-origin: center; animation: mk-node .6s cubic-bezier(.3, 1.4, .5, 1) both; animation-delay: calc(var(--i, 0) * 160ms); }
+.mk-bob { animation: mk-bob 4.5s ease-in-out infinite; animation-delay: calc(var(--i, 0) * .5s); }
+@media (prefers-reduced-motion: reduce) {
+  html:not([data-s-motion="on"]) :is(.mk-ring, .mk-line, .mk-dot, .mk-node, .mk-bob) { animation: none !important; }
+  html:not([data-s-motion="on"]) .mk-dot { opacity: 0; }
+}
+html[data-s-motion="off"] :is(.mk-ring, .mk-line, .mk-dot, .mk-node, .mk-bob) { animation: none !important; }
+html[data-s-motion="off"] .mk-dot { opacity: 0; }

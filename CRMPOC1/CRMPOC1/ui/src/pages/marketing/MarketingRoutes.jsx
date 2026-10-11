@@ -1,14 +1,16 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 
 import MarketingHome from "./MarketingHome.jsx";
+import MarketingSettings from "./MarketingSettings.jsx";
 import MarketingTicks from "./MarketingTicks.jsx";
 import { MarketingProvider, Notice, useMarketing } from "./marketingUi.jsx";
 
-function Gate({ admin, children }) {
+function Gate({ admin, menu, children }) {
   const { ready, status, error } = useMarketing();
   if (!ready) return <p className="p-4 text-sm text-slate-500">Loading...</p>;
   if (!status) return <div className="p-4"><Notice tone="bad">{error || "Marketing is not available."}</Notice></div>;
   if (admin && !status.is_admin) return <Navigate to="/marketing" replace />;
+  if (menu && !status.menu?.[menu]) return <Navigate to="/marketing" replace />;
   return children;
 }
 
@@ -17,6 +19,7 @@ export default function MarketingRoutes() {
     <MarketingProvider>
       <Routes>
         <Route index element={<Gate><MarketingHome /></Gate>} />
+        <Route path="settings" element={<Gate menu="settings"><MarketingSettings /></Gate>} />
         <Route path="ticks" element={<Gate admin><MarketingTicks /></Gate>} />
         <Route path="*" element={<Navigate to="/marketing" replace />} />
       </Routes>

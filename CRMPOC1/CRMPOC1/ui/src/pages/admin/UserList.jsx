@@ -53,7 +53,7 @@ function UserForm({ initial, roles, busy, onCancel, onSubmit }) {
   // Admin, Sub Admin and Vendor never need the tick: admins already manage bids and vendors have their own side.
   const bidTickApplies = !BID_TICK_EXCLUDED.includes((form.role || "").toLowerCase());
   // Admin, Sub Admin and the marketing role already have Marketing; engineers and vendors never get it.
-  const marketingTickApplies = !["admin", "incool", "sub_admin", "marketing", "vendor", "engineer"].includes((form.role || "").toLowerCase());
+  const marketingTickApplies = !["admin", "incool", "sub_admin", "marketing", "marketing_manager", "vendor", "engineer"].includes((form.role || "").toLowerCase());
 
   async function submit(e) {
     e.preventDefault();

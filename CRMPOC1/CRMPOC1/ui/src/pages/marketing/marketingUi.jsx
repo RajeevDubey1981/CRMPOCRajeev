@@ -2,8 +2,9 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import { NavLink } from "react-router-dom";
 
 import { marketingApi } from "../../api/marketing.js";
+import { MotionSwitch } from "../sales/salesUi.jsx";
 
-export { Notice, PageTitle, btn, errText, fieldClass, fmtDateTime, useAsync } from "../sales/salesUi.jsx";
+export { CountUp, Icon, MotionSwitch, Notice, PageTitle, btn, errText, fieldClass, fmtDateTime, greeting, useAsync } from "../sales/salesUi.jsx";
 
 // ---- who the person is in Marketing: the ticks, read once and kept ----
 const MarketingContext = createContext({ ready: false, status: null, has: () => false, reload: () => {} });
@@ -33,6 +34,7 @@ export function MarketingTabs() {
   const m = status?.menu || {};
   const tabs = [
     ["/marketing", "Overview", true],
+    ...(m.settings ? [["/marketing/settings", "Settings"]] : []),
     ...(m.ticks ? [["/marketing/ticks", "Access ticks"]] : []),
   ];
   return (
@@ -42,6 +44,7 @@ export function MarketingTabs() {
           {label}
         </NavLink>
       ))}
+      <MotionSwitch />
     </nav>
   );
 }

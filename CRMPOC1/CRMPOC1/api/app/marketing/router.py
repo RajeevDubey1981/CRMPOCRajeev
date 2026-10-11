@@ -16,7 +16,7 @@ from app.marketing.access import (
 )
 from app.marketing.db import get_marketing_db, marketing_enabled
 from app.marketing.models import MkRoleTick, MkSetting, MkTickHistory, MkUserTick
-from app.marketing.rules import ALL_TICKS, KINDS, KINDS_ORDER, LOCKED_TICKS, SETTING_DEFAULTS, TICK_DEFAULTS, TICK_GROUPS
+from app.marketing.rules import ALL_TICKS, KINDS, KINDS_ORDER, LOCKED_TICKS, OPEN_SETTINGS, SETTING_DEFAULTS, TICK_DEFAULTS, TICK_GROUPS
 from app.models.user import User
 from app.services.role_access import role_key
 
@@ -32,6 +32,8 @@ class SettingsIn(BaseModel):
     rate_sms: Optional[float] = None
     monthly_cap: Optional[int] = None
     daily_limit: Optional[int] = None
+    approval_min_audience: Optional[int] = None
+    pause_days: Optional[int] = None
 
 
 def commit(main_db: Session, mdb: Session) -> None:
@@ -53,7 +55,7 @@ def _candidates(main_db: Session) -> list[User]:
     users = main_db.scalars(select(User).where(User.is_active.is_(True), User.deleted_at.is_(None)).order_by(User.name)).all()
     return [
         u for u in users
-        if role_key(u.role) not in NEVER_ROLES and (role_key(u.role) in ("marketing", "sales", "sales_manager") or u.can_manage_marketing)
+        if role_key(u.role) not in NEVER_ROLES and (role_key(u.role) in ("marketing", "marketing_manager", "sales", "sales_manager") or u.can_manage_marketing)
     ]
 
 
@@ -70,6 +72,7 @@ def marketing_status(ctx: Ctx = Depends(get_ctx), mdb: Session = Depends(get_mar
         "kind": "admin" if ctx.is_admin else kind_of(ctx.user),
         "ticks": sorted(ctx.ticks),
         "menu": menu_flags(ctx),
+        "rules": {k: get_setting(mdb, k) for k in OPEN_SETTINGS},
         "settings": settings_out(mdb) if ctx.has("cost") or ctx.has("settings") else {},
     }
 
@@ -173,8 +176,8 @@ def people(ctx: Ctx = Depends(get_ctx), mdb: Session = Depends(get_marketing_db)
 # ---------------- settings ----------------
 @router.put("/settings")
 def update_settings(body: SettingsIn, ctx: Ctx = Depends(get_ctx), mdb: Session = Depends(get_marketing_db), main_db: Session = Depends(get_db)):
-    if not ctx.has("settings"):
-        raise HTTPException(403, "Only Admin and Sub Admin change these settings")
+    if not (ctx.has("settings") or ctx.has("cost")):
+        raise HTTPException(403, "Only a Marketing manager, Admin or Sub Admin change these settings")
     data = body.model_dump(exclude_unset=True)
     for k, v in data.items():
         if v is None:

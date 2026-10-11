@@ -24,7 +24,7 @@ from app.models.user import User
 from app.services.role_access import role_key
 
 ADMIN_ROLES = frozenset({"admin", "incool", "sub_admin"})
-MARKETING_ROLE = "marketing"
+MARKETING_ROLES = frozenset({"marketing", "marketing_manager"})
 NEVER_ROLES = frozenset({"vendor", "engineer"})  # these cannot be given Marketing
 
 
@@ -34,7 +34,7 @@ def is_admin_user(user: User) -> bool:
 
 def kind_of(user: User) -> str:
     r = role_key(user.role)
-    return "mgr" if r == "sales_manager" else "team" if r == "sales" else "mkt" if r == MARKETING_ROLE else "oth"
+    return "mgr" if r == "sales_manager" else "team" if r == "sales" else "mkt" if r == "marketing" else "mktm" if r == "marketing_manager" else "oth"
 
 
 def has_marketing_menu(user: User) -> bool:
@@ -43,7 +43,7 @@ def has_marketing_menu(user: User) -> bool:
     r = role_key(user.role)
     if r in NEVER_ROLES:
         return False
-    return r in ADMIN_ROLES or r == MARKETING_ROLE or bool(getattr(user, "can_manage_marketing", False))
+    return r in ADMIN_ROLES or r in MARKETING_ROLES or bool(getattr(user, "can_manage_marketing", False))
 
 
 def kind_ticks(mdb: Session, kind: str) -> set[str]:
@@ -100,5 +100,5 @@ def menu_flags(ctx: Ctx) -> dict:
         "campaigns": t("draft") or t("submit") or t("approve"),
         "consent": t("consent_edit") or ctx.is_admin,
         "ticks": ctx.is_admin,
-        "settings": t("settings"),
+        "settings": t("settings") or t("cost"),
     }

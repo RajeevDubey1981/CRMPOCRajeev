@@ -52,7 +52,7 @@ class MarketingTests(unittest.TestCase):
         app.dependency_overrides[get_db] = main_override
         app.dependency_overrides[get_marketing_db] = mk_override
         self.client = TestClient(app)
-        for name in ("admin", "sub_admin", "sales", "sales_manager", "marketing", "callcenter", "engineer", "vendor"):
+        for name in ("admin", "sub_admin", "sales", "sales_manager", "marketing", "marketing_manager", "callcenter", "engineer", "vendor"):
             r = Role(name=name, description=name)
             self.db.add(r)
             self.db.flush()
@@ -63,6 +63,7 @@ class MarketingTests(unittest.TestCase):
         self.team = self._user("team@t.com", "sales", "Amit Team")
         self.mgr = self._user("mgr@t.com", "sales_manager", "Karan Manager")
         self.mkt = self._user("mkt@t.com", "marketing", "Rohit Marketing")
+        self.mktm = self._user("mktm@t.com", "marketing_manager", "Meera Marketing Manager")
         self.cc = self._user("cc@t.com", "callcenter", "Call Centre")
         self.eng = self._user("eng@t.com", "engineer", "Ramesh Engineer")
         self.db.commit()
@@ -98,7 +99,7 @@ class MarketingTests(unittest.TestCase):
 
     # ---- who has the menu ----
     def test_the_menu_is_for_admin_sub_admin_the_marketing_role_and_people_with_the_tick(self):
-        self.assertTrue(self.menu(self.admin) and self.menu(self.sub) and self.menu(self.mkt))
+        self.assertTrue(self.menu(self.admin) and self.menu(self.sub) and self.menu(self.mkt) and self.menu(self.mktm))
         for u in (self.team, self.mgr, self.cc):
             self.assertFalse(self.menu(u), u.name)
         self.assertTrue(self.tick(self.mgr, True)["can_manage_marketing"])
@@ -132,7 +133,8 @@ class MarketingTests(unittest.TestCase):
     def test_default_ticks_by_kind_of_person(self):
         for who, expect, absent in (
             (self.admin, {"view", "approve", "connect", "settings", "give_ticks"}, set()),
-            (self.mkt, {"view", "aud_all", "approve", "cost", "upload", "consent_edit"}, {"connect", "settings", "give_ticks"}),
+            (self.mktm, {"view", "aud_all", "approve", "cost", "upload", "consent_edit", "release_small"}, {"connect", "settings", "give_ticks"}),
+            (self.mkt, {"view", "aud_all", "draft", "submit", "release_small"}, {"approve", "cost", "upload", "consent_edit", "connect", "settings", "give_ticks"}),
         ):
             t = set(self.get("/api/marketing/status", who).json()["ticks"])
             self.assertTrue(expect <= t, (who.name, expect - t))
@@ -142,8 +144,8 @@ class MarketingTests(unittest.TestCase):
         team = set(self.get("/api/marketing/status", self.team).json()["ticks"])
         mgr = set(self.get("/api/marketing/status", self.mgr).json()["ticks"])
         self.assertEqual(team, {"view", "aud_own", "draft", "submit"})
-        self.assertTrue({"aud_all", "approve", "cost", "upload"} <= mgr)
-        self.assertNotIn("consent_edit", mgr)
+        self.assertTrue({"aud_all", "approve"} <= mgr)
+        self.assertFalse({"cost", "upload", "consent_edit", "release_small"} & mgr, "a Sales Manager approves but does not see the cost")
 
     def test_admin_changes_ticks_for_a_kind_and_for_one_person_with_a_history(self):
         self.tick(self.team, True)
@@ -176,18 +178,23 @@ class MarketingTests(unittest.TestCase):
         self.assertEqual(self.put(f"/api/marketing/ticks/user/{self.admin.id}", {"ticks": {"cost": False}}, self.admin).status_code, 400, "nobody ticks for themselves")
         self.assertEqual(self.put("/api/marketing/ticks/role/nobody", {"ticks": {}}, self.admin).status_code, 404)
         catalog = self.get("/api/marketing/ticks", self.sub).json()
-        self.assertEqual([k["key"] for k in catalog["kinds"]], ["mkt", "mgr", "team", "oth"])
+        self.assertEqual([k["key"] for k in catalog["kinds"]], ["mktm", "mkt", "mgr", "team", "oth"])
         names = {p["name"] for p in catalog["people"]}
-        self.assertTrue({"Amit Team", "Karan Manager", "Rohit Marketing"} <= names)
+        self.assertTrue({"Amit Team", "Karan Manager", "Rohit Marketing", "Meera Marketing Manager"} <= names)
         self.assertNotIn("Ramesh Engineer", names)
 
-    def test_settings_are_for_admin_and_sub_admin(self):
+    def test_settings_are_for_the_marketing_manager_admin_and_sub_admin(self):
         self.assertEqual(self.put("/api/marketing/settings", {"rate_sms": 0.25}, self.mkt).status_code, 403)
+        self.assertEqual(self.put("/api/marketing/settings", {"rate_sms": 0.25}, self.mktm).status_code, 200)
         r = self.put("/api/marketing/settings", {"rate_sms": 0.25, "monthly_cap": 3}, self.sub)
         self.assertEqual(r.status_code, 200, r.text)
         self.assertEqual((r.json()["rate_sms"], r.json()["monthly_cap"], r.json()["rate_whatsapp"]), ("0.25", "3", "0.90"))
+        self.assertEqual((r.json()["approval_min_audience"], r.json()["pause_days"]), ("1000", "4"))
         self.assertEqual(self.put("/api/marketing/settings", {"rate_sms": -1}, self.admin).status_code, 400)
-        self.assertEqual(self.get("/api/marketing/status", self.mkt).json()["settings"]["rate_sms"], "0.25", "the Marketing role sees the cost")
+        self.assertEqual(self.get("/api/marketing/status", self.mktm).json()["settings"]["rate_sms"], "0.25", "the Marketing manager sees the cost")
+        mk_user = self.get("/api/marketing/status", self.mkt).json()
+        self.assertEqual(mk_user["settings"], {}, "a Marketing user does not see the money")
+        self.assertEqual(mk_user["rules"], {"approval_min_audience": "1000", "pause_days": "4", "monthly_cap": "3"}, "but sees the rules")
 
     def test_the_marketing_tables_live_only_in_the_marketing_database(self):
         mk = {t for t in inspect(self.mk_engine).get_table_names()}

@@ -6,6 +6,7 @@ import { MarketingTabs, Notice, PageTitle, btn, errText, fieldClass, fmtDateTime
 const MENU = (has) => [
   ["Overview and reports", has("view")], ["Audiences", has("aud_own") || has("aud_all")], ["All CRM customers and leads", has("aud_all")],
   ["Prospect list upload", has("upload")], ["Campaigns (drafts and templates)", has("draft")], ["Send for approval", has("submit")],
+  ["Send small campaigns without approval", has("release_small")],
   ["Approve and release", has("approve")], ["Cost", has("cost")], ["Opt-in and STOP list", has("consent_edit")],
 ];
 
