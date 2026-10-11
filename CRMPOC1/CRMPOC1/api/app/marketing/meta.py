@@ -83,6 +83,11 @@ def ad_accounts(token: str) -> list[dict]:
     found: dict[str, dict] = {}
     for a in get("me/adaccounts", token, {"fields": ACCOUNT_FIELDS, "limit": 50}).get("data", []):
         found[str(a.get("account_id"))] = a
+    try:  # a System User sees its ad accounts here, not in me/adaccounts
+        for a in get("me/assigned_ad_accounts", token, {"fields": ACCOUNT_FIELDS, "limit": 50}).get("data", []):
+            found.setdefault(str(a.get("account_id")), a)
+    except MetaError:
+        pass
     try:
         for biz in businesses(token):
             for edge in ("owned_ad_accounts", "client_ad_accounts"):
@@ -115,6 +120,10 @@ def diagnose(token: str) -> dict:
         out["direct_accounts"] = len(get("me/adaccounts", token, {"fields": "account_id", "limit": 50}).get("data", []))
     except MetaError as exc:
         out["direct_error"] = str(exc)
+    try:
+        out["assigned_accounts"] = len(get("me/assigned_ad_accounts", token, {"fields": "account_id", "limit": 50}).get("data", []))
+    except MetaError as exc:
+        out["assigned_accounts"] = f"not allowed ({str(exc)[:80]})"
     try:
         for biz in businesses(token):
             row = {"id": biz.get("id"), "name": biz.get("name")}

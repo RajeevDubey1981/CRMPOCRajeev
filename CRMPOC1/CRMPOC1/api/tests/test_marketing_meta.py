@@ -209,6 +209,20 @@ class MetaTests(unittest.TestCase):
         with patch.object(meta, "me", side_effect=meta.MetaError("bad")), patch.object(meta, "ad_accounts", return_value=[]):
             self.assertEqual(self.client.post("/api/marketing/meta/system-token", json={"token": tok}, headers=self.h(self.admin)).status_code, 400)
 
+    def test_a_system_user_finds_its_accounts_through_the_assigned_list(self):
+        self.configure()
+
+        def fake_get(path, token, params=None):
+            if path == "me/assigned_ad_accounts":
+                return {"data": [{"account_id": "2629", "name": "Indcool Ads"}]}
+            if path == "me/businesses":
+                raise meta.MetaError("(#100) Missing Permission")
+            return {"data": []}
+
+        with patch.object(meta, "get", side_effect=fake_get):
+            got = meta.ad_accounts("T")
+        self.assertEqual([a["account_id"] for a in got], ["2629"])
+
 
 if __name__ == "__main__":
     unittest.main()
