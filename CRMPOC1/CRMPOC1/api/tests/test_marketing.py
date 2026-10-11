@@ -206,6 +206,22 @@ class MarketingTests(unittest.TestCase):
         heads = ScriptDirectory.from_config(cfg).get_heads()
         self.assertEqual(heads, ["0001_marketing_initial"])
 
+    def test_a_pymysql_url_is_read_as_the_projects_mysql_driver_and_a_bad_url_never_stops_the_crm(self):
+        from app.config import Settings
+
+        got = Settings(marketing_database_url="mysql+pymysql://indcool_mk:abc@localhost/indcool_marketing").marketing_database_url
+        self.assertEqual(got, "mysql+mysqlconnector://indcool_mk:abc@localhost/indcool_marketing")
+        self.assertEqual(Settings(marketing_database_url="").marketing_database_url, "")
+        from app.marketing import db as mkdb
+        from app.config import settings
+
+        old = settings.marketing_database_url
+        try:
+            settings.marketing_database_url = "notadriver://x:y@localhost/z"
+            self.assertEqual(mkdb._build(), (None, None))
+        finally:
+            settings.marketing_database_url = old
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -21,7 +21,7 @@ FLUSH PRIVILEGES;
 2. Add one line to the server `api/.env`:
 
 ```
-MARKETING_DATABASE_URL=mysql+pymysql://indcool_mk:THE-SAME-PASSWORD@localhost/indcool_marketing
+MARKETING_DATABASE_URL=mysql+mysqlconnector://indcool_mk:THE-SAME-PASSWORD@localhost/indcool_marketing
 ```
 
 3. Deploy as usual: the deploy script upgrades the Marketing database (`alembic_marketing.ini`) when the line is set.

@@ -2,6 +2,7 @@ from pathlib import Path
 import platform
 from urllib.parse import quote_plus
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -141,6 +142,12 @@ class Settings(BaseSettings):
                 database_url = database_url.replace("@host.docker.internal:", "@127.0.0.1:")
             return database_url
         raise ValueError(f"Unsupported database_backend '{self.database_backend}'. Use 'mysql' or 'sqlserver'.")
+
+    @field_validator("marketing_database_url")
+    @classmethod
+    def _marketing_driver(cls, value: str) -> str:
+        """The CRM uses the mysql-connector driver. A Marketing URL written for pymysql is read as the same database."""
+        return value.replace("mysql+pymysql://", "mysql+mysqlconnector://", 1) if isinstance(value, str) else value
 
     @property
     def resolved_upload_dir(self) -> Path:

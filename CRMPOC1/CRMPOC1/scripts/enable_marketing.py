@@ -77,7 +77,7 @@ def main() -> int:
             return 1
         print("The database indcool_marketing and its login indcool_mk are ready")
 
-        line = f"\nMARKETING_DATABASE_URL=mysql+pymysql://indcool_mk:{secret}@localhost/indcool_marketing\n"
+        line = f"\nMARKETING_DATABASE_URL=mysql+mysqlconnector://indcool_mk:{secret}@localhost/indcool_marketing\n"
         code, _, err = run_quiet(f"sudo tee -a {api}/.env > /dev/null", stdin_text=line)
         if code != 0:
             print(f"The line could not be added to .env: {err.strip()[:300]}")

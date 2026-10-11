@@ -4,6 +4,8 @@ made through the application. Marketing is switched off while MARKETING_DATABASE
 
 from __future__ import annotations
 
+import logging
+
 from fastapi import HTTPException, status
 from sqlalchemy import create_engine
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
@@ -23,7 +25,11 @@ def _build():
     if not url:
         return None, None
     kwargs = {"connect_args": {"check_same_thread": False}} if url.startswith("sqlite") else {}
-    engine = create_engine(url, pool_pre_ping=True, future=True, **kwargs)
+    try:
+        engine = create_engine(url, pool_pre_ping=True, future=True, **kwargs)
+    except Exception as exc:  # a wrong driver or address must never stop the CRM from starting: Marketing just stays off
+        logging.getLogger(__name__).error("Marketing database not usable, Marketing stays off: %s", exc.__class__.__name__)
+        return None, None
     return engine, sessionmaker(bind=engine, autoflush=False, autocommit=False, future=True)
 
 
