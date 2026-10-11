@@ -33,7 +33,7 @@ def load_config() -> dict[str, str]:
     config: dict[str, str] = {
         "INDCOOL_DEPLOY_HOST": "97.74.83.211",
         "INDCOOL_DEPLOY_USER": "indcooladmin",
-        "INDCOOL_DEPLOY_PASSWORD":"JAdJh@yg4SFDP#!nGH",
+        "INDCOOL_DEPLOY_PASSWORD": "",  # set in scripts/deploy.env (gitignored); asked for when empty
         "REMOTE_API": "/var/www/indcool/api",
         "REMOTE_UI": "/var/www/indcool/ui",
     }
