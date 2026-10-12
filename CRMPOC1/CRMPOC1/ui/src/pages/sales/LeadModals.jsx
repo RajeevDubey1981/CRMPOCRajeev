@@ -289,6 +289,35 @@ export function GiveModal({ lead, open, onClose, onDone, people }) {
   );
 }
 
+// ---------------- send the lead back to the admin ----------------
+export function SendBackModal({ lead, open, onClose, onDone }) {
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  async function save() {
+    setBusy(true);
+    setError("");
+    try {
+      await salesApi.sendBack(lead.id, reason);
+      onDone?.();
+    } catch (e) {
+      setError(errText(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <Modal open={open} onClose={onClose} title={`Send back to the admin: ${lead.name}`}>
+      {error && <Notice tone="bad">{error}</Notice>}
+      <p className="mb-3 text-sm text-slate-600">The lead leaves your list and the admin is told. They decide who gets it next; it will not be given to you again by itself.</p>
+      <Field label="Why are you sending it back?">
+        <textarea className={fieldClass} rows={3} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="For example: outside my area, wrong product, customer wants another person" />
+      </Field>
+      <Footer onClose={onClose}><button type="button" className={btn.danger} disabled={busy || reason.trim().length < 5} onClick={save}>Send back</button></Footer>
+    </Modal>
+  );
+}
+
 // ---------------- move the lead along the workflow ----------------
 export function StageModal({ lead, stage, label, open, onClose, onDone }) {
   const [note, setNote] = useState("");

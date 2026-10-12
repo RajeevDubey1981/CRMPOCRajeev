@@ -347,6 +347,7 @@ def lead_detail(lead_id: int, ctx: Ctx = Depends(get_ctx), sdb: Session = Depend
     out["partner"] = partner
     out["can"] = {
         "work": ctx.has("see_all") or lead.owner_user_id == ctx.user.id,
+        "send_back": lead.owner_user_id == ctx.user.id and not L.is_closed(lead),
         "give": ctx.has("give"), "rate": ctx.has("rate"), "set_priority": ctx.has("setpri"), "flag": ctx.has("flag"),
         "dispose": ctx.any("dispose", "dispose_lost", "approve_disp"), "approve_disposal": ctx.has("approve_disp"),
         "quote": ctx.has("make_quote"), "remind": ctx.has("pr_remind"), "cancel_request": ctx.has("pr_cancel_req"),
@@ -382,6 +383,18 @@ def give_lead(lead_id: int, body: GiveIn, ctx: Ctx = Depends(require("give")), s
             raise HTTPException(400, "Choose an active Sales user")
         owner_name = u["name"]
     L.give(main_db, sdb, lead, body.owner_user_id, ctx.user, owner_name)
+    commit(main_db, sdb)
+    return L.lead_out(lead, names_for(main_db, [lead.owner_user_id]))
+
+
+class SendBackIn(BaseModel):
+    reason: str
+
+
+@router.post("/leads/{lead_id}/send-back")
+def send_back(lead_id: int, body: SendBackIn, ctx: Ctx = Depends(get_ctx), sdb: Session = Depends(get_sales_db), main_db: Session = Depends(get_db)):
+    lead = get_visible_lead(sdb, ctx, lead_id)
+    L.send_back(main_db, sdb, lead, reason=body.reason, user=ctx.user)
     commit(main_db, sdb)
     return L.lead_out(lead, names_for(main_db, [lead.owner_user_id]))
 

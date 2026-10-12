@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session, object_session
 
 from app.models.user import User
 from app.sales import crm_link
+from app.services import pending_action_service as pas
 from app.services import coverage as coverage_service
 from app.sales import types as T
 from app.sales.models import SalesLead, SalesLeadActivity, SalesProfile, SalesSetting
@@ -171,11 +172,20 @@ def area_match(p: SalesProfile, lead: SalesLead) -> int:
     return coverage_service.fit(cov, state=lead.state, district=lead.district, pin=lead.pincode)[0]
 
 
+def sent_back_by(sdb: Session, lead: SalesLead) -> set[int]:
+    """The people who sent this lead back to the admin: the rules never hand it to them again by themselves."""
+    return {
+        uid for uid in sdb.scalars(select(SalesLeadActivity.by_user_id).where(SalesLeadActivity.lead_id == lead.id, SalesLeadActivity.kind == "sent_back"))
+        if uid
+    }
+
+
 def pick_owner(sdb: Session, lead: SalesLead) -> int | None:
     """The team member who handles this lead type and covers the place; the one with the fewest open leads wins a tie."""
+    skip = sent_back_by(sdb, lead) if lead.id else set()
     members = [
         p for p in sdb.scalars(select(SalesProfile).where(SalesProfile.is_active.is_(True)))
-        if (p.role_cache or "").strip().lower() == "sales"
+        if (p.role_cache or "").strip().lower() == "sales" and p.crm_user_id not in skip
     ]
     if not members:
         return None
@@ -303,6 +313,30 @@ def give(main_db: Session | None, sdb: Session, lead: SalesLead, owner_id: int |
                 title="A lead was given to you", message=f"{lead.name}: {lead.item}", label="Open the lead", status=lead.status,
                 due_at=lead.first_call_due_at if not lead.first_called_at else None,
             )
+
+
+ADMIN_ROLES = {"admin", "sub_admin", "sales_manager"}
+
+
+def send_back(main_db: Session | None, sdb: Session, lead: SalesLead, *, reason: str, user: User) -> None:
+    """The person who has the lead returns it to the admin with a reason. It becomes a lead nobody has, and the admin is told."""
+    if is_closed(lead):
+        bad("A closed lead cannot be sent back")
+    reason = (reason or "").strip()
+    if len(reason) < 5:
+        bad("Write why the lead is being sent back")
+    if lead.owner_user_id != user.id:
+        bad("Only the person who has this lead can send it back", status.HTTP_403_FORBIDDEN)
+    lead.owner_user_id = None
+    lead.follow_up_on = None
+    log(sdb, lead, "sent_back", f"Sent back to the admin by {user.name}. Reason: {reason}", user)
+    if main_db is not None:
+        crm_link.resolve_cards(main_db, lead.id, ["sales_new_lead", "sales_asked_again"])
+        pas.notify_users(
+            main_db, pas.get_users_by_roles(main_db, ADMIN_ROLES), module="sales", entity_id=lead.id, entity_ref=lead.lead_no or "",
+            action_type="sales_sent_back", title="A lead was sent back to you", message=f"{lead.name}: {reason}",
+            action_label="Open the lead", href=f"/sales/leads/{lead.id}", entity_status=lead.status,
+        )
 
 
 def log_call(main_db: Session | None, sdb: Session, lead: SalesLead, *, outcome: str, note: str, next_follow_up: date | None, user: User) -> None:

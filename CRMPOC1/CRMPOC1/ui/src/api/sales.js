@@ -21,6 +21,7 @@ export const salesApi = {
   priority: (id, body) => post(`/api/sales/leads/${id}/priority`, body),
   followUp: (id, day) => post(`/api/sales/leads/${id}/follow-up`, { day }),
   stage: (id, body) => post(`/api/sales/leads/${id}/stage`, body),
+  sendBack: (id, reason) => post(`/api/sales/leads/${id}/send-back`, { reason }),
   dispose: (id, body) => post(`/api/sales/leads/${id}/dispose`, body),
   approveDisposal: (id) => post(`/api/sales/leads/${id}/disposal/approve`),
   reopen: (id) => post(`/api/sales/leads/${id}/disposal/reopen`),

@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 
 import { salesApi } from "../../api/sales.js";
 import Modal from "../../components/Modal.jsx";
-import { CallModal, DisposeModal, Footer, GiveModal, PriorityModal, StageModal } from "./LeadModals.jsx";
+import { CallModal, DisposeModal, Footer, GiveModal, PriorityModal, SendBackModal, StageModal } from "./LeadModals.jsx";
 import { waLink } from "./MyDay.jsx";
 import {
   AttendedChip, FirstCallChip, HEAT, HeatChip, Icon, Notice, TYPE_COLOR, burst, PRIORITY, PageTitle, PriorityChip, QUOTE_TONE, STAGES, SalesTabs, StatusChip, TypeChip, btn, errText,
@@ -242,6 +242,7 @@ export default function LeadDetail() {
               {c.rate && <button type="button" className={btn.plain} onClick={() => setModal("rate")}>Rate the lead</button>}
               {c.flag && !c.set_priority && <button type="button" className={btn.plain} onClick={() => setModal("flag")}>Flag high</button>}
               {c.set_priority && <button type="button" className={btn.plain} onClick={() => setModal("priority")}>Set priority</button>}
+              {c.send_back && <button type="button" className={btn.plain} onClick={() => setModal("sendback")}>Send back to admin</button>}
               {c.give && <button type="button" className={btn.plain} onClick={() => setModal("give")}>Give to...</button>}
               {c.quote && <button type="button" className={btn.plain} disabled={busy} onClick={makeQuote}>Make a quotation</button>}
               {c.dispose && (lead.crm_kind === "partner"
@@ -276,6 +277,7 @@ export default function LeadDetail() {
       {modal === "rate" && <CallModal open rateOnly lead={lead} onClose={() => setModal("")} onDone={done} />}
       {(modal === "priority" || modal === "flag") && <PriorityModal open flag={modal === "flag"} lead={lead} onClose={() => setModal("")} onDone={done} />}
       {modal === "dispose" && <DisposeModal open lead={lead} onClose={() => setModal("")} onDone={(r) => { setModal(""); setMsg(r.status === "rev" ? "Sent to the manager to approve" : "Lead closed"); reload(); }} />}
+      {modal === "sendback" && <SendBackModal open lead={lead} onClose={() => setModal("")} onDone={() => { setModal(""); if (has("see_all")) { setMsg("Sent back to the admin"); reload(); } else nav("/sales/leads"); }} />}
       {modal === "give" && <GiveModal open lead={lead} people={people} onClose={() => setModal("")} onDone={done} />}
     </div>
   );

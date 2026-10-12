@@ -73,6 +73,25 @@ class WorkflowTests(SalesTestBase):
         partner = [x for x in self.get("/api/sales/leads", self.karan).json()["items"] if x["crm_kind"] == "partner"][0]
         self.assertEqual(self.post(f"/api/sales/leads/{partner['id']}/stage", {"stage": "int"}, self.karan).status_code, 400)
 
+    def test_the_owner_sends_a_lead_back_to_the_admin_with_a_reason(self):
+        lead = self.mine()
+        url = f"/api/sales/leads/{lead['id']}/send-back"
+        self.assertTrue(self.get(f"/api/sales/leads/{lead['id']}", self.amit).json()["can"]["send_back"])
+        self.assertEqual(self.post(url, {"reason": "no"}, self.amit).status_code, 400, "a reason is needed")
+        self.assertEqual(self.post(url, {"reason": "Outside my area, customer is in Assam"}, self.pooja).status_code, 404, "only its owner")
+        r = self.post(url, {"reason": "Outside my area, customer is in Assam"}, self.amit)
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertIsNone(r.json()["owner_user_id"])
+        detail = self.get(f"/api/sales/leads/{lead['id']}", self.karan).json()
+        self.assertIsNone(detail["owner_user_id"])
+        self.assertIn("Outside my area", [a["text"] for a in detail["activities"] if a["kind"] == "sent_back"][0])
+        self.assertEqual(self.get(f"/api/sales/leads/{lead['id']}", self.amit).status_code, 404, "it left Amit's list")
+        self.assertEqual(self.get("/api/sales/leads", self.karan).json()["counts"]["unassigned"], 1)
+        # the rules do not give it straight back to the person who sent it back
+        self.post("/api/sales/leads-auto-give", {}, self.karan)
+        again = self.get(f"/api/sales/leads/{lead['id']}", self.karan).json()
+        self.assertNotEqual(again["owner_user_id"], self.amit.id, "not handed back to the person who sent it")
+
     def registration(self, no):
         from app.models import PartnerRegistration
         r = PartnerRegistration(registration_no=no, access_token=no + "-t", partner_type="Distributor", business_type="Partnership", name="Workflow Partner", mobile="99280 77777",
