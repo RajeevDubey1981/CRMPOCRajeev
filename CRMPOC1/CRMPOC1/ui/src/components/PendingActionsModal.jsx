@@ -15,6 +15,7 @@ const ICONS = {
   bids: '<path d="M7 3h7l5 5v13H7z"/><path d="M14 3v5h5M10 13h6M10 17h6"/>',
   sales: '<path d="M4 19V9M10 19V5M16 19v-8M22 19H2"/>',
   lock: '<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>',
+  queries: '<path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/><path d="M8.5 11h7M8.5 14h4"/>',
   partner_registrations: '<circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><path d="M17 8v6M14 11h6"/>',
   flag: '<path d="M5 21V4M5 4h11l-2 4 2 4H5"/>',
   clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
@@ -33,6 +34,7 @@ const MODULE_LABELS = {
   sales: "Sales",
   claims: "Claim",
   calls: "Call",
+  queries: "Query",
   partner_registrations: "Partner",
 };
 const TAB_LABELS = {
@@ -44,6 +46,7 @@ const TAB_LABELS = {
   sales: "Sales",
   claims: "Claims",
   calls: "Calls",
+  queries: "Queries",
   partner_registrations: "Partners",
 };
 

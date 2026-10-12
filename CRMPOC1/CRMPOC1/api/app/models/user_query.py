@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, false
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 
@@ -27,6 +27,11 @@ class UserQuery(Base, TimestampMixin):
     last_message_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
     closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     closed_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    priority: Mapped[str] = mapped_column(String(10), nullable=False, default="normal", server_default="normal")  # normal | high | urgent
+    holder_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)  # who has to answer; empty = the Admin team
+    awaiting_since: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)  # since when it waits for the holder
+    alarm_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    last_alarm_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class UserQueryMessage(Base):
@@ -37,6 +42,8 @@ class UserQueryMessage(Base):
     sender_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
     body: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    # sent while somebody was taken out of the conversation: only the people in it at that time can read it
+    is_private: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=false())
 
 
 class UserQueryRead(Base):
@@ -49,3 +56,33 @@ class UserQueryRead(Base):
     query_id: Mapped[int] = mapped_column(ForeignKey("user_queries.id"), nullable=False, index=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
     last_read_message_id: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+
+class UserQueryMember(Base):
+    """A person in a conversation, for a stretch of time. Taking someone out closes the stretch (left_at); adding them back
+    opens a new one, so what was said while they were out stays unseen by them."""
+
+    __tablename__ = "user_query_members"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    query_id: Mapped[int] = mapped_column(ForeignKey("user_queries.id"), nullable=False, index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    kind: Mapped[str] = mapped_column(String(10), nullable=False, default="member")  # owner | member | cc
+    share_history: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=false())  # may read the shared messages from before they came
+    added_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    joined_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    left_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    left_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+
+
+class UserQueryEvent(Base):
+    """The history of a query: who forwarded it, who was added or taken out, priority changes, reminders, replies."""
+
+    __tablename__ = "user_query_events"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    query_id: Mapped[int] = mapped_column(ForeignKey("user_queries.id"), nullable=False, index=True)
+    kind: Mapped[str] = mapped_column(String(20), nullable=False)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)

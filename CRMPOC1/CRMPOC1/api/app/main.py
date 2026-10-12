@@ -95,6 +95,10 @@ def ensure_runtime_masters() -> None:
 
     start_sales_runner()
 
+    from app.services.queries_service import start_query_runner
+
+    start_query_runner()
+
 
 @app.get("/health")
 def health():

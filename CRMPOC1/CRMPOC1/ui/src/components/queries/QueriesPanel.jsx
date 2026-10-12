@@ -59,6 +59,12 @@ export default function QueriesPanel() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          {(summary?.alarms || 0) > 0 && (
+            <div className="q-alarm flex items-center gap-2 rounded-md bg-rose-600 px-3 py-1.5 text-white" title="Queries that waited over 24 hours for your answer">
+              <span className="q-bell grid h-7 w-7 place-items-center rounded-full bg-white/20"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M10.3 21a1.9 1.9 0 0 0 3.4 0" /></svg></span>
+              <div><div className="text-lg font-bold leading-tight">{summary.alarms}</div><div className="text-[11px] opacity-90">24 h alarm</div></div>
+            </div>
+          )}
           <Stat label={staff ? "Waiting for you" : "Open"} value={summary?.open} hot={staff && (summary?.open || 0) > 0} />
           {!staff && <Stat label="Answered" value={summary?.answered} hot={(summary?.answered || 0) > 0 && unread > 0} />}
           <button
@@ -81,7 +87,10 @@ export default function QueriesPanel() {
               <Link to={`/queries/${q.id}`} className="flex flex-wrap items-center gap-x-2 gap-y-0.5 px-3 py-2 text-sm hover:bg-white/10">
                 <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${STATUS_STYLE[q.status] || ""}`}>{q.status}</span>
                 <span className={q.unread_count > 0 ? "font-bold" : "font-medium"}>{q.subject}</span>
+                {q.priority !== "normal" && <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${q.priority === "urgent" ? "bg-rose-600" : "bg-orange-500"}`}>{q.priority === "urgent" ? "Urgent" : "High"}</span>}
+                {q.alarm_for_me && <span className="rounded-full bg-rose-600 px-2 py-0.5 text-[11px] font-bold">No reply in 24 h</span>}
                 {staff && <span className="text-slate-200">· {q.owner_name}</span>}
+                {!staff && q.holder_name && <span className="text-slate-200">· with {q.holder_name}</span>}
                 {q.unread_count > 0 && <span className="rounded bg-rose-600 px-1.5 text-[10px] font-bold">{q.unread_count} new</span>}
                 <span className="ml-auto text-xs text-slate-300">{timeAgo(q.last_message_at)}</span>
               </Link>
