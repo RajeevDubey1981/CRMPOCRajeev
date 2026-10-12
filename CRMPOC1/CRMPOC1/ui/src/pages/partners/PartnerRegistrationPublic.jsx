@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 
 import { partnerRegistrationPublicApi } from "../../api/partnerRegistrationPublic.js";
+import FilePick from "../../components/FilePick.jsx";
 import {
   EMPTY_PARTNER_FORM,
   INDIAN_STATES,
@@ -524,16 +525,7 @@ export default function PartnerRegistrationPublic() {
                             View uploaded file
                           </a>
                         )}
-                        <input
-                          type="file"
-                          accept={DOCUMENT_ACCEPT}
-                          disabled={busy}
-                          onChange={(e) => {
-                            uploadDocument(doc.key, e.target.files?.[0] || null);
-                            e.target.value = "";
-                          }}
-                          className="mt-2 block w-full text-sm"
-                        />
+                        <FilePick className="mt-2" accept={DOCUMENT_ACCEPT} disabled={busy} uploaded={Boolean(uploaded)} onPick={(file) => uploadDocument(doc.key, file)} />
                         {fileError && <div className="mt-2 text-xs text-rose-700">{fileError}</div>}
                       </div>
                     );
@@ -575,16 +567,7 @@ export default function PartnerRegistrationPublic() {
                               View uploaded file
                             </a>
                           )}
-                          <input
-                            type="file"
-                            accept={SHOP_PHOTO_ACCEPT}
-                            disabled={busy}
-                            onChange={(e) => {
-                              uploadDocument(doc.key, e.target.files?.[0] || null);
-                              e.target.value = "";
-                            }}
-                            className="mt-2 block w-full text-sm"
-                          />
+                          <FilePick className="mt-2" accept={SHOP_PHOTO_ACCEPT} disabled={busy} uploaded={Boolean(uploaded)} onPick={(file) => uploadDocument(doc.key, file)} />
                           {fileError && <div className="mt-2 text-xs text-rose-700">{fileError}</div>}
                         </div>
                       );

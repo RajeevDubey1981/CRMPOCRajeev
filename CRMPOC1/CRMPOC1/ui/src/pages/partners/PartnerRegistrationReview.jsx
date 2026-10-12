@@ -5,6 +5,7 @@ import { api } from "../../api/client.js";
 import { partnerRegistrationsApi } from "../../api/partnerRegistrations.js";
 import { useAuth } from "../../auth/AuthContext.jsx";
 import PartnerOnboardingStepper from "../../components/partners/PartnerOnboardingStepper.jsx";
+import FilePick from "../../components/FilePick.jsx";
 import { PARTNER_DOCUMENTS, buildShopPhotoDocuments } from "./partnerFormConstants.js";
 
 const fieldClass = "w-full rounded-md border border-slate-300 px-3 py-2 text-sm";
@@ -123,16 +124,7 @@ function DocumentUploadCard({ doc, path, accept, disabled, busy, error, onUpload
       ) : (
         <div className="mt-1 text-xs text-slate-500">No file uploaded.</div>
       )}
-      <input
-        type="file"
-        accept={accept}
-        disabled={disabled}
-        onChange={(event) => {
-          onUpload(doc.key, event.target.files?.[0] || null);
-          event.target.value = "";
-        }}
-        className="mt-2 block w-full text-sm text-slate-700"
-      />
+      <FilePick className="mt-2" accept={accept} disabled={disabled} uploaded={Boolean(path)} onPick={(file) => onUpload(doc.key, file)} />
       {busy && <div className="mt-2 text-xs text-sky-700">Uploading...</div>}
       {error && <div className="mt-2 text-xs text-rose-700">{error}</div>}
     </div>
