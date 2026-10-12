@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends
 from sqlalchemy import Select, func, or_, select
@@ -55,10 +55,14 @@ def _count(db: Session, base: Select, status_value: str) -> int:
 
 
 @router.get("/complaints-summary", response_model=ComplaintsSummary)
-def complaints_summary(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+def complaints_summary(date_from: date | None = None, date_to: date | None = None, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     base, ok = _scoped_complaints_stmt(db, user)
     if not ok:
         return ComplaintsSummary(pending=0, resolved=0, under_process=0, rejected=0, in_process=0)
+    if date_from:
+        base = base.where(Complaint.comp_date >= date_from)
+    if date_to:
+        base = base.where(Complaint.comp_date <= date_to)
     return ComplaintsSummary(
         pending=_count(db, base, "Pending"),
         resolved=_count(db, base, "Resolved"),

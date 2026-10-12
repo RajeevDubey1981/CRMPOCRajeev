@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
 import Modal from "../../components/Modal.jsx";
+import DateRangeFilter, { DateRangeTag } from "../../components/DateRangeFilter.jsx";
+import RegisteredCell from "../../components/RegisteredCell.jsx";
 import Pagination from "../../components/Pagination.jsx";
 import OrderSearchBar from "../../components/orders/OrderSearchBar.jsx";
 import ParcelIntro from "../../components/ParcelIntro.jsx";
@@ -117,7 +119,7 @@ export default function OrderList() {
   const [err, setErr] = useState("");
   const [searchInput, setSearchInput] = useState("");
   const [activeSearch, setActiveSearch] = useState("");
-  const [filters, setFilters] = useState({ status: "" });
+  const [filters, setFilters] = useState({ status: "", date_from: "", date_to: "" });
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState(20);
   const [confirmDelete, setConfirmDelete] = useState(null);
@@ -127,7 +129,9 @@ export default function OrderList() {
     per_page: perPage,
     status: filters.status || undefined,
     search: activeSearch || undefined,
-  }), [page, perPage, filters.status, activeSearch]);
+    date_from: filters.date_from || undefined,
+    date_to: filters.date_to || undefined,
+  }), [page, perPage, filters.status, filters.date_from, filters.date_to, activeSearch]);
 
   async function load() {
     const requestId = ++listRequestRef.current;
@@ -180,6 +184,8 @@ export default function OrderList() {
     const url = ordersApi.exportUrl({
       status: filters.status || undefined,
       search: activeSearch || undefined,
+      date_from: filters.date_from || undefined,
+      date_to: filters.date_to || undefined,
     });
     const token = localStorage.getItem("indcool_token");
     const requestUrl = url.startsWith("http") ? url : `${window.location.origin}${url}`;
@@ -242,19 +248,24 @@ export default function OrderList() {
             ))}
           </select>
         </div>
+        <div className="mt-3">
+          <DateRangeFilter from={filters.date_from} to={filters.date_to} onChange={(a, b) => { setFilters((f) => ({ ...f, date_from: a, date_to: b })); setPage(1); }} />
+        </div>
       </div>
+      <DateRangeTag from={filters.date_from} to={filters.date_to} onClear={() => { setFilters((f) => ({ ...f, date_from: "", date_to: "" })); setPage(1); }} count={data.total} />
 
       {err && (
         <div className="rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-700">{err}</div>
       )}
 
       <div className="crm-scroll rounded-lg bg-white shadow-sm">
-        <table className="w-full min-w-[1040px] text-sm">
+        <table className="w-full min-w-[1160px] text-sm">
           <thead className="bg-slate-100 text-left text-slate-700">
             <tr>
               <th className={ORDER_TABLE_COL.id}>ID</th>
               <th className={ORDER_TABLE_COL.orderNo}>Order No</th>
               <th className={ORDER_TABLE_COL.date}>Date</th>
+              <th className="whitespace-nowrap bg-sky-50 px-3 py-2 text-indcool-navy">Registered</th>
               <th className={ORDER_TABLE_COL.oem}>OEM Bill</th>
               <th className={ORDER_TABLE_COL.status}>Status</th>
               <th className={ORDER_TABLE_COL.vendor}>Vendor Name</th>
@@ -268,14 +279,14 @@ export default function OrderList() {
           <tbody className="divide-y divide-slate-100">
             {loading && (
               <tr>
-                <td colSpan={11} className="px-3 py-6 text-center">
+                <td colSpan={12} className="px-3 py-6 text-center">
                   <SpinnerLabel label="Loading orders..." />
                 </td>
               </tr>
             )}
             {!loading && data.items.length === 0 && (
               <tr>
-                <td colSpan={11} className="px-3 py-6 text-center text-slate-500">No orders found.</td>
+                <td colSpan={12} className="px-3 py-6 text-center text-slate-500">No orders found.</td>
               </tr>
             )}
             {!loading && data.items.map((o) => (
@@ -296,6 +307,7 @@ export default function OrderList() {
                   <span className="font-mono text-xs font-bold text-slate-800">{o.order_no || "-"}</span>
                 </td>
                 <td className={`${ORDER_TABLE_COL.date} text-slate-600`}>{fmtDate(o.order_date)}</td>
+                <td className="px-3 py-2"><RegisteredCell at={o.created_at} /></td>
                 <td className={`${ORDER_TABLE_COL.oem} text-slate-600`} title={o.oem_bill_no || ""}>{o.oem_bill_no || "-"}</td>
                 <td className={ORDER_TABLE_COL.status}><StatusBadge value={o.status} /></td>
                 <td className={`${ORDER_TABLE_COL.vendor} text-slate-600`} title={o.vendor_name || ""}>{o.vendor_name || "-"}</td>

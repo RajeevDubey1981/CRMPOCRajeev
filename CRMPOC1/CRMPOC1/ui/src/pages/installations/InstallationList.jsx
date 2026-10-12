@@ -1,4 +1,6 @@
 import { hasPermission } from "../../utils/permissions.js";
+import DateRangeFilter, { DateRangeTag } from "../../components/DateRangeFilter.jsx";
+import RegisteredCell from "../../components/RegisteredCell.jsx";
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
@@ -300,18 +302,7 @@ export default function InstallationList() {
             <option value="">All statuses</option>
             {STATUSES.map((status) => <option key={status} value={status}>{status}</option>)}
           </select>
-          <input
-            type="date"
-            value={filters.date_from}
-            onChange={(e) => applyFilter({ date_from: e.target.value })}
-            className="rounded-md border border-slate-300 px-3 py-2 text-sm"
-          />
-          <input
-            type="date"
-            value={filters.date_to}
-            onChange={(e) => applyFilter({ date_to: e.target.value })}
-            className="rounded-md border border-slate-300 px-3 py-2 text-sm"
-          />
+          <DateRangeFilter from={filters.date_from} to={filters.date_to} onChange={(a, b) => applyFilter({ date_from: a, date_to: b })} />
         </div>
       </div>
 
@@ -452,7 +443,7 @@ export default function InstallationList() {
                                 <th className="px-3 py-2">Current Status</th>
                                 {!isEngineer && <th className="px-3 py-2">Assigned Engineer</th>}
                                 {!isEngineer && <th className="px-3 py-2">Service User</th>}
-                                <th className="px-3 py-2">Assigned Date</th>
+                                <th className="bg-sky-50 px-3 py-2 text-indcool-navy">Registered</th>
                                 <th className="px-3 py-2">Install Date</th>
                                 {!isEngineer && <th className="px-3 py-2 text-right">Actions</th>}
                               </tr>
@@ -492,7 +483,7 @@ export default function InstallationList() {
                                   <td className="px-3 py-2"><StatusBadge value={row.status} /></td>
                                   {!isEngineer && <td className="px-3 py-2">{row.assigned_engineer_name || "-"}</td>}
                                   {!isEngineer && <td className="px-3 py-2">{row.assigned_service_user_name || "-"}</td>}
-                                  <td className="px-3 py-2 text-xs">{fmtDate(row.request_date)}</td>
+                                  <td className="px-3 py-2"><RegisteredCell at={row.request_date} /></td>
                                   <td className="px-3 py-2 text-xs">{fmtDate(row.installation_date)}</td>
                                   {!isEngineer && (
                                     <td className="px-3 py-2 text-right">

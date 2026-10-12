@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
+import DateRangeFilter, { DateRangeTag } from "../../components/DateRangeFilter.jsx";
+import RegisteredCell from "../../components/RegisteredCell.jsx";
 import { useNavigate } from "react-router-dom";
 
 import { partnerRegistrationsApi } from "../../api/partnerRegistrations.js";
@@ -132,7 +134,7 @@ export default function PartnerRegistrationList() {
   const [data, setData] = useState({ items: [], total: 0 });
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
-  const [filters, setFilters] = useState({ partner_type: "", form_status: "", status: "", search: "" });
+  const [filters, setFilters] = useState({ partner_type: "", form_status: "", status: "", search: "", date_from: "", date_to: "" });
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState(20);
 
@@ -158,6 +160,8 @@ export default function PartnerRegistrationList() {
     form_status: filters.form_status || undefined,
     status: filters.status || undefined,
     search: filters.search || undefined,
+    date_from: filters.date_from || undefined,
+    date_to: filters.date_to || undefined,
   }), [page, perPage, filters]);
 
   async function load() {
@@ -369,16 +373,19 @@ export default function PartnerRegistrationList() {
             <option key={status} value={status}>{status}</option>
           ))}
         </select>
-        <div className="text-sm text-slate-600 self-center">
+        <DateRangeFilter from={filters.date_from} to={filters.date_to} onChange={(a, b) => applyFilter({ date_from: a, date_to: b })} />
+        <div className="text-sm text-slate-600 self-center md:col-span-2">
           {loading ? "Loading..." : `Showing ${data.items.length} of ${data.total} records`}
         </div>
       </div>
+      <DateRangeTag from={filters.date_from} to={filters.date_to} onClear={() => applyFilter({ date_from: "", date_to: "" })} />
 
       <div className="crm-scroll rounded-lg border border-slate-200 bg-white">
         <table className="min-w-full divide-y divide-slate-200 text-sm">
           <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
             <tr>
               <th className="px-4 py-3">Registration No</th>
+              <th className="bg-sky-50 px-4 py-3 text-indcool-navy">Registered</th>
               <th className="px-4 py-3">Partner Type</th>
               <th className="px-4 py-3">Name / Email</th>
               <th className="px-4 py-3">Contact</th>
@@ -393,6 +400,7 @@ export default function PartnerRegistrationList() {
             {data.items.map((row) => (
               <tr key={row.id} className="hover:bg-slate-50">
                 <td className="px-4 py-3 font-mono text-xs">{row.registration_no}</td>
+                <td className="px-4 py-3"><RegisteredCell at={row.created_at || row.invited_at} /></td>
                 <td className="px-4 py-3"><TypeBadge value={row.partner_type} /></td>
                 <td className="px-4 py-3">
                   <div className="font-medium text-slate-900">{row.name || "—"}</div>
@@ -459,7 +467,7 @@ export default function PartnerRegistrationList() {
             ))}
             {!loading && data.items.length === 0 && (
               <tr>
-                <td colSpan={9} className="px-4 py-8 text-center text-slate-500">
+                <td colSpan={10} className="px-4 py-8 text-center text-slate-500">
                   No partner registrations found.
                 </td>
               </tr>

@@ -1,6 +1,8 @@
 import { hasPermission } from "../../utils/permissions.js";
 import { useAuth } from "../../auth/AuthContext.jsx";
 import { useEffect, useMemo, useState } from "react";
+import DateRangeFilter, { DateRangeTag } from "../../components/DateRangeFilter.jsx";
+import RegisteredCell from "../../components/RegisteredCell.jsx";
 import { useNavigate } from "react-router-dom";
 
 import Modal from "../../components/Modal.jsx";
@@ -196,18 +198,7 @@ export default function CallList() {
             <option value="">All Types</option>
             {CALL_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
           </select>
-          <input
-            type="date"
-            value={filters.date_from}
-            onChange={(e) => applyFilter({ date_from: e.target.value })}
-            className="rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-          />
-          <input
-            type="date"
-            value={filters.date_to}
-            onChange={(e) => applyFilter({ date_to: e.target.value })}
-            className="rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-          />
+          <DateRangeFilter from={filters.date_from} to={filters.date_to} onChange={(a, b) => applyFilter({ date_from: a, date_to: b })} />
           <div className="flex gap-2">
             <button
               onClick={() => load()}
@@ -232,7 +223,7 @@ export default function CallList() {
           <thead className="border-b border-slate-200 bg-slate-50">
             <tr>
               <th className="px-4 py-3 text-left font-semibold text-slate-700">Ref No</th>
-              <th className="px-4 py-3 text-left font-semibold text-slate-700">Date & Time</th>
+              <th className="bg-sky-50 px-4 py-3 text-left font-semibold text-indcool-navy">Registered</th>
               <th className="px-4 py-3 text-left font-semibold text-slate-700">Customer</th>
               <th className="px-4 py-3 text-left font-semibold text-slate-700">Phone</th>
               <th className="px-4 py-3 text-left font-semibold text-slate-700">Type</th>
@@ -253,7 +244,7 @@ export default function CallList() {
             {!loading && data.items.map((call) => (
               <tr key={call.id} className="border-b border-slate-100 hover:bg-slate-50">
                 <td className="px-4 py-3 font-mono text-xs font-medium text-slate-900">{call.ref_no}</td>
-                <td className="px-4 py-3 text-xs text-slate-700">{fmtDateTime(call.call_datetime)}</td>
+                <td className="px-4 py-3"><RegisteredCell at={call.call_datetime} /></td>
                 <td className="px-4 py-3 text-sm text-slate-900">{call.customer_name || "—"}</td>
                 <td className="px-4 py-3 font-mono text-xs text-slate-700">{call.phone || "—"}</td>
                 <td className="px-4 py-3">

@@ -1,6 +1,8 @@
 import { hasPermission } from "../../utils/permissions.js";
 import { useAuth } from "../../auth/AuthContext.jsx";
 import { useEffect, useMemo, useState } from "react";
+import DateRangeFilter, { DateRangeTag } from "../../components/DateRangeFilter.jsx";
+import RegisteredCell from "../../components/RegisteredCell.jsx";
 import { Link, useNavigate } from "react-router-dom";
 
 import Modal from "../../components/Modal.jsx";
@@ -36,7 +38,7 @@ export default function ClaimList() {
   const [data, setData] = useState({ items: [], total: 0 });
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
-  const [filters, setFilters] = useState({ status: "", search: "" });
+  const [filters, setFilters] = useState({ status: "", search: "", date_from: "", date_to: "" });
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState(20);
 
@@ -53,6 +55,8 @@ export default function ClaimList() {
     per_page: perPage,
     status: filters.status || undefined,
     search: filters.search || undefined,
+    date_from: filters.date_from || undefined,
+    date_to: filters.date_to || undefined,
   }), [page, perPage, filters]);
 
   async function load() {
@@ -111,6 +115,8 @@ export default function ClaimList() {
     const url = claimsApi.exportUrl({
       status: filters.status || undefined,
       search: filters.search || undefined,
+      date_from: filters.date_from || undefined,
+      date_to: filters.date_to || undefined,
     });
     const token = localStorage.getItem("indcool_token");
     fetch(url, { headers: { Authorization: `Bearer ${token}` } })
@@ -162,8 +168,10 @@ export default function ClaimList() {
             <option value="">All statuses</option>
             {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
           </select>
+          <DateRangeFilter from={filters.date_from} to={filters.date_to} onChange={(a, b) => applyFilter({ date_from: a, date_to: b })} />
         </div>
       </div>
+      <DateRangeTag from={filters.date_from} to={filters.date_to} onClear={() => applyFilter({ date_from: "", date_to: "" })} count={data.total} />
 
       {err && (
         <div className="rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-700">{err}</div>
@@ -179,7 +187,7 @@ export default function ClaimList() {
               <th className="px-3 py-2">Customer</th>
               <th className="px-3 py-2">Contact</th>
               <th className="px-3 py-2">Status</th>
-              <th className="px-3 py-2">Submitted At</th>
+              <th className="bg-sky-50 px-3 py-2 text-indcool-navy">Registered</th>
               <th className="px-3 py-2 text-right">Actions</th>
             </tr>
           </thead>
@@ -202,7 +210,7 @@ export default function ClaimList() {
                 <td className="px-3 py-2">{c.customer_name || <span className="text-slate-400">—</span>}</td>
                 <td className="px-3 py-2">{c.customer_contact || <span className="text-slate-400">—</span>}</td>
                 <td className="px-3 py-2"><StatusBadge value={c.status} /></td>
-                <td className="px-3 py-2 text-xs text-slate-500">{fmtDateTime(c.submitted_at)}</td>
+                <td className="px-3 py-2"><RegisteredCell at={c.submitted_at || c.created_at} /></td>
                 <td className="px-3 py-2 text-right">
                   <div className="flex justify-end gap-1">
                     <button

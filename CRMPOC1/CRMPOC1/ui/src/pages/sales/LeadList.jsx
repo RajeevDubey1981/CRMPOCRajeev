@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 
 import { salesApi } from "../../api/sales.js";
+import DateRangeFilter, { DateRangeTag } from "../../components/DateRangeFilter.jsx";
+import RegisteredCell from "../../components/RegisteredCell.jsx";
 import { AddLeadModal, GiveModal } from "./LeadModals.jsx";
 import UploadModal from "./UploadModal.jsx";
 import {
@@ -16,7 +18,7 @@ const KPIS = [
 export default function LeadList() {
   const { has, status } = useSales();
   const [params, setParams] = useSearchParams();
-  const f = { q: params.get("q") || "", status: params.get("status") || "open", type: params.get("type") || "", heat: params.get("heat") || "", priority: params.get("priority") || "", owner: params.get("owner") || "", kpi: params.get("kpi") || "", sort: params.get("sort") || "pri" };
+  const f = { q: params.get("q") || "", status: params.get("status") || "open", type: params.get("type") || "", heat: params.get("heat") || "", priority: params.get("priority") || "", owner: params.get("owner") || "", kpi: params.get("kpi") || "", sort: params.get("sort") || "pri", from: params.get("from") || "", to: params.get("to") || "" };
   const setF = (patch) => {
     const next = { ...f, ...patch };
     const p = {};
@@ -25,7 +27,7 @@ export default function LeadList() {
   };
   const [search, setSearch] = useState(f.q);
   useEffect(() => { const t = setTimeout(() => { if (search !== f.q) setF({ q: search }); }, 300); return () => clearTimeout(t); }, [search]); // eslint-disable-line react-hooks/exhaustive-deps
-  const { data, loading, error, reload } = useAsync(() => salesApi.leads({ q: f.q, status: f.status === "all" ? "" : f.status, lead_type: f.type, heat: f.heat, priority: f.priority, owner: f.owner, kpi: f.kpi, sort: f.sort, limit: 300 }), [f.q, f.status, f.type, f.heat, f.priority, f.owner, f.kpi, f.sort]);
+  const { data, loading, error, reload } = useAsync(() => salesApi.leads({ q: f.q, status: f.status === "all" ? "" : f.status, lead_type: f.type, heat: f.heat, priority: f.priority, owner: f.owner, kpi: f.kpi, sort: f.sort, date_from: f.from || undefined, date_to: f.to || undefined, limit: 300 }), [f.q, f.status, f.type, f.heat, f.priority, f.owner, f.kpi, f.sort, f.from, f.to]);
   const team = useAsync(() => (has("give") ? salesApi.team() : Promise.resolve([])), [has("give")]);
   const [adding, setAdding] = useState(false);
   const [giving, setGiving] = useState(null);
@@ -71,12 +73,14 @@ export default function LeadList() {
         <select className={`${fieldClass} !w-auto`} value={f.priority} onChange={(e) => setF({ priority: e.target.value })}><option value="">All priorities</option><option value="urgent">Urgent</option><option value="high">High</option><option value="normal">Normal</option><option value="low">Low</option></select>
         {has("see_all") && <select className={`${fieldClass} !w-auto`} value={f.owner} onChange={(e) => setF({ owner: e.target.value })}><option value="">All owners</option><option value="none">Not given yet</option>{people.map((p) => <option key={p.crm_user_id} value={p.crm_user_id}>{p.name}</option>)}</select>}
         <select className={`${fieldClass} !w-auto`} value={f.sort} onChange={(e) => setF({ sort: e.target.value })}><option value="pri">Priority first, then heat</option><option value="heat">Hottest first</option><option value="new">Newest first</option></select>
-        {(f.kpi || f.q || f.type || f.heat || f.priority || f.owner || f.status !== "open") && <button type="button" className={btn.plain} onClick={() => { setSearch(""); setParams({}, { replace: true }); }}>Clear</button>}
+        <DateRangeFilter from={f.from} to={f.to} onChange={(from, to) => setF({ from, to })} />
+        {(f.kpi || f.q || f.type || f.heat || f.priority || f.owner || f.from || f.to || f.status !== "open") && <button type="button" className={btn.plain} onClick={() => { setSearch(""); setParams({}, { replace: true }); }}>Clear</button>}
       </div>
+      <DateRangeTag from={f.from} to={f.to} onClear={() => setF({ from: "", to: "" })} count={data?.items?.length} />
       <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white shadow-sm">
         <table className="min-w-full text-sm">
           <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
-            <tr><th className="px-3 py-2">Lead</th><th className="px-3 py-2">Type</th><th className="px-3 py-2">Priority</th><th className="px-3 py-2">Heat</th><th className="px-3 py-2">Wants</th><th className="px-3 py-2">Source</th><th className="px-3 py-2">Place</th><th className="px-3 py-2">Owner</th><th className="px-3 py-2">Status</th><th className="px-3 py-2">Follow-up</th></tr>
+            <tr><th className="px-3 py-2">Lead</th><th className="px-3 py-2">Type</th><th className="px-3 py-2">Priority</th><th className="px-3 py-2">Heat</th><th className="px-3 py-2">Wants</th><th className="px-3 py-2">Source</th><th className="px-3 py-2">Place</th><th className="bg-sky-50 px-3 py-2 text-indcool-navy">Registered</th><th className="px-3 py-2">Owner</th><th className="px-3 py-2">Status</th><th className="px-3 py-2">Follow-up</th></tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
             {(data?.items || []).map((l) => (
@@ -88,12 +92,13 @@ export default function LeadList() {
                 <td className="px-3 py-2"><div>{l.item}</div><div className="text-xs text-slate-500">{valueText(l)}{l.closes_on ? ` · closes ${fmtDate(l.closes_on)}` : ""}</div>{l.details && <div className="text-xs text-slate-500">{l.details}</div>}</td>
                 <td className="px-3 py-2">{l.source}{l.crm_ref && <div className="text-[11px] text-slate-400">{l.crm_ref}</div>}</td>
                 <td className="px-3 py-2">{l.place || "—"}</td>
+                <td className="px-3 py-2"><RegisteredCell at={l.created_at} /></td>
                 <td className="px-3 py-2">{has("give") && !l.closed ? <button type="button" className="text-left text-indcool-blue hover:underline" onClick={() => setGiving(l)}>{l.owner_name || "Give it"}</button> : (l.owner_name || "—")}</td>
                 <td className="px-3 py-2"><StatusChip status={l.status} /><div className="mt-1"><FirstCallChip lead={l} /></div><div className="mt-1"><AttendedChip lead={l} /></div></td>
                 <td className="px-3 py-2">{l.follow_up_on ? <span className={l.follow_up_late ? "font-semibold text-rose-600" : ""}>{fmtDate(l.follow_up_on)}</span> : "—"}</td>
               </tr>
             ))}
-            {!loading && (data?.items || []).length === 0 && <tr><td colSpan={10} className="px-3 py-8 text-center text-slate-500">No lead matches.</td></tr>}
+            {!loading && (data?.items || []).length === 0 && <tr><td colSpan={11} className="px-3 py-8 text-center text-slate-500">{f.from || f.to ? "No lead was registered in these dates. Widen the dates or clear them." : "No lead matches."}</td></tr>}
           </tbody>
         </table>
       </div>

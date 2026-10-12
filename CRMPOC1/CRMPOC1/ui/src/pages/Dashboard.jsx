@@ -1,5 +1,7 @@
 import { hasPermission } from "../utils/permissions.js";
 import SalesDashboardBlock from "../components/SalesDashboardBlock.jsx";
+import DateRangeFilter, { DateRangeTag } from "../components/DateRangeFilter.jsx";
+import RegisteredCell from "../components/RegisteredCell.jsx";
 import { useEffect, useMemo, useRef, useState } from "react";
 import PriorityBadge from "../components/complaints/PriorityBadge.jsx";
 import { BounceBadge } from "../components/EmailBounceNotice.jsx";
@@ -110,6 +112,7 @@ const ENGINEER_GRID_COLUMNS = [
 const GRID_COLUMNS = [
   { key: "id", label: "Id" },
   { key: "comp_no", label: "Ref No" },
+  { key: "created_at", label: "Registered" },
   { key: "customer_name", label: "Customer Name" },
   { key: "status", label: "Status" },
   { key: "query_type", label: "Query Type" },
@@ -124,7 +127,6 @@ const GRID_COLUMNS = [
   { key: "customer_email", label: "Email" },
   { key: "customer_address", label: "Customer Address", gridHidden: true },
   { key: "created_by_name", label: "Created By", gridHidden: true },
-  { key: "created_at", label: "Created At", gridHidden: true },
   { key: "row_actions", label: "" },
 ];
 
@@ -248,12 +250,12 @@ export default function Dashboard() {
   /* load summary cards */
   useEffect(() => {
     Promise.all([
-      api.get("/api/dashboard/complaints-summary"),
+      api.get("/api/dashboard/complaints-summary", { params: { date_from: filters.date_from || undefined, date_to: filters.date_to || undefined } }),
       api.get("/api/dashboard/installation-summary"),
     ])
       .then(([s, i]) => { setSummary(s.data); setInstalls(i.data); })
       .catch((e) => setDashErr(e.response?.data?.detail || "Failed to load summary"));
-  }, []);
+  }, [filters.date_from, filters.date_to]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* load complaint grid */
   const params = useMemo(() => {
@@ -507,7 +509,7 @@ export default function Dashboard() {
       case "created_by_name":
         return c.created_by_name || "—";
       case "created_at":
-        return <span className="whitespace-nowrap">{fmtDate(c.created_at)}</span>;
+        return <RegisteredCell at={c.created_at} />;
       case "row_actions":
         return (
           <div className="flex items-center gap-1 whitespace-nowrap">
@@ -721,10 +723,8 @@ export default function Dashboard() {
               {SOURCES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
             </select>
           </Field>
-          {/* Date from */}
-          <Field label="Created Date (From)"><input type="date" value={filters.date_from} onChange={e => patch("date_from", e.target.value)} /></Field>
-          {/* Date to */}
-          <Field label="Created Date (To)"><input type="date" value={filters.date_to} onChange={e => patch("date_to", e.target.value)} /></Field>
+          {/* Registered dates: one control for both ends, the tiles above count the same days */}
+          <Field label="Registered"><DateRangeFilter from={filters.date_from} to={filters.date_to} onChange={(a, b) => { setFilters(f => ({ ...f, date_from: a, date_to: b })); setPage(1); }} /></Field>
         </div>
         <div className={`mt-3 gap-2 ${filtersOpen ? "flex" : "hidden sm:flex"}`}>
           <button onClick={loadGrid}

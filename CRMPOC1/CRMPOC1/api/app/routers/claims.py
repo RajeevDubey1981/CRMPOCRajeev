@@ -1,7 +1,7 @@
 import csv
 import io
 import secrets
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.deps import get_current_user
+from app.services.date_range import registered_between
 from app.models.claim import Claim
 from app.models.order import OrderItem
 from app.models.user import User
@@ -65,6 +66,8 @@ def list_claims(
     per_page: int = Query(20, ge=1, le=200),
     status_filter: Literal[STATUSES] | None = Query(None, alias="status"),  # type: ignore[valid-type]
     search: str | None = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -88,6 +91,7 @@ def list_claims(
             )
         )
 
+    stmt = registered_between(stmt, Claim.created_at, date_from, date_to)
     stmt = stmt.order_by(desc(Claim.submitted_at))
 
     total = db.scalar(select(func.count()).select_from(stmt.subquery())) or 0
@@ -117,6 +121,8 @@ def list_claims(
 def export_csv(
     status_filter: Literal[STATUSES] | None = Query(None, alias="status"),  # type: ignore[valid-type]
     search: str | None = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -140,6 +146,7 @@ def export_csv(
             )
         )
 
+    stmt = registered_between(stmt, Claim.created_at, date_from, date_to)
     stmt = stmt.order_by(desc(Claim.submitted_at))
 
     buf = io.StringIO()

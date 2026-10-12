@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Query, UploadFile, status
 from sqlalchemy import func, or_, select
@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.deps import get_current_user
+from app.services.date_range import registered_between
 from app.models.partner_registration import PartnerRegistration
 from app.models.role import Permission, Role
 from app.models.user import User
@@ -220,11 +221,14 @@ def list_partner_registrations(
     form_status: str | None = Query(None),
     onboarding_status: str | None = Query(None, alias="status"),
     search: str | None = Query(None),
+    date_from: date | None = Query(None),
+    date_to: date | None = Query(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
     _require_partner_permission(db, user, "can_view", "You do not have permission to view partner registrations")
     stmt = select(PartnerRegistration)
+    stmt = registered_between(stmt, PartnerRegistration.created_at, date_from, date_to)
     if partner_type:
         stmt = stmt.where(PartnerRegistration.partner_type == partner_type)
     if form_status:

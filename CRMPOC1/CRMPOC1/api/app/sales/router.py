@@ -11,6 +11,7 @@ from app.database import get_db
 from app.deps import get_current_user
 from app.models.user import User
 from app.sales import crm_link, leads as L, quotes as Q, types as T
+from app.services.date_range import day_in_range
 from app.sales.access import Ctx, get_ctx, menu_flags, require, role_ticks, user_ticks, has_sales_menu
 from app.sales.db import get_sales_db
 from app.sales.models import (
@@ -225,11 +226,14 @@ def sales_enabled_flag(_: User = Depends(get_current_user)):
 def list_leads(
     q: str = "", status_: str = Query("", alias="status"), lead_type: str = "", heat: str = "", priority: str = "", owner: str = "",
     source: str = "", kpi: str = "", sort: str = "pri", limit: int = Query(200, ge=1, le=500), offset: int = Query(0, ge=0),
+    date_from: Optional[date] = None, date_to: Optional[date] = None,
     ctx: Ctx = Depends(get_ctx), sdb: Session = Depends(get_sales_db), main_db: Session = Depends(get_db),
 ):
     rows = list(sdb.scalars(select(SalesLead)))
     if not ctx.has("see_all"):
         rows = [r for r in rows if r.owner_user_id == ctx.user.id]
+    if date_from or date_to:  # the tiles on top count only the leads registered in these days
+        rows = [r for r in rows if day_in_range(r.created_at, date_from, date_to)]
     today = date.today()
     now_ = L.now()
 
@@ -571,12 +575,14 @@ def get_quote(sdb: Session, ctx: Ctx, qid: int) -> SalesQuotation:
 
 
 @router.get("/quotations")
-def list_quotations(status_: str = Query("", alias="status"), ctx: Ctx = Depends(require("make_quote", "approve_quote", "approve_high", "override")), sdb: Session = Depends(get_sales_db)):
+def list_quotations(status_: str = Query("", alias="status"), date_from: Optional[date] = None, date_to: Optional[date] = None, ctx: Ctx = Depends(require("make_quote", "approve_quote", "approve_high", "override")), sdb: Session = Depends(get_sales_db)):
     rows = list(sdb.scalars(select(SalesQuotation).order_by(SalesQuotation.id.desc())))
     if not ctx.any("approve_quote", "approve_high", "override"):
         rows = [r for r in rows if r.created_by == ctx.user.id]
     if status_:
         rows = [r for r in rows if r.status == status_] if status_ != "waiting" else [r for r in rows if r.status in ("wait", "wadm")]
+    if date_from or date_to:
+        rows = [r for r in rows if day_in_range(r.created_at, date_from, date_to)]
     return [Q.quotation_out(sdb, r, with_lines=False) for r in rows]
 
 

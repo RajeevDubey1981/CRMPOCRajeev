@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 
 import { bidsApi } from "../../api/bids.js";
+import DateRangeFilter, { DateRangeTag } from "../../components/DateRangeFilter.jsx";
+import RegisteredCell from "../../components/RegisteredCell.jsx";
 import {
   BidLink,
   BidTabs,
@@ -48,6 +50,8 @@ export default function BidList() {
     category: "",
     product_type: "",
     vendor_id: searchParams.get("vendor_id") || "",
+    date_from: "",
+    date_to: "",
   });
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
@@ -118,6 +122,7 @@ export default function BidList() {
             className={`${fieldClass} md:max-w-md`}
             aria-label="Search bids"
           />
+          <DateRangeFilter from={filters.date_from} to={filters.date_to} onChange={(a, b) => setFilters((f) => ({ ...f, date_from: a, date_to: b }))} />
           <select value={filters.vendor_id} onChange={(e) => set("vendor_id", e.target.value)} className={`${fieldClass} md:w-56`} aria-label="Vendor">
             <option value="">All vendors</option>
             {vendors.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
@@ -149,6 +154,7 @@ export default function BidList() {
         </div>
       </div>
 
+      <DateRangeTag from={filters.date_from} to={filters.date_to} onClear={() => setFilters((f) => ({ ...f, date_from: "", date_to: "" }))} count={rows.length} />
       <Notice tone="bad">{err}</Notice>
 
       <div className="overflow-x-auto rounded-lg bg-white shadow-sm">
@@ -159,6 +165,7 @@ export default function BidList() {
               <th className="px-3 py-2">Item</th>
               <th className="px-3 py-2">Type</th>
               <th className="px-3 py-2">Closes</th>
+              <th className="bg-sky-50 px-3 py-2 text-indcool-navy">Registered</th>
               <th className="px-3 py-2">Status</th>
               <th className="px-3 py-2">Bidder</th>
               <th className="px-3 py-2 text-right">EMD</th>
@@ -166,8 +173,8 @@ export default function BidList() {
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {loading && rows.length === 0 && <tr><td colSpan={8} className="px-3 py-8 text-center text-slate-500">Loading…</td></tr>}
-            {!loading && rows.length === 0 && <tr><td colSpan={8} className="px-3 py-8 text-center text-slate-500">No bids match.</td></tr>}
+            {loading && rows.length === 0 && <tr><td colSpan={9} className="px-3 py-8 text-center text-slate-500">Loading…</td></tr>}
+            {!loading && rows.length === 0 && <tr><td colSpan={9} className="px-3 py-8 text-center text-slate-500">No bids match.</td></tr>}
             {rows.map((b) => (
               <tr key={b.id} className="hover:bg-slate-50">
                 <td className="px-3 py-2">
@@ -189,6 +196,7 @@ export default function BidList() {
                 </td>
                 <td className="px-3 py-2 whitespace-nowrap">{b.bid_type}</td>
                 <td className="px-3 py-2 whitespace-nowrap">{fmtDate(b.end_date)}<DaysLeft bid={b} /></td>
+                <td className="px-3 py-2"><RegisteredCell at={b.created_at} /></td>
                 <td className="px-3 py-2"><StatusPill bid={b} /></td>
                 <td className="px-3 py-2">{b.vendor_name || <span className="text-slate-400">Not allocated</span>}</td>
                 <td className="px-3 py-2 text-right tabular-nums whitespace-nowrap">{b.emd_exempt ? "Exempt" : money(b.emd_amount)}</td>

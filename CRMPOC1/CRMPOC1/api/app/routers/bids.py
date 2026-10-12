@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.database import get_db
 from app.deps import get_current_user
+from app.services.date_range import registered_between
 from app.models.bid import Bid, BidEvent, BidLine, BidRequest
 from app.models.user import User
 from app.models.vendor import Vendor
@@ -397,10 +398,13 @@ def list_bids(
     category: str | None = Query(None),
     product_type: str | None = Query(None),
     vendor_id: int | None = Query(None),
+    date_from: date | None = Query(None),
+    date_to: date | None = Query(None),
     access: BidAccess = Depends(get_access),
     db: Session = Depends(get_db),
 ):
     stmt = select(Bid)
+    stmt = registered_between(stmt, Bid.created_at, date_from, date_to)
     if not access.is_manager:
         stmt = stmt.where(Bid.vendor_id == access.vendor.id, Bid.is_self.is_(False))
     if bid_type:

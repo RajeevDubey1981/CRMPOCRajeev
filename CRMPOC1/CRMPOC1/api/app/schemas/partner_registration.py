@@ -226,6 +226,7 @@ class PartnerRegistrationListItem(BaseModel):
     email_resend_used: bool = False
     registration_url: str | None = None
     invited_at: datetime | None = None
+    created_at: datetime | None = None
     form_started_at: datetime | None = None
     form_submitted_at: datetime | None = None
     submitted_at: datetime

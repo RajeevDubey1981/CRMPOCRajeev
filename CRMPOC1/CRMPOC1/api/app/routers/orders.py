@@ -11,6 +11,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.database import get_db
 from app.deps import get_current_user
+from app.services.date_range import registered_between
 from app.models.claim import Claim
 from app.models.complaint import Complaint
 from app.models.courier import Courier
@@ -803,6 +804,8 @@ def autocomplete_orders(
 def export_csv(
     status_filter: Literal[ORDER_STATUSES] | None = Query(None, alias="status"),  # type: ignore[valid-type]
     search: str | None = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -820,6 +823,7 @@ def export_csv(
     if status_filter:
         stmt = stmt.where(Order.status == status_filter)
     stmt = _apply_order_search_filter(stmt, search)
+    stmt = registered_between(stmt, Order.created_at, date_from, date_to)
     if user.role == "vendor" and not vendor_ids:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Orders not found")
     stmt = stmt.order_by(desc(Order.created_at))
@@ -864,6 +868,8 @@ def list_orders(
     per_page: int = Query(20, ge=1, le=200),
     status_filter: Literal[ORDER_STATUSES] | None = Query(None, alias="status"),  # type: ignore[valid-type]
     search: str | None = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -883,6 +889,7 @@ def list_orders(
     if status_filter:
         stmt = stmt.where(Order.status == status_filter)
     stmt = _apply_order_search_filter(stmt, search)
+    stmt = registered_between(stmt, Order.created_at, date_from, date_to)
     stmt = stmt.order_by(desc(Order.created_at))
 
     total = db.scalar(select(func.count()).select_from(stmt.subquery())) or 0

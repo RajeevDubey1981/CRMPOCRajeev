@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
+import DateRangeFilter, { DateRangeTag } from "../../components/DateRangeFilter.jsx";
+import RegisteredCell, { registeredParts } from "../../components/RegisteredCell.jsx";
 import { BounceBadge } from "../../components/EmailBounceNotice.jsx";
 import { Link, useNavigate } from "react-router-dom";
 
@@ -27,7 +29,7 @@ export default function ServiceRequestList() {
   const [serviceUsers, setServiceUsers] = useState([]);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
-  const [filters, setFilters] = useState({ search: "", status: "", service_type: "", service_user: "" });
+  const [filters, setFilters] = useState({ search: "", status: "", service_type: "", service_user: "", date_from: "", date_to: "" });
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState(20);
 
@@ -47,6 +49,8 @@ export default function ServiceRequestList() {
       search: filters.search || undefined,
       status: filters.status || undefined,
       service_type: filters.service_type || undefined,
+      date_from: filters.date_from || undefined,
+      date_to: filters.date_to || undefined,
     };
     if (!canFilterByServiceUser || !filters.service_user) {
       return base;
@@ -57,7 +61,7 @@ export default function ServiceRequestList() {
     return { ...base, service_user_id: Number(filters.service_user) };
   }, [page, perPage, filters, canFilterByServiceUser]);
 
-  const tableColumnCount = canFilterByServiceUser ? 13 : 12;
+  const tableColumnCount = canFilterByServiceUser ? 14 : 13;
 
   useEffect(() => {
     let active = true;
@@ -122,8 +126,10 @@ export default function ServiceRequestList() {
               ))}
             </select>
           )}
+          <DateRangeFilter from={filters.date_from} to={filters.date_to} onChange={(a, b) => { setFilters((f) => ({ ...f, date_from: a, date_to: b })); setPage(1); }} />
         </div>
       </div>
+      <DateRangeTag from={filters.date_from} to={filters.date_to} onClear={() => { setFilters((f) => ({ ...f, date_from: "", date_to: "" })); setPage(1); }} count={data.total} />
 
       {err && <div className="rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-700">{err}</div>}
 
@@ -138,6 +144,7 @@ export default function ServiceRequestList() {
               <StatusBadge value={row.status} />
             </div>
             <div className="mt-1 text-sm font-medium text-slate-800">{row.customer_name}</div>
+            <div className="text-[11px] text-slate-400">Registered {registeredParts(row.created_at)?.date} · {registeredParts(row.created_at)?.ago}</div>
             {row.customer_mobile && (
               <a href={`tel:${row.customer_mobile}`} onClick={(e) => e.stopPropagation()} className="text-sm text-brand-600 underline">{row.customer_mobile}</a>
             )}
@@ -160,7 +167,7 @@ export default function ServiceRequestList() {
             <thead className="bg-slate-50 text-left text-slate-600">
               <tr>
                 {[
-                  "Request No", "Complaint", "Customer", "Mobile", "Order", "Serial", "Status",
+                  "Request No", "Registered", "Complaint", "Customer", "Mobile", "Order", "Serial", "Status",
                   ...(canFilterByServiceUser ? ["Service user"] : []),
                   "Service Type", "Warranty", "Engineer", "Vendor", "Documents",
                 ].map((heading) => (
@@ -174,6 +181,7 @@ export default function ServiceRequestList() {
               {!loading && data.items.map((row) => (
                 <tr key={row.id} onClick={() => navigate(`/services/${row.id}`)} className="cursor-pointer hover:bg-sky-50/50">
                   <td className="px-4 py-3 font-mono text-brand-700">{row.request_no}</td>
+                  <td className="px-4 py-3"><RegisteredCell at={row.created_at} /></td>
                   <td className="px-4 py-3">
                     {row.complaint_id ? (
                       <Link

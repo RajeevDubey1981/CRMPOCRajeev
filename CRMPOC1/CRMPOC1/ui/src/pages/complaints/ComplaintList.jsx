@@ -1,5 +1,7 @@
 import { hasPermission } from "../../utils/permissions.js";
 import { useEffect, useMemo, useState } from "react";
+import DateRangeFilter, { DateRangeTag } from "../../components/DateRangeFilter.jsx";
+import RegisteredCell, { registeredParts } from "../../components/RegisteredCell.jsx";
 import PriorityBadge from "../../components/complaints/PriorityBadge.jsx";
 import { BOUNCED_BUTTON, BounceBadge } from "../../components/EmailBounceNotice.jsx";
 import { Link, useNavigate } from "react-router-dom";
@@ -146,10 +148,10 @@ export default function ComplaintList() {
 
   // Load summary counts for stat cards
   useEffect(() => {
-    api.get("/api/dashboard/complaints-summary")
+    api.get("/api/dashboard/complaints-summary", { params: { date_from: filters.date_from || undefined, date_to: filters.date_to || undefined } })
       .then((r) => setSummary(r.data))
       .catch(() => {});
-  }, []);
+  }, [filters.date_from, filters.date_to]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const params = useMemo(() => {
     const searchParts = [filters.customer_name, filters.mobile].filter(Boolean);
@@ -476,8 +478,10 @@ export default function ComplaintList() {
                 <option value="Normal">Normal</option>
               </select>
             </div>
-            <FilterField label="Created Date (From)" value={filters.date_from} onChange={(v) => patch("date_from", v)} placeholder="" type="date" />
-            <FilterField label="Created Date (To)" value={filters.date_to} onChange={(v) => patch("date_to", v)} placeholder="" type="date" />
+            <div>
+              <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Registered</label>
+              <DateRangeFilter from={filters.date_from} to={filters.date_to} onChange={(a, b) => { patch("date_from", a); patch("date_to", b); }} />
+            </div>
           </div>
           <div className="flex gap-2">
             <button
@@ -517,12 +521,13 @@ export default function ComplaintList() {
             <tr>
               {[
                 "Id / Ref No",
+                "Registered",
                 "Customer Name / Mobile / Email",
                 "Status / Status Date",
                 "Query Type / Linked Request",
                 "Model Details / Problem Description / Remark",
                 "Assigned Engineer / Customer Address",
-                "Created By / Created At",
+                "Created By",
                 "Action",
               ].map((h) => (
                 <th
@@ -537,12 +542,12 @@ export default function ComplaintList() {
           <tbody className="divide-y divide-slate-100">
             {loading && (
               <tr>
-                <td colSpan={8}><PageLoader /></td>
+                <td colSpan={9}><PageLoader /></td>
               </tr>
             )}
             {!loading && data.items.length === 0 && (
               <tr>
-                <td colSpan={8} className="py-10 text-center text-slate-400">No complaints found.</td>
+                <td colSpan={9} className="py-10 text-center text-slate-400">No complaints found.</td>
               </tr>
             )}
             {!loading && data.items.map((c) => {
@@ -561,6 +566,7 @@ export default function ComplaintList() {
                     />
                     {c.priority === "High" && <div><PriorityBadge at={c.priority_at} /></div>}
                   </td>
+                  <td className="px-3 py-2"><RegisteredCell at={c.created_at} /></td>
                   <td className="space-y-1 break-words px-3 py-2">
                     <div className="font-medium text-slate-800">{c.customer_name || "—"}</div>
                     <div className="tabular-nums"><CellLabel>Mobile</CellLabel> {c.customer_mobile || "—"}</div>
@@ -592,7 +598,6 @@ export default function ComplaintList() {
                   </td>
                   <td className="space-y-1 break-words px-3 py-2">
                     <div><CellLabel>By</CellLabel> {c.created_by_name || "—"}</div>
-                    <div><CellLabel>At</CellLabel> {fmtDate(c.created_at)}</div>
                   </td>
                   <td className="px-3 py-2">
                     <div className="flex flex-wrap items-center gap-1">{renderActionButtons(c, shownAction, false)}</div>
@@ -653,7 +658,7 @@ export default function ComplaintList() {
                 <CardRow label="Assigned Engineer">{c.assigned_engineer_name || "—"}</CardRow>
                 <CardRow label="Customer Address">{c.customer_address || "—"}</CardRow>
                 <CardRow label="Created By">{c.created_by_name || "—"}</CardRow>
-                <CardRow label="Created At">{fmtDate(c.created_at)}</CardRow>
+                <CardRow label="Registered">{registeredParts(c.created_at) ? `${registeredParts(c.created_at).date}, ${registeredParts(c.created_at).time} · ${registeredParts(c.created_at).ago}` : "—"}</CardRow>
               </dl>
               <div className="mt-3 flex flex-wrap gap-2 border-t border-slate-100 pt-3">
                 {renderActionButtons(c, shownAction, true)}
