@@ -8,7 +8,7 @@ const patch = (url, body) => api.patch(url, body || {}).then((r) => r.data);
 export const salesApi = {
   enabled: () => get("/api/sales/enabled"),
   status: () => get("/api/sales/status"),
-  summary: () => get("/api/sales/summary"),
+  summary: (params) => get("/api/sales/summary", params),
   summaryQuick: () => api.get("/api/sales/summary", { timeout: 3000 }).then((r) => r.data),
   leads: (params) => get("/api/sales/leads", params),
   lead: (id) => get(`/api/sales/leads/${id}`),

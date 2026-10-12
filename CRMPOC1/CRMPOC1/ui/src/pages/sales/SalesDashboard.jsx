@@ -1,6 +1,8 @@
+import { useState } from "react";
 import { Link } from "react-router-dom";
 
 import { salesApi } from "../../api/sales.js";
+import DateRangeFilter, { DateRangeTag } from "../../components/DateRangeFilter.jsx";
 import { Notice, PageTitle, SalesTabs, TYPE_COLOR, useAsync } from "./salesUi.jsx";
 
 export function SummaryTiles({ s }) {
@@ -43,11 +45,17 @@ function Card({ title, sub, children }) {
 }
 
 export default function SalesDashboard() {
-  const { data: s, loading, error } = useAsync(() => salesApi.summary(), []);
+  const [range, setRange] = useState({ from: "", to: "" });
+  const { data: s, loading, error } = useAsync(() => salesApi.summary({ date_from: range.from || undefined, date_to: range.to || undefined }), [range.from, range.to]);
   return (
     <div>
       <PageTitle title="Sales dashboard" sub={s ? s.title : ""} />
       <SalesTabs />
+      <div className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-white p-2">
+        <DateRangeFilter from={range.from} to={range.to} onChange={(from, to) => setRange({ from, to })} />
+        <span className="text-xs text-slate-500">Count only the leads registered in these days</span>
+      </div>
+      <DateRangeTag from={range.from} to={range.to} onClear={() => setRange({ from: "", to: "" })} />
       {error && <Notice tone="bad">{error}</Notice>}
       {loading && !s && <p className="text-sm text-slate-500">Loading...</p>}
       {s && (

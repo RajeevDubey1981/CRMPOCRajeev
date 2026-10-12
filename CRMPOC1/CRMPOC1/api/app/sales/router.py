@@ -784,9 +784,9 @@ def update_settings(body: SettingsIn, ctx: Ctx = Depends(get_ctx), sdb: Session 
 
 
 @router.get("/summary")
-def summary(ctx: Ctx = Depends(get_ctx), sdb: Session = Depends(get_sales_db), main_db: Session = Depends(get_db)):
+def summary(date_from: Optional[date] = None, date_to: Optional[date] = None, ctx: Ctx = Depends(get_ctx), sdb: Session = Depends(get_sales_db), main_db: Session = Depends(get_db)):
     names = crm_link.user_names(main_db, {p.crm_user_id for p in sdb.scalars(select(SalesProfile))})
-    out = build_summary(sdb, ctx, names)
+    out = build_summary(sdb, ctx, names, date_from, date_to)
     if out is None:
         raise HTTPException(403, "You do not have a Sales dashboard tick")
     return out

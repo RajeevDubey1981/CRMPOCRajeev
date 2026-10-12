@@ -65,6 +65,20 @@ class LeadDateFilterTests(SalesTestBase):
         self.assertEqual(listed["total"], 0)
         self.assertEqual(self.get(f"/api/dashboard/complaints-summary?date_from={today}", self.admin).json()["pending"], 0)
 
+    def test_the_sales_dashboard_numbers_follow_the_registered_dates(self):
+        from app.sales.models import SalesLead
+
+        old = self.new_lead(state="Uttar Pradesh", name="Old Lead", phone="9810000011")
+        self.new_lead(state="Uttar Pradesh", name="New Lead", phone="9810000012")
+        self.sdb.get(SalesLead, old["id"]).created_at = datetime.now(timezone.utc) - timedelta(days=30)
+        self.sdb.commit()
+        everything = self.get("/api/sales/summary", self.admin)
+        self.assertEqual(everything.status_code, 200, everything.text)
+        today = date.today().isoformat()
+        recent = self.get(f"/api/sales/summary?date_from={today}&date_to={today}", self.admin)
+        self.assertEqual(recent.status_code, 200, recent.text)
+        self.assertNotEqual(everything.text, recent.text, "the numbers changed when the old lead was left out")
+
 
 if __name__ == "__main__":
     unittest.main()

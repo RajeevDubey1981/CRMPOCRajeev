@@ -14,6 +14,7 @@ from app.sales.leads import aware, now
 from app.sales.models import SalesLead, SalesQuotation
 from app.sales import types as T
 from app.sales.rules import CLOSED_STATUSES
+from app.services.date_range import day_in_range
 
 
 def scope_of(ctx: Ctx) -> str | None:
@@ -46,7 +47,7 @@ def _trend(days: list, start: date, cumulative: bool = False) -> list[int]:
     return out
 
 
-def summary(sdb: Session, ctx: Ctx, names: dict[int, str] | None = None) -> dict | None:
+def summary(sdb: Session, ctx: Ctx, names: dict[int, str] | None = None, date_from: date | None = None, date_to: date | None = None) -> dict | None:
     scope = scope_of(ctx)
     if scope is None:
         return None
@@ -54,6 +55,8 @@ def summary(sdb: Session, ctx: Ctx, names: dict[int, str] | None = None) -> dict
     leads = list(sdb.scalars(select(SalesLead)))
     if mine:
         leads = [l for l in leads if l.owner_user_id == ctx.user.id]
+    if date_from or date_to:  # only the leads registered in these days
+        leads = [l for l in leads if day_in_range(l.created_at, date_from, date_to)]
     open_ = [l for l in leads if l.status not in CLOSED_STATUSES]
     today = date.today()
     month = _month_start()
@@ -64,6 +67,8 @@ def summary(sdb: Session, ctx: Ctx, names: dict[int, str] | None = None) -> dict
     quotes = list(sdb.scalars(select(SalesQuotation).where(SalesQuotation.status.in_(("wait", "wadm")))))
     if mine:
         quotes = [q for q in quotes if q.created_by == ctx.user.id]
+    if date_from or date_to:
+        quotes = [q for q in quotes if day_in_range(q.created_at, date_from, date_to)]
     wadm = [q for q in quotes if q.status == "wadm"]
     rev = [l for l in leads if l.status == "rev"]
     hot = [l for l in open_ if l.heat == "hot"]

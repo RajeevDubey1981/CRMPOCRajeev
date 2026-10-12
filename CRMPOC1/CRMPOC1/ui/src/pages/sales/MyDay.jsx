@@ -2,6 +2,8 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 
 import { salesApi } from "../../api/sales.js";
+import DateRangeFilter, { DateRangeTag } from "../../components/DateRangeFilter.jsx";
+import { registeredParts } from "../../components/RegisteredCell.jsx";
 import { AddLeadModal, CallModal } from "./LeadModals.jsx";
 import {
   AttendedChip, CountUp, FirstCallChip, HeatChip, Icon, Notice, PageTitle, PriorityChip, Ring, SalesTabs, STAGES, burst, greeting, StatusChip, TypeChip, btn, errText, fmtDate, useAsync, useSales, valueText,
@@ -33,6 +35,7 @@ function LeadCard({ lead, onCall, onQuick, index = 0 }) {
         </div>
       )}
       <div className="mt-1 text-sm text-slate-700">{lead.item}</div>
+      {registeredParts(lead.created_at) && <div className="text-[11px] text-slate-400">Registered {registeredParts(lead.created_at).date}, {registeredParts(lead.created_at).time} · {registeredParts(lead.created_at).ago}</div>}
       {lead.details && <div className="text-xs text-slate-500">{lead.details}</div>}
       <div className="text-xs text-slate-500">{[lead.place, lead.phone, lead.source].filter(Boolean).join(" · ")}{lead.follow_up_on ? ` · follow-up ${fmtDate(lead.follow_up_on)}` : ""} · {valueText(lead)}</div>
       <div className="mt-2 flex flex-wrap gap-2">
@@ -59,7 +62,8 @@ function Group({ title, tone, list, onCall, onQuick }) {
 
 export default function MyDay() {
   const { has } = useSales();
-  const { data, loading, error, reload } = useAsync(() => salesApi.leads({ owner: "me", status: "open", limit: 500 }), []);
+  const [range, setRange] = useState({ from: "", to: "" });
+  const { data, loading, error, reload } = useAsync(() => salesApi.leads({ owner: "me", status: "open", limit: 500, date_from: range.from || undefined, date_to: range.to || undefined }), [range.from, range.to]);
   const [call, setCall] = useState(null);
   const [adding, setAdding] = useState(false);
   const [note, setNote] = useState("");
@@ -81,6 +85,11 @@ export default function MyDay() {
     <div>
       <PageTitle title="My day" sub="Your leads, in the order to work them" right={has("add_lead") && <button type="button" className={btn.go} onClick={() => setAdding(true)}>+ Add lead</button>} />
       <SalesTabs />
+      <div className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-white p-2">
+        <DateRangeFilter from={range.from} to={range.to} onChange={(from, to) => setRange({ from, to })} />
+        <span className="text-xs text-slate-500">Show only the leads registered in these days</span>
+      </div>
+      <DateRangeTag from={range.from} to={range.to} onClear={() => setRange({ from: "", to: "" })} count={items.length} />
       {note && <Notice>{note}</Notice>}
       {error && <Notice tone="bad">{error}</Notice>}
       {loading && !data && <p className="text-sm text-slate-500">Loading...</p>}
