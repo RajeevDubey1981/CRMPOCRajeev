@@ -44,6 +44,7 @@ def bad(msg: str, code: int = status.HTTP_400_BAD_REQUEST):
 SETTING_DEFAULTS = {
     "fx_rate": "88", "discount_limit": "10", "home_state": "Uttar Pradesh", "company_name": "INDcool",
     "company_address": "OC528, Gaur City, Greater Noida West, Uttar Pradesh", "company_gstin": "",
+    "auto_assign_new": "0",  # 1 = a new lead is given by the rules at once; 0 = it waits for the Sales manager to give it
 }
 
 
@@ -280,7 +281,9 @@ def create_lead(main_db: Session | None, sdb: Session, data: dict, created_by: U
         _apply_scores(lead, forced_heat=(data["heat"], data.get("heat_why") or ["Suggested by the source"]))
     else:
         _apply_scores(lead, heat_from_text(text))
-    owner = data.get("owner_user_id") or pick_owner(sdb, lead)
+    owner = data.get("owner_user_id")  # named by a person or by the source's own setting
+    if not owner and get_setting(sdb, "auto_assign_new") == "1":
+        owner = pick_owner(sdb, lead)
     lead.owner_user_id = owner
     if data.get("crm_ref"):
         log(sdb, lead, "system", f"Lead made by itself from {source}, registered in the CRM as {data['crm_ref']}")

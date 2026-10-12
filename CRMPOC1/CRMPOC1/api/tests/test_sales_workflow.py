@@ -92,6 +92,19 @@ class WorkflowTests(SalesTestBase):
         again = self.get(f"/api/sales/leads/{lead['id']}", self.karan).json()
         self.assertNotEqual(again["owner_user_id"], self.amit.id, "not handed back to the person who sent it")
 
+    def test_by_default_a_new_lead_waits_for_the_sales_manager_to_give_it(self):
+        from app.sales import leads as _L
+        _L.set_setting(self.sdb, "auto_assign_new", "0")
+        self.sdb.commit()
+        lead = self.new_lead(state="Uttar Pradesh")
+        self.assertIsNone(lead["owner_user_id"], "nobody is given the lead by the rules")
+        self.assertEqual(self.get("/api/sales/leads", self.karan).json()["counts"]["unassigned"], 1)
+        self.assertEqual(self.get(f"/api/sales/leads/{lead['id']}", self.amit).status_code, 404, "not on anyone's list yet")
+        # only the manager gives it
+        self.assertEqual(self.post(f"/api/sales/leads/{lead['id']}/give", {"owner_user_id": self.amit.id}, self.amit).status_code, 403)
+        r = self.post(f"/api/sales/leads/{lead['id']}/give", {"owner_user_id": self.amit.id}, self.karan)
+        self.assertEqual((r.status_code, r.json()["owner_user_id"]), (200, self.amit.id), r.text)
+
     def registration(self, no):
         from app.models import PartnerRegistration
         r = PartnerRegistration(registration_no=no, access_token=no + "-t", partner_type="Distributor", business_type="Partnership", name="Workflow Partner", mobile="99280 77777",

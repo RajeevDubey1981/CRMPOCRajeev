@@ -75,6 +75,9 @@ class SalesTestBase(unittest.TestCase):
         self.client.get("/api/sales/team", headers=self.h(self.admin))
         self.put(f"/api/sales/team/{self.amit.id}/profile", {"types_handled": "retail,spare", "areas": "Uttar Pradesh,Delhi", "pincode": "201301", "state": "Uttar Pradesh", "district": "Gautam Buddha Nagar"}, self.admin)
         self.put(f"/api/sales/team/{self.pooja.id}/profile", {"types_handled": "gem,tender", "areas": "Rajasthan,Gujarat"}, self.admin)
+        from app.sales import leads as _L
+        _L.set_setting(self.sdb, "auto_assign_new", "1")  # most tests are about working a given lead; the default is tested on its own
+        self.sdb.commit()
 
     def tearDown(self):
         use_factory(None, None)

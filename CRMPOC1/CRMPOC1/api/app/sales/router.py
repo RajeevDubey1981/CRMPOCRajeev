@@ -323,7 +323,7 @@ def add_lead(body: LeadIn, ctx: Ctx = Depends(require("add_lead")), sdb: Session
         raise HTTPException(400, "Unknown lead type")
     data["source"] = data.get("source") or "Typed in"
     data["channel"] = "hand"
-    # a team member's own lead is theirs; a manager's lead waits to be given by the rules
+    # a team member's own lead is theirs; a manager's lead waits for the Sales manager to give it
     if not ctx.has("see_all"):
         data["owner_user_id"] = ctx.user.id
     lead, created = L.create_lead(main_db, sdb, data, ctx.user)
