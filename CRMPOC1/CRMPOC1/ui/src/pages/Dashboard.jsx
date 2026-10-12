@@ -245,21 +245,6 @@ export default function Dashboard() {
       }));
   }, [isSales]);
 
-  useEffect(() => {
-    function closeQuickLinksOnScroll() {
-      const scrollContainer = dashboardRef.current?.closest("main");
-      if (scrollContainer && scrollContainer.scrollTop >= scrollContainer.clientHeight / 2) {
-        setDashboardPanelOpen(false);
-      }
-    }
-
-    const scrollContainer = dashboardRef.current?.closest("main");
-    if (!scrollContainer) return undefined;
-    closeQuickLinksOnScroll();
-    scrollContainer.addEventListener("scroll", closeQuickLinksOnScroll, { passive: true });
-    return () => scrollContainer.removeEventListener("scroll", closeQuickLinksOnScroll);
-  }, []);
-
   /* load summary cards */
   useEffect(() => {
     Promise.all([
