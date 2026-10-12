@@ -63,7 +63,7 @@ export default function DateRangeFilter({ from = "", to = "", onChange, label = 
         type="button"
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
-        className={`crm-click inline-flex items-center gap-2 rounded border px-3 py-2 text-sm transition-colors ${set ? "border-indcool-blue bg-sky-50 font-semibold text-indcool-navy" : "border-slate-300 bg-white text-slate-700 hover:border-indcool-blue"}`}
+        className={`s-press inline-flex items-center gap-2 rounded border px-3 py-2 text-sm transition-colors ${set ? "border-indcool-blue bg-sky-50 font-semibold text-indcool-navy" : "border-slate-300 bg-white text-slate-700 hover:border-indcool-blue"}`}
       >
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M16 3v4M8 3v4M3 10h18" /></svg>
         <span>{text}</span>
