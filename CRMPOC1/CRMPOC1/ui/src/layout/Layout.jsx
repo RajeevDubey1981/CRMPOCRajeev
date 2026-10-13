@@ -6,6 +6,7 @@ import { useAuth } from "../auth/AuthContext.jsx";
 import PendingActionsModal from "../components/PendingActionsModal.jsx";
 import CallcenterGuard from "./CallcenterGuard.jsx";
 import MobileNav, { mobileNavItems } from "./MobileNav.jsx";
+import NewVersionBar from "./NewVersionBar.jsx";
 import Sidebar from "./Sidebar.jsx";
 import Topbar from "./Topbar.jsx";
 
@@ -99,6 +100,7 @@ export default function Layout() {
 
   return (
     <div className="flex h-screen min-w-0 overflow-hidden" style={{ height: "100dvh" }}>
+      <NewVersionBar />
       {mobileSidebarOpen && (
         <button
           type="button"
