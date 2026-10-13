@@ -737,7 +737,7 @@ export default function PartnerRegistrationReview() {
         )}
       </div>
 
-      {agreement && (
+      {agreement && agreement.signing_started !== false && (
         <div className="rounded-lg border border-slate-200 bg-white p-4">
           <div className="text-sm font-semibold text-slate-900">Service agreement</div>
           {agreement.is_signed ? (

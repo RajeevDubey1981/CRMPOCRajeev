@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 
 import { announceQueriesChanged, queriesApi } from "../../api/queries.js";
 import { useAuth } from "../../auth/AuthContext.jsx";
+import QueriesDashboard from "../../components/queries/QueriesDashboard.jsx";
 import RaiseQueryModal from "../../components/queries/RaiseQueryModal.jsx";
 import { AddPeopleModal, ForwardModal, roleLabel } from "../../components/queries/QueryPeopleModals.jsx";
 import { STATUS_STYLE, timeAgo } from "../../components/queries/useQuerySummary.js";
@@ -314,6 +315,28 @@ export default function QueriesPage() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
   const [raising, setRaising] = useState(false);
+  const [board, setBoard] = useState(null);
+  const [tile, setTile] = useState("");
+  const [kind, setKind] = useState("");
+  const [holder, setHolder] = useState("");
+
+  const loadBoard = useCallback(() => { queriesApi.dashboard().then(setBoard).catch(() => {}); }, []);
+  useEffect(() => {
+    loadBoard();
+    const timer = setInterval(loadBoard, 60000);
+    window.addEventListener("queries-changed", loadBoard);
+    return () => { clearInterval(timer); window.removeEventListener("queries-changed", loadBoard); };
+  }, [loadBoard]);
+
+  // a tile asks the server for the right group and then narrows it here
+  const TILE_STATUS = { new: "Active", active: "Active", waiting: "Open", late: "Open", priority: "Active", done: "" };
+  function pickTile(key) {
+    setTile(key);
+    setKind("");
+    setHolder("");
+    setFilter(key ? TILE_STATUS[key] : "Active");
+  }
+  function pickChip(key) { setFilter(key); setTile(""); setKind(""); setHolder(""); }
 
   const load = useCallback(() => {
     queriesApi.list({ status: filter || undefined, search: search.trim() || undefined })
@@ -321,6 +344,17 @@ export default function QueriesPage() {
       .catch(() => setErr("Could not load the queries."))
       .finally(() => setLoading(false));
   }, [filter, search]);
+
+  const shown = rows.filter((q) => {
+    if (tile === "new" && !(q.unread_count > 0)) return false;
+    if (tile === "late" && !q.overdue) return false;
+    if (tile === "priority" && q.priority === "normal") return false;
+    if (tile === "done" && q.status === "Open") return false;
+    if (kind && (q.category !== kind || q.status === "Closed")) return false;
+    if (holder && (q.status !== "Open" || (q.holder_name || "Admin team") !== holder)) return false;
+    return true;
+  });
+  const filterName = tile ? { new: "New", active: "Active", waiting: "Waiting for reply", late: "No reply in 24 h", priority: "High and urgent", done: "Answered and closed" }[tile] : kind ? `Kind: ${kind}` : holder ? `Waiting for ${holder}` : "";
 
   useEffect(() => {
     setLoading(true);
@@ -361,6 +395,17 @@ export default function QueriesPage() {
         </div>
       )}
 
+      <QueriesDashboard data={board} tile={tile} onTile={pickTile} kind={kind} onKind={(k) => { setKind(k); setTile(""); setHolder(""); setFilter("Active"); }} holder={holder} onHolder={(h) => { setHolder(h); setTile(""); setKind(""); setFilter("Open"); }} />
+      {filterName && (
+        <div className="s-pop flex flex-wrap items-center gap-2 text-xs text-slate-600">
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-sky-50 py-1 pl-3 pr-1.5 font-semibold text-indcool-navy">
+            {filterName}
+            <button type="button" aria-label="Show all active queries" onClick={() => pickTile("")} className="grid h-4 w-4 place-items-center rounded-full bg-sky-200 text-[10px] leading-none">✕</button>
+          </span>
+          <span>{shown.length} shown</span>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 gap-4 md:grid-cols-[22rem_1fr]">
         <div className={`rounded-lg bg-white shadow-sm ${id ? "hidden md:block" : ""}`}>
           <div className="space-y-2 border-b border-slate-100 p-3">
@@ -375,7 +420,7 @@ export default function QueriesPage() {
                 <button
                   key={f.label}
                   type="button"
-                  onClick={() => setFilter(f.key)}
+                  onClick={() => pickChip(f.key)}
                   className={`rounded-full px-2.5 py-1 text-xs font-medium ${filter === f.key ? "bg-indcool-navy text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}
                 >
                   {f.label}
@@ -385,7 +430,7 @@ export default function QueriesPage() {
           </div>
           {err && <div className="m-3 rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-700">{err}</div>}
           <div className="max-h-[70vh] overflow-y-auto">
-            <QueryList rows={rows} activeId={id} staff={staff} loading={loading} />
+            <QueryList rows={shown} activeId={id} staff={staff} loading={loading} />
           </div>
         </div>
 

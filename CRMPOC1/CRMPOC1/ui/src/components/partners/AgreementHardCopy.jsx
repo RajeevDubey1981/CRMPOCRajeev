@@ -20,7 +20,9 @@ function errText(e) {
  * The signed paper copy of the partner agreement. Admin and Sub Admin upload the scan; with sharing on it also shows in
  * the partner's own documents. Replace, hide and remove are kept in a small history.
  */
-export default function AgreementHardCopy({ registrationId, agreement, canEdit, onChanged }) {
+export default function AgreementHardCopy({ registrationId, agreement: given, canEdit, onChanged }) {
+  // before the approval there is no agreement yet; the paper copy can still be kept
+  const agreement = given || { agreement_no: null, is_signed: false, signing_started: false, hard_copy_received: false, hard_copy_events: [] };
   const [file, setFile] = useState(null);
   const [receivedOn, setReceivedOn] = useState(today());
   const [note, setNote] = useState("");
@@ -29,10 +31,6 @@ export default function AgreementHardCopy({ registrationId, agreement, canEdit, 
   const [err, setErr] = useState("");
   const [over, setOver] = useState(false);
   const input = useRef(null);
-
-  if (!agreement) {
-    return <p className="mt-3 rounded-md bg-slate-100 px-3 py-2 text-xs text-slate-600">The signed hard copy can be uploaded once the registration is approved and the agreement is issued.</p>;
-  }
 
   function choose(f) {
     setErr("");
@@ -63,7 +61,7 @@ export default function AgreementHardCopy({ registrationId, agreement, canEdit, 
         {agreement.is_signed && <span className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-[11px] font-bold text-emerald-800">Digitally signed {fmtDay(agreement.signed_at?.slice(0, 10))}</span>}
         <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold ${received ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"}`}>{received ? "Hard copy received" : "Hard copy not received yet"}</span>
       </div>
-      <p className="mt-1 text-xs text-slate-500">Agreement {agreement.agreement_no}. Keep the scan of the paper the partner signed and posted to INDcool.</p>
+      <p className="mt-1 text-xs text-slate-500">{agreement.agreement_no ? `Agreement ${agreement.agreement_no}. ` : ""}Keep the scan of the paper the partner signed and posted to INDcool.{agreement.signing_started === false ? " The digital signing link still goes to the partner when you approve the registration." : ""}</p>
       {err && <div className="mt-2 rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-700">{err}</div>}
 
       {received ? (

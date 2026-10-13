@@ -91,6 +91,7 @@ class PartnerAgreementAdminOut(BaseModel):
     signed_method: str | None = None
     signed_destination: str | None = None
     created_at: datetime
+    signing_started: bool = True  # false while the paper copy was kept before the approval emailed the signing link
     hard_copy_received: bool = False
     hard_copy_name: str | None = None
     hard_copy_url: str | None = None

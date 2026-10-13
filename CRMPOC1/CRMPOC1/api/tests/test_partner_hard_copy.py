@@ -22,10 +22,10 @@ class HardCopyTests(unittest.TestCase):
     _user = _q.QueriesTests._user
     h = _q.QueriesTests.h
 
-    def make(self, with_agreement=True, signed=True):
+    def make(self, with_agreement=True, signed=True, status="Onboarding Approved"):
         with self.Session() as s:
             r = PartnerRegistration(registration_no="PR-HC-1", access_token="tok-hc-1", partner_type="Distributor", business_type="Partnership", name="Shree Cool", mobile="9928077777",
-                                    email="shree@t.com", form_status="Submitted", onboarding_status="Approved", state="Rajasthan", city="Jaipur")
+                                    email="shree@t.com", form_status="Submitted", onboarding_status=status, state="Rajasthan", city="Jaipur")
             s.add(r)
             s.flush()
             if with_agreement:
@@ -86,12 +86,15 @@ class HardCopyTests(unittest.TestCase):
 
     def test_the_rules_for_the_file_the_date_and_a_missing_agreement(self):
         with patch.object(settings, "upload_dir", tempfile.mkdtemp(prefix="indcool_hc_") + "/uploads"):
-            none = self.make(with_agreement=False)
-            self.assertEqual(self.upload(none, self.admin).status_code, 409, "the agreement is issued at approval")
-            rid = self.make() if False else none
-            with self.Session() as s:
-                s.add(PartnerAgreement(registration_id=rid, agreement_no="AGR-HC-2", access_token="agr-tok-2", email="shree@t.com"))
-                s.commit()
+            rid = self.make(with_agreement=False, status="Registration Submitted")
+            self.assertIsNone(self.client.get(f"/api/partner-registrations/{rid}/agreement", headers=self.h(self.admin)).json(), "no agreement before the approval")
+            first = self.upload(rid, self.admin)
+            self.assertEqual(first.status_code, 200, "the paper can arrive before the approval")
+            self.assertFalse(first.json()["signing_started"], "the signing link has not gone out yet")
+            row = self.client.get("/api/partner-registrations", headers=self.h(self.admin)).json()["items"][0]
+            self.assertEqual((row["agreement_issued"], row["hard_copy_received"]), (False, True))
+            self.assertEqual(self.client.delete(f"/api/partner-registrations/{rid}/agreement/hard-copy", headers=self.h(self.admin)).status_code, 200)
+            self.assertEqual(self.client.patch(f"/api/partner-registrations/{rid + 99}/agreement/hard-copy?share=true", headers=self.h(self.admin)).status_code, 404)
             self.assertEqual(self.upload(rid, self.admin, name="x.exe", data=b"MZ", ctype="application/octet-stream").status_code, 400)
             future = (date.today() + timedelta(days=3)).isoformat()
             self.assertEqual(self.upload(rid, self.admin, received_on=future).status_code, 400)

@@ -8,6 +8,8 @@ answers in 24 hours rings an alarm for the person who has to answer it. Every st
 
 from __future__ import annotations
 
+from datetime import timedelta
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
@@ -31,7 +33,8 @@ from app.schemas.user_query import (
     QuerySummary,
 )
 from app.services import queries_service as qs
-from app.services.queries_service import STAFF_ROLES, is_staff, now
+from app.services.date_range import IST
+from app.services.queries_service import STAFF_ROLES, aware, is_staff, now
 from app.services.role_access import role_key
 
 router = APIRouter(prefix="/api/queries", tags=["queries"])
@@ -212,6 +215,59 @@ def summary(db: Session = Depends(get_db), user: User = Depends(get_current_user
         open=counts.get("Open", 0), answered=counts.get("Answered", 0), closed=counts.get("Closed", 0),
         unread=sum(1 for n in unread.values() if n > 0), staff=is_staff(user), alarms=sum(1 for q in rows if _alarm_for(user, q)),
     )
+
+
+@router.get("/dashboard")
+def dashboard(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """The numbers for the dashboard strip on the Queries page: what the person looking can see, and nothing else."""
+    rows = list(db.scalars(_visible_stmt(user)))
+    unread = _unread(db, user, rows)
+    active = [q for q in rows if q.status != "Closed"]
+    waiting = [q for q in rows if q.status == "Open"]
+    late = [q for q in waiting if qs.is_overdue(q)]
+    tiles = {
+        "new": sum(1 for q in rows if unread.get(q.id, 0) > 0),
+        "active": len(active),
+        "waiting": len(waiting),
+        "late": len(late),
+        "late_for_me": sum(1 for q in rows if _alarm_for(user, q)),
+        "priority": sum(1 for q in active if q.priority in ("high", "urgent")),
+        "done": sum(1 for q in rows if q.status in ("Answered", "Closed")),
+    }
+    today = now().astimezone(IST).date()
+    days = [today - timedelta(days=6 - i) for i in range(7)]
+    opened = [sum(1 for q in rows if aware(q.created_at).astimezone(IST).date() == d) for d in days]
+    solved = [sum(1 for q in rows if q.closed_at and aware(q.closed_at).astimezone(IST).date() == d) for d in days]
+    by_kind: dict[str, int] = {}
+    for q in active:
+        by_kind[q.category] = by_kind.get(q.category, 0) + 1
+    names = {u.id: u.name for u in db.scalars(select(User).where(User.id.in_({q.holder_id for q in waiting if q.holder_id})))} if waiting else {}
+    by_holder: dict[str, dict] = {}
+    for q in waiting:
+        who = names.get(q.holder_id) if q.holder_id else "Admin team"
+        row = by_holder.setdefault(who or "Admin team", {"name": who or "Admin team", "holder_id": q.holder_id, "waiting": 0, "late": 0})
+        row["waiting"] += 1
+        if qs.is_overdue(q):
+            row["late"] += 1
+    # how long the first answer takes: the first message from someone other than the one who asked
+    first_hours = []
+    recent = [q for q in rows if aware(q.created_at) >= now() - timedelta(days=60)]
+    if recent:
+        msgs: dict[int, list] = {}
+        for m in db.scalars(select(UserQueryMessage).where(UserQueryMessage.query_id.in_([q.id for q in recent])).order_by(UserQueryMessage.id)):
+            msgs.setdefault(m.query_id, []).append(m)
+        for q in recent:
+            first = next((m for m in msgs.get(q.id, []) if m.sender_id != q.owner_id), None)
+            if first is not None:
+                first_hours.append((aware(first.created_at) - aware(q.created_at)).total_seconds() / 3600)
+    return {
+        "tiles": tiles,
+        "week": {"days": [d.strftime("%a") for d in days], "opened": opened, "solved": solved},
+        "by_kind": sorted(({"kind": k, "count": v} for k, v in by_kind.items()), key=lambda r: -r["count"]),
+        "by_holder": sorted(by_holder.values(), key=lambda r: (-r["late"], -r["waiting"]))[:6],
+        "first_answer_hours": round(sum(first_hours) / len(first_hours), 1) if first_hours else None,
+        "staff": is_staff(user),
+    }
 
 
 @router.get("/people", response_model=list[QueryPerson])

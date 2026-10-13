@@ -417,7 +417,7 @@ export default function PartnerRegistrationList() {
                 <td className="px-4 py-3"><FormStatusBadge value={row.form_status} /></td>
                 <td className="px-4 py-3">
                   <OnboardingBadge value={row.onboarding_status} onClick={() => openDetail(row)} />
-                  {row.agreement_issued && (
+                  {(row.agreement_issued || row.hard_copy_received) && (
                     <div className="mt-1">
                       {row.hard_copy_received
                         ? <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-800">{row.agreement_signed ? "Signed" : "Agreement"} · hard copy received</span>

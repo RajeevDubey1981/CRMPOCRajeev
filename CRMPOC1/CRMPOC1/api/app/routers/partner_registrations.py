@@ -182,11 +182,14 @@ def _require_partner_permission(db: Session, user: User, action: str, message: s
         raise HTTPException(status.HTTP_403_FORBIDDEN, message)
 
 
+SIGNING_STATUSES = frozenset({"Onboarding Approved", "Partner Active"})
+
+
 def _list_item(row: PartnerRegistration, agreement: PartnerAgreement | None = None) -> PartnerRegistrationListItem:
     item = PartnerRegistrationListItem.model_validate(row)
     item.registration_url = build_public_registration_url(row.access_token)
     if agreement is not None:
-        item.agreement_issued = True
+        item.agreement_issued = row.onboarding_status in SIGNING_STATUSES  # the signing link goes out at approval
         item.agreement_signed = agreement.signed_at is not None
         item.hard_copy_received = bool(agreement.hard_copy_path)
     return item
@@ -201,7 +204,8 @@ def _require_admin_team(user: User) -> None:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Only Admin and Sub Admin handle the signed hard copy")
 
 
-def _agreement_admin_out(db: Session, agreement: PartnerAgreement) -> PartnerAgreementAdminOut:
+def _agreement_admin_out(db: Session, agreement: PartnerAgreement, row: PartnerRegistration | None = None) -> PartnerAgreementAdminOut:
+    row = row or db.get(PartnerRegistration, agreement.registration_id)
     events = list(db.scalars(select(PartnerAgreementEvent).where(PartnerAgreementEvent.agreement_id == agreement.id).order_by(PartnerAgreementEvent.id)))
     wanted = {e.by_user_id for e in events if e.by_user_id} | ({agreement.hard_copy_by} if agreement.hard_copy_by else set())
     names = {u.id: u.name for u in db.scalars(select(User).where(User.id.in_(wanted)))} if wanted else {}
@@ -217,6 +221,7 @@ def _agreement_admin_out(db: Session, agreement: PartnerAgreement) -> PartnerAgr
         signed_method=agreement.signed_method,
         signed_destination=agreement.signed_destination,
         created_at=agreement.created_at,
+        signing_started=bool(row and row.onboarding_status in SIGNING_STATUSES) or agreement.otp_sent_at is not None or agreement.signed_at is not None,
         hard_copy_received=bool(agreement.hard_copy_path),
         hard_copy_name=agreement.hard_copy_name,
         hard_copy_url=agreement.hard_copy_path,
@@ -229,15 +234,18 @@ def _agreement_admin_out(db: Session, agreement: PartnerAgreement) -> PartnerAgr
     )
 
 
-def _hard_copy_context(db: Session, registration_id: int, user: User) -> tuple[PartnerRegistration, PartnerAgreement]:
+def _hard_copy_context(db: Session, registration_id: int, user: User, create: bool = False) -> tuple[PartnerRegistration, PartnerAgreement]:
     _require_partner_permission(db, user, "can_edit", "You do not have permission to edit partner registrations")
     _require_admin_team(user)
     row = db.get(PartnerRegistration, registration_id)
     if row is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Partner registration not found")
     agreement = get_for_registration(db, registration_id)
+    if agreement is None and create:
+        # the paper can arrive before the approval: keep an unsigned agreement for it. The signing link is still emailed at approval.
+        agreement = ensure_agreement(db, row)
     if agreement is None:
-        raise HTTPException(status.HTTP_409_CONFLICT, "The agreement is issued when the registration is approved. Upload the hard copy after that")
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "There is no hard copy yet")
     return row, agreement
 
 
@@ -438,7 +446,7 @@ def get_partner_agreement(
     agreement = get_for_registration(db, registration_id)
     if agreement is None:
         return None
-    return _agreement_admin_out(db, agreement)
+    return _agreement_admin_out(db, agreement, db.get(PartnerRegistration, registration_id))
 
 
 @router.post("/{registration_id}/agreement/hard-copy", response_model=PartnerAgreementAdminOut)
@@ -452,7 +460,7 @@ async def upload_agreement_hard_copy(
     user: User = Depends(get_current_user),
 ):
     """Admin or Sub Admin keeps the signed paper copy. With share on, it also shows in the partner's own documents."""
-    row, agreement = _hard_copy_context(db, registration_id, user)
+    row, agreement = _hard_copy_context(db, registration_id, user, create=True)
     if not file.filename:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "File is required")
     today = datetime.now(timezone.utc).date()

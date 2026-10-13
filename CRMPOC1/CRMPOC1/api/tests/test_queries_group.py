@@ -203,6 +203,30 @@ class GroupQueryTests(unittest.TestCase):
         self.assertEqual(self.cards(self.tech, "query_overdue"), [])
         self.assertIsNone(self.get("/api/queries", self.tech).json()[0]["hours_left"])
 
+    # ---------------- the dashboard strip ----------------
+    def test_the_dashboard_counts_what_each_person_can_see(self):
+        a = self.raise_query(self.eng, subject="One")
+        b = self.raise_query(self.eng2, subject="Two")
+        self.post(f"/api/queries/{b['id']}/forward", {"to_user_id": self.tech.id}, self.sub)
+        self.put(f"/api/queries/{a['id']}/priority", {"priority": "urgent"}, self.sub)
+        self.age(a["id"], 30)
+        d = self.get("/api/queries/dashboard", self.sub).json()
+        self.assertEqual(d["tiles"], {"new": 2, "active": 2, "waiting": 2, "late": 1, "late_for_me": 1, "priority": 1, "done": 0})
+        self.assertEqual(d["week"]["opened"][-1], 2)
+        self.assertEqual(sorted(h["name"] for h in d["by_holder"]), ["Admin team", "tech"])
+        self.assertEqual(next(h for h in d["by_holder"] if h["name"] == "Admin team")["late"], 1)
+        # the one who asked sees only their own
+        mine = self.get("/api/queries/dashboard", self.eng).json()
+        self.assertEqual((mine["tiles"]["active"], mine["tiles"]["late_for_me"], mine["staff"]), (1, 0, False))
+        # the forwarded person sees theirs, and answering moves it to done
+        tech = self.get("/api/queries/dashboard", self.tech).json()
+        self.assertEqual((tech["tiles"]["waiting"], tech["tiles"]["new"]), (1, 1))
+        self.post(f"/api/queries/{b['id']}/messages", {"body": "Done"}, self.tech)
+        after = self.get("/api/queries/dashboard", self.tech).json()
+        self.assertEqual((after["tiles"]["waiting"], after["tiles"]["done"]), (0, 1))
+        self.post(f"/api/queries/{b['id']}/close", {}, self.sub)
+        self.assertEqual(self.get("/api/queries/dashboard", self.sub).json()["week"]["solved"][-1], 1)
+
 
 if __name__ == "__main__":
     unittest.main()
