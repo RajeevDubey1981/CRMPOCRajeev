@@ -220,8 +220,48 @@ def drop_unviewable_complaint_actions(db: Session, user: User) -> int:
     return closed
 
 
+# Who may be asked to do each kind of work. The sync gives a card only to these people, but a card made earlier stays on
+# when someone's role changes (a Service person who became Sales still saw service tickets), so it is checked again here.
+_OPS = frozenset(OPERATIONS_ADMIN_ROLES)
+_FIELD = _OPS | {"engineer", "vendor"}
+_ELIGIBLE_ROLES: dict[tuple[str, str], frozenset[str]] = {}
+for _module, _types in {
+    "services": ("assign_service", "verify_serial", "approve_service", "approve_completion", "approve_payment"),
+    "installations": ("verify_serial", "approve_completion", "approve_payment", "approve_settlement"),
+    "claims": ("process_claim",),
+}.items():
+    for _type in _types:
+        _ELIGIBLE_ROLES[(_module, _type)] = _OPS
+for _module in ("services", "installations"):
+    for _type in ("complete_service", "complete_installation", "raise_payment", "assign_engineer"):
+        _ELIGIBLE_ROLES[(_module, _type)] = _FIELD
+_ELIGIBLE_ROLES[("installations", "verify_order")] = _OPS | {"callcenter"}
+_ELIGIBLE_ROLES[("orders", "fulfill_order")] = _FIELD
+_ELIGIBLE_ROLES[("orders", "update_shipment")] = _FIELD
+
+
+def drop_ineligible_actions(db: Session, user: User) -> int:
+    """Close this person's cards for work their role is not asked to do."""
+    key = role_key(user.role)
+    rows = list(db.scalars(select(UserPendingAction).where(
+        UserPendingAction.recipient_user_id == user.id,
+        UserPendingAction.is_active.is_(True),
+        UserPendingAction.module.in_({m for m, _ in _ELIGIBLE_ROLES}),
+    )))
+    closed = 0
+    now = _now()
+    for row in rows:
+        allowed = _ELIGIBLE_ROLES.get((row.module, row.action_type))
+        if allowed is not None and key not in allowed:
+            row.is_active = False
+            row.resolved_at = now
+            closed += 1
+    return closed
+
+
 def list_pending_actions(db: Session, user: User, limit: int = 15) -> tuple[int, list[UserPendingAction]]:
-    if drop_unviewable_complaint_actions(db, user):
+    changed = drop_unviewable_complaint_actions(db, user) + drop_ineligible_actions(db, user)
+    if changed:
         db.commit()
     total = db.scalar(
         select(func.count()).select_from(UserPendingAction).where(
