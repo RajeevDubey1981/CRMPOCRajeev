@@ -43,6 +43,16 @@ export const partnerRegistrationsApi = {
   },
   reject: (id, body) => api.post(`/api/partner-registrations/${id}/reject`, body).then((r) => r.data),
   agreement: (id) => api.get(`/api/partner-registrations/${id}/agreement`).then((r) => r.data),
+  uploadHardCopy: (id, file, { received_on, note, share }) => {
+    const body = new FormData();
+    body.append("file", file);
+    if (received_on) body.append("received_on", received_on);
+    body.append("note", note || "");
+    body.append("share", share ? "true" : "false");
+    return api.post(`/api/partner-registrations/${id}/agreement/hard-copy`, body, { headers: { "Content-Type": "multipart/form-data" } }).then((r) => r.data);
+  },
+  shareHardCopy: (id, share) => api.patch(`/api/partner-registrations/${id}/agreement/hard-copy`, null, { params: { share } }).then((r) => r.data),
+  removeHardCopy: (id) => api.delete(`/api/partner-registrations/${id}/agreement/hard-copy`).then((r) => r.data),
   downloadAgreement: async (id) => {
     const response = await api.get(`/api/partner-registrations/${id}/agreement/download`, {
       responseType: "blob",

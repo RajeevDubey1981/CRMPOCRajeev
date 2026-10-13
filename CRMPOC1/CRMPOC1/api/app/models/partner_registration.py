@@ -61,6 +61,7 @@ class PartnerRegistration(Base, TimestampMixin):
     shop_photo_3_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
     shop_photo_4_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
     shop_photo_5_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    agreement_hard_copy_path: Mapped[str | None] = mapped_column(String(500), nullable=True)  # the signed paper copy, when shared with the partner
     declaration_accepted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     remarks: Mapped[str | None] = mapped_column(Text, nullable=True)
     admin_remark: Mapped[str | None] = mapped_column(Text, nullable=True)

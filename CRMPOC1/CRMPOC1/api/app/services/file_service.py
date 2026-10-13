@@ -92,7 +92,7 @@ async def save_upload(
 
     contents = await file.read()
     if len(contents) > max_bytes:
-        raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, "File exceeds 2MB limit")
+        raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, f"File exceeds {max_bytes // (1024 * 1024)}MB limit")
     if not contents:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Empty file")
 

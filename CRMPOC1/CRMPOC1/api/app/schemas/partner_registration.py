@@ -48,6 +48,7 @@ DOCUMENT_FIELDS = (
     "shop_photo_3_path",
     "shop_photo_4_path",
     "shop_photo_5_path",
+    "agreement_hard_copy_path",
 )
 
 FORM_STEPS = (
@@ -198,6 +199,7 @@ class PartnerRegistrationOut(BaseModel):
     shop_photo_3_path: str | None = None
     shop_photo_4_path: str | None = None
     shop_photo_5_path: str | None = None
+    agreement_hard_copy_path: str | None = None
     invited_at: datetime | None = None
     form_started_at: datetime | None = None
     form_submitted_at: datetime | None = None
@@ -227,6 +229,9 @@ class PartnerRegistrationListItem(BaseModel):
     registration_url: str | None = None
     invited_at: datetime | None = None
     created_at: datetime | None = None
+    agreement_issued: bool = False
+    agreement_signed: bool = False
+    hard_copy_received: bool = False
     form_started_at: datetime | None = None
     form_submitted_at: datetime | None = None
     submitted_at: datetime

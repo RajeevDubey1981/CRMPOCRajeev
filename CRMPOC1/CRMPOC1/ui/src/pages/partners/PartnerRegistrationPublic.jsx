@@ -532,6 +532,17 @@ export default function PartnerRegistrationPublic() {
                   })}
                 </div>
 
+                {context.data?.agreement_hard_copy_path && (
+                  <div className="s-pop rounded-xl border border-emerald-300 bg-emerald-50 p-4">
+                    <div className="text-sm font-medium text-slate-800">
+                      Signed agreement (hard copy)
+                      <span className="ml-2 rounded-full bg-emerald-600 px-2 py-0.5 text-[10px] font-extrabold tracking-wide text-white">RECEIVED</span>
+                    </div>
+                    <a href={toFileUrl(context.data.agreement_hard_copy_path)} target="_blank" rel="noreferrer" className="mt-1 inline-block text-xs text-sky-700 underline">View file</a>
+                    <div className="mt-1 text-xs text-slate-500">INDcool has received your signed agreement. You cannot change this file.</div>
+                  </div>
+                )}
+
                 <div className="space-y-3 border-t border-slate-200 pt-4">
                   <div className="flex items-center justify-between">
                     <div className="text-sm font-semibold text-slate-700">

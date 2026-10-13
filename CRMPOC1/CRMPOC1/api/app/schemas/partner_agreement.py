@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 
 from pydantic import BaseModel, Field
 
@@ -73,6 +73,12 @@ class AgreementSignedOut(BaseModel):
     signed_destination: str | None = None
 
 
+class HardCopyEventOut(BaseModel):
+    text: str
+    by_name: str | None = None
+    at: datetime
+
+
 class PartnerAgreementAdminOut(BaseModel):
     id: int
     agreement_no: str
@@ -85,5 +91,17 @@ class PartnerAgreementAdminOut(BaseModel):
     signed_method: str | None = None
     signed_destination: str | None = None
     created_at: datetime
+    hard_copy_received: bool = False
+    hard_copy_name: str | None = None
+    hard_copy_url: str | None = None
+    hard_copy_received_on: date | None = None
+    hard_copy_note: str | None = None
+    hard_copy_by_name: str | None = None
+    hard_copy_at: datetime | None = None
+    hard_copy_shared: bool = True
+    hard_copy_events: list["HardCopyEventOut"] = []
 
     model_config = {"from_attributes": True}
+
+
+PartnerAgreementAdminOut.model_rebuild()

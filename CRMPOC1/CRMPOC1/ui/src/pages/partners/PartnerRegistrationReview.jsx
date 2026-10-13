@@ -4,6 +4,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { api } from "../../api/client.js";
 import { partnerRegistrationsApi } from "../../api/partnerRegistrations.js";
 import { useAuth } from "../../auth/AuthContext.jsx";
+import AgreementHardCopy from "../../components/partners/AgreementHardCopy.jsx";
 import PartnerOnboardingStepper from "../../components/partners/PartnerOnboardingStepper.jsx";
 import FilePick from "../../components/FilePick.jsx";
 import { PARTNER_DOCUMENTS, buildShopPhotoDocuments } from "./partnerFormConstants.js";
@@ -205,6 +206,7 @@ export default function PartnerRegistrationReview() {
   const permission = (Array.isArray(user?.permissions) ? user.permissions : [])
     .find((item) => item.module === "partner_registrations");
   const isSystemAdmin = ["admin", "incool"].includes((user?.role || "").trim().toLowerCase());
+  const isAdminTeam = ["admin", "incool", "sub_admin"].includes((user?.role || "").trim().toLowerCase());
   const canEditPartnerRegistration = isSystemAdmin || Boolean(permission?.can_edit);
 
   const [detail, setDetail] = useState(null);
@@ -478,6 +480,7 @@ export default function PartnerRegistrationReview() {
             {PARTNER_DOCUMENTS.map((doc) => (
               <DocumentLink key={doc.key} label={doc.label} path={detail[`${doc.key}_path`]} />
             ))}
+            <DocumentLink label="Signed agreement (hard copy)" path={detail.agreement_hard_copy_path} />
           </div>
           {shopPhotoDocs.length > 0 ? (
             <div className="mt-3">
@@ -582,7 +585,8 @@ export default function PartnerRegistrationReview() {
                     {PARTNER_DOCUMENTS.map((doc) => (
                       <DocumentLink key={doc.key} label={doc.label} path={detail[`${doc.key}_path`]} />
                     ))}
-                    {!PARTNER_DOCUMENTS.some((doc) => detail[`${doc.key}_path`]) && (
+                    <DocumentLink label="Signed agreement (hard copy)" path={detail.agreement_hard_copy_path} />
+                    {!PARTNER_DOCUMENTS.some((doc) => detail[`${doc.key}_path`]) && !detail.agreement_hard_copy_path && (
                       <span className="text-sm text-slate-500">No documents uploaded.</span>
                     )}
                   </div>
@@ -618,6 +622,15 @@ export default function PartnerRegistrationReview() {
                   </div>
                 )}
               </div>
+              <AgreementHardCopy
+                registrationId={id}
+                agreement={agreement}
+                canEdit={isAdminTeam && canEditPartnerRegistration}
+                onChanged={(next) => {
+                  setAgreement(next);
+                  partnerRegistrationsApi.get(id).then(setDetail).catch(() => {});
+                }}
+              />
             </div>
           ) : editingReview ? (
             <div className="mt-3 grid grid-cols-1 gap-4 text-sm md:grid-cols-2">
@@ -747,6 +760,15 @@ export default function PartnerRegistrationReview() {
             <DetailField label="Issued" value={fmtDateTime(agreement.created_at)} />
             <DetailField label="Signed Method" value={agreement.signed_method} />
             <DetailField label="Verified Contact" value={agreement.signed_destination} />
+          </div>
+          <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
+            <span className="text-slate-600">Signed hard copy:</span>
+            {agreement.hard_copy_received ? (
+              <span className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-bold text-emerald-800">Received {agreement.hard_copy_received_on}</span>
+            ) : (
+              <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-bold text-amber-800">Not received yet</span>
+            )}
+            <button type="button" onClick={() => { setReviewStep(7); window.scrollTo({ top: 0, behavior: "smooth" }); }} className="text-xs font-semibold text-sky-700 underline">{agreement.hard_copy_received ? "Open" : "Upload it in step 8, Documents"}</button>
           </div>
           <div className="mt-3">
             <button
