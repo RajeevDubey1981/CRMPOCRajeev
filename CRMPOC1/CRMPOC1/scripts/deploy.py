@@ -7,7 +7,6 @@ Config: scripts/deploy.env (copy from scripts/deploy.env.example)
 """
 from __future__ import annotations
 
-import getpass
 import os
 import shutil
 import socket
@@ -33,7 +32,7 @@ def load_config() -> dict[str, str]:
     config: dict[str, str] = {
         "INDCOOL_DEPLOY_HOST": "97.74.83.211",
         "INDCOOL_DEPLOY_USER": "indcooladmin",
-        "INDCOOL_DEPLOY_PASSWORD": "",  # set in scripts/deploy.env (gitignored); asked for when empty
+        "INDCOOL_DEPLOY_PASSWORD": "",  # set in scripts/deploy.env (gitignored)
         "REMOTE_API": "/var/www/indcool/api",
         "REMOTE_UI": "/var/www/indcool/ui",
     }
@@ -633,10 +632,20 @@ def check_github_in_sync() -> None:
             problems.append(f"GitHub has {behind} newer change(s) that this copy does not have.\n  Run:  git pull origin main   and then deploy again.")
         if ahead:
             problems.append(f"This copy has {ahead} commit(s) that are not on GitHub yet.\n  Run:  git push origin main   and then deploy again.")
+        def ignored_local_deploy_file(path: str) -> bool:
+            normalized = path.replace("\\", "/")
+            name = normalized.rsplit("/", 1)[-1]
+            return (
+                normalized.endswith("api/app/release_build.py")
+                or name in {".env", ".env.local", "deploy.env"}
+                or name.endswith(".env")
+                or name.endswith(".env.local")
+            )
+
         changed = [
             line[3:].strip()
             for line in (_git("status", "--porcelain", "--untracked-files=no").stdout or "").splitlines()
-            if line.strip() and not line[3:].strip().replace("\\", "/").endswith("api/app/release_build.py")
+            if line.strip() and not ignored_local_deploy_file(line[3:].strip())
         ]
         if changed:
             shown = "\n    ".join(changed[:12]) + (f"\n    ... and {len(changed) - 12} more" if len(changed) > 12 else "")
@@ -688,7 +697,10 @@ def deploy_production(config: dict[str, str]) -> None:
     remote_ui = config["REMOTE_UI"]
 
     if not password or password == "YOUR_PASSWORD_HERE":
-        password = getpass.getpass(f"SSH password for {user}@{host}: ")
+        raise SystemExit(
+            "Production deploy password is not configured.\n"
+            f"Set INDCOOL_DEPLOY_PASSWORD in {CONFIG_FILE} or in the environment, then run deploy again."
+        )
 
     seed_demo_data = ask_seed_demo_data()
 
