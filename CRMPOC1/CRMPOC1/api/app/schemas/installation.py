@@ -79,6 +79,8 @@ class InstallationListItem(BaseModel):
     payment_proof_file_path: str | None = None
     complaint_id: int | None = None
     complaint_no: str | None = None
+    group_pending_count: int | None = None
+    group_completed_count: int | None = None
 
 
 class InstallationListResponse(BaseModel):

@@ -42,7 +42,7 @@ function canAdminBulkAssign(row) {
 }
 
 function canAdminBulkEdit(row) {
-  return row.status !== "Submitted";
+  return Boolean(row);
 }
 
 function isEngineerEditable(row) {
@@ -161,8 +161,8 @@ export default function InstallationList() {
       const current = groups.get(key);
       if (current) {
         current.requests.push(inst);
-        current.pendingCount += isCompletedStatus(inst.status) ? 0 : 1;
-        current.completedCount += isCompletedStatus(inst.status) ? 1 : 0;
+        current.pendingCount = inst.group_pending_count ?? current.pendingCount + (isCompletedStatus(inst.status) ? 0 : 1);
+        current.completedCount = inst.group_completed_count ?? current.completedCount + (isCompletedStatus(inst.status) ? 1 : 0);
         current.assignedEngineerName = summarizeGroupValue(current.requests, "assigned_engineer_name");
         continue;
       }
@@ -173,8 +173,8 @@ export default function InstallationList() {
         orderNo: inst.order_no || "-",
         vendorName: inst.vendor_name || "-",
         assignedEngineerName: summarizeGroupValue([inst], "assigned_engineer_name"),
-        pendingCount: isCompletedStatus(inst.status) ? 0 : 1,
-        completedCount: isCompletedStatus(inst.status) ? 1 : 0,
+        pendingCount: inst.group_pending_count ?? (isCompletedStatus(inst.status) ? 0 : 1),
+        completedCount: inst.group_completed_count ?? (isCompletedStatus(inst.status) ? 1 : 0),
         requests: [inst],
       });
     }

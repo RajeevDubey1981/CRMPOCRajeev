@@ -172,6 +172,7 @@ def _list_row(
     vendor_map: dict[int, str],
     complaint_map: dict[int, tuple[int, str]] | None = None,
     orders_by_id: dict[int, Order] | None = None,
+    group_counts: dict[tuple[str, str, str], tuple[int, int]] | None = None,
 ) -> InstallationListItem:
     engineer_name = None
     if inst.assigned_engineer:
@@ -195,6 +196,12 @@ def _list_row(
         order = (orders_by_id or {}).get(inst.order_id)
     order_no = order.order_no if order else None
     vendor_name = vendor_map.get(order.vendor_id) if order and order.vendor_id else None
+    group_key = (
+        order_item.item_code if order_item and order_item.item_code else "-",
+        order_no or "-",
+        vendor_name or "-",
+    )
+    pending_count, completed_count = (group_counts or {}).get(group_key, (None, None))
     complaint_id = None
     complaint_no = None
     if inst.order_item_id and complaint_map:
@@ -227,6 +234,8 @@ def _list_row(
         payment_proof_file_path=to_public_upload_path(inst.payment_proof_file_path),
         complaint_id=complaint_id,
         complaint_no=complaint_no,
+        group_pending_count=pending_count,
+        group_completed_count=completed_count,
     )
 
 
@@ -533,9 +542,10 @@ def list_installations(
     if date_to:
         stmt = stmt.where(InstallationRequest.request_date <= date_to)
 
+    filtered_ids_subq = stmt.with_only_columns(InstallationRequest.id).order_by(None).subquery()
     stmt = stmt.order_by(desc(InstallationRequest.request_date))
 
-    total = db.scalar(select(func.count()).select_from(stmt.subquery())) or 0
+    total = db.scalar(select(func.count()).select_from(filtered_ids_subq)) or 0
     rows = db.scalars(stmt.offset((page - 1) * per_page).limit(per_page)).all()
 
     # Batch-resolve order/vendor lookups for the page (avoid N+1)
@@ -563,10 +573,39 @@ def list_installations(
         for v in db.scalars(select(Vendor).where(Vendor.id.in_(vendor_ids))).all():
             vendor_map[v.id] = v.name_of_firm
 
+    group_counts: dict[tuple[str, str, str], tuple[int, int]] = {}
+    group_rows = db.execute(
+        select(
+            func.coalesce(OrderItem.item_code, "-"),
+            func.coalesce(Order.order_no, "-"),
+            func.coalesce(Vendor.name_of_firm, "-"),
+            func.sum(case((InstallationRequest.status == "Completed", 0), else_=1)),
+            func.sum(case((InstallationRequest.status == "Completed", 1), else_=0)),
+        )
+        .select_from(InstallationRequest)
+        .join(filtered_ids_subq, filtered_ids_subq.c.id == InstallationRequest.id)
+        .outerjoin(OrderItem, OrderItem.id == InstallationRequest.order_item_id)
+        .outerjoin(Order, Order.id == func.coalesce(OrderItem.order_id, InstallationRequest.order_id))
+        .outerjoin(Vendor, Vendor.id == Order.vendor_id)
+        .group_by(
+            func.coalesce(OrderItem.item_code, "-"),
+            func.coalesce(Order.order_no, "-"),
+            func.coalesce(Vendor.name_of_firm, "-"),
+        )
+    ).all()
+    for item_code, order_no, vendor_name, pending_count, completed_count in group_rows:
+        group_counts[(item_code or "-", order_no or "-", vendor_name or "-")] = (
+            int(pending_count or 0),
+            int(completed_count or 0),
+        )
+
     complaint_map = _complaint_map_for_order_items(db, order_item_ids)
 
     return InstallationListResponse(
-        items=[_list_row(db, inst, order_map, order_item_map, vendor_map, complaint_map, orders_by_id) for inst in rows],
+        items=[
+            _list_row(db, inst, order_map, order_item_map, vendor_map, complaint_map, orders_by_id, group_counts)
+            for inst in rows
+        ],
         total=total,
         page=page,
         per_page=per_page,
