@@ -14,7 +14,6 @@ export const queriesApi = {
   forward: (id, to_user_id, note) => api.post(`/api/queries/${id}/forward`, { to_user_id, note: note || "" }).then((r) => r.data),
   addMember: (id, user_id, kind, share_history = true) => api.post(`/api/queries/${id}/members`, { user_id, kind, share_history }).then((r) => r.data),
   removeMember: (id, user_id) => api.delete(`/api/queries/${id}/members/${user_id}`).then((r) => r.data),
-  setDetails: (id, serial_no, query_date) => api.put(`/api/queries/${id}/details`, { serial_no: serial_no || null, query_date: query_date || null }).then((r) => r.data),
   setPriority: (id, priority) => api.put(`/api/queries/${id}/priority`, { priority }).then((r) => r.data),
   ring: (id) => api.post(`/api/queries/${id}/ring`).then((r) => r.data),
 };

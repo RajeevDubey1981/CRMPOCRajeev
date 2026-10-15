@@ -140,8 +140,40 @@ def search_date(text: str) -> tuple[int | None, int, int] | None:
     return None
 
 
-def format_day(value) -> str:
-    return f"{value.day} {value.strftime('%b %Y')}" if value else "not set"
+def query_no(query_id: int) -> str:
+    """Every query has a number, from its own id: QRY-0003."""
+    return f"QRY-{query_id:04d}"
+
+
+def parse_query_no(text: str) -> int | None:
+    """QRY-0003, qry 3 or qry3 -> 3. A bare number is not taken as a query number."""
+    m = re.fullmatch(r"qry[-\s]?0*(\d+)", " ".join((text or "").strip().lower().split()))
+    return int(m.group(1)) if m else None
+
+
+def day_bounds(typed: tuple[int | None, int, int]) -> list[tuple[datetime, datetime]]:
+    """The typed day as UTC bounds of the Indian day. Without a year, that day in every year from 2020."""
+    from datetime import date
+
+    from app.services.date_range import utc_bounds
+
+    year, month, day = typed
+    years = [year] if year is not None else range(2020, now().year + 2)
+    out = []
+    for y in years:
+        try:
+            on = date(y, month, day)
+        except ValueError:
+            continue
+        out.append(utc_bounds(on, on))
+    return out
+
+
+def raised_day(q: UserQuery):
+    """The Indian day the query was raised."""
+    from app.services.date_range import IST
+
+    return aware(q.created_at).astimezone(IST).date()
 
 
 def log_event(db: Session, q: UserQuery, kind: str, text: str, by: User | None) -> None:

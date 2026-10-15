@@ -11,7 +11,7 @@ from __future__ import annotations
 from datetime import timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import and_, extract, func, or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -24,7 +24,6 @@ from app.schemas.user_query import (
     PriorityIn,
     QueryCreate,
     QueryDetail,
-    QueryDetailsIn,
     QueryEventOut,
     QueryListItem,
     QueryMemberOut,
@@ -54,11 +53,6 @@ def _load(db: Session, user: User, query_id: int) -> UserQuery:
 def _can_manage(user: User, q: UserQuery) -> bool:
     """Forward, add, CC and take out: Admin and Sub Admin, or the person who holds the query."""
     return is_staff(user) or q.holder_id == user.id
-
-
-def _can_edit_details(user: User, q: UserQuery) -> bool:
-    """Serial number and date: Admin, Sub Admin, and the person who raised the query."""
-    return is_staff(user) or user.id in (q.owner_id, q.created_by)
 
 
 def _must_manage(user: User, q: UserQuery) -> None:
@@ -120,7 +114,7 @@ def _list_items(db: Session, user: User, rows: list[UserQuery]) -> list[QueryLis
         owner, holder = people.get(q.owner_id), people.get(q.holder_id) if q.holder_id else None
         sender = people.get(m.sender_id) if m else None
         out.append(QueryListItem(
-            id=q.id, subject=q.subject, category=q.category, related_to=q.related_to, serial_no=q.serial_no, query_date=q.query_date, status=q.status,
+            id=q.id, subject=q.subject, category=q.category, related_to=q.related_to, query_no=qs.query_no(q.id), raised_on=qs.raised_day(q), status=q.status,
             owner_id=q.owner_id, owner_name=owner.name if owner else None, owner_role=owner.role if owner else None,
             created_at=q.created_at, last_message_at=q.last_message_at,
             last_message_preview=" ".join(m.body.split())[:160] if m else "",
@@ -198,7 +192,6 @@ def _detail(db: Session, user: User, q: UserQuery, unread_before: int | None = N
         **item.model_dump(), messages=out_msgs, members=member_rows, events=history, can_reply=can_reply, can_close=q.status != "Closed",
         can_reopen=q.status == "Closed", can_forward=holder_or_staff and q.status != "Closed", can_manage=holder_or_staff and q.status != "Closed",
         can_set_priority=staff, can_ring=staff and q.status == "Open", can_see_history=holder_or_staff, alarm_count=q.alarm_count or 0,
-        can_edit_details=_can_edit_details(user, q),
         private_now=bool(qs.people_out(db, q)),
     )
 
@@ -306,14 +299,13 @@ def list_queries(
     if search and search.strip():
         like = f"%{search.strip()}%"
         owners = select(User.id).where(or_(User.name.ilike(like), User.email.ilike(like)))
-        clauses = [UserQuery.subject.ilike(like), UserQuery.related_to.ilike(like), UserQuery.serial_no.ilike(like), UserQuery.owner_id.in_(owners)]
-        typed_day = qs.search_date(search)  # 15/10/2026, 2026-10-15, 15 Oct, 15 Oct 2026
+        clauses = [UserQuery.subject.ilike(like), UserQuery.related_to.ilike(like), UserQuery.owner_id.in_(owners)]
+        number = qs.parse_query_no(search)  # QRY-0003
+        if number is not None:
+            clauses.append(UserQuery.id == number)
+        typed_day = qs.search_date(search)  # 15/10/2026, 2026-10-15, 15 Oct, 15 Oct 2026: the day it was raised
         if typed_day is not None:
-            year, month, day = typed_day
-            on_day = [extract("day", UserQuery.query_date) == day, extract("month", UserQuery.query_date) == month]
-            if year is not None:
-                on_day.append(extract("year", UserQuery.query_date) == year)
-            clauses.append(and_(*on_day))
+            clauses += [and_(UserQuery.created_at >= start, UserQuery.created_at < end) for start, end in qs.day_bounds(typed_day)]
         stmt = stmt.where(or_(*clauses))
     rows = list(db.scalars(stmt.order_by(UserQuery.last_message_at.desc(), UserQuery.id.desc()).limit(limit)))
     items = _list_items(db, user, rows)
@@ -337,8 +329,7 @@ def create_query(body: QueryCreate, db: Session = Depends(get_db), user: User = 
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Choose the user you are writing to")
     stamp = now()
     q = UserQuery(
-        subject=body.subject, category=body.category, related_to=body.related_to, serial_no=body.serial_no, query_date=body.query_date,
-        status="Answered" if owner.id != user.id else "Open",
+        subject=body.subject, category=body.category, related_to=body.related_to, status="Answered" if owner.id != user.id else "Open",
         owner_id=owner.id, created_by=user.id, last_message_at=stamp, awaiting_since=stamp if owner.id == user.id else None,
     )
     db.add(q)
@@ -468,24 +459,6 @@ def set_priority(query_id: int, body: PriorityIn, db: Session = Depends(get_db),
     if q.priority != body.priority:
         q.priority = body.priority
         qs.log_event(db, q, "priority", f"Priority set to {body.priority.capitalize()} by {user.name}", user)
-        db.commit()
-        db.refresh(q)
-    return _detail(db, user, q)
-
-
-@router.put("/{query_id}/details", response_model=QueryDetail)
-def set_details(query_id: int, body: QueryDetailsIn, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    q = _load(db, user, query_id)
-    if not _can_edit_details(user, q):
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only the person who raised this query, or the Admin team, can change the serial number and date")
-    if (q.serial_no, q.query_date) != (body.serial_no, body.query_date):
-        qs.log_event(
-            db, q, "details",
-            f"Serial number and date changed by {user.name}: serial number {body.serial_no or 'not set'} (was {q.serial_no or 'not set'}), "
-            f"date {qs.format_day(body.query_date)} (was {qs.format_day(q.query_date)})",
-            user,
-        )
-        q.serial_no, q.query_date = body.serial_no, body.query_date
         db.commit()
         db.refresh(q)
     return _detail(db, user, q)

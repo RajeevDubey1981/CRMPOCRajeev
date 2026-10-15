@@ -12,7 +12,7 @@ const labelClass = "mb-1 block text-sm font-medium text-slate-700";
  * onCreated gets the new thread.
  */
 export default function RaiseQueryModal({ open, onClose, onCreated, staff = false }) {
-  const [form, setForm] = useState({ category: "General", related_to: "", serial_no: "", query_date: "", subject: "", message: "" });
+  const [form, setForm] = useState({ category: "General", related_to: "", subject: "", message: "" });
   const [person, setPerson] = useState(null);
   const [personSearch, setPersonSearch] = useState("");
   const [matches, setMatches] = useState([]);
@@ -21,7 +21,7 @@ export default function RaiseQueryModal({ open, onClose, onCreated, staff = fals
 
   useEffect(() => {
     if (open) {
-      setForm({ category: "General", related_to: "", serial_no: "", query_date: "", subject: "", message: "" });
+      setForm({ category: "General", related_to: "", subject: "", message: "" });
       setPerson(null);
       setPersonSearch("");
       setMatches([]);
@@ -49,8 +49,6 @@ export default function RaiseQueryModal({ open, onClose, onCreated, staff = fals
         subject: form.subject,
         category: form.category,
         related_to: form.related_to || null,
-        serial_no: form.serial_no || null,
-        query_date: form.query_date || null,
         message: form.message,
         to_user_id: staff ? person.id : undefined,
       });
@@ -108,16 +106,6 @@ export default function RaiseQueryModal({ open, onClose, onCreated, staff = fals
           <div>
             <label className={labelClass}>Order / request / complaint number</label>
             <input value={form.related_to} maxLength={200} onChange={(e) => set("related_to", e.target.value)} placeholder="Optional" className={fieldClass} />
-          </div>
-        </div>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <div>
-            <label className={labelClass}>Serial number</label>
-            <input value={form.serial_no} maxLength={100} onChange={(e) => set("serial_no", e.target.value)} placeholder="Optional" className={fieldClass} />
-          </div>
-          <div>
-            <label className={labelClass}>Date</label>
-            <input type="date" min="2000-01-01" max="2100-12-31" value={form.query_date} onChange={(e) => set("query_date", e.target.value)} className={fieldClass} />
           </div>
         </div>
         <div>

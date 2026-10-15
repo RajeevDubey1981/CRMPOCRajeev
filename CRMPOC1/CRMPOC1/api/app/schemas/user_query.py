@@ -9,43 +9,10 @@ def _text(value: str) -> str:
     return "\n".join(line.rstrip() for line in (value or "").strip().splitlines())
 
 
-def _serial(value) -> str | None:
-    value = " ".join(str(value or "").split())
-    return value or None
-
-
-def _query_date(value):
-    if value in ("", None):
-        return None
-    parsed = value if isinstance(value, date) else date.fromisoformat(str(value)[:10])
-    if not 2000 <= parsed.year <= 2100:
-        raise ValueError("Choose a real date")
-    return parsed
-
-
-class QueryDetailsIn(BaseModel):
-    """Serial number and date of a query, changed later."""
-
-    serial_no: str | None = Field(None, max_length=100)
-    query_date: date | None = None
-
-    @field_validator("serial_no")
-    @classmethod
-    def _serial_no(cls, v):
-        return _serial(v)
-
-    @field_validator("query_date", mode="before")
-    @classmethod
-    def _query_date(cls, v):
-        return _query_date(v)
-
-
 class QueryCreate(BaseModel):
     subject: str = Field(min_length=1, max_length=200)
     category: str = "General"
     related_to: str | None = Field(None, max_length=200)
-    serial_no: str | None = Field(None, max_length=100)
-    query_date: date | None = None
     message: str = Field(min_length=1, max_length=4000)
     to_user_id: int | None = None  # only an Admin / Sub Admin can write to someone first
 
@@ -75,16 +42,6 @@ class QueryCreate(BaseModel):
     def _related(cls, v):
         v = " ".join((v or "").split())
         return v or None
-
-    @field_validator("serial_no")
-    @classmethod
-    def _serial_no(cls, v):
-        return _serial(v)
-
-    @field_validator("query_date", mode="before")
-    @classmethod
-    def _query_date(cls, v):
-        return _query_date(v)
 
 
 class QueryReply(BaseModel):
@@ -169,8 +126,8 @@ class QueryListItem(BaseModel):
     subject: str
     category: str
     related_to: str | None = None
-    serial_no: str | None = None
-    query_date: date | None = None
+    query_no: str = ""  # QRY-0003, given automatically
+    raised_on: date | None = None  # the Indian day the query was raised
     status: str
     owner_id: int
     owner_name: str | None = None
@@ -203,7 +160,6 @@ class QueryDetail(QueryListItem):
     can_set_priority: bool = False
     can_ring: bool = False
     can_see_history: bool = False
-    can_edit_details: bool = False  # serial number and date: Admin, Sub Admin and the person who raised it
     alarm_count: int = 0
     private_now: bool = False  # someone is out, so new messages are private
 

@@ -1,6 +1,6 @@
-from datetime import date, datetime
+from datetime import datetime
 
-from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, false
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, false
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 
@@ -21,8 +21,6 @@ class UserQuery(Base, TimestampMixin):
     subject: Mapped[str] = mapped_column(String(200), nullable=False)
     category: Mapped[str] = mapped_column(String(50), nullable=False, default="General")
     related_to: Mapped[str | None] = mapped_column(String(200), nullable=True)  # a complaint / order / request number
-    serial_no: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)  # the unit the query is about
-    query_date: Mapped[date | None] = mapped_column(Date, nullable=True, index=True)  # the day it is about (visit, delivery, installation ...)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="Open", index=True)  # Open | Answered | Closed
     owner_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
     created_by: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)

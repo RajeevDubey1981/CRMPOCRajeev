@@ -19,23 +19,18 @@ const FILTERS = [
 
 const PRIORITY_STYLE = { urgent: "bg-rose-600 text-white", high: "bg-orange-500 text-white" };
 const PRIORITY_LABEL = { urgent: "Urgent", high: "High priority" };
-const EVENT_DOT = { details: "bg-sky-500", forward: "bg-violet-500", member: "bg-sky-500", cc: "bg-sky-500", removed: "bg-slate-500", priority: "bg-orange-500", alarm: "bg-rose-600", closed: "bg-emerald-600", reopened: "bg-amber-500", reply: "bg-indcool-blue", start: "bg-indcool-blue" };
+const EVENT_DOT = { forward: "bg-violet-500", member: "bg-sky-500", cc: "bg-sky-500", removed: "bg-slate-500", priority: "bg-orange-500", alarm: "bg-rose-600", closed: "bg-emerald-600", reopened: "bg-amber-500", reply: "bg-indcool-blue", start: "bg-indcool-blue" };
 
-// "2026-10-12" -> "12 Oct 2026" (a plain date, so no time zone shift)
+// "2026-10-12" -> "12 Oct 2026" (a plain day, so no time zone shift)
 function dayText(iso) {
   const [y, m, d] = String(iso || "").split("-").map(Number);
   if (!y || !m || !d) return "";
   return new Date(y, m - 1, d).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
 }
 
-function SerialDate({ serial, date, className = "" }) {
-  if (!serial && !date) return null;
-  return (
-    <div className={`flex flex-wrap items-center gap-x-2 gap-y-1 text-xs ${className}`}>
-      {serial && <span className="rounded bg-slate-100 px-2 py-0.5 text-slate-800"><b className="font-medium text-slate-500">Serial no.</b> {serial}</span>}
-      {date && <span className="rounded bg-slate-100 px-2 py-0.5 text-slate-800"><b className="font-medium text-slate-500">Date</b> {dayText(date)}</span>}
-    </div>
-  );
+function QueryNo({ no }) {
+  if (!no) return null;
+  return <span className="shrink-0 rounded bg-sky-50 px-2 py-0.5 text-[11px] font-semibold text-sky-800" title="Query number">{no}</span>;
 }
 
 function StatusChip({ status }) {
@@ -75,7 +70,10 @@ function QueryList({ rows, activeId, staff, loading }) {
           >
             <div className="flex items-start justify-between gap-2">
               <span className={`text-sm ${q.unread_count > 0 ? "font-bold text-slate-900" : "font-medium text-slate-800"}`}>{q.subject}</span>
-              {q.unread_count > 0 && <span className="mt-0.5 shrink-0 rounded-full bg-rose-600 px-1.5 py-0.5 text-[10px] font-bold text-white">{q.unread_count} new</span>}
+              <div className="flex shrink-0 items-center gap-1.5">
+                <QueryNo no={q.query_no} />
+                {q.unread_count > 0 && <span className="rounded-full bg-rose-600 px-1.5 py-0.5 text-[10px] font-bold text-white">{q.unread_count} new</span>}
+              </div>
             </div>
             <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500">
               <StatusChip status={q.status} />
@@ -88,9 +86,9 @@ function QueryList({ rows, activeId, staff, loading }) {
               {q.member_count > 1 && <span>· {q.member_count} people</span>}
               <span>{q.category}</span>
               {q.related_to && <span>· {q.related_to}</span>}
+              {q.raised_on && <span title="The day it was raised">Raised {dayText(q.raised_on)}</span>}
               <span className="ml-auto">{timeAgo(q.last_message_at)}</span>
             </div>
-            <SerialDate serial={q.serial_no} date={q.query_date} className="mt-1.5" />
             <p className="mt-1 line-clamp-2 text-xs text-slate-600">
               {q.last_sender_name ? `${q.last_sender_name}: ` : ""}{q.last_message_preview}
             </p>
@@ -151,9 +149,6 @@ function Thread({ id, staff, onChanged }) {
   const [tab, setTab] = useState("chat");
   const [forwarding, setForwarding] = useState(false);
   const [adding, setAdding] = useState(false);
-  const [editingDetails, setEditingDetails] = useState(false);
-  const [serialDraft, setSerialDraft] = useState("");
-  const [dateDraft, setDateDraft] = useState("");
   const endRef = useRef(null);
 
   const load = useCallback(() => {
@@ -166,7 +161,6 @@ function Thread({ id, staff, onChanged }) {
     setThread(null);
     setText("");
     setTab("chat");
-    setEditingDetails(false);
     load();
     const timer = setInterval(load, 30000);
     return () => clearInterval(timer);
@@ -190,15 +184,6 @@ function Thread({ id, staff, onChanged }) {
     } finally {
       setBusy(false);
     }
-  }
-  function startEditDetails() {
-    setSerialDraft(thread.serial_no || "");
-    setDateDraft(thread.query_date || "");
-    setEditingDetails(true);
-  }
-  async function saveDetails(e) {
-    e.preventDefault();
-    if (await act(() => queriesApi.setDetails(id, serialDraft.trim(), dateDraft))) setEditingDetails(false);
   }
   const done = (data) => { setThread(data); setForwarding(false); setAdding(false); announceQueriesChanged(); onChanged?.(); };
 
@@ -244,29 +229,10 @@ function Thread({ id, staff, onChanged }) {
             {thread.can_reopen && <button type="button" disabled={busy} onClick={() => act(() => queriesApi.reopen(id))} className="s-press rounded-md border border-slate-300 px-3 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-60">Reopen</button>}
           </div>
         </div>
-        {editingDetails ? (
-          <form onSubmit={saveDetails} className="mt-2 grid grid-cols-1 gap-2 rounded-md border border-slate-200 bg-slate-50 p-2 sm:grid-cols-[1fr_11rem_auto] sm:items-end">
-            <label className="text-xs text-slate-600">Serial number
-              <input value={serialDraft} maxLength={100} onChange={(e) => setSerialDraft(e.target.value)} className="mt-0.5 w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm" />
-            </label>
-            <label className="text-xs text-slate-600">Date
-              <input type="date" min="2000-01-01" max="2100-12-31" value={dateDraft} onChange={(e) => setDateDraft(e.target.value)} className="mt-0.5 w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm" />
-            </label>
-            <div className="flex gap-2">
-              <button type="submit" disabled={busy} className="rounded-md bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-700 disabled:opacity-60">Save</button>
-              <button type="button" onClick={() => setEditingDetails(false)} className="rounded-md border border-slate-300 px-3 py-1.5 text-xs text-slate-700 hover:bg-white">Cancel</button>
-            </div>
-          </form>
-        ) : (thread.serial_no || thread.query_date || thread.can_edit_details) && (
-          <div className="mt-2 flex flex-wrap items-center gap-2">
-            <SerialDate serial={thread.serial_no} date={thread.query_date} />
-            {thread.can_edit_details && (
-              <button type="button" onClick={startEditDetails} className="rounded-md border border-slate-300 px-2 py-0.5 text-xs text-slate-700 hover:bg-slate-50">
-                {thread.serial_no || thread.query_date ? "Edit serial / date" : "+ Add serial number and date"}
-              </button>
-            )}
-          </div>
-        )}
+        <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-600">
+          <QueryNo no={thread.query_no} />
+          {thread.raised_on && <span>Raised {dayText(thread.raised_on)}</span>}
+        </div>
         {thread.holder_name && thread.status !== "Closed" && (
           <div className="mt-2 rounded-md bg-slate-100 px-3 py-1.5 text-xs text-slate-700">With now: <b>{thread.holder_name}</b> ({roleLabel(thread.holder_role)})</div>
         )}
@@ -466,7 +432,7 @@ export default function QueriesPage() {
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder={staff ? "Search subject, number, person, serial number or date" : "Search subject, number, serial number or date"}
+              placeholder={staff ? "Search subject, number, person, query no. or date" : "Search subject, number, query no. or date"}
               className="w-full rounded-md border border-slate-300 px-3 py-1.5 text-sm"
             />
             <div className="flex flex-wrap gap-1.5">
