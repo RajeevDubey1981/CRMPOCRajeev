@@ -151,6 +151,12 @@ def parse_query_no(text: str) -> int | None:
     return int(m.group(1)) if m else None
 
 
+def parse_query_number(text: str) -> int | None:
+    """The query number box: 5, 0005, QRY-0005 and qry 5 all mean query 5."""
+    m = re.fullmatch(r"(?:qry[-\s]?)?0*(\d+)", " ".join((text or "").strip().lower().split()))
+    return int(m.group(1)) if m else None
+
+
 def day_bounds(typed: tuple[int | None, int, int]) -> list[tuple[datetime, datetime]]:
     """The typed day as UTC bounds of the Indian day. Without a year, that day in every year from 2020."""
     from datetime import date

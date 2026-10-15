@@ -91,3 +91,57 @@ class QueryNumberDateTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class QueryFilterTests(unittest.TestCase):
+    """The query number box and the date range on the list."""
+
+    setUp = _q.QueriesTests.setUp
+    tearDown = _q.QueriesTests.tearDown
+    _user = _q.QueriesTests._user
+    h = _q.QueriesTests.h
+    raise_query = _q.QueriesTests.raise_query
+    raised_at = QueryNumberDateTests.raised_at
+
+    def rows(self, who, **params):
+        r = self.client.get("/api/queries", params=params, headers=self.h(who))
+        self.assertEqual(r.status_code, 200, r.text)
+        return [row["subject"] for row in r.json()]
+
+    def make(self):
+        qs = {}
+        for subject, who, when in (
+            ("Twelfth", self.eng, datetime(2026, 10, 12, 9, 0, tzinfo=timezone.utc)),
+            ("Thirteenth", self.eng2, datetime(2026, 10, 13, 9, 0, tzinfo=timezone.utc)),
+            ("Fifteenth", self.vendor, datetime(2026, 10, 15, 9, 0, tzinfo=timezone.utc)),
+        ):
+            q = self.raise_query(who, subject=subject)
+            self.raised_at(q["id"], when)
+            qs[subject] = q
+        return qs
+
+    def test_the_query_number_box_takes_5_0005_or_qry_0005(self):
+        qs = self.make()
+        third = qs["Fifteenth"]
+        for typed in (str(third["id"]), f"{third['id']:04d}", third["query_no"], third["query_no"].lower(), f"qry {third['id']}", f"  {third['query_no']} "):
+            self.assertEqual(self.rows(self.admin, query_no=typed), ["Fifteenth"], typed)
+        self.assertEqual(self.rows(self.admin, query_no="QRY-0999"), [])
+        self.assertEqual(self.rows(self.admin, query_no="not a number"), [], "a box that cannot be read finds nothing, not everything")
+        self.assertEqual(len(self.rows(self.admin, query_no="")), 3, "empty box = no filter")
+
+    def test_the_date_range_is_by_the_indian_day_and_includes_both_ends(self):
+        self.make()
+        self.assertEqual(self.rows(self.admin, date_from="2026-10-12", date_to="2026-10-12"), ["Twelfth"])
+        self.assertEqual(sorted(self.rows(self.admin, date_from="2026-10-12", date_to="2026-10-13")), ["Thirteenth", "Twelfth"])
+        self.assertEqual(self.rows(self.admin, date_from="2026-10-14"), ["Fifteenth"], "from only")
+        self.assertEqual(sorted(self.rows(self.admin, date_to="2026-10-13")), ["Thirteenth", "Twelfth"], "to only")
+        self.assertEqual(self.rows(self.admin, date_from="2026-10-16", date_to="2026-10-20"), [])
+
+    def test_the_filters_work_together_and_with_the_search_and_who_may_see_it(self):
+        qs = self.make()
+        self.assertEqual(self.rows(self.admin, query_no=qs["Twelfth"]["query_no"], date_from="2026-10-12", date_to="2026-10-12"), ["Twelfth"])
+        self.assertEqual(self.rows(self.admin, query_no=qs["Twelfth"]["query_no"], date_from="2026-10-13"), [], "the number is right but the day is not")
+        self.assertEqual(self.rows(self.admin, search="Thirteenth", date_from="2026-10-12", date_to="2026-10-13"), ["Thirteenth"])
+        self.assertEqual(self.rows(self.eng2, query_no=qs["Twelfth"]["query_no"]), [], "another engineer does not see it")
+        self.assertEqual(self.rows(self.eng, query_no=qs["Twelfth"]["query_no"]), ["Twelfth"])
+        self.assertEqual(self.rows(self.admin, status="Closed", date_from="2026-10-12"), [])

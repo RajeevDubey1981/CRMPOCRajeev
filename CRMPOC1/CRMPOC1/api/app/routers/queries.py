@@ -8,10 +8,10 @@ answers in 24 hours rings an alarm for the person who has to answer it. Every st
 
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import date, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import and_, false, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -33,7 +33,7 @@ from app.schemas.user_query import (
     QuerySummary,
 )
 from app.services import queries_service as qs
-from app.services.date_range import IST
+from app.services.date_range import IST, registered_between
 from app.services.queries_service import STAFF_ROLES, aware, is_staff, now
 from app.services.role_access import role_key
 
@@ -287,6 +287,9 @@ def people_to_add(search: str | None = Query(None, max_length=60), db: Session =
 def list_queries(
     status_filter: str | None = Query(None, alias="status"),
     search: str | None = Query(None, max_length=100),
+    query_no: str | None = Query(None, max_length=20),
+    date_from: date | None = None,
+    date_to: date | None = None,
     limit: int = Query(100, ge=1, le=300),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
@@ -296,6 +299,10 @@ def list_queries(
         stmt = stmt.where(UserQuery.status == status_filter)
     elif status_filter == "Active":
         stmt = stmt.where(UserQuery.status != "Closed")
+    if query_no and query_no.strip():  # the query number box: 5, 0005 or QRY-0005
+        wanted = qs.parse_query_number(query_no)
+        stmt = stmt.where(UserQuery.id == wanted) if wanted is not None else stmt.where(false())
+    stmt = registered_between(stmt, UserQuery.created_at, date_from, date_to)  # the day it was raised (Indian days)
     if search and search.strip():
         like = f"%{search.strip()}%"
         owners = select(User.id).where(or_(User.name.ilike(like), User.email.ilike(like)))
