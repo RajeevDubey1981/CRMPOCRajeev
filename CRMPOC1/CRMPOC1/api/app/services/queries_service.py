@@ -11,6 +11,7 @@
 
 from __future__ import annotations
 
+import re
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select
@@ -119,6 +120,30 @@ def member_ids_now(db: Session, q: UserQuery) -> list[int]:
 
 
 # ---------------- history ----------------
+_MONTHS = {m: i + 1 for i, m in enumerate(["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"])}
+_MONTH_NAMES = {"january", "february", "march", "april", "june", "july", "august", "september", "sept", "october", "november", "december"}
+
+
+def search_date(text: str) -> tuple[int | None, int, int] | None:
+    """A date typed in the search box -> (year or None, month, day). Understands 15/10/2026, 15-10-2026, 2026-10-15,
+    15 Oct and 15 Oct 2026."""
+    t = " ".join((text or "").strip().lower().split())
+    m = re.fullmatch(r"(\d{1,2})[/-](\d{1,2})[/-](\d{4})", t)
+    if m:
+        return int(m.group(3)), int(m.group(2)), int(m.group(1))
+    m = re.fullmatch(r"(\d{4})-(\d{1,2})-(\d{1,2})", t)
+    if m:
+        return int(m.group(1)), int(m.group(2)), int(m.group(3))
+    m = re.fullmatch(r"(\d{1,2})\s+([a-z]{3,9})(?:\s+(\d{4}))?", t)
+    if m and (m.group(2) in _MONTHS or m.group(2) in _MONTH_NAMES):
+        return (int(m.group(3)) if m.group(3) else None), _MONTHS[m.group(2)[:3]], int(m.group(1))
+    return None
+
+
+def format_day(value) -> str:
+    return f"{value.day} {value.strftime('%b %Y')}" if value else "not set"
+
+
 def log_event(db: Session, q: UserQuery, kind: str, text: str, by: User | None) -> None:
     db.add(UserQueryEvent(query_id=q.id, kind=kind, text=text, by_user_id=by.id if by else None, at=now()))
 
