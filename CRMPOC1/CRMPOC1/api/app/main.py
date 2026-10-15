@@ -8,7 +8,7 @@ from app.config import settings
 from app.release_build import RELEASE_BUILD
 from app.services.input_security import sanitize_json
 from app.routers import auth, bids, calls, field_photos, claims, complaints, couriers, dashboard, email_send_logs, installation_callcenter, installations, item_master, market, orders, partner_agreements_public, partner_registrations, partner_registrations_public, pending_actions, projects, queries, roles, serials, services, users
-from app.routers import sarvam_api
+from app.routers import places, sarvam_api
 from app.marketing.router import router as marketing_router
 from app.sales.router import router as sales_router
 from app.sales.router_ext import router as sales_ext_router
@@ -58,6 +58,7 @@ app.include_router(claims.router)
 app.include_router(market.router)
 app.include_router(services.router)
 app.include_router(pending_actions.router)
+app.include_router(places.router)
 app.include_router(partner_registrations.router)
 app.include_router(partner_registrations_public.router)
 app.include_router(partner_agreements_public.router)

@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
+import { lookupPin } from "../api/places.js";
 import { INDIAN_STATES } from "../constants/indianStates.js";
 import { districtsOf } from "../constants/indianDistricts.js";
 
@@ -12,24 +13,53 @@ const OTHER = "__other__";
  * a district that is not in the list can be typed with "Other (type it)".
  * value = { pincode, state, district }, onChange(patch) gets only what changed.
  */
-export default function PlaceFields({ value, onChange, disabled = false, className = "", multiPin = false }) {
+export default function PlaceFields({ value, onChange, disabled = false, className = "", multiPin = false, inputClass = fieldClass, labelCls = labelClass, required = false, fillCity = false }) {
   const pincode = value?.pincode || "";
   const state = value?.state || "";
   const district = value?.district || "";
   const list = districtsOf(state);
   const notInList = district !== "" && !list.some((d) => d.toLowerCase() === district.toLowerCase());
   const [typing, setTyping] = useState(false);
+  const [found, setFound] = useState(null);
   const showTyped = typing || notInList || (state !== "" && list.length === 0);
+  const now = useRef(value);
+  now.current = value;
+  const star = required ? <span className="text-rose-600"> *</span> : null;
 
   useEffect(() => {
     // a different state means a different list: go back to picking
     setTyping(false);
   }, [state]);
 
+  // a full pin code tells the state and the district: fill what is empty, and offer the rest when it differs from what was typed
+  useEffect(() => {
+    setFound(null);
+    if (!/^[1-9]\d{5}$/.test(pincode)) return undefined;
+    let live = true;
+    const timer = setTimeout(async () => {
+      const got = await lookupPin(pincode);
+      if (!live || !got?.state) return;
+      const cur = now.current || {};
+      const inList = districtsOf(got.state).find((d) => d.toLowerCase() === String(got.district || "").toLowerCase());
+      const patch = {};
+      if (!cur.state) {
+        patch.state = got.state;
+        if (!cur.district && got.district) patch.district = inList || got.district;
+      } else if (cur.state === got.state && !cur.district && got.district) {
+        patch.district = inList || got.district;
+      } else if (cur.state !== got.state) {
+        setFound({ state: got.state, district: inList || got.district || "" });
+      }
+      if (fillCity && !cur.city && (got.city || got.district)) patch.city = got.city || got.district;
+      if (Object.keys(patch).length) onChange(patch);
+    }, 350);
+    return () => { live = false; clearTimeout(timer); };
+  }, [pincode]); // eslint-disable-line react-hooks/exhaustive-deps
+
   return (
     <div className={`grid grid-cols-1 gap-3 sm:grid-cols-3 ${className}`}>
       <div>
-        <label className={labelClass}>Pin code</label>
+        <label className={labelCls}>Pin code{star}</label>
         <input
           inputMode="numeric"
           maxLength={6}
@@ -37,23 +67,23 @@ export default function PlaceFields({ value, onChange, disabled = false, classNa
           value={pincode}
           onChange={(e) => onChange({ pincode: e.target.value.replace(/\D/g, "") })}
           placeholder="6 digits"
-          className={fieldClass}
+          className={inputClass}
         />
       </div>
       <div>
-        <label className={labelClass}>State</label>
+        <label className={labelCls}>State{star}</label>
         <select
           disabled={disabled}
           value={state}
           onChange={(e) => onChange({ state: e.target.value, district: "" })}
-          className={fieldClass}
+          className={inputClass}
         >
           <option value="">Choose the state</option>
           {INDIAN_STATES.map((s) => <option key={s} value={s}>{s}</option>)}
         </select>
       </div>
       <div>
-        <label className={labelClass}>District</label>
+        <label className={labelCls}>District</label>
         {showTyped ? (
           <div className="flex gap-2">
             <input
@@ -61,7 +91,7 @@ export default function PlaceFields({ value, onChange, disabled = false, classNa
               value={district}
               onChange={(e) => onChange({ district: e.target.value })}
               placeholder="Type the district"
-              className={fieldClass}
+              className={inputClass}
             />
             {list.length > 0 && (
               <button
@@ -82,7 +112,7 @@ export default function PlaceFields({ value, onChange, disabled = false, classNa
             onChange={(e) => {
               if (e.target.value === OTHER) { setTyping(true); onChange({ district: "" }); } else onChange({ district: e.target.value });
             }}
-            className={fieldClass}
+            className={inputClass}
           >
             <option value="">{state ? "Choose the district" : "Choose the state first"}</option>
             {list.map((d) => <option key={d} value={d}>{d}</option>)}
@@ -90,6 +120,12 @@ export default function PlaceFields({ value, onChange, disabled = false, classNa
           </select>
         )}
       </div>
+      {found && (
+        <div className="s-pop sm:col-span-3 flex flex-wrap items-center gap-2 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-900">
+          This pin code is in <b>{found.state}</b>{found.district ? `, ${found.district}` : ""}.
+          <button type="button" disabled={disabled} onClick={() => { onChange({ state: found.state, district: found.district }); setFound(null); }} className="rounded-md border border-amber-400 bg-white px-2 py-0.5 text-xs font-semibold hover:bg-amber-100">Use it</button>
+        </div>
+      )}
       {multiPin && (
         <div className="sm:col-span-3">
           <PinCodeChips

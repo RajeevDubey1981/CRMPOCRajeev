@@ -3,6 +3,7 @@ import { useParams } from "react-router-dom";
 
 import { partnerRegistrationPublicApi } from "../../api/partnerRegistrationPublic.js";
 import FilePick from "../../components/FilePick.jsx";
+import PlaceFields from "../../components/PlaceFields.jsx";
 import {
   EMPTY_PARTNER_FORM,
   INDIAN_STATES,
@@ -425,23 +426,18 @@ export default function PartnerRegistrationPublic() {
                 <Field label="Complete Address" required>
                   <textarea rows={3} value={form.firm_address} onChange={(e) => setField("firm_address", e.target.value)} className={fieldClass} />
                 </Field>
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  <Field label="City" required>
-                    <input value={form.city} onChange={(e) => setField("city", e.target.value)} className={fieldClass} />
-                  </Field>
-                  <Field label="District">
-                    <input value={form.district} onChange={(e) => setField("district", e.target.value)} className={fieldClass} />
-                  </Field>
-                  <Field label="State" required>
-                    <select value={form.state} onChange={(e) => setField("state", e.target.value)} className={fieldClass}>
-                      <option value="">Select state</option>
-                      {INDIAN_STATES.map((state) => <option key={state} value={state}>{state}</option>)}
-                    </select>
-                  </Field>
-                  <Field label="Pincode" required>
-                    <input value={form.pincode} onChange={(e) => setField("pincode", e.target.value)} className={fieldClass} />
-                  </Field>
-                </div>
+                <Field label="City" required>
+                  <input value={form.city} onChange={(e) => setField("city", e.target.value)} className={fieldClass} />
+                </Field>
+                <PlaceFields
+                  value={form}
+                  onChange={(patch) => setForm((current) => ({ ...current, ...patch }))}
+                  inputClass={fieldClass}
+                  labelCls={labelClass}
+                  required
+                  fillCity
+                />
+                <p className="text-xs text-slate-500">Type the pin code and the state and district fill in. Every state and union territory is in the list.</p>
               </div>
             )}
 
