@@ -3,9 +3,11 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 
 import { announceQueriesChanged, queriesApi } from "../../api/queries.js";
 import { useAuth } from "../../auth/AuthContext.jsx";
+import DateRangeFilter from "../../components/DateRangeFilter.jsx";
 import QueriesDashboard from "../../components/queries/QueriesDashboard.jsx";
 import RaiseQueryModal from "../../components/queries/RaiseQueryModal.jsx";
 import { AddPeopleModal, ForwardModal, roleLabel } from "../../components/queries/QueryPeopleModals.jsx";
+import { Mark, isTypedDay, isTypedNumber } from "../../components/queries/queryHighlight.jsx";
 import { STATUS_STYLE, timeAgo } from "../../components/queries/useQuerySummary.js";
 import { isQueryStaffRole } from "../../utils/roles.js";
 
@@ -20,6 +22,32 @@ const FILTERS = [
 const PRIORITY_STYLE = { urgent: "bg-rose-600 text-white", high: "bg-orange-500 text-white" };
 const PRIORITY_LABEL = { urgent: "Urgent", high: "High priority" };
 const EVENT_DOT = { forward: "bg-violet-500", member: "bg-sky-500", cc: "bg-sky-500", removed: "bg-slate-500", priority: "bg-orange-500", alarm: "bg-rose-600", closed: "bg-emerald-600", reopened: "bg-amber-500", reply: "bg-indcool-blue", start: "bg-indcool-blue" };
+
+// "2026-10-12" -> "12 Oct 2026" (a plain day, so no time zone shift)
+function dayText(iso) {
+  const [y, m, d] = String(iso || "").split("-").map(Number);
+  if (!y || !m || !d) return "";
+  return new Date(y, m - 1, d).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+}
+
+function QueryNo({ no, hit = false }) {
+  if (!no) return null;
+  return (
+    <span className={`shrink-0 rounded-md px-2 py-0.5 text-xs font-bold tracking-wide ${hit ? "bg-yellow-300 text-slate-900 ring-2 ring-yellow-400" : "bg-indcool-navy text-white"}`} title="Query number">
+      {no}
+    </span>
+  );
+}
+
+function RaisedDate({ day, hit = false }) {
+  if (!day) return null;
+  return (
+    <span className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs font-medium ${hit ? "border-yellow-400 bg-yellow-200 text-slate-900" : "border-sky-200 bg-sky-50 text-indcool-navy"}`} title="The day it was raised">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M16 3v4M8 3v4M3 10h18" /></svg>
+      Raised {dayText(day)}
+    </span>
+  );
+}
 
 function StatusChip({ status }) {
   return <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${STATUS_STYLE[status] || "bg-slate-100 text-slate-600"}`}>{status}</span>;
@@ -45,7 +73,7 @@ function leftText(q) {
   return h > 0 ? `${h} h ${m} m` : `${m} min`;
 }
 
-function QueryList({ rows, activeId, staff, loading }) {
+function QueryList({ rows, activeId, staff, loading, term = "", numberOn = false, dateOn = false }) {
   if (loading && rows.length === 0) return <p className="p-4 text-sm text-slate-500">Loading...</p>;
   if (rows.length === 0) return <p className="p-4 text-sm text-slate-500">No queries here.</p>;
   return (
@@ -57,8 +85,11 @@ function QueryList({ rows, activeId, staff, loading }) {
             className={`block border-l-4 px-3 py-2.5 transition-colors hover:bg-sky-50 ${String(q.id) === String(activeId) ? "bg-sky-50" : ""} ${q.alarm_for_me ? "border-l-rose-600 bg-rose-50/60" : q.priority === "urgent" ? "border-l-rose-500" : q.priority === "high" ? "border-l-orange-400" : "border-l-transparent"}`}
           >
             <div className="flex items-start justify-between gap-2">
-              <span className={`text-sm ${q.unread_count > 0 ? "font-bold text-slate-900" : "font-medium text-slate-800"}`}>{q.subject}</span>
-              {q.unread_count > 0 && <span className="mt-0.5 shrink-0 rounded-full bg-rose-600 px-1.5 py-0.5 text-[10px] font-bold text-white">{q.unread_count} new</span>}
+              <span className={`text-sm ${q.unread_count > 0 ? "font-bold text-slate-900" : "font-medium text-slate-800"}`}><Mark text={q.subject} term={term} /></span>
+              <div className="flex shrink-0 items-center gap-1.5">
+                <QueryNo no={q.query_no} hit={numberOn || isTypedNumber(term, q.query_no, q.id)} />
+                {q.unread_count > 0 && <span className="rounded-full bg-rose-600 px-1.5 py-0.5 text-[10px] font-bold text-white">{q.unread_count} new</span>}
+              </div>
             </div>
             <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500">
               <StatusChip status={q.status} />
@@ -66,15 +97,18 @@ function QueryList({ rows, activeId, staff, loading }) {
               {q.alarm_for_me ? <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[11px] font-bold text-rose-700">No reply in 24 h</span>
                 : q.overdue ? <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[11px] font-semibold text-rose-700">Overdue</span>
                 : q.status === "Open" && q.hours_left != null && q.hours_left < 6 ? <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800">{leftText(q)} left</span> : null}
-              {(staff || q.holder_id) && <span className="font-medium text-slate-700">{staff ? q.owner_name : ""}</span>}
-              {q.holder_name && <span title="Who has to answer it">→ {q.holder_name}</span>}
+              {(staff || q.holder_id) && <span className="font-medium text-slate-700">{staff ? <Mark text={q.owner_name} term={term} /> : ""}</span>}
+              {q.holder_name && <span title="Who has to answer it">→ <Mark text={q.holder_name} term={term} /></span>}
               {q.member_count > 1 && <span>· {q.member_count} people</span>}
               <span>{q.category}</span>
-              {q.related_to && <span>· {q.related_to}</span>}
+              {q.related_to && <span>· <Mark text={q.related_to} term={term} /></span>}
               <span className="ml-auto">{timeAgo(q.last_message_at)}</span>
             </div>
+            <div className="mt-1.5">
+              <RaisedDate day={q.raised_on} hit={dateOn || isTypedDay(term, q.raised_on)} />
+            </div>
             <p className="mt-1 line-clamp-2 text-xs text-slate-600">
-              {q.last_sender_name ? `${q.last_sender_name}: ` : ""}{q.last_message_preview}
+              {q.last_sender_name ? `${q.last_sender_name}: ` : ""}<Mark text={q.last_message_preview} term={term} />
             </p>
           </Link>
         </li>
@@ -213,6 +247,10 @@ function Thread({ id, staff, onChanged }) {
             {thread.can_reopen && <button type="button" disabled={busy} onClick={() => act(() => queriesApi.reopen(id))} className="s-press rounded-md border border-slate-300 px-3 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-60">Reopen</button>}
           </div>
         </div>
+        <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-600">
+          <QueryNo no={thread.query_no} />
+          <RaisedDate day={thread.raised_on} />
+        </div>
         {thread.holder_name && thread.status !== "Closed" && (
           <div className="mt-2 rounded-md bg-slate-100 px-3 py-1.5 text-xs text-slate-700">With now: <b>{thread.holder_name}</b> ({roleLabel(thread.holder_role)})</div>
         )}
@@ -311,6 +349,9 @@ export default function QueriesPage() {
   const staff = isQueryStaffRole(user?.role);
   const [filter, setFilter] = useState("Active");
   const [search, setSearch] = useState("");
+  const [queryNo, setQueryNo] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
@@ -339,11 +380,11 @@ export default function QueriesPage() {
   function pickChip(key) { setFilter(key); setTile(""); setKind(""); setHolder(""); }
 
   const load = useCallback(() => {
-    queriesApi.list({ status: filter || undefined, search: search.trim() || undefined })
+    queriesApi.list({ status: filter || undefined, search: search.trim() || undefined, query_no: queryNo.trim() || undefined, date_from: dateFrom || undefined, date_to: dateTo || undefined })
       .then((data) => { setRows(data); setErr(""); })
       .catch(() => setErr("Could not load the queries."))
       .finally(() => setLoading(false));
-  }, [filter, search]);
+  }, [filter, search, queryNo, dateFrom, dateTo]);
 
   const shown = rows.filter((q) => {
     if (tile === "new" && !(q.unread_count > 0)) return false;
@@ -358,9 +399,9 @@ export default function QueriesPage() {
 
   useEffect(() => {
     setLoading(true);
-    const timer = setTimeout(load, search ? 250 : 0);
+    const timer = setTimeout(load, search || queryNo ? 250 : 0);
     return () => clearTimeout(timer);
-  }, [load, search]);
+  }, [load, search, queryNo]);
 
   useEffect(() => {
     const timer = setInterval(load, 30000);
@@ -412,9 +453,32 @@ export default function QueriesPage() {
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder={staff ? "Search subject, number or person" : "Search subject or number"}
+              placeholder={staff ? "Search subject, number, person, query no. or date" : "Search subject, number, query no. or date"}
               className="w-full rounded-md border border-slate-300 px-3 py-1.5 text-sm"
             />
+            <div className="flex flex-wrap items-end gap-2">
+              <label className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                Query no.
+                <input
+                  value={queryNo}
+                  onChange={(e) => setQueryNo(e.target.value)}
+                  inputMode="numeric"
+                  maxLength={20}
+                  placeholder="5 or QRY-0005"
+                  aria-label="Query number"
+                  className={`mt-0.5 block w-32 rounded border px-2 py-1.5 text-sm font-normal normal-case tracking-normal ${queryNo.trim() ? "border-indcool-blue bg-sky-50 text-indcool-navy" : "border-slate-300 bg-white text-slate-800"}`}
+                />
+              </label>
+              <div>
+                <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500">Date raised</span>
+                <DateRangeFilter className="mt-0.5" label="Raised" from={dateFrom} to={dateTo} onChange={(a, b) => { setDateFrom(a); setDateTo(b); }} />
+              </div>
+              {(queryNo.trim() || dateFrom || dateTo) && (
+                <button type="button" onClick={() => { setQueryNo(""); setDateFrom(""); setDateTo(""); }} className="pb-2 text-xs text-sky-700 underline hover:text-sky-900">
+                  Clear
+                </button>
+              )}
+            </div>
             <div className="flex flex-wrap gap-1.5">
               {FILTERS.map((f) => (
                 <button
@@ -430,7 +494,7 @@ export default function QueriesPage() {
           </div>
           {err && <div className="m-3 rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-700">{err}</div>}
           <div className="max-h-[70vh] overflow-y-auto">
-            <QueryList rows={shown} activeId={id} staff={staff} loading={loading} />
+            <QueryList rows={shown} activeId={id} staff={staff} loading={loading} term={search.trim()} numberOn={!!queryNo.trim()} dateOn={!!(dateFrom || dateTo)} />
           </div>
         </div>
 

@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -126,6 +126,8 @@ class QueryListItem(BaseModel):
     subject: str
     category: str
     related_to: str | None = None
+    query_no: str = ""  # QRY-0003, given automatically
+    raised_on: date | None = None  # the Indian day the query was raised
     status: str
     owner_id: int
     owner_name: str | None = None

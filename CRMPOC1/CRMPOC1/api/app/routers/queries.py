@@ -8,10 +8,10 @@ answers in 24 hours rings an alarm for the person who has to answer it. Every st
 
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import date, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import func, or_, select
+from sqlalchemy import and_, false, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -33,7 +33,7 @@ from app.schemas.user_query import (
     QuerySummary,
 )
 from app.services import queries_service as qs
-from app.services.date_range import IST
+from app.services.date_range import IST, registered_between
 from app.services.queries_service import STAFF_ROLES, aware, is_staff, now
 from app.services.role_access import role_key
 
@@ -114,7 +114,7 @@ def _list_items(db: Session, user: User, rows: list[UserQuery]) -> list[QueryLis
         owner, holder = people.get(q.owner_id), people.get(q.holder_id) if q.holder_id else None
         sender = people.get(m.sender_id) if m else None
         out.append(QueryListItem(
-            id=q.id, subject=q.subject, category=q.category, related_to=q.related_to, status=q.status,
+            id=q.id, subject=q.subject, category=q.category, related_to=q.related_to, query_no=qs.query_no(q.id), raised_on=qs.raised_day(q), status=q.status,
             owner_id=q.owner_id, owner_name=owner.name if owner else None, owner_role=owner.role if owner else None,
             created_at=q.created_at, last_message_at=q.last_message_at,
             last_message_preview=" ".join(m.body.split())[:160] if m else "",
@@ -287,6 +287,9 @@ def people_to_add(search: str | None = Query(None, max_length=60), db: Session =
 def list_queries(
     status_filter: str | None = Query(None, alias="status"),
     search: str | None = Query(None, max_length=100),
+    query_no: str | None = Query(None, max_length=20),
+    date_from: date | None = None,
+    date_to: date | None = None,
     limit: int = Query(100, ge=1, le=300),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
@@ -296,10 +299,21 @@ def list_queries(
         stmt = stmt.where(UserQuery.status == status_filter)
     elif status_filter == "Active":
         stmt = stmt.where(UserQuery.status != "Closed")
+    if query_no and query_no.strip():  # the query number box: 5, 0005 or QRY-0005
+        wanted = qs.parse_query_number(query_no)
+        stmt = stmt.where(UserQuery.id == wanted) if wanted is not None else stmt.where(false())
+    stmt = registered_between(stmt, UserQuery.created_at, date_from, date_to)  # the day it was raised (Indian days)
     if search and search.strip():
         like = f"%{search.strip()}%"
         owners = select(User.id).where(or_(User.name.ilike(like), User.email.ilike(like)))
-        stmt = stmt.where(or_(UserQuery.subject.ilike(like), UserQuery.related_to.ilike(like), UserQuery.owner_id.in_(owners)))
+        clauses = [UserQuery.subject.ilike(like), UserQuery.related_to.ilike(like), UserQuery.owner_id.in_(owners)]
+        number = qs.parse_query_no(search)  # QRY-0003
+        if number is not None:
+            clauses.append(UserQuery.id == number)
+        typed_day = qs.search_date(search)  # 15/10/2026, 2026-10-15, 15 Oct, 15 Oct 2026: the day it was raised
+        if typed_day is not None:
+            clauses += [and_(UserQuery.created_at >= start, UserQuery.created_at < end) for start, end in qs.day_bounds(typed_day)]
+        stmt = stmt.where(or_(*clauses))
     rows = list(db.scalars(stmt.order_by(UserQuery.last_message_at.desc(), UserQuery.id.desc()).limit(limit)))
     items = _list_items(db, user, rows)
     # the alarm first, then urgent and high, then the newest
