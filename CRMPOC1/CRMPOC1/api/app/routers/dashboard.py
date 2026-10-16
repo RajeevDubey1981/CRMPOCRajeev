@@ -1,5 +1,6 @@
 from datetime import date, datetime, timedelta, timezone
 
+from app.services.role_access import role_key as canonical_role_key
 from fastapi import APIRouter, Depends
 from sqlalchemy import Select, func, or_, select
 from sqlalchemy.orm import Session
@@ -42,7 +43,7 @@ def _scoped_complaints_stmt(db: Session, user: User) -> tuple[Select | None, boo
     stmt = select(Complaint).where(Complaint.deleted_at.is_(None))
     if scope is not None:
         stmt = stmt.where(Complaint.query_type.in_(scope))
-    if (user.role or "").lower() == "engineer":
+    if canonical_role_key(user.role) == "engineer":
         stmt = stmt.where(engineer_visible_complaint_filter(user.id))
     return apply_complaint_assignment_scope(stmt, user), True
 
@@ -79,7 +80,7 @@ def installation_summary(db: Session = Depends(get_db), user: User = Depends(get
     base = select(func.count(InstallationRequest.id)).where(
         InstallationRequest.status.in_(["Pending", "Assigned", "In Progress", "Settlement Pending"])
     )
-    if user.role == "engineer":
+    if canonical_role_key(user.role) == "engineer":
         base = base.where(InstallationRequest.assigned_engineer == user.id)
     total = db.scalar(base) or 0
     gt7 = db.scalar(base.where(InstallationRequest.request_date < now - timedelta(days=7))) or 0
@@ -117,7 +118,7 @@ def orders_summary(db: Session = Depends(get_db), user: User = Depends(get_curre
 @router.get("/services-summary", response_model=ServiceSummary)
 def services_summary(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     base = select(ServiceRequest).where(ServiceRequest.deleted_at.is_(None))
-    role = (user.role or "").lower()
+    role = canonical_role_key(user.role)
     if role == "engineer":
         base = base.where(engineer_visible_service_filter(user.id))
     elif role == "vendor":

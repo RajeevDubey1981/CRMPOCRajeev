@@ -1,3 +1,4 @@
+import { roleKey as canonicalRoleKey } from "../../utils/roles.js";
 import { useEffect, useMemo, useState } from "react";
 
 import Modal from "../../components/Modal.jsx";
@@ -51,9 +52,9 @@ function UserForm({ initial, roles, busy, onCancel, onSubmit }) {
 
   function set(field, value) { setForm((f) => ({ ...f, [field]: value })); }
   // Admin, Sub Admin and Vendor never need the tick: admins already manage bids and vendors have their own side.
-  const bidTickApplies = !BID_TICK_EXCLUDED.includes((form.role || "").toLowerCase());
+  const bidTickApplies = !BID_TICK_EXCLUDED.includes(canonicalRoleKey(form.role));
   // Admin, Sub Admin and the marketing role already have Marketing; engineers and vendors never get it.
-  const marketingTickApplies = !["admin", "incool", "sub_admin", "marketing", "marketing_manager", "vendor", "engineer"].includes((form.role || "").toLowerCase());
+  const marketingTickApplies = !["admin", "incool", "sub_admin", "marketing", "marketing_manager", "vendor", "engineer"].includes(canonicalRoleKey(form.role));
 
   async function submit(e) {
     e.preventDefault();
@@ -63,12 +64,12 @@ function UserForm({ initial, roles, busy, onCancel, onSubmit }) {
       return;
     }
     // where an engineer works: sent for engineers only, an empty box clears it
-    const placeBody = form.role === "engineer"
+    const placeBody = canonicalRoleKey(form.role) === "engineer"
       ? { pincode: form.pincode.trim(), state: form.state, district: form.district.trim(), extra_pincodes: form.state ? [] : form.extra_pincodes, coverage: form.coverage, skills: form.skills }
       : {};
     const typed = form.other_type.trim();
     const vendorBody = form.role === "vendor" ? { vendor_types: typed && !form.vendor_types.includes(typed) ? [...form.vendor_types, typed] : form.vendor_types, skills: form.skills } : {};
-    const problem = form.role === "engineer" ? coverageProblem(form.coverage) : "";
+    const problem = canonicalRoleKey(form.role) === "engineer" ? coverageProblem(form.coverage) : "";
     if (problem) { setErr(problem); return; }
     if (placeBody.pincode && !/^[1-9]\d{5}$/.test(placeBody.pincode.replace(/\s+/g, ""))) {
       setErr("Pin code must be 6 digits");
@@ -145,7 +146,7 @@ function UserForm({ initial, roles, busy, onCancel, onSubmit }) {
           <label className={labelClass}>Phone</label>
           <input value={form.phone} onChange={(e) => set("phone", e.target.value)} className={fieldClass} />
         </div>
-        {form.role === "engineer" && (
+        {canonicalRoleKey(form.role) === "engineer" && (
           <div className="grid grid-cols-1 gap-3 rounded-md border border-sky-200 bg-sky-50 p-3 md:col-span-2 md:grid-cols-3">
             <div className="md:col-span-3 text-xs font-semibold uppercase tracking-wide text-sky-800">Where this engineer works</div>
             <PlaceFields className="md:col-span-3" value={form} onChange={(patch) => setForm((f) => ({ ...f, ...patch }))} />

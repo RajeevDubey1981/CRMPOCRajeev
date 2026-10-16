@@ -1,3 +1,4 @@
+import { roleKey as canonicalRoleKey } from "../utils/roles.js";
 import { NavLink } from "react-router-dom";
 
 import { useAuth } from "../auth/AuthContext.jsx";
@@ -30,7 +31,7 @@ function canView(user, module) {
 
 export function mobileNavItems(user) {
   const role = (user?.role || "").trim().toLowerCase();
-  if (role === "engineer") {
+  if (canonicalRoleKey(role) === "engineer") {
     return [
       { to: "/dashboard", label: "Home", icon: "home" },
       { to: "/services", label: "Jobs", icon: "list", end: true },

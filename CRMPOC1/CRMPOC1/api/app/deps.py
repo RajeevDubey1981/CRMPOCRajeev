@@ -1,3 +1,4 @@
+from app.services.role_access import role_key as canonical_role_key
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError
@@ -34,7 +35,7 @@ def get_current_user(
 
 def require_roles(*allowed: str):
     def checker(user: User = Depends(get_current_user)) -> User:
-        if user.role not in allowed:
+        if canonical_role_key(user.role) not in {canonical_role_key(role) for role in allowed}:
             raise HTTPException(status.HTTP_403_FORBIDDEN, "Insufficient permissions")
         return user
     return checker

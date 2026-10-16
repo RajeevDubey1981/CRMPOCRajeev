@@ -1,3 +1,4 @@
+import { roleKey as canonicalRoleKey } from "../../utils/roles.js";
 import { useEffect, useState } from "react";
 
 import Modal from "../../components/Modal.jsx";
@@ -11,7 +12,7 @@ const STATUSES = ["Pending", "Under Process", "In Process", "Resolved", "Rejecte
 
 export default function ComplaintStatusEdit({ complaint, onClose, onSaved }) {
   const { user } = useAuth();
-  const isEngineer = (user?.role || "").toLowerCase() === "engineer";
+  const isEngineer = canonicalRoleKey(user?.role) === "engineer";
   const [engineers, setEngineers] = useState([]);
   const [form, setForm] = useState({
     new_status: complaint.status || "Pending",

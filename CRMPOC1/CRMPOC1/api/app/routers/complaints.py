@@ -5,6 +5,7 @@ import time
 from datetime import date, datetime, timezone
 from typing import Literal
 
+from app.services.role_access import role_key as canonical_role_key
 from fastapi import (
     APIRouter,
     BackgroundTasks,
@@ -92,7 +93,7 @@ def _apply_view_scope(stmt, db: Session, user: User):
         return stmt, False
     else:
         scoped = stmt.where(Complaint.query_type.in_(scope))
-    if (user.role or "").lower() == "engineer":
+    if canonical_role_key(user.role) == "engineer":
         scoped = scoped.where(engineer_visible_complaint_filter(user.id))
     return apply_complaint_assignment_scope(scoped, user), True
 
@@ -437,7 +438,7 @@ def _find_linked_service_request(db: Session, complaint_id: int) -> ServiceReque
 
 
 def _is_callcenter(user: User) -> bool:
-    return (user.role or "").lower() == "callcenter"
+    return canonical_role_key(user.role) == "callcenter"
 
 
 def _is_complaint_editor_role(user: User) -> bool:

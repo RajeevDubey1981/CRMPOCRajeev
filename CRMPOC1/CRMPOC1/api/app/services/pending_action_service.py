@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from app.services.role_access import ENGINEER_ROLE_NAMES
+
 from datetime import datetime, timezone
 
 from sqlalchemy import case, func, select
@@ -145,6 +147,8 @@ def get_operations_admin_users(db: Session) -> list[User]:
 
 def get_users_by_roles(db: Session, roles: set[str]) -> list[User]:
     keys = {role_key(role) for role in roles}
+    if "engineer" in keys:
+        keys.update(ENGINEER_ROLE_NAMES)
     return list(
         db.scalars(
             select(User).where(

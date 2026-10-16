@@ -1,3 +1,4 @@
+import { roleKey as canonicalRoleKey } from "../../utils/roles.js";
 import { useEffect, useMemo, useState } from "react";
 import { BOUNCED_BUTTON, BounceBanner } from "../../components/EmailBounceNotice.jsx";
 import { Link, useNavigate, useParams } from "react-router-dom";
@@ -357,7 +358,7 @@ export default function ServiceRequestDetail() {
   const canAssignServiceDesk = canAssignServiceDeskUser(role);
   const roleIsAdminLike = isOperationsAdminRole(role);
   const roleIsPaymentAdmin = isSystemAdminRole(role);
-  const roleIsEngineer = role === "engineer";
+  const roleIsEngineer = canonicalRoleKey(role) === "engineer";
   const roleIsVendor = role === "vendor";
   const canEditWorkflow = roleIsAdminLike;
   const deleteDisabledByStatus = SERVICE_DELETE_LOCKED_STATUSES.has(service?.status);

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from app.services.role_access import engineer_role_filter
+
 from sqlalchemy import case, func, select, union_all
 from sqlalchemy.orm import Session
 
@@ -42,7 +44,7 @@ def get_engineer_assignment_options(
     where = bool((address or "").strip() or pincode or state or district)
     engineers = db.scalars(
         select(User)
-        .where(User.deleted_at.is_(None), User.is_active.is_(True), User.role == "engineer")
+        .where(User.deleted_at.is_(None), User.is_active.is_(True), engineer_role_filter(User.role))
         .order_by(User.name)
     ).all()
     if not engineers:

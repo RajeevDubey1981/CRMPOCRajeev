@@ -1,3 +1,4 @@
+import { roleKey as canonicalRoleKey } from "../../utils/roles.js";
 import { hasPermission } from "../../utils/permissions.js";
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
@@ -66,7 +67,7 @@ export default function InstallationDetail() {
   const isServiceTeam = isServiceTeamRole(role);
   const roleIsServiceDesk = isServiceDeskRole(role);
   const canAssignServiceDesk = canAssignServiceDeskUser(role);
-  const isEngineer = role === "engineer";
+  const isEngineer = canonicalRoleKey(role) === "engineer";
   const [installation, setInstallation] = useState(null);
   const [serviceUsers, setServiceUsers] = useState([]);
   const [serviceDeskAssignForm, setServiceDeskAssignForm] = useState({ service_user_id: "", remarks: "" });

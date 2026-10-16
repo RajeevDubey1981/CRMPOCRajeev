@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from app.services.role_access import role_key as canonical_role_key
+
 from datetime import datetime, timezone
 from typing import Callable
 
@@ -267,7 +269,7 @@ def verify_unit_serial(
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Unit does not belong to this service request")
     if unit.serial_verified_at is not None:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Serial is already verified for this unit")
-    if unit.unit_status == UNIT_STATUS_SERIAL_PENDING and (user.role or "").lower() != "engineer":
+    if unit.unit_status == UNIT_STATUS_SERIAL_PENDING and canonical_role_key(user.role) != "engineer":
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Serial verification is awaiting admin review")
 
     resolved_serial = (serial_no or "").strip() or unit_primary_serial(unit)
@@ -275,7 +277,7 @@ def verify_unit_serial(
     if not resolved_serial:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Serial number is required for this unit")
 
-    role_key = (user.role or "").lower()
+    role_key = canonical_role_key(user.role)
     if role_key == "engineer":
         photo_count = db.scalar(select(func.count(FieldPhoto.id)).where(FieldPhoto.service_request_unit_id == unit.id)) or 0
         if photo_count < MIN_FIELD_PHOTOS:
@@ -338,7 +340,7 @@ def bulk_verify_units(
     find_order_item_by_serial: Callable,
     unit_ids: list[int] | None = None,
 ) -> list[ServiceRequestUnit]:
-    engineer_id = user.id if (user.role or "").lower() == "engineer" else None
+    engineer_id = user.id if canonical_role_key(user.role) == "engineer" else None
     candidates = unverified_units(db, service.id, engineer_id=engineer_id)
     if unit_ids:
         allowed = set(unit_ids)
@@ -380,7 +382,7 @@ def submit_unit_observation(
         )
     )
     if existing is not None:
-        if (user.role or "").lower() != "engineer" or unit.unit_status not in {UNIT_STATUS_PENDING_APPROVAL, UNIT_STATUS_REJECTED}:
+        if canonical_role_key(user.role) != "engineer" or unit.unit_status not in {UNIT_STATUS_PENDING_APPROVAL, UNIT_STATUS_REJECTED}:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Observation already submitted for this serial")
         existing.problem_found = body.problem_found
         existing.observation = body.observation
@@ -411,7 +413,7 @@ def submit_unit_observation(
     db.add(observation)
     unit.unit_status = UNIT_STATUS_PENDING_APPROVAL
 
-    engineer_id = user.id if (user.role or "").lower() == "engineer" else unit.assigned_engineer_id
+    engineer_id = user.id if canonical_role_key(user.role) == "engineer" else unit.assigned_engineer_id
     sync_service_request_from_units(db, service, engineer_id=engineer_id if engineer_id else None)
     return observation
 
@@ -426,7 +428,7 @@ def bulk_submit_observations(
     if not items:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "No observations provided")
 
-    engineer_id = user.id if (user.role or "").lower() == "engineer" else None
+    engineer_id = user.id if canonical_role_key(user.role) == "engineer" else None
     units = list_work_units(db, service.id, engineer_id=engineer_id)
     unit_map = {unit.id: unit for unit in units}
     existing = observations_for_service(db, service.id)

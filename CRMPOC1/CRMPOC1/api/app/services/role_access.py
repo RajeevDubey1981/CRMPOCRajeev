@@ -22,8 +22,18 @@ PROTECTED_USER_ROLES = frozenset({"admin", "incool", "sub_admin"})
 SERVICE_TEAM_ROLES = OPERATIONS_ADMIN_ROLES
 
 
+ENGINEER_ROLE_NAMES = frozenset({"engineer", "engineer non gst", "engineer_non_gst", "engineer non-gst", "engineer nongst"})
+
+
+def engineer_role_filter(column):
+    """Include both engineer account types in assignment and recipient queries."""
+    from sqlalchemy import func
+    return func.lower(func.trim(column)).in_(ENGINEER_ROLE_NAMES)
+
+
 def role_key(role: str | None) -> str:
-    return (role or "").strip().lower()
+    key = (role or "").strip().lower()
+    return "engineer" if key in ENGINEER_ROLE_NAMES else key
 
 
 def permission_role_name(role: str | None) -> str:
@@ -32,6 +42,7 @@ def permission_role_name(role: str | None) -> str:
     sub_admin is NOT mapped: it has its own role card (Admin, Roles), and the rights set there are the rights the
     Sub Admin gets. It used to be mapped to indcool_service, so the rights given on the sub_admin card never showed.
     """
+    # Non GST engineer accounts inherit the Engineer permission card.
     key = role_key(role)
     if key in {"indcool", "indcool service", "service", "service_manager"}:
         return "indcool_service"

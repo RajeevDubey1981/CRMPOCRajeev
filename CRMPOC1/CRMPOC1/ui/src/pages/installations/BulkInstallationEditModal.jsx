@@ -1,3 +1,4 @@
+import { roleKey as canonicalRoleKey } from "../../utils/roles.js";
 import { useEffect, useMemo, useState } from "react";
 
 import Modal from "../../components/Modal.jsx";
@@ -22,7 +23,7 @@ function displaySingleOrMixed(values, fallback = "-") {
 
 export default function BulkInstallationEditModal({ rows, onClose, onSaved }) {
   const { user } = useAuth();
-  const isEngineer = user?.role === "engineer";
+  const isEngineer = canonicalRoleKey(user?.role) === "engineer";
   const isAdminLike = isOperationsAdminRole(user?.role);
   const sharedStatuses = useMemo(() => uniqueNonEmptyValues(rows, "status"), [rows]);
   const sharedEngineerNames = useMemo(() => uniqueNonEmptyValues(rows, "assigned_engineer_name"), [rows]);

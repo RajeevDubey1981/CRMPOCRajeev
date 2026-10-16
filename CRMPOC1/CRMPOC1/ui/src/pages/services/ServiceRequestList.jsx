@@ -1,3 +1,4 @@
+import { roleKey as canonicalRoleKey } from "../../utils/roles.js";
 import { useEffect, useMemo, useState } from "react";
 import DateRangeFilter, { DateRangeTag } from "../../components/DateRangeFilter.jsx";
 import RegisteredCell, { registeredParts } from "../../components/RegisteredCell.jsx";
@@ -22,7 +23,7 @@ const SUMMARY_TONES = [
 export default function ServiceRequestList() {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const isEngineer = (user?.role || "").toLowerCase() === "engineer";
+  const isEngineer = canonicalRoleKey(user?.role) === "engineer";
   const canFilterByServiceUser = canViewAllServiceRequests(user?.role);
   const [summary, setSummary] = useState(null);
   const [data, setData] = useState({ items: [], total: 0 });

@@ -1,3 +1,4 @@
+import { roleKey as canonicalRoleKey } from "../../utils/roles.js";
 import { useEffect, useMemo, useState } from "react";
 
 import Modal from "../../components/Modal.jsx";
@@ -15,7 +16,7 @@ const PAYMENT_TYPES = ["Cash", "UPI"];
 
 export default function InstallationStatusEdit({ installation, onClose, onSaved, inline = false }) {
   const { user } = useAuth();
-  const isEngineer = user?.role === "engineer";
+  const isEngineer = canonicalRoleKey(user?.role) === "engineer";
   const isAdminLike = isOperationsAdminRole(user?.role);
   const isEngineerPaymentPendingMode = isEngineer && ["Payment Pending", "Returned", "Rejected"].includes(installation.status);
   const [engineers, setEngineers] = useState([]);

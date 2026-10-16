@@ -3,6 +3,7 @@ import secrets
 import time
 from datetime import date, datetime, timezone
 
+from app.services.role_access import role_key as canonical_role_key, engineer_role_filter
 from fastapi import APIRouter, BackgroundTasks, Body, Depends, File, Form, HTTPException, Query, Request, Response, UploadFile, status
 from sqlalchemy import desc, exists, func, or_, select
 from sqlalchemy.orm import Session
@@ -207,7 +208,7 @@ def _now() -> datetime:
 
 
 def _role(user: User) -> str:
-    return (user.role or "").lower()
+    return canonical_role_key(user.role)
 
 
 def _is_service_team(user: User) -> bool:
@@ -980,7 +981,7 @@ def create_service(
 def engineer_lookup(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     if not (_is_service_team(user) or _is_call_center(user)):
         return []
-    rows = db.scalars(select(User).where(User.deleted_at.is_(None), User.is_active == True, func.lower(User.role) == "engineer").order_by(User.name)).all()
+    rows = db.scalars(select(User).where(User.deleted_at.is_(None), User.is_active == True, engineer_role_filter(User.role)).order_by(User.name)).all()
     return [{"id": row.id, "name": row.name, "email": row.email, "phone": row.phone} for row in rows]
 
 

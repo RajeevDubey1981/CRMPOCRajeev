@@ -17,7 +17,6 @@ def apply_complaint_assignment_scope(stmt, user):
             ServiceRequest.assigned_service_user_id == user.id,
         )),
         Complaint.id.in_(select(InstallationRequest.complaint_id).where(
-            InstallationRequest.deleted_at.is_(None),
             InstallationRequest.complaint_id.isnot(None),
             InstallationRequest.assigned_service_user_id == user.id,
         )),

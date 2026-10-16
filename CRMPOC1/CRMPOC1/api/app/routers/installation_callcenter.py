@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from app.services.role_access import role_key as canonical_role_key
+
 import json
 from datetime import datetime, timezone
 
@@ -100,7 +102,7 @@ def _split_installation_group(db: Session, inst: InstallationRequest) -> list[In
 
 
 def _is_callcenter_user(user: User) -> bool:
-    return (user.role or "").lower() == "callcenter"
+    return canonical_role_key(user.role) == "callcenter"
 
 
 def _hydrate_callcenter(db: Session, inst: InstallationRequest) -> dict:
@@ -360,7 +362,7 @@ def submit_engineer_serials(
     from app.routers.installations import _load_visible
 
     inst = _load_visible(db, user, installation_id)
-    if user.role != "engineer" or inst.assigned_engineer != user.id:
+    if canonical_role_key(user.role) != "engineer" or inst.assigned_engineer != user.id:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Only the assigned engineer can submit serial numbers")
     if not is_callcenter_source(inst):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Engineer serial entry is only for call-center installations")
@@ -680,7 +682,7 @@ def verify_serial(
 
 
 def _ensure_assigned_engineer(inst: InstallationRequest, user: User) -> None:
-    if user.role != "engineer":
+    if canonical_role_key(user.role) != "engineer":
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Only assigned engineer can perform this action")
     if inst.assigned_engineer != user.id:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "This installation is not assigned to you")

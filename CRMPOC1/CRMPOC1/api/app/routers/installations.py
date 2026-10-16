@@ -1,6 +1,7 @@
 from datetime import date, datetime, timezone
 from decimal import Decimal
 
+from app.services.role_access import role_key as canonical_role_key, engineer_role_filter
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, UploadFile, status
 from fastapi.responses import Response
 from sqlalchemy import case, desc, func, or_, select
@@ -385,7 +386,7 @@ def _apply_payment_transition(
     if normalized_payment_type is not None and normalized_payment_type not in PAYMENT_TYPES:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Payment type must be Cash or UPI")
 
-    if requested_status == "Completed" and actor.role == "engineer":
+    if requested_status == "Completed" and canonical_role_key(actor.role) == "engineer":
         if not installation_date:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Installation date is required when status is Completed")
         if payment_amount in (None, ""):
@@ -508,7 +509,7 @@ def list_installations(
     stmt = select(InstallationRequest)
 
     # Call-center requests stay on the complaint workflow until an engineer is assigned.
-    if user.role != "engineer":
+    if canonical_role_key(user.role) != "engineer":
         stmt = stmt.where(
             or_(
                 func.lower(InstallationRequest.source) != "callcenter",
@@ -517,7 +518,7 @@ def list_installations(
         )
 
     # Engineers only ever see installation requests assigned to them.
-    if user.role == "engineer":
+    if canonical_role_key(user.role) == "engineer":
         stmt = stmt.where(InstallationRequest.assigned_engineer == user.id)
     elif is_service_desk_user(user):
         stmt = stmt.where(InstallationRequest.assigned_service_user_id == user.id)
@@ -756,7 +757,7 @@ def engineer_assignment_options(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    if user.role == "engineer":
+    if canonical_role_key(user.role) == "engineer":
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Engineers cannot assign installation requests")
     if not (
         can_act_on(db, user, "installations", "can_view", None)
@@ -799,7 +800,7 @@ def create_installation(
     if not can_act_on(db, user, "installations", "can_create", None):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Your role cannot create installation requests")
 
-    role = (user.role or "").lower()
+    role = canonical_role_key(user.role)
     requested_source = (body.source or "").lower()
     callcenter_create = role == "callcenter" or requested_source == "callcenter"
 
@@ -899,7 +900,7 @@ def bulk_assign(
     """
     if not can_act_on(db, user, "installations", "can_edit", None):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Your role cannot assign installation requests")
-    if user.role == "engineer":
+    if canonical_role_key(user.role) == "engineer":
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Engineers cannot assign installation requests")
 
     if not body.assignments:
@@ -908,7 +909,7 @@ def bulk_assign(
     engineer_ids = {a.engineer_id for a in body.assignments}
     engineers = {
         u.id: u for u in db.scalars(
-            select(User).where(User.id.in_(engineer_ids), User.role == "engineer")
+            select(User).where(User.id.in_(engineer_ids), engineer_role_filter(User.role))
         ).all()
     }
     invalid_engineer_ids = sorted(engineer_ids - engineers.keys())
@@ -1010,7 +1011,7 @@ def bulk_cancel(
     """
     if not can_act_on(db, user, "installations", "can_edit", None):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Your role cannot cancel installation requests")
-    if user.role == "engineer":
+    if canonical_role_key(user.role) == "engineer":
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Engineers cannot cancel installation requests")
 
     if not body.installation_ids:
@@ -1056,7 +1057,7 @@ def cancel_submission(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Installation request not found")
     if not can_act_on(db, user, "installations", "can_edit", None):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Your role cannot cancel installation requests")
-    if user.role == "engineer":
+    if canonical_role_key(user.role) == "engineer":
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Engineers cannot cancel installation requests")
     if inst.status not in ("Submitted", "Assigned"):
         raise HTTPException(
@@ -1075,7 +1076,7 @@ def _load_visible(db: Session, user: User, inst_id: int) -> InstallationRequest:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Installation request not found")
     if not can_act_on(db, user, "installations", "can_view", None):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Installation request not found")
-    if user.role == "engineer" and inst.assigned_engineer != user.id:
+    if canonical_role_key(user.role) == "engineer" and inst.assigned_engineer != user.id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Installation request not found")
     if is_service_desk_user(user) and inst.assigned_service_user_id != user.id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Installation request not found")
@@ -1176,7 +1177,7 @@ def get_installation_payment_qr(
     user: User = Depends(get_current_user),
 ):
     inst = _load_visible(db, user, installation_id)
-    if not is_operations_admin(user) and user.role != "engineer":
+    if not is_operations_admin(user) and canonical_role_key(user.role) != "engineer":
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Your role cannot view payment QR codes")
     if not inst.payment_qr_code_blob:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Payment QR code not found")
@@ -1275,7 +1276,7 @@ async def update_status(
     # (status -> "Submitted", engineer unassigned) rather than a real lifecycle state.
     if new_status == "Send Back to Admin":
         inst = _load_visible(db, user, installation_id)
-        if user.role != "engineer":
+        if canonical_role_key(user.role) != "engineer":
             raise HTTPException(status.HTTP_403_FORBIDDEN, "Only engineers can send a job back to admin")
         if inst.status != "Assigned":
             raise HTTPException(
@@ -1294,9 +1295,9 @@ async def update_status(
     inst = _load_visible(db, user, installation_id)
     if not can_act_on(db, user, "installations", "can_edit", None):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Your role cannot edit this installation request")
-    if user.role == "engineer" and is_vendor_assigned_engineer_workflow(inst):
+    if canonical_role_key(user.role) == "engineer" and is_vendor_assigned_engineer_workflow(inst):
         prepare_vendor_installation_for_engineer_workflow(db, inst, actor=user)
-    if user.role == "engineer" and assigned_engineer is not None and assigned_engineer != user.id:
+    if canonical_role_key(user.role) == "engineer" and assigned_engineer is not None and assigned_engineer != user.id:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Engineers cannot reassign installation requests")
     if (
         supports_engineer_installation_workflow(inst)
@@ -1310,7 +1311,7 @@ async def update_status(
     if (
         supports_engineer_installation_workflow(inst)
         and inst.serial_verified_at
-        and user.role == "engineer"
+        and canonical_role_key(user.role) == "engineer"
         and new_status == "Completed"
         and inst.status != "Payment Pending"
     ):
@@ -1356,7 +1357,7 @@ async def update_status(
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Only Admin can upload payment proof")
     if document is not None and document.filename:
         doc_path = await save_upload(document, module="installations")
-    if user.role == "engineer" and new_status == "Completed" and not doc_path and not inst.work_report_file_path:
+    if canonical_role_key(user.role) == "engineer" and new_status == "Completed" and not doc_path and not inst.work_report_file_path:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Upload Document is required when status is Completed")
     effective_payment_type = (payment_type or "").strip() or inst.payment_type_requested
     if (
@@ -1634,7 +1635,7 @@ async def bulk_update_status(
     if document is not None and document.filename:
         doc_path = await save_upload(document, module="installations")
     if (
-        user.role == "engineer"
+        canonical_role_key(user.role) == "engineer"
         and new_status == "Completed"
         and not doc_path
         and any(not row.work_report_file_path for row in rows)

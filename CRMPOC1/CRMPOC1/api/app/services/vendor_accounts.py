@@ -1,3 +1,4 @@
+from app.services.role_access import role_key as canonical_role_key
 import secrets
 
 from sqlalchemy import func, select
@@ -75,7 +76,7 @@ def _touch_vendor_from_user(vendor: Vendor, user: User) -> Vendor:
 
 def ensure_vendor_for_user(db: Session, user: User, *, create_if_missing: bool = True) -> Vendor | None:
     """Ensure a vendor master row exists for a vendor-role user (create path only)."""
-    if (user.role or "").lower() != "vendor":
+    if canonical_role_key(user.role) != "vendor":
         return None
 
     vendor = _vendor_by_email(db, user.email)
@@ -99,7 +100,7 @@ def ensure_vendor_for_user(db: Session, user: User, *, create_if_missing: bool =
 
 
 def vendor_master_for_user(db: Session, user: User) -> Vendor | None:
-    if (user.role or "").lower() != "vendor":
+    if canonical_role_key(user.role) != "vendor":
         return None
     return _vendor_by_email(db, user.email)
 
@@ -114,7 +115,7 @@ def sync_vendor_for_user_email_update(
     Never creates a new vendor row. Updates the vendor that matched the previous
     email, or reuses an existing vendor that already has the new email.
     """
-    if (user.role or "").lower() != "vendor":
+    if canonical_role_key(user.role) != "vendor":
         return None
 
     new_email = (user.email or "").strip()
@@ -164,7 +165,7 @@ def ensure_partner_account(db: Session, registration: PartnerRegistration) -> Ve
         )
         db.add(user)
         db.flush()
-    elif (user.role or "").lower() not in {"vendor", "engineer", role}:
+    elif canonical_role_key(user.role) not in {"vendor", "engineer", role}:
         raise ValueError(f"A user with incompatible role already exists for {email}")
     else:
         user.role = role

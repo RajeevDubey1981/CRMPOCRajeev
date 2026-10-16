@@ -1,3 +1,4 @@
+import { roleKey as canonicalRoleKey } from "../../utils/roles.js";
 import { hasPermission } from "../../utils/permissions.js";
 import { useEffect, useState } from "react";
 import PriorityBadge from "../../components/complaints/PriorityBadge.jsx";
@@ -45,7 +46,7 @@ export default function ComplaintDetail() {
   const role = user?.role?.toLowerCase?.() || "";
   const isCallcenter = role === "callcenter";
   const isAdminLike = isServiceTeamRole(role);
-  const isEngineer = role === "engineer";
+  const isEngineer = canonicalRoleKey(role) === "engineer";
   const canLinkCustomerOrder = isOperationsAdminRole(role);
   const canEditComplaint = isCallcenter || isAdminLike;
   const [complaint, setComplaint] = useState(null);

@@ -1,3 +1,4 @@
+import { roleKey as canonicalRoleKey } from "../utils/roles.js";
 import { hasPermission } from "../utils/permissions.js";
 import SalesDashboardBlock from "../components/SalesDashboardBlock.jsx";
 import DateRangeFilter, { DateRangeTag } from "../components/DateRangeFilter.jsx";
@@ -150,7 +151,7 @@ export default function Dashboard() {
   const rawRole = user?.role || "";
   const role = rawRole.toString().trim().toLowerCase();
   const isCallcenter = role === "callcenter";
-  const isEngineer = role === "engineer";
+  const isEngineer = canonicalRoleKey(role) === "engineer";
   const isSales = role === "sales";
   // Only operations/admin-like roles can delete complaints from dashboard
   const isAdminLike = isOperationsAdminRole(role) && !isSales;

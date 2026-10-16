@@ -33,6 +33,7 @@ def load_config() -> dict[str, str]:
         "INDCOOL_DEPLOY_HOST": "97.74.83.211",
         "INDCOOL_DEPLOY_USER": "indcooladmin",
         "INDCOOL_DEPLOY_PASSWORD": "",  # set in scripts/deploy.env (gitignored)
+        "INDCOOL_DEPLOY_KEY_FILENAME": "",
         "REMOTE_API": "/var/www/indcool/api",
         "REMOTE_UI": "/var/www/indcool/ui",
     }
@@ -681,7 +682,6 @@ def mark_live_on_github(build_id: str) -> None:
 
 
 def deploy_production(config: dict[str, str]) -> None:
-    check_github_in_sync()
     try:
         import paramiko
     except ImportError:
@@ -693,13 +693,16 @@ def deploy_production(config: dict[str, str]) -> None:
     host = config["INDCOOL_DEPLOY_HOST"]
     user = config["INDCOOL_DEPLOY_USER"]
     password = config.get("INDCOOL_DEPLOY_PASSWORD", "")
+    key_filename = config.get("INDCOOL_DEPLOY_KEY_FILENAME", "")
     remote_api = config["REMOTE_API"]
     remote_ui = config["REMOTE_UI"]
 
-    if not password or password == "YOUR_PASSWORD_HERE":
+    has_password = bool(password and password != "YOUR_PASSWORD_HERE")
+    has_key = bool(key_filename)
+    if not has_password and not has_key:
         raise SystemExit(
-            "Production deploy password is not configured.\n"
-            f"Set INDCOOL_DEPLOY_PASSWORD in {CONFIG_FILE} or in the environment, then run deploy again."
+            "Production deploy SSH authentication is not configured.\n"
+            f"Set INDCOOL_DEPLOY_PASSWORD in {CONFIG_FILE}, or set INDCOOL_DEPLOY_KEY_FILENAME to a private key file."
         )
 
     seed_demo_data = ask_seed_demo_data()
@@ -711,7 +714,17 @@ def deploy_production(config: dict[str, str]) -> None:
     client = paramiko.SSHClient()
     client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
     print(f"\nConnecting to {host} as {user}...")
-    client.connect(host, username=user, password=password, timeout=30)
+    ssh_options = {
+        "username": user,
+        "timeout": 30,
+        "allow_agent": True,
+        "look_for_keys": True,
+    }
+    if has_password:
+        ssh_options["password"] = password
+    if has_key:
+        ssh_options["key_filename"] = key_filename
+    client.connect(host, **ssh_options)
     sftp = client.open_sftp()
     try:
         deploy_api_remote(sftp, client, remote_api)

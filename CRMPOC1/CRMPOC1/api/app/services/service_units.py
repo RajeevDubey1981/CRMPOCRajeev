@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from app.services.role_access import role_key as canonical_role_key
+
 import json
 from collections import defaultdict
 from datetime import datetime, timezone
@@ -743,7 +745,7 @@ def assign_units_to_engineer(
     engineer = db.get(User, engineer_id)
     if engineer is None or engineer.deleted_at is not None or not engineer.is_active:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Selected engineer is not active")
-    if (engineer.role or "").lower() != "engineer":
+    if canonical_role_key(engineer.role) != "engineer":
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Selected user is not an engineer")
 
     if not unit_ids:
@@ -827,7 +829,7 @@ def assign_units_to_engineer_by_quantity(
     engineer = db.get(User, engineer_id)
     if engineer is None or engineer.deleted_at is not None or not engineer.is_active:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Selected engineer is not active")
-    if (engineer.role or "").lower() != "engineer":
+    if canonical_role_key(engineer.role) != "engineer":
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Selected user is not an engineer")
 
     code = (item_code or "").strip()

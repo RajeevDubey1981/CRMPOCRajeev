@@ -1,5 +1,6 @@
 export function roleKey(role) {
-  return (role || "").trim().toLowerCase();
+  const key = (role || "").trim().toLowerCase();
+  return ["engineer", "engineer non gst", "engineer_non_gst", "engineer non-gst", "engineer nongst"].includes(key) ? "engineer" : key;
 }
 
 export function isIndcoolServiceRole(role) {

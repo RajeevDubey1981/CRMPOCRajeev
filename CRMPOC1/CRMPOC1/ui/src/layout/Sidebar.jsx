@@ -1,3 +1,4 @@
+import { roleKey as canonicalRoleKey } from "../utils/roles.js";
 import { useState } from "react";
 import { useAuth } from "../auth/AuthContext.jsx";
 import { NavLink } from "react-router-dom";
@@ -114,7 +115,7 @@ export default function Sidebar({ collapsed, mobileOpen = false, onNavigate }) {
   const { summary: queriesSummary } = useQuerySummary();
 
   const isVendor = role === "vendor";
-  const isEngineer = role === "engineer";
+  const isEngineer = canonicalRoleKey(role) === "engineer";
   const isCallcenter = role === "callcenter";
   const isIndcoolService = isIndcoolServiceRole(role);
   const isCourierAdmin = isOperationsAdminRole(role);

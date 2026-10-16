@@ -1,3 +1,4 @@
+import { roleKey as canonicalRoleKey } from "../../utils/roles.js";
 import { hasPermission } from "../../utils/permissions.js";
 import DateRangeFilter, { DateRangeTag } from "../../components/DateRangeFilter.jsx";
 import RegisteredCell from "../../components/RegisteredCell.jsx";
@@ -54,7 +55,7 @@ export default function InstallationList() {
   const canDeletePerm = hasPermission(permUser, "installations", "can_delete");
   const navigate = useNavigate();
   const { user } = useAuth();
-  const isEngineer = user?.role === "engineer";
+  const isEngineer = canonicalRoleKey(user?.role) === "engineer";
   const isAdminLike = isOperationsAdminRole(user?.role);
   const [data, setData] = useState({ items: [], total: 0 });
   const [loading, setLoading] = useState(false);
