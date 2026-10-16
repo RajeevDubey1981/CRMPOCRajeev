@@ -24,6 +24,7 @@ from app.services.engineer_service_scope import (
     engineer_visible_complaint_filter,
     engineer_visible_service_filter,
 )
+from app.services.complaint_access import apply_complaint_assignment_scope
 from app.services.permissions import sub_module_scope
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
@@ -43,7 +44,7 @@ def _scoped_complaints_stmt(db: Session, user: User) -> tuple[Select | None, boo
         stmt = stmt.where(Complaint.query_type.in_(scope))
     if (user.role or "").lower() == "engineer":
         stmt = stmt.where(engineer_visible_complaint_filter(user.id))
-    return stmt, True
+    return apply_complaint_assignment_scope(stmt, user), True
 
 
 def _count(db: Session, base: Select, status_value: str) -> int:

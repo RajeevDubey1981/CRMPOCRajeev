@@ -53,6 +53,7 @@ from app.services.email_service import (
     send_service_request_acknowledgment_email,
 )
 from app.services.file_service import save_upload, to_public_upload_path
+from app.services.complaint_access import apply_complaint_assignment_scope
 from app.services.permissions import can_act_on, sub_module_scope
 from app.services.role_access import is_operations_admin
 from app.services.installation_workflow import (
@@ -93,7 +94,7 @@ def _apply_view_scope(stmt, db: Session, user: User):
         scoped = stmt.where(Complaint.query_type.in_(scope))
     if (user.role or "").lower() == "engineer":
         scoped = scoped.where(engineer_visible_complaint_filter(user.id))
-    return scoped, True
+    return apply_complaint_assignment_scope(scoped, user), True
 
 
 def _sync_linked_service_engineer(db: Session, complaint: Complaint) -> None:
@@ -416,7 +417,9 @@ def _list_row(
 
 
 def _load_visible_complaint(db: Session, complaint_id: int, user: User) -> Complaint:
-    complaint = db.get(Complaint, complaint_id)
+    complaint = db.scalar(apply_complaint_assignment_scope(
+        select(Complaint).where(Complaint.id == complaint_id), user
+    ))
     if complaint is None or complaint.deleted_at is not None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Complaint not found")
     if not can_act_on(db, user, "complaints", "can_view", complaint.query_type):
@@ -937,6 +940,7 @@ def export_csv(
     if export_scope is not None and not export_scope:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Your role cannot export complaints")
     stmt = select(Complaint).where(Complaint.deleted_at.is_(None))
+    stmt = apply_complaint_assignment_scope(stmt, user)
     if export_scope is not None:
         stmt = stmt.where(Complaint.query_type.in_(export_scope))
     if status_filter:
@@ -1058,7 +1062,9 @@ def search_customers_for_complaint(
             "source_type": "order",
         })
 
-    complaint_stmt = select(Complaint).where(Complaint.deleted_at.is_(None))
+    complaint_stmt = apply_complaint_assignment_scope(
+        select(Complaint).where(Complaint.deleted_at.is_(None)), user
+    )
     complaint_terms = []
     if mobile and mobile.strip():
         complaint_terms.append(Complaint.customer_mobile.ilike(f"%{mobile.strip()}%"))
@@ -1082,7 +1088,9 @@ def search_customers_for_complaint(
 
 
 def _load_visible(db: Session, user: User, complaint_id: int) -> Complaint:
-    c = db.get(Complaint, complaint_id)
+    c = db.scalar(apply_complaint_assignment_scope(
+        select(Complaint).where(Complaint.id == complaint_id), user
+    ))
     if c is None or c.deleted_at is not None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Complaint not found")
     if not can_act_on(db, user, "complaints", "can_view", c.query_type):
