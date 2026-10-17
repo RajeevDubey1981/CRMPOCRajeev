@@ -109,17 +109,23 @@ async def save_upload(
     return to_public_upload_path(str(full_path))
 
 
-async def read_upload_bytes(file: UploadFile) -> tuple[bytes, str, str, int]:
-    extension = _validate_upload(file)
+async def read_upload_bytes(
+    file: UploadFile,
+    allowed_ext: set[str] | None = None,
+    allowed_mime: set[str] | None = None,
+    max_bytes: int = MAX_BYTES,
+) -> tuple[bytes, str, str, int]:
+    extension = _validate_upload(file, allowed_ext=allowed_ext, allowed_mime=allowed_mime)
 
     contents = await file.read()
-    if len(contents) > MAX_BYTES:
-        raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, "File exceeds 2MB limit")
+    if len(contents) > max_bytes:
+        raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, f"File exceeds {max_bytes // (1024 * 1024)}MB limit")
     if not contents:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Empty file")
     _validate_file_signature(contents, extension)
 
-    safe_name = f"upload{extension}"
+    original = os.path.basename((file.filename or "").replace("\\", "/"))
+    safe_name = original or f"upload{extension}"
     content_type = file.content_type or "application/octet-stream"
     return contents, safe_name, content_type, len(contents)
 

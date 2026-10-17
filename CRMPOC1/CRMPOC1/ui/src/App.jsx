@@ -44,6 +44,7 @@ import OrderCreate from "./pages/orders/OrderCreate.jsx";
 import OrderDetail from "./pages/orders/OrderDetail.jsx";
 import SerialDetails from "./pages/SerialDetails.jsx";
 import SerialHistory from "./pages/serials/SerialHistory.jsx";
+import HistoricalInstallation from "./pages/serials/HistoricalInstallation.jsx";
 import ServiceRequestList from "./pages/services/ServiceRequestList.jsx";
 import ServiceRequestCreate from "./pages/services/ServiceRequestCreate.jsx";
 import ServiceRequestDetail from "./pages/services/ServiceRequestDetail.jsx";
@@ -91,9 +92,9 @@ function UserAdminRoute({ children }) {
   return children;
 }
 
-function PermissionRoute({ module, action = "can_view", children }) {
+function PermissionRoute({ module, action = "can_view", strict = false, children }) {
   const { user } = useAuth();
-  if (isSystemAdminRole(user?.role)) {
+  if (!strict && isSystemAdminRole(user?.role)) {
     return children;
   }
   const permissions = Array.isArray(user?.permissions) ? user.permissions : [];
@@ -216,6 +217,7 @@ export default function App() {
         <Route path="/projects/:id" element={<ProjectDetail />} />
         <Route path="/serials/details" element={<SerialDetails />} />
         <Route path="/serials/history" element={<OperationsAdminRoute><SerialHistory /></OperationsAdminRoute>} />
+        <Route path="/serials/historical-installation" element={<PermissionRoute module="historical_installations" strict><HistoricalInstallation /></PermissionRoute>} />
       </Route>
       <Route path="*" element={<DefaultLanding />} />
     </Routes>

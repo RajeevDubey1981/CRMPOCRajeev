@@ -3,7 +3,7 @@ from typing import Literal
 
 from pydantic import BaseModel, EmailStr, Field
 
-ORDER_STATUSES = ("Pending", "Shipped", "In Transit", "Delivered", "Returned", "Cancelled")
+ORDER_STATUSES = ("Pending", "Shipped", "In Transit", "Delivered", "Returned", "Cancelled", "Completed")
 
 
 class OrderConsigneeAddressCreate(BaseModel):

@@ -11,6 +11,7 @@ import { canAssignServiceDeskUser, isOperationsAdminRole, isServiceDeskRole, isS
 import { usesStructuredInstallationWorkflow, getInstallationWorkflowStepOptions, getCurrentInstallationWorkflowStep } from "../../utils/installationWorkflowSteps.js";
 import InstallationStatusEdit from "./InstallationStatusEdit.jsx";
 import InstallationCallCenterWorkflow from "./InstallationCallCenterWorkflow.jsx";
+import EngineerOrderSerialEditor from "../../components/installations/EngineerOrderSerialEditor.jsx";
 import { toDownloadUrl } from "../../utils/downloadUrl.js";
 
 function fmt(value) {
@@ -461,6 +462,16 @@ export default function InstallationDetail() {
       </section>
 
       <div ref={workflowRef}>
+        {isEngineer && (installation.source || "vendor").toLowerCase() !== "callcenter" && (
+          <EngineerOrderSerialEditor
+            installation={installation}
+            userId={user?.id}
+            onUpdated={load}
+            onError={setErr}
+            onBusy={setBusy}
+          />
+        )}
+
         <InstallationCallCenterWorkflow
           installation={installation}
           isAdminLike={isAdminLike}

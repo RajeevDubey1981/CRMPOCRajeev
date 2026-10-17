@@ -29,6 +29,7 @@ const NAV = [
   { to: "/couriers", label: "Courier Masters", module: "couriers" },
   { to: "/orders", label: "Order List", module: "orders" },
   { to: "/serials/history", label: "Serial History", operationsOnly: true },
+  { to: "/serials/historical-installation", label: "Historical Installation", module: "historical_installations" },
   { to: "/installations", label: "Installation Requests", module: "installations" },
   { to: "/claims", label: "Claims", module: "claims" },
   {
@@ -126,7 +127,7 @@ export default function Sidebar({ collapsed, mobileOpen = false, onNavigate }) {
   const hasPermissionPayload = permissions.length > 0;
   function canView(module) {
     if (!module) return false;
-    if (isSystemAdmin) return true;
+    if (isSystemAdmin && module !== "historical_installations") return true;
     return permissions.some((permission) => permission.module === module && permission.can_view);
   }
 

@@ -5,7 +5,7 @@ from app.models.courier import Courier
 from app.models.vendor import Vendor
 from app.models.order import Order, OrderConsigneeAddress, OrderItem
 from app.models.complaint import Complaint, ComplaintStatusLog
-from app.models.installation import InstallationRequest
+from app.models.installation import HistoricalInstallationCompletion, InstallationRequest
 from app.models.call import Call
 from app.models.claim import Claim, ClaimPhoto
 from app.models.serial_history import SerialHistoryEvent
@@ -50,7 +50,7 @@ __all__ = [
     "ItemMaster", "Courier", "Vendor",
     "Order", "OrderItem",
     "Complaint", "ComplaintStatusLog",
-    "InstallationRequest",
+    "InstallationRequest", "HistoricalInstallationCompletion",
     "PaymentTransaction",
     "PaymentApprovalLog",
     "ServiceRequest", "ServiceStatusLog", "ServiceAssignment", "ServiceObservation",

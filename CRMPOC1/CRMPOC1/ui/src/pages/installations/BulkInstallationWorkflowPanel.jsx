@@ -2,13 +2,16 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 
 import StatusBadge from "../../components/StatusBadge.jsx";
+import Modal from "../../components/Modal.jsx";
+import ScanInput from "../../components/scan/ScanInput.jsx";
 import { installationsApi } from "../../api/installations.js";
 import {
   adminBulkReviewActionLabel,
   isBulkWorkflowEligibleRow,
 } from "../../utils/installationWorkflowSteps.js";
 import { useAuth } from "../../auth/AuthContext.jsx";
-import { isOperationsAdminRole } from "../../utils/roles.js";
+import { isOperationsAdminRole, roleKey } from "../../utils/roles.js";
+import { formatApiError } from "../../utils/apiError.js";
 
 const PAYMENT_TYPES = ["Cash", "UPI"];
 
@@ -62,6 +65,8 @@ function defaultRowForm(row, existing = {}) {
     proof_document: existing.proof_document || null,
     proof_document_serial_2: existing.proof_document_serial_2 || null,
     observation: existing.observation || row.engineer_site_remarks || "",
+    serial_no: existing.serial_no ?? row.serial_no ?? "",
+    serial_no_2: existing.serial_no_2 ?? row.serial_no_2 ?? row.engineer_entered_serial_no_2 ?? "",
     payment_amount: existing.payment_amount ?? (
       row.payment_amount_requested != null ? String(row.payment_amount_requested) : ""
     ),
@@ -71,11 +76,13 @@ function defaultRowForm(row, existing = {}) {
 export default function BulkInstallationWorkflowPanel({ rows, onSaved, showClose, onClose }) {
   const { user } = useAuth();
   const isAdminLike = isOperationsAdminRole(user?.role);
+  const isEngineer = roleKey(user?.role) === "engineer";
   const [workflowRows, setWorkflowRows] = useState(rows);
   const [rowForms, setRowForms] = useState({});
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [msg, setMsg] = useState("");
+  const [serialPopupError, setSerialPopupError] = useState("");
   const [paymentForm, setPaymentForm] = useState({
     payment_type: "Cash",
     work_report: "",
@@ -153,6 +160,35 @@ export default function BulkInstallationWorkflowPanel({ rows, onSaved, showClose
         ...patch,
       },
     }));
+  }
+
+  function canEditRowSerials(row) {
+    return isEngineer
+      && Number(row.assigned_engineer) === Number(user?.id);
+  }
+
+  async function saveRowSerials(row) {
+    const form = rowForms[row.id] || {};
+    if (!(form.serial_no || "").trim()) {
+      setSerialPopupError(`Serial number 1 is required for request #${row.id}.`);
+      return;
+    }
+    setBusy(true);
+    setErr("");
+    setMsg("");
+    try {
+      const updated = await installationsApi.updateEngineerOrderSerials(row.id, {
+        serial_no: form.serial_no.trim(),
+        serial_no_2: (form.serial_no_2 || "").trim() || null,
+      });
+      setWorkflowRows((current) => current.map((item) => (item.id === row.id ? updated : item)));
+      setMsg(`Serial numbers updated for request #${row.id}.`);
+      onSaved?.();
+    } catch (error) {
+      setSerialPopupError(formatApiError(error, `Failed to update request #${row.id}`));
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function startAllVisits() {
@@ -342,8 +378,36 @@ export default function BulkInstallationWorkflowPanel({ rows, onSaved, showClose
                     </td>
                   )}
                   <td className="px-3 py-2 font-medium">#{row.id}</td>
-                  <td className="px-3 py-2 font-mono text-xs">{row.serial_no || "-"}</td>
-                  <td className="px-3 py-2 font-mono text-xs">{row.serial_no_2 || row.engineer_entered_serial_no_2 || "-"}</td>
+                  <td className="min-w-[190px] px-3 py-2 font-mono text-xs">
+                    {canEditRowSerials(row) ? (
+                      <ScanInput
+                        value={form.serial_no}
+                        onValue={(value) => updateRowForm(row.id, { serial_no: value })}
+                        placeholder="Scan serial 1"
+                        className="w-full rounded-md border border-slate-300 px-2 py-1 text-xs"
+                      />
+                    ) : (row.serial_no || "-")}
+                  </td>
+                  <td className="min-w-[190px] px-3 py-2 font-mono text-xs">
+                    {canEditRowSerials(row) ? (
+                      <div className="space-y-2">
+                        <ScanInput
+                          value={form.serial_no_2}
+                          onValue={(value) => updateRowForm(row.id, { serial_no_2: value })}
+                          placeholder="Scan serial 2"
+                          className="w-full rounded-md border border-slate-300 px-2 py-1 text-xs"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => saveRowSerials(row)}
+                          disabled={busy || !(form.serial_no || "").trim()}
+                          className="rounded-md bg-sky-700 px-2 py-1 text-xs font-semibold text-white disabled:opacity-50"
+                        >
+                          Update serials
+                        </button>
+                      </div>
+                    ) : (row.serial_no_2 || row.engineer_entered_serial_no_2 || "-")}
+                  </td>
                   <td className="px-3 py-2">
                     <StatusBadge value={row.status} />
                     <div className="mt-1 text-xs text-slate-500">{adminBulkReviewActionLabel(row.status)}</div>
@@ -596,6 +660,17 @@ export default function BulkInstallationWorkflowPanel({ rows, onSaved, showClose
 
       {err && <div className="rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-700">{err}</div>}
       {msg && <div className="rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{msg}</div>}
+
+      <Modal open={Boolean(serialPopupError)} onClose={() => setSerialPopupError("")} title="Serial numbers not updated">
+        <div className="space-y-4">
+          <p className="text-sm text-rose-700">{serialPopupError}</p>
+          <div className="flex justify-end">
+            <button type="button" onClick={() => setSerialPopupError("")} className="rounded-md bg-slate-800 px-4 py-2 text-sm font-medium text-white">
+              Close
+            </button>
+          </div>
+        </div>
+      </Modal>
 
       {showClose && (
         <div className="flex justify-end">

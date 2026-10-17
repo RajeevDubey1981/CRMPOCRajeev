@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 
 import { serialApi } from "../../api/serials.js";
+import { useAuth } from "../../auth/AuthContext.jsx";
+import { hasPermission } from "../../utils/permissions.js";
 
 function EventBadge({ type }) {
   const styles = {
@@ -61,6 +63,8 @@ function serviceEventBilling(event) {
 }
 
 export default function SerialHistory() {
+  const { user } = useAuth();
+  const canCompleteHistorical = hasPermission(user, "historical_installations", "can_view");
   const [searchParams, setSearchParams] = useSearchParams();
   const initialSerial = searchParams.get("serial") || "";
   const [input, setInput] = useState(initialSerial);
@@ -138,9 +142,12 @@ export default function SerialHistory() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold text-slate-900">Serial Number History</h1>
-        <p className="mt-1 text-sm text-slate-500">Track the full lifecycle of a product from order through service, claims, and future events.</p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold text-slate-900">Serial Number History</h1>
+          <p className="mt-1 text-sm text-slate-500">Track the full lifecycle of a product from order through service, claims, and future events.</p>
+        </div>
+        {canCompleteHistorical && <Link to="/serials/historical-installation" className="rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white">Complete Old Order</Link>}
       </div>
 
       <div className="rounded-xl bg-white p-5 shadow-sm" ref={rootRef}>

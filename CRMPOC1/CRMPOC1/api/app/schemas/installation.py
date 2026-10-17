@@ -298,6 +298,11 @@ class InstallationEngineerSerialRequest(BaseModel):
     serial_no_2: str | None = None
 
 
+class InstallationEngineerOrderSerialUpdate(BaseModel):
+    serial_no: str
+    serial_no_2: str | None = None
+
+
 class InstallationEngineerSerialLine(BaseModel):
     serial_no: str
     serial_no_2: str | None = None

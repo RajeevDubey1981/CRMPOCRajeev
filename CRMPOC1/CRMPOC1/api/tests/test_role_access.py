@@ -12,9 +12,13 @@ class PermissionRoleNameTests(unittest.TestCase):
         self.assertEqual(permission_role_name("sub_admin"), "sub_admin")
         self.assertEqual(permission_role_name(" Sub_Admin "), "sub_admin")
 
-    def test_service_style_roles_still_share_indcool_service(self):
-        for role in ("indcool", "Indcool Service", "service", "service_manager"):
+    def test_indcool_aliases_share_indcool_service(self):
+        for role in ("indcool", "Indcool Service"):
             self.assertEqual(permission_role_name(role), "indcool_service")
+
+    def test_service_roles_keep_their_own_permission_card(self):
+        for role in ("service", "service_manager"):
+            self.assertEqual(permission_role_name(role), role)
 
     def test_other_roles_keep_their_own_name(self):
         for role in ("admin", "vendor", "engineer", "sales", "callcenter"):

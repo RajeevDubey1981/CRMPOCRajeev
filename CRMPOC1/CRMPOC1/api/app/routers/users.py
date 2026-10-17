@@ -1,6 +1,8 @@
 import json
+from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, UploadFile, status
+from pydantic import ValidationError
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
@@ -13,6 +15,7 @@ from app.schemas.user import ResetPasswordRequest, UserCreate, UserOut, UserUpda
 from app.security import hash_password
 from app.services import coverage as coverage_service
 from app.services.geo import canonical_state, split_pincodes
+from app.services.file_service import read_upload_bytes
 from app.services.vendor_accounts import (
     ensure_vendor_for_user,
     sync_vendor_for_user_email_update,
@@ -20,6 +23,11 @@ from app.services.vendor_accounts import (
 )
 
 router = APIRouter(prefix="/api/users", tags=["users"])
+
+ID_EXTENSIONS = {".jpg", ".jpeg", ".png", ".pdf"}
+ID_MIME_TYPES = {"image/jpeg", "image/jpg", "image/png", "application/pdf"}
+PROFILE_EXTENSIONS = {".jpg", ".jpeg", ".png"}
+PROFILE_MIME_TYPES = {"image/jpeg", "image/jpg", "image/png"}
 
 
 def user_manager(flag: str):
@@ -81,7 +89,44 @@ def _user_out(db: Session, user: User) -> UserOut:
         updated_at=user.updated_at,
         vendor_id=vendor.id if vendor else None,
         vendor_code=vendor.vendor_code if vendor else None,
+        has_id_proof=user.id_proof_blob is not None,
+        id_proof_filename=user.id_proof_filename,
+        has_profile_picture=user.profile_picture_blob is not None,
+        profile_picture_filename=user.profile_picture_filename,
     )
+
+
+async def _user_payload(request: Request, schema):
+    content_type = request.headers.get("content-type", "").lower()
+    id_proof = profile_picture = None
+    try:
+        if content_type.startswith("multipart/form-data"):
+            form = await request.form()
+            raw = json.loads(str(form.get("payload") or "{}"))
+            id_proof = form.get("id_proof")
+            profile_picture = form.get("profile_picture")
+        else:
+            raw = await request.json()
+        return schema.model_validate(raw), id_proof, profile_picture
+    except (json.JSONDecodeError, ValidationError, TypeError, ValueError) as exc:
+        detail = exc.errors() if isinstance(exc, ValidationError) else "Invalid user details"
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail)
+
+
+async def _read_user_files(id_proof, profile_picture):
+    id_data = profile_data = None
+    if id_proof is not None and hasattr(id_proof, "read") and getattr(id_proof, "filename", None):
+        id_data = await read_upload_bytes(id_proof, allowed_ext=ID_EXTENSIONS, allowed_mime=ID_MIME_TYPES)
+    if profile_picture is not None and hasattr(profile_picture, "read") and getattr(profile_picture, "filename", None):
+        profile_data = await read_upload_bytes(profile_picture, allowed_ext=PROFILE_EXTENSIONS, allowed_mime=PROFILE_MIME_TYPES)
+    return id_data, profile_data
+
+
+def _assign_user_files(user: User, id_data, profile_data) -> None:
+    if id_data:
+        user.id_proof_blob, user.id_proof_filename, user.id_proof_content_type, user.id_proof_size_bytes = id_data
+    if profile_data:
+        user.profile_picture_blob, user.profile_picture_filename, user.profile_picture_content_type, user.profile_picture_size_bytes = profile_data
 
 
 def _fits_filters(u: User, state: str | None, digits: str, part: str, vtype: str, cat: str) -> bool:
@@ -164,11 +209,12 @@ def get_user(
 
 
 @router.post("", response_model=UserOut, status_code=status.HTTP_201_CREATED)
-def create_user(
-    body: UserCreate,
+async def create_user(
+    request: Request,
     db: Session = Depends(get_db),
     actor: User = Depends(user_manager("can_create")),
 ):
+    body, id_proof, profile_picture = await _user_payload(request, UserCreate)
     _guard_protected(actor, body.role)
     if db.scalar(
         select(User).where(
@@ -194,6 +240,8 @@ def create_user(
         skills=json.dumps(body.skills) if body.skills else None,
         vendor_types=json.dumps(body.vendor_types) if body.vendor_types else None,
     )
+    id_data, profile_data = await _read_user_files(id_proof, profile_picture)
+    _assign_user_files(user, id_data, profile_data)
     db.add(user)
     db.flush()
     ensure_vendor_for_user(db, user)
@@ -203,12 +251,13 @@ def create_user(
 
 
 @router.put("/{user_id}", response_model=UserOut)
-def update_user(
+async def update_user(
     user_id: int,
-    body: UserUpdate,
+    request: Request,
     db: Session = Depends(get_db),
     actor: User = Depends(user_manager("can_edit")),
 ):
+    body, id_proof, profile_picture = await _user_payload(request, UserUpdate)
     user = db.get(User, user_id)
     if user is None or user.deleted_at is not None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
@@ -243,6 +292,8 @@ def update_user(
         data["vendor_types"] = json.dumps(data["vendor_types"]) if data["vendor_types"] else None
     for field, value in data.items():
         setattr(user, field, value)
+    id_data, profile_data = await _read_user_files(id_proof, profile_picture)
+    _assign_user_files(user, id_data, profile_data)
     if role_key(user.role) == "vendor":
         user.can_manage_bids = False  # vendors use the vendor side of Bids, never the bid team side
     if role_key(user.role) in ("vendor", "engineer"):
@@ -251,6 +302,43 @@ def update_user(
     db.commit()
     db.refresh(user)
     return _user_out(db, user)
+
+
+def _file_response(contents: bytes | None, content_type: str | None, filename: str | None) -> Response:
+    if contents is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "File not found")
+    safe_name = filename or "document"
+    return Response(
+        content=contents,
+        media_type=content_type or "application/octet-stream",
+        headers={"Content-Disposition": f"inline; filename*=UTF-8''{quote(safe_name)}", "Cache-Control": "private, no-store"},
+    )
+
+
+@router.get("/{user_id}/id-proof")
+def get_id_proof(
+    user_id: int,
+    db: Session = Depends(get_db),
+    actor: User = Depends(user_manager("can_view")),
+):
+    user = db.get(User, user_id)
+    if user is None or user.deleted_at is not None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
+    _guard_protected(actor, user.role)
+    return _file_response(user.id_proof_blob, user.id_proof_content_type, user.id_proof_filename)
+
+
+@router.get("/{user_id}/profile-picture")
+def get_profile_picture(
+    user_id: int,
+    db: Session = Depends(get_db),
+    actor: User = Depends(user_manager("can_view")),
+):
+    user = db.get(User, user_id)
+    if user is None or user.deleted_at is not None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
+    _guard_protected(actor, user.role)
+    return _file_response(user.profile_picture_blob, user.profile_picture_content_type, user.profile_picture_filename)
 
 
 @router.put("/{user_id}/reset-password", status_code=status.HTTP_204_NO_CONTENT)

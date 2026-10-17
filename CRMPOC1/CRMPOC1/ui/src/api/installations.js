@@ -28,6 +28,7 @@ export const installationsApi = {
   requestDocumentLink: (id) => api.post(`/api/installations/${id}/documents/request-link`).then((r) => r.data),
   verifyOrder: (id, body) => api.post(`/api/installations/${id}/verify-order`, body).then((r) => r.data),
   engineerSerial: (id, body) => api.post(`/api/installations/${id}/engineer-serial`, body).then((r) => r.data),
+  updateEngineerOrderSerials: (id, body) => api.put(`/api/installations/${id}/engineer-order-serials`, body).then((r) => r.data),
   verifySerial: (id, body) => api.post(`/api/installations/${id}/verify-serial`, body).then((r) => r.data),
   engineerSerials: (id) => api.get(`/api/installations/${id}/engineer-serials`).then((r) => r.data),
   submitEngineerSerials: (id, body) => api.post(`/api/installations/${id}/engineer-serials/submit`, body).then((r) => r.data),

@@ -44,7 +44,7 @@ def permission_role_name(role: str | None) -> str:
     """
     # Non GST engineer accounts inherit the Engineer permission card.
     key = role_key(role)
-    if key in {"indcool", "indcool service", "service", "service_manager"}:
+    if key in {"indcool", "indcool service"}:
         return "indcool_service"
     return key
 

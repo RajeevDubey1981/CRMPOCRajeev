@@ -49,6 +49,8 @@ function UserForm({ initial, roles, busy, onCancel, onSubmit }) {
     return () => { live = false; };
   }, []);
   const [err, setErr] = useState("");
+  const [idProof, setIdProof] = useState(null);
+  const [profilePicture, setProfilePicture] = useState(null);
 
   function set(field, value) { setForm((f) => ({ ...f, [field]: value })); }
   // Admin, Sub Admin and Vendor never need the tick: admins already manage bids and vendors have their own side.
@@ -61,6 +63,14 @@ function UserForm({ initial, roles, busy, onCancel, onSubmit }) {
     setErr("");
     if (!isEdit && form.password.length < 6) {
       setErr("Password must be at least 6 characters");
+      return;
+    }
+    if (idProof && (idProof.size > 2 * 1024 * 1024 || !["image/jpeg", "image/png", "application/pdf"].includes(idProof.type))) {
+      setErr("ID proof must be a JPEG, PNG, or PDF file up to 2 MB");
+      return;
+    }
+    if (profilePicture && (profilePicture.size > 2 * 1024 * 1024 || !["image/jpeg", "image/png"].includes(profilePicture.type))) {
+      setErr("Profile picture must be a JPEG or PNG file up to 2 MB");
       return;
     }
     // where an engineer works: sent for engineers only, an empty box clears it
@@ -100,7 +110,7 @@ function UserForm({ initial, roles, busy, onCancel, onSubmit }) {
             ...placeBody,
             ...vendorBody,
           };
-      await onSubmit(body);
+      await onSubmit(body, { idProof, profilePicture });
     } catch (e) {
       const detail = e.response?.data?.detail;
       setErr(Array.isArray(detail) ? detail.map((d) => d.msg).join("; ") : detail || "Failed to save");
@@ -227,6 +237,18 @@ function UserForm({ initial, roles, busy, onCancel, onSubmit }) {
             />
           </div>
         )}
+        <div>
+          <label className={labelClass}>Upload ID proof</label>
+          <input type="file" accept=".jpg,.jpeg,.png,.pdf,image/jpeg,image/png,application/pdf" onChange={(e) => setIdProof(e.target.files?.[0] || null)} className="block w-full text-sm text-slate-700" />
+          <p className="mt-1 text-xs text-slate-500">JPEG, PNG, or PDF · maximum 2 MB</p>
+          {initial?.has_id_proof && !idProof && <p className="mt-1 text-xs font-medium text-emerald-700">Current: {initial.id_proof_filename || "ID proof uploaded"}</p>}
+        </div>
+        <div>
+          <label className={labelClass}>Profile picture</label>
+          <input type="file" accept=".jpg,.jpeg,.png,image/jpeg,image/png" onChange={(e) => setProfilePicture(e.target.files?.[0] || null)} className="block w-full text-sm text-slate-700" />
+          <p className="mt-1 text-xs text-slate-500">JPEG or PNG · maximum 2 MB</p>
+          {initial?.has_profile_picture && !profilePicture && <p className="mt-1 text-xs font-medium text-emerald-700">Current: {initial.profile_picture_filename || "Profile picture uploaded"}</p>}
+        </div>
       </div>
       <label className="flex items-center gap-2 text-sm text-slate-700">
         <input type="checkbox" checked={form.is_active} onChange={(e) => set("is_active", e.target.checked)} className="h-4 w-4" />
@@ -338,14 +360,14 @@ export default function UserList() {
   const assignableRoles = isAdmin ? roles : roles.filter((r) => !PROTECTED_ROLES.includes((r.name || "").toLowerCase()));
   const canTouch = (u) => isAdmin || (isSubAdmin && !PROTECTED_ROLES.includes((u.role || "").toLowerCase()));
 
-  async function doCreate(body) {
+  async function doCreate(body, files) {
     setBusy(true);
-    try { await usersAdminApi.create(body); setCreating(false); load(); }
+    try { await usersAdminApi.create(body, files); setCreating(false); load(); }
     finally { setBusy(false); }
   }
-  async function doEdit(body) {
+  async function doEdit(body, files) {
     setBusy(true);
-    try { await usersAdminApi.update(editing.id, body); setEditing(null); load(); }
+    try { await usersAdminApi.update(editing.id, body, files); setEditing(null); load(); }
     finally { setBusy(false); }
   }
   async function doReset(pwd) {
@@ -366,6 +388,16 @@ export default function UserList() {
   async function reactivate(u) {
     await usersAdminApi.update(u.id, { is_active: true });
     load();
+  }
+  async function openUserFile(userId, kind) {
+    try {
+      const blob = kind === "id" ? await usersAdminApi.idProof(userId) : await usersAdminApi.profilePicture(userId);
+      const url = URL.createObjectURL(blob);
+      window.open(url, "_blank", "noopener,noreferrer");
+      window.setTimeout(() => URL.revokeObjectURL(url), 60000);
+    } catch (e) {
+      alert(e.response?.data?.detail || "Failed to open file");
+    }
   }
 
   return (
@@ -459,13 +491,14 @@ export default function UserList() {
               <th className="px-3 py-2">Phone</th>
               <th className="px-3 py-2">Area</th>
               <th className="px-3 py-2">Status</th>
+              <th className="px-3 py-2">Files</th>
               <th className="px-3 py-2">Created</th>
               <th className="px-3 py-2 text-right">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {loading && <tr><td colSpan={9} className="px-3 py-6 text-center text-slate-500">Loading…</td></tr>}
-            {!loading && users.length === 0 && <tr><td colSpan={9} className="px-3 py-6 text-center text-slate-500">No users.</td></tr>}
+            {loading && <tr><td colSpan={10} className="px-3 py-6 text-center text-slate-500">Loading…</td></tr>}
+            {!loading && users.length === 0 && <tr><td colSpan={10} className="px-3 py-6 text-center text-slate-500">No users.</td></tr>}
             {!loading && users.map((u) => (
               <tr key={u.id} className="hover:bg-slate-50">
                 <td className="px-3 py-2 font-medium text-slate-700">{u.id}</td>
@@ -494,6 +527,12 @@ export default function UserList() {
                   ) : (
                     <span className="rounded-full bg-slate-200 px-2 py-0.5 text-xs text-slate-700">Inactive</span>
                   )}
+                </td>
+                <td className="px-3 py-2 text-xs">
+                  {canTouch(u) && (u.has_id_proof || u.has_profile_picture) ? <div className="flex flex-col items-start gap-1">
+                    {u.has_id_proof && <button type="button" onClick={() => openUserFile(u.id, "id")} className="font-medium text-brand-700 hover:underline">ID proof</button>}
+                    {u.has_profile_picture && <button type="button" onClick={() => openUserFile(u.id, "profile")} className="font-medium text-brand-700 hover:underline">Profile picture</button>}
+                  </div> : "—"}
                 </td>
                 <td className="px-3 py-2 text-xs text-slate-500">{fmtDate(u.created_at)}</td>
                 <td className="px-3 py-2 text-right">

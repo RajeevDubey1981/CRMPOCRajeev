@@ -3,12 +3,25 @@ import { api } from "./client.js";
 export const usersAdminApi = {
   list: (params) => api.get("/api/users", { params }).then((r) => r.data),
   get: (id) => api.get(`/api/users/${id}`).then((r) => r.data),
-  create: (body) => api.post("/api/users", body).then((r) => r.data),
-  update: (id, body) => api.put(`/api/users/${id}`, body).then((r) => r.data),
+  create: (body, files = {}) => userMutation("post", "/api/users", body, files),
+  update: (id, body, files = {}) => userMutation("put", `/api/users/${id}`, body, files),
+  idProof: (id) => api.get(`/api/users/${id}/id-proof`, { responseType: "blob" }).then((r) => r.data),
+  profilePicture: (id) => api.get(`/api/users/${id}/profile-picture`, { responseType: "blob" }).then((r) => r.data),
   deactivate: (id) => api.delete(`/api/users/${id}`),
   resetPassword: (id, new_password) =>
     api.put(`/api/users/${id}/reset-password`, { new_password }),
 };
+
+function userMutation(method, url, body, files) {
+  if (!files?.idProof && !files?.profilePicture) {
+    return api.request({ method, url, data: body }).then((r) => r.data);
+  }
+  const form = new FormData();
+  form.append("payload", JSON.stringify(body));
+  if (files.idProof) form.append("id_proof", files.idProof);
+  if (files.profilePicture) form.append("profile_picture", files.profilePicture);
+  return api.request({ method, url, data: form }).then((r) => r.data);
+}
 
 export const rolesApi = {
   list: () => api.get("/api/roles").then((r) => r.data),

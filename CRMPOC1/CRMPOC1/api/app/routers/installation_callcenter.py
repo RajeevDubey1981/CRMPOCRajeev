@@ -8,19 +8,20 @@ import json
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, UploadFile, status
-from sqlalchemy import desc, or_, select
+from sqlalchemy import desc, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.deps import get_current_user
 from app.models.installation import InstallationDocument, InstallationEngineerSerial, InstallationRequest, InstallationStatusLog
-from app.models.order import Order
+from app.models.order import Order, OrderItem
 from app.models.user import User
 from app.schemas.installation import (
     InstallationDocumentOut,
     InstallationEngineerSerialFinalizeRequest,
     InstallationEngineerSerialOut,
     InstallationEngineerSerialRequest,
+    InstallationEngineerOrderSerialUpdate,
     InstallationEngineerSerialSubmitRequest,
     InstallationHistoryEntry,
     InstallationOrderSearchResult,
@@ -86,6 +87,62 @@ def _list_engineer_serials(db: Session, installation_id: int) -> list[Installati
         .order_by(InstallationEngineerSerial.line_no, InstallationEngineerSerial.id)
     ).all()
     return [_serial_out(row) for row in rows]
+
+
+def _order_item_for_serial_pair(
+    db: Session,
+    order_id: int,
+    serial_no: str,
+    serial_no_2: str | None,
+) -> OrderItem | None:
+    """Return the row for serial 1 when every entered serial belongs to this order."""
+    first = serial_no.strip()
+    second = (serial_no_2 or "").strip()
+    first_item = db.scalar(
+        select(OrderItem).where(
+            OrderItem.order_id == order_id,
+            or_(
+                func.lower(func.trim(OrderItem.serial_no)) == first.lower(),
+                func.lower(func.trim(OrderItem.serial_no_2)) == first.lower(),
+            ),
+        )
+    )
+    if first_item is None:
+        return None
+    if second:
+        second_exists = db.scalar(
+            select(OrderItem.id).where(
+                OrderItem.order_id == order_id,
+                or_(
+                    func.lower(func.trim(OrderItem.serial_no)) == second.lower(),
+                    func.lower(func.trim(OrderItem.serial_no_2)) == second.lower(),
+                ),
+            )
+        )
+        if second_exists is None:
+            return None
+    return first_item
+
+
+def _require_order_serial_pair(
+    db: Session,
+    inst: InstallationRequest,
+    serial_no: str,
+    serial_no_2: str | None,
+) -> OrderItem:
+    order_id = inst.order_id
+    if order_id is None and inst.order_item_id:
+        current_item = db.get(OrderItem, inst.order_item_id)
+        order_id = current_item.order_id if current_item else None
+    if order_id is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Link an order before updating serial numbers")
+    item = _order_item_for_serial_pair(db, order_id, serial_no, serial_no_2)
+    if item is None:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "Every entered serial number must belong to this order",
+        )
+    return item
 
 
 def _split_installation_group(db: Session, inst: InstallationRequest) -> list[InstallationRequest]:
@@ -352,6 +409,55 @@ def list_engineer_serials(
     return _list_engineer_serials(db, inst.id)
 
 
+@router.put("/{installation_id}/engineer-order-serials", response_model=InstallationOut)
+def update_engineer_order_serials(
+    installation_id: int,
+    body: InstallationEngineerOrderSerialUpdate,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    from app.routers.installations import _hydrate, _load_visible
+
+    inst = _load_visible(db, user, installation_id)
+    if canonical_role_key(user.role) != "engineer" or inst.assigned_engineer != user.id:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only the assigned engineer can update serial numbers")
+    serial_no = (body.serial_no or "").strip()
+    serial_no_2 = (body.serial_no_2 or "").strip() or None
+    if not serial_no:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Serial number 1 is required")
+    item = _require_order_serial_pair(db, inst, serial_no, serial_no_2)
+    before = {
+        "order_item_id": inst.order_item_id,
+        "serial_no": inst.serial_no,
+        "serial_no_2": inst.serial_no_2,
+    }
+    inst.order_id = item.order_id
+    inst.order_item_id = item.id
+    inst.serial_no = serial_no
+    inst.serial_no_2 = serial_no_2
+    inst.engineer_entered_serial_no = serial_no
+    inst.engineer_entered_serial_no_2 = serial_no_2
+    log_installation_action(
+        db,
+        inst,
+        action="Engineer Order Serials Updated",
+        user=user,
+        old_status=inst.status,
+        new_status=inst.status,
+        metadata={
+            "before": before,
+            "after": {
+                "order_item_id": item.id,
+                "serial_no": serial_no,
+                "serial_no_2": serial_no_2,
+            },
+        },
+    )
+    db.commit()
+    db.refresh(inst)
+    return InstallationOut(**_hydrate(db, inst))
+
+
 @router.post("/{installation_id}/engineer-serials/submit", response_model=dict)
 def submit_engineer_serials(
     installation_id: int,
@@ -376,6 +482,8 @@ def submit_engineer_serials(
         serial = (line.serial_no or "").strip()
         if not serial:
             continue
+        serial_no_2 = (line.serial_no_2 or "").strip() or None
+        _require_order_serial_pair(db, inst, serial, serial_no_2)
         unit_status = (line.unit_status or "Installed").strip()
         if unit_status not in ENGINEER_UNIT_STATUSES:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Invalid unit status: {unit_status}")
@@ -384,7 +492,7 @@ def submit_engineer_serials(
                 installation_request_id=inst.id,
                 line_no=idx,
                 serial_no=serial,
-                serial_no_2=(line.serial_no_2 or "").strip() or None,
+                serial_no_2=serial_no_2,
                 observation=(line.observation or "").strip() or None,
                 unit_status=unit_status,
                 verification_status="Pending",

@@ -140,6 +140,7 @@ DEFAULT_ROLES = [
             "complaints": ALL, "installations": ALL, "orders": ALL, "vendors": ALL,
             "items": ALL, "couriers": ALL, "calls": ALL, "claims": ALL,
             "users": ALL, "roles": ALL, "dashboard": ALL, "services": ALL, "bids": ALL,
+            "historical_installations": (True, False, True, False, False),
         },
     },
     {

@@ -81,6 +81,10 @@ class UserOut(BaseModel):
     updated_at: datetime | None = None
     vendor_id: int | None = None
     vendor_code: str | None = None
+    has_id_proof: bool = False
+    id_proof_filename: str | None = None
+    has_profile_picture: bool = False
+    profile_picture_filename: str | None = None
 
     class Config:
         from_attributes = True

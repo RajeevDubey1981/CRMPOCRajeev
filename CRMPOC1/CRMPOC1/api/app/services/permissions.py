@@ -27,10 +27,9 @@ Flag = str  # one of can_view / can_create / can_edit / can_delete / can_export
 def _role_for(db: Session, user: User) -> Role | None:
     """Resolve a user's role to its permission record.
 
-    ``indcool_service`` is the canonical permission role, while older users may
-    have the display name ``Indcool Service`` stored on their account.  Treat
-    the two spellings as the same operational role so permissions do not vary
-    between the Complaint, Service, and Installation workflows.
+    ``indcool_service`` is the canonical permission role for older Indcool
+    Service spellings. Dedicated ``service`` and ``service_manager`` accounts
+    keep their own role cards so changes made in Roles take effect for them.
     """
     key = permission_role_name(user.role)
     return db.scalar(select(Role).where(func.lower(func.trim(Role.name)) == key))
