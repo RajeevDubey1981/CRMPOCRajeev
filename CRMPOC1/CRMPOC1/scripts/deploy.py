@@ -342,6 +342,14 @@ def deploy_local() -> None:
     else:
         print("\nMarketing database: not set up (MARKETING_DATABASE_URL is empty), Marketing stays switched off")
 
+    # Parts module: its own (fourth) database, upgraded only when PARTS_DATABASE_URL is set.
+    parts_url = (local_env.get("PARTS_DATABASE_URL") or os.environ.get("PARTS_DATABASE_URL") or "").strip()
+    if parts_url:
+        print("\n=== Local database migrations (Parts) ===")
+        run_alembic_upgrade(api_python, cwd=API_DIR, env=local_env, config="alembic_parts.ini")
+    else:
+        print("\nParts database: not set up (PARTS_DATABASE_URL is empty), Parts stays switched off")
+
     print("\n=== Local seed (safe bootstrap) ===")
     seed_cmd = [str(api_python), "-m", "app.seed"]
     if not ask_seed_demo_data():
@@ -534,6 +542,23 @@ if os.environ.get("MARKETING_DATABASE_URL", "").strip():
         subprocess.run([alembic_bin, "-c", "alembic_marketing.ini", "upgrade", "head"], check=True)
 else:
     print("Marketing database: not set up (MARKETING_DATABASE_URL is empty), Marketing stays switched off")
+
+# The Parts module (spare parts, misc/on-demand/whole-unit approvals) keeps its data in its own database.
+# It is switched on by PARTS_DATABASE_URL in the .env file.
+if os.environ.get("PARTS_DATABASE_URL", "").strip():
+    print("Parts database: upgrading")
+    pt = subprocess.run([alembic_bin, "-c", "alembic_parts.ini", "upgrade", "head"], capture_output=True, text=True)
+    print(pt.stdout, end="")
+    print(pt.stderr, end="")
+    if pt.returncode != 0:
+        if "already exists" not in pt.stderr:
+            print("!!! Parts database update FAILED.")
+            raise SystemExit(pt.returncode or 1)
+        print("Parts schema already present but unstamped; running 'alembic stamp head' and retrying...")
+        subprocess.run([alembic_bin, "-c", "alembic_parts.ini", "stamp", "head"], check=True)
+        subprocess.run([alembic_bin, "-c", "alembic_parts.ini", "upgrade", "head"], check=True)
+else:
+    print("Parts database: not set up (PARTS_DATABASE_URL is empty), Parts stays switched off")
 """.replace("/var/www/indcool/api", remote_api)
     ssh_run(client, f"cat > /tmp/indcool_migrate.py <<'PY'\n{remote_migrate}\nPY")
     print(ssh_run(client, f"sudo -u www-data {remote_api}/venv/bin/python /tmp/indcool_migrate.py"))

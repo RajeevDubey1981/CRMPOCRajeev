@@ -19,6 +19,8 @@ class Settings(BaseSettings):
     # and the CRM works exactly as before.
     sales_database_url: str = ""
     marketing_database_url: str = ""
+    # Spare parts, misc/on-demand/whole-unit approvals: its own database. Empty = Parts is switched off.
+    parts_database_url: str = ""
     # Key that locks the platform tokens (Meta ...) kept in the Marketing database. If empty, JWT_SECRET is used.
     marketing_secret_key: str = ""
     # Meta (Facebook, Instagram, ads): the app is made at developers.facebook.com; its id and secret live only in the server .env
@@ -154,6 +156,12 @@ class Settings(BaseSettings):
     @classmethod
     def _marketing_driver(cls, value: str) -> str:
         """The CRM uses the mysql-connector driver. A Marketing URL written for pymysql is read as the same database."""
+        return value.replace("mysql+pymysql://", "mysql+mysqlconnector://", 1) if isinstance(value, str) else value
+
+    @field_validator("parts_database_url")
+    @classmethod
+    def _parts_driver(cls, value: str) -> str:
+        """The CRM uses the mysql-connector driver. A Parts URL written for pymysql is read as the same database."""
         return value.replace("mysql+pymysql://", "mysql+mysqlconnector://", 1) if isinstance(value, str) else value
 
     @property
