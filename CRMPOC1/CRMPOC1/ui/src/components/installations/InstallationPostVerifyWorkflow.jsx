@@ -6,6 +6,7 @@ import { toDownloadUrl } from "../../utils/downloadUrl.js";
 import { formatApiError } from "../../utils/apiError.js";
 import { installationSerialReady, isAssignedToUser } from "../../utils/installationWorkflowSteps.js";
 import WorkflowStepSection from "./WorkflowStepSection.jsx";
+import RaisePartRequestPanel from "../parts/RaisePartRequestPanel.jsx";
 
 const PAYMENT_TYPES = ["Cash", "UPI"];
 
@@ -654,6 +655,17 @@ export default function InstallationPostVerifyWorkflow({
             >
               Submit installation completion
             </button>
+          )}
+          {canComplete && (
+            <RaisePartRequestPanel
+              allowedKinds={["part", "expense", "ondemand", "unit"]}
+              triggerLabel="Can't complete — something's wrong with the unit"
+              context={{
+                crm_installation_request_id: installationId,
+                crm_item_code: installation.item_code,
+                crm_serial_no: installation.serial_no,
+              }}
+            />
           )}
         </WorkflowStepSection>
       )}

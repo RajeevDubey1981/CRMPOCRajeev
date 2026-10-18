@@ -25,7 +25,7 @@ import Permissions from "./pages/admin/Permissions.jsx";
 import PaymentHistory from "./pages/admin/PaymentHistory.jsx";
 import ProjectList from "./pages/projects/ProjectList.jsx";
 import ProjectDetail from "./pages/projects/ProjectDetail.jsx";
-import ItemMasterList from "./pages/item_masters/ItemMasterList.jsx";
+import ItemMastersPage from "./pages/item_masters/ItemMastersPage.jsx";
 import ItemMasterCreate from "./pages/item_masters/ItemMasterCreate.jsx";
 import ItemMasterDetail from "./pages/item_masters/ItemMasterDetail.jsx";
 import CourierList from "./pages/couriers/CourierList.jsx";
@@ -177,7 +177,7 @@ export default function App() {
         <Route path="/services/my-units" element={<EngineerAssignedUnits />} />
         <Route path="/services/new" element={<PermissionRoute module="services" action="can_create"><ServiceRequestCreate /></PermissionRoute>} />
         <Route path="/services/:id" element={<PermissionRoute module="services"><ServiceRequestDetail /></PermissionRoute>} />
-        <Route path="/items" element={<PermissionRoute module="items"><ItemMasterList /></PermissionRoute>} />
+        <Route path="/items" element={<PermissionRoute module="items"><ItemMastersPage /></PermissionRoute>} />
         <Route path="/items/new" element={<PermissionRoute module="items" action="can_create"><ItemMasterCreate /></PermissionRoute>} />
         <Route path="/items/:id" element={<PermissionRoute module="items"><ItemMasterDetail /></PermissionRoute>} />
         <Route path="/couriers" element={<OperationsAdminRoute><CourierList /></OperationsAdminRoute>} />
