@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { servicesApi } from "../../api/services.js";
+import { partsApi } from "../../api/parts.js";
 import { engineerIdsMatch } from "../../utils/engineerAssignment.js";
 import Modal from "../../components/Modal.jsx";
 import FieldPhotos from "../../components/fieldphoto/FieldPhotos.jsx";
@@ -248,6 +249,11 @@ export default function EngineerUnitWorkflowPanel({
     }
     return units.filter((unit) => unit.assigned_engineer_id);
   }, [service?.units, isEngineer, userId]);
+
+  const [partsCatalogue, setPartsCatalogue] = useState([]);
+  useEffect(() => {
+    partsApi.catalogue({}).then(setPartsCatalogue).catch(() => setPartsCatalogue([]));
+  }, []);
 
   const [photoCounts, setPhotoCounts] = useState({}); // photos taken per serial, reported by the Photos button
   const [rows, setRows] = useState([]);
@@ -1008,13 +1014,61 @@ export default function EngineerUnitWorkflowPanel({
           </div>
           <div>
             <FieldLabel>Parts required</FieldLabel>
-            <input
-              value={row.parts_required}
-              onChange={(e) => updateRow(unit.id, "parts_required", e.target.value)}
-              disabled={!canEdit}
-              placeholder="Parts required (comma separated)"
-              className={inputClass(!canEdit)}
-            />
+            {(() => {
+              const selected = (row.parts_required || "").split(",").map((p) => p.trim()).filter(Boolean);
+              const fitting = partsCatalogue.filter((p) => !unit.item_code || (p.fits || []).includes(unit.item_code));
+              const options = (fitting.length ? fitting : partsCatalogue).filter((p) => !selected.includes(p.part_name));
+              function addPart(name) {
+                if (!name || selected.includes(name)) return;
+                updateRow(unit.id, "parts_required", [...selected, name].join(", "));
+              }
+              function removePart(name) {
+                updateRow(unit.id, "parts_required", selected.filter((p) => p !== name).join(", "));
+              }
+              return (
+                <div className="space-y-1.5">
+                  {selected.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5">
+                      {selected.map((name) => (
+                        <span key={name} className="inline-flex items-center gap-1 rounded-full bg-sky-100 px-2.5 py-1 text-xs font-medium text-sky-800">
+                          {name}
+                          {canEdit && (
+                            <button type="button" onClick={() => removePart(name)} className="text-sky-500 hover:text-sky-800">✕</button>
+                          )}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  {canEdit && (
+                    <div className="flex gap-2">
+                      <select
+                        value=""
+                        onChange={(e) => { if (e.target.value) addPart(e.target.value); }}
+                        className={inputClass()}
+                      >
+                        <option value="">{options.length ? "+ Add a part from the catalogue..." : "No catalogue parts available"}</option>
+                        {options.map((p) => (
+                          <option key={p.id} value={p.part_name}>{p.part_name}{p.part_code ? ` (${p.part_code})` : ""}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                  {canEdit && (
+                    <input
+                      placeholder="Not in catalogue? Type a part name and press Enter"
+                      className={inputClass()}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          addPart(e.currentTarget.value.trim());
+                          e.currentTarget.value = "";
+                        }
+                      }}
+                    />
+                  )}
+                </div>
+              );
+            })()}
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
