@@ -171,34 +171,34 @@ function People({ thread, busy, onAdd, onRemove, onAddBack }) {
         <span className={`text-slate-400 transition-transform ${open ? "rotate-180" : ""}`}>▾</span>
       </button>
       {open && (
-        <div className="s-pop absolute left-0 top-full z-20 mt-1 w-80 rounded-lg border border-slate-200 bg-white p-3 shadow-lg">
-          <div className="mb-1 text-[10px] font-bold uppercase tracking-wide text-slate-400">In this conversation</div>
+        <div className="s-pop absolute left-0 top-full z-20 mt-1.5 w-[22rem] rounded-xl border border-slate-200 bg-white p-3.5 text-sm shadow-xl">
+          <div className="mb-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-400">In this conversation</div>
           <div className="flex flex-col gap-1">
             {inside.map((m) => (
-              <div key={m.user_id} className="flex items-center gap-2 rounded-md px-1.5 py-1 hover:bg-slate-50">
+              <div key={m.user_id} className="flex items-center gap-2.5 rounded-md px-2 py-1.5 hover:bg-slate-50">
                 {m.is_holder && <span title="Has to answer" className="text-amber-600">★</span>}
                 <span className="min-w-0 flex-1 truncate"><b className="font-semibold">{m.name}</b> <span className="text-slate-400">{m.kind === "cc" ? "CC" : m.kind === "owner" ? "asked" : roleLabel(m.role)}</span></span>
                 {thread.can_manage && !m.is_holder && (
-                  <button type="button" disabled={busy} title={`Take ${m.name} out for a private talk`} onClick={() => onRemove(m)} className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-slate-100 text-[10px] leading-none text-slate-500 hover:bg-rose-100 hover:text-rose-700">✕</button>
+                  <button type="button" disabled={busy} title={`Take ${m.name} out for a private talk`} onClick={() => onRemove(m)} className="shrink-0 rounded-md border border-slate-200 px-2 py-1 text-xs font-semibold text-slate-500 hover:border-rose-300 hover:bg-rose-50 hover:text-rose-700">Take out</button>
                 )}
               </div>
             ))}
           </div>
           {out.length > 0 && (
             <>
-              <div className="mb-1 mt-3 text-[10px] font-bold uppercase tracking-wide text-slate-400">Taken out ({out.length})</div>
+              <div className="mb-1.5 mt-3 text-[10px] font-bold uppercase tracking-wide text-slate-400">Taken out ({out.length})</div>
               <div className="flex flex-col gap-1">
                 {out.map((m) => (
-                  <div key={`out-${m.user_id}`} className="flex items-center gap-2 rounded-md px-1.5 py-1 text-slate-500">
+                  <div key={`out-${m.user_id}`} className="flex items-center gap-2.5 rounded-md px-2 py-1.5 text-slate-500">
                     <span className="min-w-0 flex-1 truncate line-through">{m.name}</span>
-                    {thread.can_manage && <button type="button" disabled={busy} onClick={() => onAddBack(m)} className="shrink-0 rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-semibold text-sky-800 hover:bg-sky-200">Add back</button>}
+                    {thread.can_manage && <button type="button" disabled={busy} onClick={() => onAddBack(m)} className="shrink-0 rounded-md border border-sky-200 bg-sky-50 px-2.5 py-1 text-xs font-semibold text-sky-800 hover:bg-sky-100">Add back</button>}
                   </div>
                 ))}
               </div>
             </>
           )}
           {thread.can_manage && (
-            <button type="button" disabled={busy} onClick={onAdd} className="mt-3 w-full rounded-md border border-brand-600 py-1.5 text-center font-semibold text-brand-700 hover:bg-sky-50">+ Add or CC</button>
+            <button type="button" disabled={busy} onClick={onAdd} className="mt-3 w-full rounded-md border border-brand-600 py-2 text-center text-sm font-semibold text-brand-700 hover:bg-sky-50">+ Add or CC</button>
           )}
         </div>
       )}
