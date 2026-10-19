@@ -344,20 +344,29 @@ function Thread({ id, staff, onChanged }) {
       )}
 
       {tab === "hist" && thread.can_see_history ? <History events={thread.events} /> : (
-        <div className="flex-1 space-y-3 overflow-y-auto bg-slate-50 px-4 py-3" style={{ maxHeight: "calc(100vh - 26rem)", minHeight: "10rem" }}>
+        <div className="flex-1 space-y-2.5 overflow-y-auto bg-slate-50 px-4 py-3" style={{ maxHeight: "calc(100vh - 26rem)", minHeight: "10rem" }}>
           {thread.messages.map((m, index) => {
             const newOnes = thread.unread_count || 0;
             const isNew = !m.mine && index >= thread.messages.length - newOnes;
+            const kind = m.mine ? "you" : m.from_staff ? "staff" : "customer";
+            const borderCls = { you: "border-amber-300 bg-amber-50/60", staff: "border-sky-300 bg-sky-50/60", customer: "border-slate-300 bg-white" }[kind];
+            const avCls = { you: "bg-amber-600", staff: "bg-indcool-blue", customer: "bg-slate-400" }[kind];
+            const who = m.mine ? "You" : m.sender_name;
             return (
-              <div key={m.id} className={`flex ${m.mine ? "justify-end" : "justify-start"}`}>
-                <div className={`max-w-[85%] rounded-lg px-3 py-2 text-sm shadow-sm ${m.mine ? "bg-indcool-navy text-white" : m.from_staff ? "border border-emerald-200 bg-emerald-50 text-slate-800" : "border border-slate-200 bg-white text-slate-800"} ${m.is_private ? "ring-1 ring-violet-300" : ""}`}>
-                  <div className={`mb-0.5 text-[11px] font-semibold ${m.mine ? "text-slate-200" : "text-slate-500"}`}>
-                    {m.mine ? "You" : m.sender_name}{!m.mine && m.from_staff ? " · Admin team" : ""} · {timeAgo(m.created_at)}
-                    {m.is_private && <span className={`ml-1 rounded px-1 text-[10px] ${m.mine ? "bg-violet-400/40 text-white" : "bg-violet-100 text-violet-700"}`}>🔒 private{m.hidden_from?.length ? `, not shown to ${m.hidden_from.join(", ")}` : ""}</span>}
-                    {isNew && <span className="ml-1 rounded bg-rose-600 px-1 text-[10px] text-white">new</span>}
-                  </div>
-                  <div className="whitespace-pre-wrap break-words">{m.body}</div>
+              <div key={m.id} style={{ "--i": Math.min(index, 8) }} className={`s-rise rounded-xl border-[1.5px] px-3.5 py-2.5 text-sm shadow-sm ${borderCls}`}>
+                <div className="flex items-center gap-2">
+                  <span className={`grid h-6 w-6 shrink-0 place-items-center rounded-full text-[10px] font-bold text-white ${avCls}`}>{(who || "?").slice(0, 1).toUpperCase()}</span>
+                  <span className="font-semibold text-slate-800">{who}</span>
+                  {!m.mine && m.from_staff && <span className="text-[11px] text-slate-400">Admin team</span>}
+                  <span className="ml-auto shrink-0 text-[11px] text-slate-400">{timeAgo(m.created_at)}</span>
+                  {isNew && <span className="rounded bg-rose-600 px-1 text-[10px] font-semibold text-white">new</span>}
                 </div>
+                <div className="mt-1.5 whitespace-pre-wrap break-words pl-8 text-slate-700">{m.body}</div>
+                {m.is_private && (
+                  <div className="mt-1.5 pl-8">
+                    <span className="inline-flex items-center gap-1 rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-semibold text-violet-700">🔒 private{m.hidden_from?.length ? `, not shown to ${m.hidden_from.join(", ")}` : ""}</span>
+                  </div>
+                )}
               </div>
             );
           })}
