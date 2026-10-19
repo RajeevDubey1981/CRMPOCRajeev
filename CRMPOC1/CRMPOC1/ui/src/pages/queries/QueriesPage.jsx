@@ -73,46 +73,55 @@ function leftText(q) {
   return h > 0 ? `${h} h ${m} m` : `${m} min`;
 }
 
+const DOT_COLOR = { Open: "bg-amber-500", Answered: "bg-emerald-600", Closed: "bg-slate-400" };
+
 function QueryList({ rows, activeId, staff, loading, term = "", numberOn = false, dateOn = false }) {
   if (loading && rows.length === 0) return <p className="p-4 text-sm text-slate-500">Loading...</p>;
   if (rows.length === 0) return <p className="p-4 text-sm text-slate-500">No queries here.</p>;
   return (
     <ul className="divide-y divide-slate-100">
-      {rows.map((q) => (
-        <li key={q.id}>
-          <Link
-            to={`/queries/${q.id}`}
-            className={`block border-l-4 px-3 py-2.5 transition-colors hover:bg-sky-50 ${String(q.id) === String(activeId) ? "bg-sky-50" : ""} ${q.alarm_for_me ? "border-l-rose-600 bg-rose-50/60" : q.priority === "urgent" ? "border-l-rose-500" : q.priority === "high" ? "border-l-orange-400" : "border-l-transparent"}`}
-          >
-            <div className="flex items-start justify-between gap-2">
-              <span className={`text-sm ${q.unread_count > 0 ? "font-bold text-slate-900" : "font-medium text-slate-800"}`}><Mark text={q.subject} term={term} /></span>
-              <div className="flex shrink-0 items-center gap-1.5">
-                <QueryNo no={q.query_no} hit={numberOn || isTypedNumber(term, q.query_no, q.id)} />
-                {q.unread_count > 0 && <span className="rounded-full bg-rose-600 px-1.5 py-0.5 text-[10px] font-bold text-white">{q.unread_count} new</span>}
+      {rows.map((q) => {
+        const who = staff ? q.owner_name : q.holder_name;
+        const flagged = q.alarm_for_me ? { text: "No reply in 24 h", cls: "bg-rose-100 text-rose-700" }
+          : q.overdue ? { text: "Overdue", cls: "bg-rose-100 text-rose-700" }
+          : q.status === "Open" && q.hours_left != null && q.hours_left < 6 ? { text: `${leftText(q)} left`, cls: "bg-amber-100 text-amber-800" } : null;
+        return (
+          <li key={q.id} className="group relative">
+            <Link
+              to={`/queries/${q.id}`}
+              className={`block border-l-4 px-3 py-2.5 transition-colors hover:bg-sky-50 ${String(q.id) === String(activeId) ? "bg-sky-50" : ""} ${q.alarm_for_me ? "border-l-rose-600 bg-rose-50/60" : q.priority === "urgent" ? "border-l-rose-500" : q.priority === "high" ? "border-l-orange-400" : "border-l-transparent"}`}
+            >
+              <div className="flex items-start gap-2">
+                <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${DOT_COLOR[q.status] || "bg-slate-300"}`} aria-hidden="true" />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className={`truncate text-sm ${q.unread_count > 0 ? "font-bold text-slate-900" : "font-semibold text-slate-800"}`}>
+                      {who ? <Mark text={who} term={term} /> : <Mark text={q.subject} term={term} />}
+                    </span>
+                    {q.member_count > 1 && <span className="shrink-0 text-xs text-slate-400">+{q.member_count - 1}</span>}
+                    <span className="ml-auto shrink-0 text-[11px] text-slate-400">{timeAgo(q.last_message_at)}</span>
+                  </div>
+                  <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[11px] text-slate-500">
+                    <QueryNo no={q.query_no} hit={numberOn || isTypedNumber(term, q.query_no, q.id)} />
+                    <span>{q.category}</span>
+                    <StatusChip status={q.status} />
+                    <PriorityChip priority={q.priority} />
+                    {flagged && <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${flagged.cls}`}>{flagged.text}</span>}
+                    {q.unread_count > 0 && <span className="rounded-full bg-rose-600 px-1.5 py-0.5 text-[10px] font-bold text-white">{q.unread_count} new</span>}
+                  </div>
+                </div>
               </div>
+            </Link>
+            <div className="pointer-events-none absolute inset-1 z-10 flex flex-col justify-center overflow-hidden rounded-lg bg-indcool-navy px-3 py-2 text-white opacity-0 shadow-xl transition-opacity duration-150 group-hover:opacity-100">
+              <div className="truncate text-xs font-bold text-sky-300"><Mark text={q.subject} term={term} /></div>
+              <div className="mt-0.5 line-clamp-2 text-[11px] text-slate-200">
+                {q.last_sender_name ? `${q.last_sender_name}: ` : ""}<Mark text={q.last_message_preview} term={term} />
+              </div>
+              {q.raised_on && <div className="mt-1 text-[10px] text-slate-400">Raised {dayText(q.raised_on)}</div>}
             </div>
-            <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500">
-              <StatusChip status={q.status} />
-              <PriorityChip priority={q.priority} />
-              {q.alarm_for_me ? <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[11px] font-bold text-rose-700">No reply in 24 h</span>
-                : q.overdue ? <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[11px] font-semibold text-rose-700">Overdue</span>
-                : q.status === "Open" && q.hours_left != null && q.hours_left < 6 ? <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800">{leftText(q)} left</span> : null}
-              {(staff || q.holder_id) && <span className="font-medium text-slate-700">{staff ? <Mark text={q.owner_name} term={term} /> : ""}</span>}
-              {q.holder_name && <span title="Who has to answer it">→ <Mark text={q.holder_name} term={term} /></span>}
-              {q.member_count > 1 && <span>· {q.member_count} people</span>}
-              <span>{q.category}</span>
-              {q.related_to && <span>· <Mark text={q.related_to} term={term} /></span>}
-              <span className="ml-auto">{timeAgo(q.last_message_at)}</span>
-            </div>
-            <div className="mt-1.5">
-              <RaisedDate day={q.raised_on} hit={dateOn || isTypedDay(term, q.raised_on)} />
-            </div>
-            <p className="mt-1 line-clamp-2 text-xs text-slate-600">
-              {q.last_sender_name ? `${q.last_sender_name}: ` : ""}<Mark text={q.last_message_preview} term={term} />
-            </p>
-          </Link>
-        </li>
-      ))}
+          </li>
+        );
+      })}
     </ul>
   );
 }
