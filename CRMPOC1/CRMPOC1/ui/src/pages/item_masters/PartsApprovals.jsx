@@ -62,10 +62,13 @@ export default function PartsApprovals() {
           ))}
         </div>
         <DateRangeFilter from={range.from} to={range.to} onChange={(from, to) => setRange({ from, to })} label="Raised" />
-        <label className="ml-auto flex items-center gap-2 text-sm text-slate-700">
+        <label className="flex items-center gap-2 text-sm text-slate-700">
           <input type="checkbox" checked={mineOnly} onChange={(e) => setMineOnly(e.target.checked)} />
           Only what's waiting on me ({pendingCount})
         </label>
+        <Link to="/queries" className="ml-auto rounded-full bg-sky-50 px-3 py-1 text-xs font-semibold text-sky-700 hover:bg-sky-100">
+          💬 Queries
+        </Link>
       </div>
 
       {err && <div className="rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-700">{err}</div>}

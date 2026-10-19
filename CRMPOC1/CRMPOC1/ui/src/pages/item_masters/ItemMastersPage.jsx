@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useSearchParams } from "react-router-dom";
 
 import { useAuth } from "../../auth/AuthContext.jsx";
 import ItemMasterList from "./ItemMasterList.jsx";
@@ -14,7 +15,9 @@ function roleKey(role) {
 export default function ItemMastersPage() {
   const { user } = useAuth();
   const canSeeApprovals = APPROVAL_ROLES.has(roleKey(user?.role));
-  const [tab, setTab] = useState("items");
+  const [searchParams] = useSearchParams();
+  const initialTab = searchParams.get("tab") === "approvals" && canSeeApprovals ? "approvals" : "items";
+  const [tab, setTab] = useState(initialTab);
 
   const tabs = [
     ["items", "Items"],

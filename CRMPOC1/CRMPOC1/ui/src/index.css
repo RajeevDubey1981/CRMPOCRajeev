@@ -262,3 +262,7 @@ html[data-s-motion="off"] :is(button, [role="button"]):active { transform: none 
 .q-bell svg { transform-origin: 50% 0; animation: q-ring 1.3s ease-in-out infinite; }
 .q-bell::after { content: ""; position: absolute; inset: -5px; border-radius: 50%; border: 2px solid currentColor; animation: q-wave 1.7s ease-out infinite; }
 html[data-s-motion="off"] :is(.q-alarm, .q-bell svg, .q-bell::after) { animation: none !important; }
+@keyframes q-approvals-glow { 0%, 100% { box-shadow: 0 0 0 0 rgba(124, 58, 237, .35); } 50% { box-shadow: 0 0 0 5px rgba(124, 58, 237, 0); } }
+.q-approvals-pulse { animation: q-approvals-glow 2.6s ease-in-out infinite; }
+.q-approvals-pulse:hover { animation: none; }
+html[data-s-motion="off"] .q-approvals-pulse { animation: none !important; }
