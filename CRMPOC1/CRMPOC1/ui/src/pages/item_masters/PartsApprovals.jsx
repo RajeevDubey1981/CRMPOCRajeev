@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 
 import DateRangeFilter from "../../components/DateRangeFilter.jsx";
 import Modal from "../../components/Modal.jsx";
+import PartySummary from "../../components/claims/PartySummary.jsx";
 import { partsApi, REQUEST_KINDS } from "../../api/parts.js";
 
 const KIND_LABEL = Object.fromEntries(REQUEST_KINDS.map((k) => [k.value, k.label]));
@@ -52,6 +53,10 @@ export default function PartsApprovals() {
 
   return (
     <div className="space-y-4">
+      <div>
+        <div className="mb-1 text-[11px] font-bold uppercase tracking-wide text-slate-400">Missing-item claims, by who it's on</div>
+        <PartySummary />
+      </div>
       <div className="flex flex-wrap items-center gap-2">
         <div className="flex flex-wrap gap-1">
           <button onClick={() => setKind("")} className={`rounded-full px-3 py-1 text-xs font-medium ${!kind ? "bg-slate-800 text-white" : "bg-slate-100 text-slate-600"}`}>All</button>

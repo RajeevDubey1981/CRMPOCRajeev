@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import DateRangeFilter from "../../components/DateRangeFilter.jsx";
 import Modal from "../../components/Modal.jsx";
+import PartySummary from "../../components/claims/PartySummary.jsx";
 import { shortageClaimsApi, ITEMS_MISSING, RESP_LABEL } from "../../api/shortageClaims.js";
 
 function stagePill(stage) {
@@ -73,6 +74,7 @@ export default function ShortageClaimsTab() {
 
   return (
     <div className="space-y-4">
+      <PartySummary active={resp} onPick={setResp} />
       {open.length > 0 && (
         <div className="flex items-center gap-3 rounded-lg bg-rose-600 px-4 py-3 text-white shadow-sm">
           <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-white/20 text-lg">⚠</span>
