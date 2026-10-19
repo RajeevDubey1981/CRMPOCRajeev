@@ -46,6 +46,8 @@ from app.schemas.service import (
     ServiceDeskReturnIn,
     ServiceDeskUserAssignIn,
     ServiceBulkApprovalIn,
+    ServiceForwardIn,
+    ServiceBulkForwardIn,
     ServiceBulkObservationsIn,
     ServiceBulkSerialVerifyIn,
     ServiceCompletionIn,
@@ -166,6 +168,9 @@ from app.services.service_unit_workflow import (
     requires_admin_approval,
     can_user_approve_amount,
     can_user_approve_at_all,
+    can_user_forward_at_all,
+    forward_unit_to_manager,
+    bulk_forward_units,
     APPROVAL_CAP_AMOUNT,
 )
 from app.services.payment_approval_workflow import (
@@ -2263,6 +2268,64 @@ def cancel_observation(
         user=user,
         old_status=old_status,
         new_status=service.status,
+    )
+    db.commit()
+    db.refresh(service)
+    return _hydrate_service(db, service, user=user)
+
+
+@router.post("/{service_id}/forward", response_model=ServiceOut)
+def service_forward_to_manager(
+    service_id: int,
+    body: ServiceForwardIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    service = _load_visible_service(db, service_id, user)
+    if not can_user_forward_at_all(user):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only the Service Team or Admin can review this before it reaches the Service Manager")
+    if body.decision == "Reject" and not body.remarks:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Remarks are mandatory when sending back to the engineer")
+    if body.unit_id is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "unit_id is required")
+
+    unit = db.get(ServiceRequestUnit, body.unit_id)
+    if unit is None or unit.service_request_id != service.id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Unit not found")
+    old_status = service.status
+    forward_unit_to_manager(db, service, unit, user, body.decision, body.remarks)
+    sync_aggregate_service_status(db, service)
+    _log_status(
+        db, service,
+        action="Forwarded to Service Manager" if body.decision == "Forward" else "Sent Back to Engineer",
+        user=user, old_status=old_status, new_status=service.status, remarks=body.remarks,
+        metadata={"unit_id": unit.id},
+    )
+    db.commit()
+    db.refresh(service)
+    return _hydrate_service(db, service, user=user)
+
+
+@router.post("/{service_id}/forward/bulk", response_model=ServiceOut)
+def service_forward_to_manager_bulk(
+    service_id: int,
+    body: ServiceBulkForwardIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    service = _load_visible_service(db, service_id, user)
+    if not can_user_forward_at_all(user):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only the Service Team or Admin can review this before it reaches the Service Manager")
+    if body.decision == "Reject" and not body.remarks:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Remarks are mandatory when sending back to the engineer")
+
+    old_status = service.status
+    forwarded = bulk_forward_units(db, service, user, body.decision, body.remarks, body.unit_ids)
+    _log_status(
+        db, service,
+        action="Forwarded to Service Manager (Bulk)" if body.decision == "Forward" else "Sent Back to Engineer (Bulk)",
+        user=user, old_status=old_status, new_status=service.status, remarks=body.remarks,
+        metadata={"unit_ids": [u.id for u in forwarded]},
     )
     db.commit()
     db.refresh(service)

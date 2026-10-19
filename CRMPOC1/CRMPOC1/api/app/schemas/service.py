@@ -193,6 +193,7 @@ class ServiceRequestUnitOut(BaseModel):
     requires_admin_approval: bool = False
     approval_cap_amount: float | None = None
     can_approve: bool = True
+    can_forward: bool = True
 
 
 class ServiceSerialVerifyIn(BaseModel):
@@ -264,6 +265,18 @@ class ServiceApprovalIn(BaseModel):
 
 class ServiceBulkApprovalIn(BaseModel):
     decision: Literal["Approve", "Reject"]
+    remarks: str | None = None
+    unit_ids: list[int] | None = None
+
+
+class ServiceForwardIn(BaseModel):
+    decision: Literal["Forward", "Reject"]
+    remarks: str | None = None
+    unit_id: int | None = None
+
+
+class ServiceBulkForwardIn(BaseModel):
+    decision: Literal["Forward", "Reject"]
     remarks: str | None = None
     unit_ids: list[int] | None = None
 

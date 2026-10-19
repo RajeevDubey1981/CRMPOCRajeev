@@ -9,6 +9,7 @@ import StatusBadge from "../../components/StatusBadge.jsx";
 import { useAuth } from "../../auth/AuthContext.jsx";
 import {
   canApproveServiceUnits,
+  canForwardServiceUnits,
   canAssignServiceDeskUser,
   canViewAllServiceRequests,
   isOperationsAdminRole,
@@ -355,6 +356,7 @@ export default function ServiceRequestDetail() {
   ), [engineers]);
   const roleIsServiceTeam = isServiceTeamRole(role);
   const roleCanApproveUnits = canApproveServiceUnits(role);
+  const roleCanForwardUnits = canForwardServiceUnits(role);
   const roleIsServiceDesk = isServiceDeskRole(role);
   const roleCanViewAllServices = canViewAllServiceRequests(role);
   const canAssignServiceDesk = canAssignServiceDeskUser(role);
@@ -569,6 +571,7 @@ export default function ServiceRequestDetail() {
 
   const isServiceTeam = roleIsServiceTeam;
   const canApproveUnits = roleCanApproveUnits;
+  const canForwardUnits = roleCanForwardUnits;
   const isEngineer = roleIsEngineer;
   const isVendor = roleIsVendor;
   const linkedCustomerSummary = [service.customer_name, service.customer_mobile, service.order_no].filter(Boolean).join(" • ");
@@ -926,6 +929,7 @@ export default function ServiceRequestDetail() {
           engineers={engineers}
           isServiceTeam={isServiceTeam}
           canApproveUnits={canApproveUnits}
+          canForwardUnits={canForwardUnits}
           isEngineer={isEngineer}
           userId={user?.id}
           onRefresh={load}
@@ -1078,6 +1082,7 @@ export default function ServiceRequestDetail() {
           isVendor={isVendor}
           isServiceTeam={isServiceTeam}
           canApproveUnits={canApproveUnits}
+          canForwardUnits={canForwardUnits}
           isPaymentAdmin={roleIsPaymentAdmin}
           run={run}
           busy={busy}

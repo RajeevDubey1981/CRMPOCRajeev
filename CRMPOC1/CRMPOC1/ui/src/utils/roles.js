@@ -68,3 +68,10 @@ export function isServiceTeamRole(role) {
 export function canApproveServiceUnits(role) {
   return isServiceManagerRole(role) || isSystemAdminRole(role);
 }
+
+// Who forwards the engineer's recommendation on to the Service Manager: Service Team (service desk
+// roles) and Admin/Sub Admin/Incool (who can skip ahead at any stage). Service Manager itself doesn't
+// forward -- it's the one receiving the forward, same chain as the backend's UNIT_FORWARD_ROLES.
+export function canForwardServiceUnits(role) {
+  return isIndcoolServiceRole(role) || isSystemAdminRole(role) || isSubAdminRole(role);
+}

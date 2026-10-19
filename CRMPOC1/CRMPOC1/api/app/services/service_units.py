@@ -41,6 +41,7 @@ from app.services.service_unit_workflow import (
     unit_requested_amount,
     requires_admin_approval,
     can_user_approve_amount,
+    can_user_forward_at_all,
     APPROVAL_CAP_AMOUNT,
 )
 
@@ -537,6 +538,7 @@ def build_unit_rows(
             "requires_admin_approval": requires_admin_approval(unit_requested_amount(observation)) if observation else False,
             "approval_cap_amount": APPROVAL_CAP_AMOUNT,
             "can_approve": (can_user_approve_amount(user, unit_requested_amount(observation)) if observation else True) if user is not None else True,
+            "can_forward": can_user_forward_at_all(user) if user is not None else True,
         })
     return rows
 

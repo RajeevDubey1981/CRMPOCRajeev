@@ -237,6 +237,7 @@ export default function EngineerUnitWorkflowPanel({
   isVendor,
   isServiceTeam,
   canApproveUnits = isServiceTeam,
+  canForwardUnits = isServiceTeam,
   isPaymentAdmin = false,
   run,
   busy = false,
@@ -264,6 +265,7 @@ export default function EngineerUnitWorkflowPanel({
   const [completionProofs, setCompletionProofs] = useState({});
   const [paymentQrCodes, setPaymentQrCodes] = useState({});
   const [approvalRemarks, setApprovalRemarks] = useState({});
+  const [forwardRemarks, setForwardRemarks] = useState({});
   const [serialReviewForms, setSerialReviewForms] = useState({});
   const [paymentApprovalForms, setPaymentApprovalForms] = useState({});
   const [completionReviewRemarks, setCompletionReviewRemarks] = useState({});
@@ -306,6 +308,7 @@ export default function EngineerUnitWorkflowPanel({
   const unverifiedUnits = workUnits.filter((unit) => !unit.serial_verified_at && unit.unit_status === "Assigned");
   const unitsNeedingObservation = workUnits.filter((unit) => unit.serial_verified_at && !unit.observation_id);
   const unitsPendingApproval = workUnits.filter((unit) => unit.unit_status === "Pending Service Approval");
+  const unitsPendingTeamReview = workUnits.filter((unit) => unit.unit_status === "Pending Service Team Review");
   const unitsAwaitingSerialReview = workUnits.filter(
     (unit) => unit.unit_status === "Serial Verification Pending",
   );
@@ -575,6 +578,25 @@ export default function EngineerUnitWorkflowPanel({
     );
   }
 
+  async function forwardUnit(unitId, decision) {
+    await run(
+      () => servicesApi.forward(service.id, {
+        unit_id: unitId,
+        decision,
+        remarks: forwardRemarks[unitId] || (decision === "Forward" ? "Forwarded" : "Sent back"),
+      }),
+      { successMessage: decision === "Forward" ? "Forwarded to the Service Manager." : "Sent back to the engineer." },
+    );
+    closeModal();
+  }
+
+  async function forwardAllPending() {
+    await run(
+      () => servicesApi.forwardBulk(service.id, { decision: "Forward", remarks: "Bulk forwarded" }),
+      { successMessage: "All pending serials forwarded to the Service Manager." },
+    );
+  }
+
   function openCompletionReview(unit) {
     setCompletionReviewRemarks((current) => ({
       ...current,
@@ -693,6 +715,9 @@ export default function EngineerUnitWorkflowPanel({
     if (!unit.observation_id) {
       return "Awaiting observation";
     }
+    if (unit.unit_status === "Pending Service Team Review") {
+      return "Awaiting Service Team review";
+    }
     if (unit.unit_status === "Pending Service Approval") {
       return "Awaiting approval";
     }
@@ -790,6 +815,37 @@ export default function EngineerUnitWorkflowPanel({
         >
           Change status
         </button>
+      );
+    }
+
+    if (unit.unit_status === "Pending Service Team Review") {
+      if (isServiceTeam) {
+        return (
+          <div className="flex flex-col items-end gap-1">
+            <button
+              type="button"
+              onClick={() => openModal("forward", unit.id)}
+              className="rounded-md bg-teal-600 px-3 py-1.5 text-xs text-white"
+            >
+              Review &amp; forward
+            </button>
+            {observed && (
+              <button type="button" onClick={() => openModal("observation", unit.id)} className="text-xs text-sky-700 underline">
+                View observation
+              </button>
+            )}
+          </div>
+        );
+      }
+      return (
+        <div className="flex flex-col items-end gap-1">
+          <span className="text-xs text-slate-500">Awaiting Service Team review</span>
+          {observed && (
+            <button type="button" onClick={() => openModal("observation", unit.id)} className="text-xs text-sky-700 underline">
+              View observation
+            </button>
+          )}
+        </div>
       );
     }
 
@@ -963,7 +1019,7 @@ export default function EngineerUnitWorkflowPanel({
     const unit = activeUnit();
     if (!unit || activeModal?.type !== "observation") return null;
     const row = rows.find((item) => item.unit_id === unit.id) || emptyRow(unit);
-    const observationEditable = ["Pending Service Approval", "Rejected"].includes(unit.unit_status);
+    const observationEditable = ["Pending Service Team Review", "Pending Service Approval", "Rejected"].includes(unit.unit_status);
     const readOnly = Boolean(unit.observation_id && !observationEditable);
     const canEdit = canVerifyOrObserve && (!unit.observation_id || observationEditable) && unit.serial_verified_at;
 
@@ -1504,6 +1560,71 @@ export default function EngineerUnitWorkflowPanel({
               className="rounded-md bg-orange-500 px-4 py-2 text-sm text-white disabled:cursor-not-allowed disabled:opacity-50"
             >
               Approve
+            </button>
+          </div>
+        </div>
+      </Modal>
+    );
+  }
+
+  function renderForwardModal() {
+    const unit = activeUnit();
+    if (!unit || activeModal?.type !== "forward") return null;
+
+    return (
+      <Modal
+        open
+        onClose={closeModal}
+        title={`Service Team review — ${unit.serial_no || "Serial"}`}
+        maxWidth="max-w-lg"
+      >
+        <div className="space-y-3">
+          <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+            <div className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-400">Engineer recommends</div>
+            <div><strong>Problem:</strong> {unit.problem_found || "—"}</div>
+            <div className="mt-1"><strong>Observation:</strong> {unit.observation_text || "—"}</div>
+            <div className="mt-1"><strong>Recommended action:</strong> {unit.recommended_action || "—"}</div>
+          </div>
+          {(unit.requested_total != null && unit.requested_total > 0) && (
+            <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+              <strong>Requested amount:</strong> ₹{Number(unit.requested_total).toLocaleString("en-IN")}
+            </div>
+          )}
+          {!canForwardUnits && (
+            <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
+              You can view this, but only the Service Team or Admin can forward it to the Service Manager.
+            </div>
+          )}
+          <div>
+            <FieldLabel>Remarks (optional)</FieldLabel>
+            <textarea
+              value={forwardRemarks[unit.id] || ""}
+              onChange={(e) => setForwardRemarks((current) => ({ ...current, [unit.id]: e.target.value }))}
+              rows={3}
+              placeholder="Remarks"
+              disabled={!canForwardUnits}
+              className={`${inputClass()} disabled:bg-slate-100 disabled:text-slate-500`}
+            />
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <button type="button" onClick={closeModal} className="rounded-md border border-slate-300 px-4 py-2 text-sm">
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => forwardUnit(unit.id, "Reject")}
+              disabled={!canForwardUnits}
+              className="rounded-md border border-rose-300 px-4 py-2 text-sm text-rose-700 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Send back to engineer
+            </button>
+            <button
+              type="button"
+              onClick={() => forwardUnit(unit.id, "Forward")}
+              disabled={!canForwardUnits}
+              className="rounded-md bg-teal-600 px-4 py-2 text-sm text-white disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Forward to Service Manager
             </button>
           </div>
         </div>
@@ -2116,6 +2237,11 @@ export default function EngineerUnitWorkflowPanel({
             Submit all observations ({unitsNeedingObservation.length})
           </button>
         )}
+        {canForwardUnits && unitsPendingTeamReview.length > 0 && (
+          <button type="button" onClick={forwardAllPending} className="rounded-md bg-teal-600 px-3 py-2 text-sm text-white">
+            Forward all pending ({unitsPendingTeamReview.length})
+          </button>
+        )}
         {canApproveUnits && unitsPendingApproval.length > 0 && (
           <button type="button" onClick={approveAllPending} className="rounded-md bg-orange-500 px-3 py-2 text-sm text-white">
             Approve all pending ({unitsPendingApproval.length})
@@ -2280,6 +2406,7 @@ export default function EngineerUnitWorkflowPanel({
       {renderObservationModal()}
       {renderSerialModal()}
       {renderSerialReviewModal()}
+      {renderForwardModal()}
       {renderApprovalModal()}
       {renderCompletionReviewModal()}
       {renderCompletionModal()}

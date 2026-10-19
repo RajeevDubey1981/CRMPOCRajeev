@@ -27,6 +27,7 @@ UNIT_STATUS_ASSIGNED = "Assigned"
 UNIT_STATUS_ENGINEER_VISIT = "Engineer Visit"
 UNIT_STATUS_SERIAL_PENDING = "Serial Verification Pending"
 UNIT_STATUS_SERIAL_VERIFIED = "Serial Verified"
+UNIT_STATUS_PENDING_TEAM_REVIEW = "Pending Service Team Review"
 UNIT_STATUS_PENDING_APPROVAL = "Pending Service Approval"
 UNIT_STATUS_APPROVED = "Approved for Service"
 UNIT_STATUS_REJECTED = "Rejected"
@@ -167,8 +168,8 @@ def sync_aggregate_service_status(db: Session, service: ServiceRequest) -> None:
             status for status in statuses
             if status in (UNIT_STATUS_WAITING_PART, UNIT_STATUS_CUSTOMER_UNAVAILABLE)
         )
-    elif any(status == UNIT_STATUS_PENDING_APPROVAL for status in statuses):
-        if all(status in (UNIT_STATUS_PENDING_APPROVAL, UNIT_STATUS_REJECTED) for status in statuses):
+    elif any(status in (UNIT_STATUS_PENDING_APPROVAL, UNIT_STATUS_PENDING_TEAM_REVIEW) for status in statuses):
+        if all(status in (UNIT_STATUS_PENDING_APPROVAL, UNIT_STATUS_PENDING_TEAM_REVIEW, UNIT_STATUS_REJECTED) for status in statuses):
             service.status = "Pending Service Approval"
         else:
             service.status = "Service In Progress"
@@ -382,7 +383,7 @@ def submit_unit_observation(
         )
     )
     if existing is not None:
-        if canonical_role_key(user.role) != "engineer" or unit.unit_status not in {UNIT_STATUS_PENDING_APPROVAL, UNIT_STATUS_REJECTED}:
+        if canonical_role_key(user.role) != "engineer" or unit.unit_status not in {UNIT_STATUS_PENDING_TEAM_REVIEW, UNIT_STATUS_PENDING_APPROVAL, UNIT_STATUS_REJECTED}:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Observation already submitted for this serial")
         existing.problem_found = body.problem_found
         existing.observation = body.observation
@@ -392,6 +393,7 @@ def submit_unit_observation(
         existing.estimated_parts_charge = body.estimated_parts_charge
         existing.remarks = body.remarks
         existing.submitted_at = _now()
+        unit.unit_status = UNIT_STATUS_PENDING_TEAM_REVIEW
         return existing
 
     observation = ServiceObservation(
@@ -411,7 +413,7 @@ def submit_unit_observation(
         submitted_at=_now(),
     )
     db.add(observation)
-    unit.unit_status = UNIT_STATUS_PENDING_APPROVAL
+    unit.unit_status = UNIT_STATUS_PENDING_TEAM_REVIEW
 
     engineer_id = user.id if canonical_role_key(user.role) == "engineer" else unit.assigned_engineer_id
     sync_service_request_from_units(db, service, engineer_id=engineer_id if engineer_id else None)
@@ -468,7 +470,7 @@ def bulk_submit_observations(
             submitted_at=_now(),
         )
         db.add(observation)
-        unit.unit_status = UNIT_STATUS_PENDING_APPROVAL
+        unit.unit_status = UNIT_STATUS_PENDING_TEAM_REVIEW
         created.append(observation)
 
     db.flush()
@@ -499,13 +501,15 @@ def backfill_unit_verification_from_service(db: Session, service: ServiceRequest
             unit.unit_status = UNIT_STATUS_SERIAL_VERIFIED
 
 
-# Only Service Manager (capped) and Admin/Sub Admin/Incool (unlimited, can override) decide a unit's
-# approval. Service-desk roles ("service", "indcool_service", "indcool") — and the engineer — can verify,
-# observe, and recommend, but never approve or reject: that's the whole point of this gate.
+# The chain: Engineer recommends -> Service Team reviews and forwards -> Service Manager approves
+# (capped) -> Admin/Sub Admin/Incool decide above the cap, and can override any stage at any amount.
+# Service-desk roles can forward but never approve/reject outright: that's Service Manager/Admin's call.
 APPROVAL_CAP_AMOUNT = 2500
 ADMIN_OVERRIDE_ROLES = frozenset({"admin", "incool", "sub_admin"})
 SERVICE_MANAGER_ROLES = frozenset({"service_manager"})
+SERVICE_DESK_ROLES = frozenset({"service", "indcool_service", "indcool"})
 UNIT_APPROVAL_ROLES = ADMIN_OVERRIDE_ROLES | SERVICE_MANAGER_ROLES
+UNIT_FORWARD_ROLES = ADMIN_OVERRIDE_ROLES | SERVICE_DESK_ROLES
 
 
 def unit_requested_amount(observation: ServiceObservation | None) -> float:
@@ -531,6 +535,30 @@ def can_user_approve_amount(user: User, amount: float) -> bool:
     if role in SERVICE_MANAGER_ROLES:
         return not requires_admin_approval(amount)
     return False
+
+
+def can_user_forward_at_all(user: User) -> bool:
+    return canonical_role_key(user.role) in UNIT_FORWARD_ROLES
+
+
+def forward_unit_to_manager(
+    db: Session,
+    service: ServiceRequest,
+    unit: ServiceRequestUnit,
+    user: User,
+    decision: str,
+    remarks: str | None,
+) -> None:
+    """Service Team's review step between the engineer's recommendation and Service Manager's decision.
+    "Forward" moves it on; "Send back" returns it to the engineer, same as a rejection at that stage."""
+    if unit.unit_status != UNIT_STATUS_PENDING_TEAM_REVIEW:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "This unit is not pending service team review")
+    if not can_user_forward_at_all(user):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only the Service Team or Admin can review this before it reaches the Service Manager")
+    if decision == "Forward":
+        unit.unit_status = UNIT_STATUS_PENDING_APPROVAL
+    else:
+        unit.unit_status = UNIT_STATUS_REJECTED
 
 
 def approve_unit(
@@ -569,6 +597,27 @@ def approve_unit(
         service.approved_at = _now()
     sync_aggregate_service_status(db, service)
     return approval
+
+
+def bulk_forward_units(
+    db: Session,
+    service: ServiceRequest,
+    user: User,
+    decision: str,
+    remarks: str | None,
+    unit_ids: list[int] | None = None,
+) -> list[ServiceRequestUnit]:
+    units = list_work_units(db, service.id)
+    pending = [unit for unit in units if unit.unit_status == UNIT_STATUS_PENDING_TEAM_REVIEW]
+    if unit_ids:
+        allowed = set(unit_ids)
+        pending = [unit for unit in pending if unit.id in allowed]
+    if not pending:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "No units pending service team review")
+    for unit in pending:
+        forward_unit_to_manager(db, service, unit, user, decision, remarks)
+    sync_aggregate_service_status(db, service)
+    return pending
 
 
 def bulk_approve_units(
@@ -858,7 +907,7 @@ def backfill_unit_statuses(db: Session, service: ServiceRequest) -> None:
                 UNIT_STATUS_APPROVED if approvals[unit.id].decision == "Approve" else UNIT_STATUS_REJECTED
             )
         elif unit.id in observations:
-            unit.unit_status = UNIT_STATUS_PENDING_APPROVAL
+            unit.unit_status = UNIT_STATUS_PENDING_TEAM_REVIEW
         elif unit.serial_verified_at:
             unit.unit_status = UNIT_STATUS_SERIAL_VERIFIED
         else:
