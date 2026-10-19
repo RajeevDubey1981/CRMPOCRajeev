@@ -230,7 +230,9 @@ def verify_order_for_service(
     service.order_id = order.id
     service.customer_name = order.customer_name or service.customer_name
     service.customer_mobile = order.customer_contact or service.customer_mobile
-    service.customer_email = order.customer_email or service.customer_email
+    # Keep the complaint-registration email as primary — fill in from the order only when empty,
+    # so it's never lost to the order's own email; notifications send to both when they differ.
+    service.customer_email = service.customer_email or order.customer_email
     service.customer_address = order.customer_address or service.customer_address
     service.customer_identified_at = _now()
     if service.status == "New":
