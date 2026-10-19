@@ -10,6 +10,9 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.deps import get_current_user
+from app.parts.db import get_parts_db
+from app.parts.models import ItemRequest as ItemRequestModel, SparePart
+from app.parts import service as parts_service
 from app.models.complaint import Complaint, ComplaintStatusLog
 from app.models.order import Order, OrderItem
 from app.models.payment import PaymentTransaction
@@ -2063,8 +2066,47 @@ def verify_serials_bulk(
     return _hydrate_service(db, service, user=user)
 
 
+def _raise_part_requests_from_observation(
+    pdb: Session, service: ServiceRequest, serial_no: str | None, parts: list[str], user: User,
+) -> None:
+    """Parts an engineer lists in Observation go straight into the real approval queue (same svm->admin chain
+    as the standalone "raise a part request" flow) instead of sitting as inert text nobody reviews."""
+    names = [p.strip() for p in (parts or []) if p and p.strip()]
+    if not names:
+        return
+    already = {
+        (r.part_name_cache or "").strip().lower()
+        for r in pdb.scalars(
+            select(ItemRequestModel).where(
+                ItemRequestModel.crm_service_request_id == service.id,
+                ItemRequestModel.crm_serial_no == serial_no,
+            )
+        )
+    }
+    catalogue_by_name = {
+        (p.part_name or "").strip().lower(): p.id
+        for p in pdb.scalars(select(SparePart).where(SparePart.part_name.in_(names)))
+    }
+    for name in names:
+        if name.lower() in already:
+            continue
+        parts_service.create_request(
+            pdb,
+            kind="part",
+            description=f"Part needed for {service.request_no}, serial {serial_no or '—'}: {name}",
+            user=user,
+            crm_service_request_id=service.id,
+            crm_service_request_no=service.request_no,
+            crm_serial_no=serial_no,
+            spare_part_id=catalogue_by_name.get(name.lower()),
+            part_name_cache=name,
+        )
+        already.add(name.lower())
+    pdb.commit()
+
+
 @router.post("/{service_id}/observations", response_model=ServiceOut)
-def submit_observation(service_id: int, body: ServiceObservationIn, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+def submit_observation(service_id: int, body: ServiceObservationIn, db: Session = Depends(get_db), pdb: Session = Depends(get_parts_db), user: User = Depends(get_current_user)):
     service = _load_visible_service(db, service_id, user)
     if not (_is_engineer(user) or _is_vendor(user)):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Only engineer or vendor can submit observation")
@@ -2084,6 +2126,7 @@ def submit_observation(service_id: int, body: ServiceObservationIn, db: Session 
         if unit is None or unit.service_request_id != service.id:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Unit not found on this service request")
         submit_unit_observation(db, service, unit, user, body, _json_dump)
+        _raise_part_requests_from_observation(pdb, service, unit.serial_no, body.parts_required, user)
     elif work_units:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Select a unit (serial row) for this observation")
     else:
@@ -2107,6 +2150,7 @@ def submit_observation(service_id: int, body: ServiceObservationIn, db: Session 
         db.add(observation)
         service.status = "Pending Service Approval"
         service.status_date = _now()
+        _raise_part_requests_from_observation(pdb, service, service.serial_no, body.parts_required, user)
 
     _log_status(db, service, action="Observation Submitted", user=user, old_status=old_status, new_status=service.status, remarks=body.remarks)
     db.commit()
@@ -2119,6 +2163,7 @@ def submit_observations_bulk(
     service_id: int,
     body: ServiceBulkObservationsIn,
     db: Session = Depends(get_db),
+    pdb: Session = Depends(get_parts_db),
     user: User = Depends(get_current_user),
 ):
     service = _load_visible_service(db, service_id, user)
@@ -2136,6 +2181,8 @@ def submit_observations_bulk(
         if item.unit_id is None:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "unit_id is required for each observation row")
     created = bulk_submit_observations(db, service, user, body.observations, _json_dump)
+    for item, observation in zip(body.observations, created):
+        _raise_part_requests_from_observation(pdb, service, observation.serial_no, item.parts_required, user)
     _log_status(
         db,
         service,
