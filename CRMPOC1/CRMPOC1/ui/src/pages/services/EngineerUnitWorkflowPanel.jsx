@@ -7,6 +7,7 @@ import FieldPhotos from "../../components/fieldphoto/FieldPhotos.jsx";
 import ScanInput from "../../components/scan/ScanInput.jsx";
 import StatusBadge from "../../components/StatusBadge.jsx";
 import RaisePartRequestPanel from "../../components/parts/RaisePartRequestPanel.jsx";
+import RaiseClaimPanel from "../../components/claims/RaiseClaimPanel.jsx";
 
 const PAYMENT_TYPES = ["Cash", "UPI"];
 const BILLING_LOCKED_STATUSES = ["Payment Completed", "Closed"];
@@ -1562,6 +1563,15 @@ export default function EngineerUnitWorkflowPanel({
               }}
             />
           )}
+          <RaiseClaimPanel
+            flow="service"
+            triggerLabel="Found something that was never delivered with this unit"
+            context={{
+              service_request_id: service?.id,
+              item_code: service?.item_code,
+              serial_no: unit.serial_no,
+            }}
+          />
           <div className="flex justify-end gap-2 pt-2">
             <button type="button" onClick={closeModal} className="rounded-md border border-slate-300 px-4 py-2 text-sm">
               Cancel

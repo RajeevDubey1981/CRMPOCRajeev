@@ -1,0 +1,121 @@
+import { useState } from "react";
+
+import { shortageClaimsApi, ITEMS_MISSING } from "../../api/shortageClaims.js";
+
+const PHOTO_LABELS = ["Box as received", "Seal / tape", "Empty space inside", "Item's label on box"];
+
+/**
+ * Lets an engineer report something missing from a new delivery (copper pipe, remote, gas charge ...), raised
+ * from inside the actual Service or Installation step — collapsed to one button until they need it.
+ */
+export default function RaiseClaimPanel({ flow, context, triggerLabel, onSent }) {
+  const [open, setOpen] = useState(false);
+  const [items, setItems] = useState([]);
+  const [description, setDescription] = useState("");
+  const [photos, setPhotos] = useState([]);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const [sent, setSent] = useState(null);
+
+  function toggleItem(i) {
+    setItems((cur) => (cur.includes(i) ? cur.filter((x) => x !== i) : [...cur, i]));
+  }
+  function setPhotoAt(i, file) {
+    setPhotos((cur) => { const next = [...cur]; next[i] = file; return next; });
+  }
+
+  async function send() {
+    if (!items.length) { setErr("Pick what's missing"); return; }
+    if (!description.trim()) { setErr("Describe what you found"); return; }
+    const filled = photos.filter(Boolean).length;
+    if (filled < 4) { setErr(`Add all 4 photos (${filled}/4 so far)`); return; }
+    setErr("");
+    setBusy(true);
+    try {
+      const claim = await shortageClaimsApi.raise({ flow, items, description: description.trim(), ...context });
+      for (let i = 0; i < 4; i++) {
+        if (photos[i]) await shortageClaimsApi.uploadPhoto(claim.id, photos[i], PHOTO_LABELS[i]);
+      }
+      setSent(claim);
+      onSent?.(claim);
+    } catch (e) {
+      setErr(e.response?.data?.detail || "Could not send the claim");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (sent) {
+    return (
+      <div className="mt-3 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
+        Claim <span className="font-mono">{sent.claim_no}</span> sent — waiting on the Service Manager.
+      </div>
+    );
+  }
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="mt-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-900 hover:bg-amber-100"
+      >
+        ⚠ {triggerLabel}
+      </button>
+    );
+  }
+
+  return (
+    <div className="mt-3 space-y-3 rounded-md border border-amber-300 bg-amber-50 p-3">
+      <div className="flex items-center justify-between">
+        <span className="text-sm font-medium text-amber-900">Report a missing item</span>
+        <button type="button" onClick={() => setOpen(false)} className="text-xs text-amber-700 hover:underline">Cancel</button>
+      </div>
+      <div>
+        <label className="text-xs uppercase tracking-wide text-slate-500">What's missing (pick all that apply)</label>
+        <div className="mt-1 flex flex-wrap gap-1.5">
+          {ITEMS_MISSING.map((i) => (
+            <button
+              key={i}
+              type="button"
+              onClick={() => toggleItem(i)}
+              className={`rounded-full border px-2.5 py-1 text-xs font-medium ${items.includes(i) ? "border-brand-600 bg-brand-50 text-brand-800" : "border-slate-300 bg-white text-slate-700"}`}
+            >
+              {i}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div>
+        <label className="text-xs uppercase tracking-wide text-slate-500">Describe what you found</label>
+        <textarea
+          rows={2}
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          placeholder="e.g. box resealed with different tape, weight felt light, gas pressure reading near zero..."
+          className="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+        />
+      </div>
+      <div>
+        <label className="text-xs uppercase tracking-wide text-slate-500">
+          4 photos required ({photos.filter(Boolean).length}/4) — box as received, the seal/tape, the empty space, the item's label on the box
+        </label>
+        <div className="mt-1 grid grid-cols-2 gap-2">
+          {PHOTO_LABELS.map((label, i) => (
+            <div key={i} className="rounded-md border border-dashed border-slate-300 bg-white p-2">
+              <p className="truncate text-xs text-slate-500">{label}</p>
+              <input type="file" accept=".jpg,.jpeg,.png" onChange={(e) => setPhotoAt(i, e.target.files?.[0] || null)} className="mt-1 block w-full text-xs" />
+              {photos[i] && <p className="mt-1 truncate text-xs text-emerald-700">✓ {photos[i].name}</p>}
+            </div>
+          ))}
+        </div>
+      </div>
+      {err && <p className="rounded-md bg-rose-50 px-2 py-1 text-xs text-rose-700">{err}</p>}
+      <div className="flex justify-end">
+        <button type="button" disabled={busy} onClick={send} className="rounded-md bg-amber-700 px-4 py-2 text-sm font-medium text-white hover:bg-amber-800 disabled:opacity-50">
+          {busy ? "Sending…" : "Send the claim"}
+        </button>
+      </div>
+    </div>
+  );
+}

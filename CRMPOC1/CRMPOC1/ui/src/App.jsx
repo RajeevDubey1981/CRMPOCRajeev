@@ -36,7 +36,7 @@ import MarketUsers from "./pages/market/MarketUsers.jsx";
 import MarketItems from "./pages/market/MarketItems.jsx";
 import MarketOrders from "./pages/market/MarketOrders.jsx";
 import MarketCategories from "./pages/market/MarketCategories.jsx";
-import ClaimList from "./pages/claims/ClaimList.jsx";
+import ClaimsPage from "./pages/claims/ClaimsPage.jsx";
 import ClaimCreate from "./pages/claims/ClaimCreate.jsx";
 import ClaimDetail from "./pages/claims/ClaimDetail.jsx";
 import OrderList from "./pages/orders/OrderList.jsx";
@@ -190,7 +190,7 @@ export default function App() {
         <Route path="/installations/new" element={<PermissionRoute module="installations" action="can_create"><InstallationCreate /></PermissionRoute>} />
         <Route path="/installations/bulk-workflow" element={<PermissionRoute module="installations"><BulkInstallationWorkflowPage /></PermissionRoute>} />
         <Route path="/installations/:id" element={<PermissionRoute module="installations"><InstallationDetail /></PermissionRoute>} />
-        <Route path="/claims" element={<PermissionRoute module="claims"><ClaimList /></PermissionRoute>} />
+        <Route path="/claims" element={<PermissionRoute module="claims"><ClaimsPage /></PermissionRoute>} />
         <Route path="/claims/new" element={<PermissionRoute module="claims" action="can_create"><ClaimCreate /></PermissionRoute>} />
         <Route path="/claims/:id" element={<PermissionRoute module="claims"><ClaimDetail /></PermissionRoute>} />
         <Route path="/sales/*" element={<PermissionRoute module="sales"><SalesRoutes /></PermissionRoute>} />

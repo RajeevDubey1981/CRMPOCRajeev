@@ -7,6 +7,7 @@ import { formatApiError } from "../../utils/apiError.js";
 import { installationSerialReady, isAssignedToUser } from "../../utils/installationWorkflowSteps.js";
 import WorkflowStepSection from "./WorkflowStepSection.jsx";
 import RaisePartRequestPanel from "../parts/RaisePartRequestPanel.jsx";
+import RaiseClaimPanel from "../claims/RaiseClaimPanel.jsx";
 
 const PAYMENT_TYPES = ["Cash", "UPI"];
 
@@ -664,6 +665,17 @@ export default function InstallationPostVerifyWorkflow({
                 crm_installation_request_id: installationId,
                 crm_item_code: installation.item_code,
                 crm_serial_no: installation.serial_no,
+              }}
+            />
+          )}
+          {canComplete && (
+            <RaiseClaimPanel
+              flow="installation"
+              triggerLabel="Can't complete — something's missing from the box"
+              context={{
+                installation_request_id: installationId,
+                item_code: installation.item_code,
+                serial_no: installation.serial_no,
               }}
             />
           )}

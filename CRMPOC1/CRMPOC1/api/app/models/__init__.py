@@ -8,6 +8,7 @@ from app.models.complaint import Complaint, ComplaintStatusLog
 from app.models.installation import HistoricalInstallationCompletion, InstallationRequest
 from app.models.call import Call
 from app.models.claim import Claim, ClaimPhoto
+from app.models.shortage_claim import ShortageClaim, ShortageClaimEvent, ShortageClaimItem, ShortageClaimPhoto
 from app.models.serial_history import SerialHistoryEvent
 from app.models.payment import PaymentTransaction
 from app.models.payment_approval import PaymentApprovalLog
