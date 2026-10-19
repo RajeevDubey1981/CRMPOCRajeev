@@ -508,14 +508,15 @@ export default function ComplaintList() {
       <div className="hidden rounded bg-white shadow-sm xl:block">
         <table className="w-full table-fixed text-xs">
           <colgroup>
+            <col style={{ width: "11%" }} />
+            <col style={{ width: "9%" }} />
             <col style={{ width: "13%" }} />
-            <col style={{ width: "14%" }} />
-            <col style={{ width: "13%" }} />
-            <col style={{ width: "13%" }} />
-            <col style={{ width: "15%" }} />
             <col style={{ width: "10%" }} />
-            <col style={{ width: "8%" }} />
-            <col style={{ width: "14%" }} />
+            <col style={{ width: "11%" }} />
+            <col style={{ width: "13%" }} />
+            <col style={{ width: "9%" }} />
+            <col style={{ width: "6%" }} />
+            <col style={{ width: "18%" }} />
           </colgroup>
           <thead className="text-left">
             <tr>
