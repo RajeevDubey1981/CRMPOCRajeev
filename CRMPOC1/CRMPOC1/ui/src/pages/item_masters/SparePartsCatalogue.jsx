@@ -6,6 +6,18 @@ import { partsApi } from "../../api/parts.js";
 
 const EDIT_ROLES = new Set(["admin", "incool", "sub_admin", "service_manager", "indcool", "indcool service", "indcool_service"]);
 
+const CATEGORIES = [
+  "Compressor",
+  "PCB / Electronics",
+  "Motor",
+  "Fan / Blower",
+  "Gasket / Seal",
+  "Filter",
+  "Remote / Accessory",
+  "Pipe / Fitting",
+  "Miscellaneous",
+];
+
 function roleKey(role) {
   return (role || "").trim().toLowerCase();
 }
@@ -183,7 +195,12 @@ export default function SparePartsCatalogue() {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs uppercase tracking-wide text-slate-500">Category</label>
-              <input value={form.category} onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))} className="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+              <select value={form.category} onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))} className="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 text-sm">
+                <option value="">Select category</option>
+                {CATEGORIES.map((c) => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
             </div>
             <div>
               <label className="text-xs uppercase tracking-wide text-slate-500">Price</label>
