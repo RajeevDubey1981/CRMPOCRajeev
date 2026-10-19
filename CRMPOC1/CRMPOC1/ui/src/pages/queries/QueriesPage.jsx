@@ -58,6 +58,11 @@ function PriorityChip({ priority }) {
   return <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${PRIORITY_STYLE[priority]}`}>{PRIORITY_LABEL[priority]}</span>;
 }
 
+const CATEGORY_ICON = { Parts: "🔧", Claims: "📦", Installation: "🛠️", Service: "🔧", Payment: "💳", Order: "📦", Complaint: "⚠️" };
+function CategoryIcon({ category }) {
+  return <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-slate-100 text-lg" aria-hidden="true">{CATEGORY_ICON[category] || "💬"}</span>;
+}
+
 function BellIcon({ size = 20 }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -233,32 +238,31 @@ function Thread({ id, staff, onChanged }) {
   return (
     <div className="flex min-h-[24rem] flex-col">
       <div className="border-b border-slate-200 px-4 py-3">
-        <div className="flex flex-wrap items-start justify-between gap-2">
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <QueryNo no={thread.query_no} />
-              <h2 className="truncate text-base font-semibold text-slate-800">{thread.subject}</h2>
-              <StatusChip status={thread.status} />
-              <PriorityChip priority={thread.priority} />
-            </div>
-            <div className="mt-1.5 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-slate-500">
-              {[
-                staff && thread.owner_name ? `${thread.owner_name} (${roleLabel(thread.owner_role)})` : null,
-                thread.category + (thread.related_to ? ` · ${thread.related_to}` : ""),
-                `started ${timeAgo(thread.created_at)}`,
-                `raised ${dayText(thread.raised_on)}`,
-              ].filter(Boolean).map((part, i) => (
-                <span key={i} className={`flex items-center gap-x-2.5 ${i === 0 && staff ? "font-medium text-slate-700" : ""}`}>
-                  {i > 0 && <span className="text-slate-300">·</span>}
-                  {part}
-                </span>
-              ))}
-            </div>
-            {thread.holder_name && thread.status !== "Closed" && (
-              <div className="mt-1.5">
-                <span className="inline-block rounded-full bg-sky-100 px-2.5 py-1 text-xs font-medium text-indcool-navy">With {thread.holder_name} ({roleLabel(thread.holder_role)})</span>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="flex min-w-0 gap-3">
+            <CategoryIcon category={thread.category} />
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <QueryNo no={thread.query_no} />
+                <h2 className="truncate text-base font-semibold text-slate-800">{thread.subject}</h2>
+                <StatusChip status={thread.status} />
+                <PriorityChip priority={thread.priority} />
               </div>
-            )}
+              <div className="mt-2 grid grid-cols-2 gap-x-5 gap-y-1 text-xs sm:grid-cols-4">
+                {[
+                  staff && thread.owner_name ? ["Raised by", `${thread.owner_name} (${roleLabel(thread.owner_role)})`] : null,
+                  thread.holder_name && thread.status !== "Closed" ? ["With now", `${thread.holder_name} (${roleLabel(thread.holder_role)})`, true] : null,
+                  ["Category", thread.category + (thread.related_to ? ` · ${thread.related_to}` : "")],
+                  ["Started", timeAgo(thread.created_at)],
+                  ["Raised", dayText(thread.raised_on)],
+                ].filter(Boolean).map(([l, v, hot]) => (
+                  <div key={l}>
+                    <div className="text-[10px] font-bold uppercase tracking-wide text-slate-400">{l}</div>
+                    <div className={`font-medium ${hot ? "text-sky-700" : "text-slate-700"}`}>{v}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {thread.can_set_priority && (
