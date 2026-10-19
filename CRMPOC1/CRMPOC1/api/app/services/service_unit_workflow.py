@@ -499,10 +499,13 @@ def backfill_unit_verification_from_service(db: Session, service: ServiceRequest
             unit.unit_status = UNIT_STATUS_SERIAL_VERIFIED
 
 
-# Service Manager (and service-desk roles) can approve the engineer's recommendation up to this amount on
-# their own; above it, only Admin/Sub Admin/Incool can approve — and they can always override at any amount.
+# Only Service Manager (capped) and Admin/Sub Admin/Incool (unlimited, can override) decide a unit's
+# approval. Service-desk roles ("service", "indcool_service", "indcool") — and the engineer — can verify,
+# observe, and recommend, but never approve or reject: that's the whole point of this gate.
 APPROVAL_CAP_AMOUNT = 2500
 ADMIN_OVERRIDE_ROLES = frozenset({"admin", "incool", "sub_admin"})
+SERVICE_MANAGER_ROLES = frozenset({"service_manager"})
+UNIT_APPROVAL_ROLES = ADMIN_OVERRIDE_ROLES | SERVICE_MANAGER_ROLES
 
 
 def unit_requested_amount(observation: ServiceObservation | None) -> float:
@@ -517,10 +520,17 @@ def requires_admin_approval(amount: float) -> bool:
     return amount > APPROVAL_CAP_AMOUNT
 
 
+def can_user_approve_at_all(user: User) -> bool:
+    return canonical_role_key(user.role) in UNIT_APPROVAL_ROLES
+
+
 def can_user_approve_amount(user: User, amount: float) -> bool:
-    if canonical_role_key(user.role) in ADMIN_OVERRIDE_ROLES:
+    role = canonical_role_key(user.role)
+    if role in ADMIN_OVERRIDE_ROLES:
         return True
-    return not requires_admin_approval(amount)
+    if role in SERVICE_MANAGER_ROLES:
+        return not requires_admin_approval(amount)
+    return False
 
 
 def approve_unit(
@@ -534,6 +544,8 @@ def approve_unit(
 ) -> ServiceApproval:
     if unit.unit_status != UNIT_STATUS_PENDING_APPROVAL:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "This unit is not pending service approval")
+    if not can_user_approve_at_all(user):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only the Service Manager or Admin can decide this — your role can recommend, not approve")
     if decision == "Approve":
         amount = unit_requested_amount(observation)
         if not can_user_approve_amount(user, amount):

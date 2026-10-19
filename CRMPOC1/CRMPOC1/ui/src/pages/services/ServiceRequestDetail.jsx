@@ -8,6 +8,7 @@ import ScanInput from "../../components/scan/ScanInput.jsx";
 import StatusBadge from "../../components/StatusBadge.jsx";
 import { useAuth } from "../../auth/AuthContext.jsx";
 import {
+  canApproveServiceUnits,
   canAssignServiceDeskUser,
   canViewAllServiceRequests,
   isOperationsAdminRole,
@@ -353,6 +354,7 @@ export default function ServiceRequestDetail() {
     engineers
   ), [engineers]);
   const roleIsServiceTeam = isServiceTeamRole(role);
+  const roleCanApproveUnits = canApproveServiceUnits(role);
   const roleIsServiceDesk = isServiceDeskRole(role);
   const roleCanViewAllServices = canViewAllServiceRequests(role);
   const canAssignServiceDesk = canAssignServiceDeskUser(role);
@@ -566,6 +568,7 @@ export default function ServiceRequestDetail() {
   }
 
   const isServiceTeam = roleIsServiceTeam;
+  const canApproveUnits = roleCanApproveUnits;
   const isEngineer = roleIsEngineer;
   const isVendor = roleIsVendor;
   const linkedCustomerSummary = [service.customer_name, service.customer_mobile, service.order_no].filter(Boolean).join(" • ");
@@ -922,6 +925,7 @@ export default function ServiceRequestDetail() {
           service={service}
           engineers={engineers}
           isServiceTeam={isServiceTeam}
+          canApproveUnits={canApproveUnits}
           isEngineer={isEngineer}
           userId={user?.id}
           onRefresh={load}
@@ -1073,6 +1077,7 @@ export default function ServiceRequestDetail() {
           isEngineer={isEngineer}
           isVendor={isVendor}
           isServiceTeam={isServiceTeam}
+          canApproveUnits={canApproveUnits}
           isPaymentAdmin={roleIsPaymentAdmin}
           run={run}
           busy={busy}
@@ -1185,7 +1190,7 @@ export default function ServiceRequestDetail() {
         </section>
       )}
 
-      {isServiceTeam && !useUnitWorkflow && (
+      {canApproveUnits && !useUnitWorkflow && (
         <section className="rounded-lg bg-white p-6 shadow-sm">
           <h2 className="mb-4 text-sm font-medium text-slate-700">Approval</h2>
           {!approvalPending && !approvalCompleted && (

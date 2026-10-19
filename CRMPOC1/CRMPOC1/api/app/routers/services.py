@@ -162,6 +162,7 @@ from app.services.service_unit_workflow import (
     unit_requested_amount,
     requires_admin_approval,
     can_user_approve_amount,
+    can_user_approve_at_all,
     APPROVAL_CAP_AMOUNT,
 )
 from app.services.payment_approval_workflow import (
@@ -2230,8 +2231,8 @@ def service_approval(
     user: User = Depends(get_current_user),
 ):
     service = _load_visible_service(db, service_id, user)
-    if not _is_service_team(user):
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only Indcool Service can approve service")
+    if not can_user_approve_at_all(user):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only the Service Manager or Admin can decide this — your role can recommend, not approve")
     if body.decision == "Reject" and not body.remarks:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Remarks are mandatory when rejecting")
 
@@ -2300,8 +2301,8 @@ def service_approval_bulk(
     user: User = Depends(get_current_user),
 ):
     service = _load_visible_service(db, service_id, user)
-    if not _is_service_team(user):
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only Indcool Service can approve service")
+    if not can_user_approve_at_all(user):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only the Service Manager or Admin can decide this — your role can recommend, not approve")
     if body.decision == "Reject" and not body.remarks:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Remarks are mandatory when rejecting")
 

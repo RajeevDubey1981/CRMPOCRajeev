@@ -61,3 +61,10 @@ export function isOperationsAdminRole(role) {
 export function isServiceTeamRole(role) {
   return isOperationsAdminRole(role) || isServiceDeskRole(role);
 }
+
+// Who may actually decide a per-serial service approval: Service Manager (capped at the backend's
+// ₹2500 limit) and Admin/Sub Admin/Incool (unlimited, can override). Service-desk roles and the
+// engineer can verify, observe, and recommend, but this is the one thing they can't do.
+export function canApproveServiceUnits(role) {
+  return isServiceManagerRole(role) || isSystemAdminRole(role);
+}

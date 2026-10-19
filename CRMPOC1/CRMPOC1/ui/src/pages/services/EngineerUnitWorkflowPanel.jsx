@@ -235,6 +235,7 @@ export default function EngineerUnitWorkflowPanel({
   isEngineer,
   isVendor,
   isServiceTeam,
+  canApproveUnits = isServiceTeam,
   isPaymentAdmin = false,
   run,
   busy = false,
@@ -1409,7 +1410,11 @@ export default function EngineerUnitWorkflowPanel({
               ) : null}
             </div>
           )}
-          {unit.can_approve === false && (
+          {!canApproveUnits ? (
+            <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
+              You can view and recommend, but only the Service Manager or Admin can approve or reject this.
+            </div>
+          ) : unit.can_approve === false && (
             <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
               This amount is over the Service Manager's ₹{Number(unit.approval_cap_amount || 2500).toLocaleString("en-IN")} limit — only Admin or Sub Admin can approve it.
             </div>
@@ -1421,7 +1426,8 @@ export default function EngineerUnitWorkflowPanel({
               onChange={(e) => setApprovalRemarks((current) => ({ ...current, [unit.id]: e.target.value }))}
               rows={3}
               placeholder="Approval remarks"
-              className={inputClass()}
+              disabled={!canApproveUnits}
+              className={`${inputClass()} disabled:bg-slate-100 disabled:text-slate-500`}
             />
           </div>
           <div className="flex justify-end gap-2 pt-2">
@@ -1431,15 +1437,16 @@ export default function EngineerUnitWorkflowPanel({
             <button
               type="button"
               onClick={() => approveUnit(unit.id, "Reject")}
-              className="rounded-md border border-rose-300 px-4 py-2 text-sm text-rose-700"
+              disabled={!canApproveUnits}
+              className="rounded-md border border-rose-300 px-4 py-2 text-sm text-rose-700 disabled:cursor-not-allowed disabled:opacity-50"
             >
               Reject / Send back
             </button>
             <button
               type="button"
               onClick={() => approveUnit(unit.id, "Approve")}
-              disabled={unit.can_approve === false}
-              title={unit.can_approve === false ? "Over the Service Manager's cap — needs Admin or Sub Admin" : undefined}
+              disabled={!canApproveUnits || unit.can_approve === false}
+              title={!canApproveUnits ? "Only the Service Manager or Admin can approve" : unit.can_approve === false ? "Over the Service Manager's cap — needs Admin or Sub Admin" : undefined}
               className="rounded-md bg-orange-500 px-4 py-2 text-sm text-white disabled:cursor-not-allowed disabled:opacity-50"
             >
               Approve
@@ -2055,7 +2062,7 @@ export default function EngineerUnitWorkflowPanel({
             Submit all observations ({unitsNeedingObservation.length})
           </button>
         )}
-        {isServiceTeam && unitsPendingApproval.length > 0 && (
+        {canApproveUnits && unitsPendingApproval.length > 0 && (
           <button type="button" onClick={approveAllPending} className="rounded-md bg-orange-500 px-3 py-2 text-sm text-white">
             Approve all pending ({unitsPendingApproval.length})
           </button>
