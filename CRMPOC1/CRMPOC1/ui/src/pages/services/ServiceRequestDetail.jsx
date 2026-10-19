@@ -760,13 +760,27 @@ export default function ServiceRequestDetail() {
       {service.email_bounced && (
         <BounceBanner email={service.customer_email} reason={service.email_bounce_reason} />
       )}
+      {service.order_email && service.order_email_bounced && (
+        <BounceBanner email={service.order_email} reason={service.order_email_bounce_reason} />
+      )}
 
       <section className="rounded-lg bg-white p-6 shadow-sm">
         <h2 className="mb-4 text-sm font-medium text-slate-700">Request details</h2>
         <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
           <Field label="Customer" value={service.customer_name} />
           <Field label="Mobile" value={service.customer_mobile} />
-          <Field label="Email" value={service.customer_email} />
+          <Field label="Email (registered)" value={service.customer_email} />
+          {service.order_email && (
+            <Field
+              label="Email (order)"
+              value={
+                <span className="inline-flex items-center gap-1.5">
+                  {service.order_email}
+                  {service.order_email_bounced && <span className="rounded-full bg-rose-100 px-1.5 py-0.5 text-[10px] font-semibold text-rose-700">bounced</span>}
+                </span>
+              }
+            />
+          )}
           <Field label="Address" value={service.customer_address} />
           <Field label="Model" value={service.model_details} />
           <Field label="Order No" value={service.order_no} />
@@ -841,17 +855,20 @@ export default function ServiceRequestDetail() {
                 <button
                   type="button"
                   onClick={() => {
-                    const warn = service.email_bounced ? `The last email to ${service.customer_email} BOUNCED. Please correct the email address first.\n\n` : "";
+                    const recipients = [service.customer_email, service.order_email].filter(Boolean);
+                    const warn = service.email_bounced || service.order_email_bounced
+                      ? `The last email to ${[service.email_bounced && service.customer_email, service.order_email_bounced && service.order_email].filter(Boolean).join(" and ")} BOUNCED. Please correct the email address first.\n\n`
+                      : "";
                     if (!window.confirm(`${warn}Are you sure you want to send the email again?`)) return;
                     run(
                       () => servicesApi.resendDocuments(service.id),
-                      { successMessage: `Upload link email resent to ${service.customer_email || "customer"}.` },
+                      { successMessage: `Upload link email resent to ${recipients.join(" and ") || "customer"}.` },
                     );
                   }}
                   disabled={busy || !service.customer_email}
-                  className={`rounded-md px-3 py-2 text-xs font-medium text-white disabled:opacity-50 ${service.email_bounced ? "border " + BOUNCED_BUTTON : "bg-sky-700"}`}
+                  className={`rounded-md px-3 py-2 text-xs font-medium text-white disabled:opacity-50 ${service.email_bounced || service.order_email_bounced ? "border " + BOUNCED_BUTTON : "bg-sky-700"}`}
                 >
-                  {service.email_bounced ? "Email bounced - fix & resend" : "Resend email to customer"}
+                  {service.email_bounced || service.order_email_bounced ? "Email bounced - fix & resend" : "Resend email to customer"}
                 </button>
               </div>
             </div>

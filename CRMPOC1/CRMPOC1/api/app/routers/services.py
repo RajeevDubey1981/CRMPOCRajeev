@@ -502,14 +502,21 @@ def _send_document_link_email(
     service: ServiceRequest,
     upload_url: str,
     required_documents: list[str] | None = None,
+    extra_email: str | None = None,
 ) -> None:
-    send_document_upload_link_email(
-        to=service.customer_email or "",
-        customer_name=service.customer_name,
-        ticket_id=service.request_no,
-        upload_url=upload_url,
-        required_documents=required_documents,
-    )
+    seen = set()
+    for email in [service.customer_email, extra_email]:
+        email = (email or "").strip()
+        if not email or email.lower() in seen:
+            continue
+        seen.add(email.lower())
+        send_document_upload_link_email(
+            to=email,
+            customer_name=service.customer_name,
+            ticket_id=service.request_no,
+            upload_url=upload_url,
+            required_documents=required_documents,
+        )
 
 
 def _log_status(
@@ -719,6 +726,16 @@ def _payment_approval_log_out(db: Session, row: PaymentApprovalLog) -> PaymentAp
     )
 
 
+def _distinct_order_email(order: Order | None, primary_email: str | None) -> str | None:
+    """The order's buyer email, but only when it's set and differs from the request's own email —
+    so the UI shows it as a second address rather than repeating the same one."""
+    if order is None or not order.customer_email:
+        return None
+    if (primary_email or "").strip().lower() == order.customer_email.strip().lower():
+        return None
+    return order.customer_email
+
+
 def _hydrate_service(db: Session, service: ServiceRequest) -> ServiceOut:
     order = db.get(Order, service.order_id) if service.order_id else None
     order_item = db.get(OrderItem, service.order_item_id) if service.order_item_id else None
@@ -797,6 +814,9 @@ def _hydrate_service(db: Session, service: ServiceRequest) -> ServiceOut:
         customer_documents_approved=customer_documents_approved(db, service),
         email_bounced=bounce_info(db, service.customer_email)[0],
         email_bounce_reason=bounce_info(db, service.customer_email)[1],
+        order_email=_distinct_order_email(order, service.customer_email),
+        order_email_bounced=bounce_info(db, _distinct_order_email(order, service.customer_email))[0] if _distinct_order_email(order, service.customer_email) else False,
+        order_email_bounce_reason=bounce_info(db, _distinct_order_email(order, service.customer_email))[1] if _distinct_order_email(order, service.customer_email) else None,
     )
 
 
@@ -1158,7 +1178,9 @@ def identify_customer(service_id: int, body: ServiceIdentifyCustomer, db: Sessio
         # Customer context only — order is linked when service team runs verify-order (loads units).
         service.customer_name = order.customer_name or service.customer_name
         service.customer_mobile = order.customer_contact or service.customer_mobile
-        service.customer_email = order.customer_email or service.customer_email
+        # Keep the complaint-registration email as primary — fill in from the order only when empty,
+        # so it's never lost to the order's own email; notifications send to both when they differ.
+        service.customer_email = service.customer_email or order.customer_email
         service.customer_address = order.customer_address or service.customer_address
     elif any([body.customer_name, body.customer_mobile, body.customer_email, body.customer_address]):
         service.customer_name = body.customer_name or service.customer_name
@@ -1347,6 +1369,7 @@ def assign_service_units(
             background_tasks,
             service,
             completion_code=completion_code,
+            extra_email=order.customer_email if order else None,
         )
 
     return _hydrate_service(db, service)
@@ -1419,6 +1442,7 @@ def assign_service_units_by_quantity(
             background_tasks,
             service,
             completion_code=completion_code,
+            extra_email=order.customer_email if order else None,
         )
 
     return _hydrate_service(db, service)
@@ -1557,6 +1581,7 @@ def assign_service(
                 background_tasks,
                 service,
                 completion_code=completion_code,
+                extra_email=order.customer_email if order else None,
             )
     else:
         vendor = db.get(Vendor, body.assignee_id)
@@ -3320,7 +3345,8 @@ def resend_document_upload_link(
         service.document_request_sent_at = _now()
     upload_url = build_public_upload_url(service.document_access_token)
     required_documents = _customer_document_types(db, service)
-    background_tasks.add_task(_send_document_link_email, service, upload_url, required_documents)
+    order = db.get(Order, service.order_id) if service.order_id else None
+    background_tasks.add_task(_send_document_link_email, service, upload_url, required_documents, order.customer_email if order else None)
     _log_status(
         db,
         service,
@@ -3356,7 +3382,8 @@ def request_documents(
     service.document_request_sent_at = _now()
     upload_url = build_public_upload_url(service.document_access_token)
     required_documents = _customer_document_types(db, service)
-    background_tasks.add_task(_send_document_link_email, service, upload_url, required_documents)
+    order = db.get(Order, service.order_id) if service.order_id else None
+    background_tasks.add_task(_send_document_link_email, service, upload_url, required_documents, order.customer_email if order else None)
     _log_status(
         db,
         service,

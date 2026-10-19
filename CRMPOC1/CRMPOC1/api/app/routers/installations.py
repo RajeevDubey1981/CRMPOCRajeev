@@ -826,7 +826,8 @@ def create_installation(
         if order is not None:
             inst.customer_name = order.customer_name or inst.customer_name
             inst.contact_number = order.customer_contact or inst.contact_number
-            inst.customer_email = order.customer_email or inst.customer_email
+            # Keep the call-center-entered email as primary — fill in from the order only when empty.
+            inst.customer_email = inst.customer_email or order.customer_email
             inst.address = order.customer_address or inst.address
         db.add(inst)
         db.flush()

@@ -544,6 +544,9 @@ class ServiceOut(BaseModel):
     customer_documents_approved: bool = False
     email_bounced: bool = False
     email_bounce_reason: str | None = None
+    order_email: str | None = None
+    order_email_bounced: bool = False
+    order_email_bounce_reason: str | None = None
 
 
 class ServiceListItem(BaseModel):

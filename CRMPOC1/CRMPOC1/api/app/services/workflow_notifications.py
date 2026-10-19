@@ -111,6 +111,19 @@ def _queue(background_tasks: BackgroundTasks | None, func, *args, **kwargs) -> N
     background_tasks.add_task(func, *args, **kwargs)
 
 
+def _dedup_emails(*emails: str | None) -> list[str]:
+    """Drops blanks and duplicates (case-insensitive) while keeping the first-seen spelling."""
+    seen: set[str] = set()
+    out: list[str] = []
+    for e in emails:
+        e = (e or "").strip()
+        if not e or e.lower() in seen:
+            continue
+        seen.add(e.lower())
+        out.append(e)
+    return out
+
+
 def notify_customer_service_status(
     background_tasks: BackgroundTasks | None,
     service: ServiceRequest,
@@ -118,8 +131,10 @@ def notify_customer_service_status(
     old_status: str | None,
     new_status: str | None,
     remarks: str | None = None,
+    extra_email: str | None = None,
 ) -> None:
-    if not service.customer_email:
+    recipients = _dedup_emails(service.customer_email, extra_email)
+    if not recipients:
         return
     status = (new_status or service.status or "").strip()
     if status not in CUSTOMER_SERVICE_STATUSES:
@@ -144,15 +159,16 @@ def notify_customer_service_status(
     ]
     if remarks:
         details.append(("Remarks", remarks))
-    _queue(
-        background_tasks,
-        _send_workflow_email,
-        service.customer_email,
-        recipient_name=(service.customer_name or "").strip() or "Sir/Ma'am",
-        subject=f"Service request update — Ticket ID: {ticket}",
-        intro=intro,
-        details=details,
-    )
+    for email in recipients:
+        _queue(
+            background_tasks,
+            _send_workflow_email,
+            email,
+            recipient_name=(service.customer_name or "").strip() or "Sir/Ma'am",
+            subject=f"Service request update — Ticket ID: {ticket}",
+            intro=intro,
+            details=details,
+        )
 
 
 def notify_customer_happy_code(
@@ -160,12 +176,13 @@ def notify_customer_happy_code(
     service: ServiceRequest,
     *,
     completion_code: str,
+    extra_email: str | None = None,
 ) -> None:
-    if service.customer_email:
+    for email in _dedup_emails(service.customer_email, extra_email):
         _queue(
             background_tasks,
             send_service_happy_code_email,
-            service.customer_email,
+            email,
             service_id=service.id,
             completion_code=completion_code,
         )
@@ -285,8 +302,10 @@ def notify_customer_service_approval(
     *,
     decision: str,
     remarks: str | None = None,
+    extra_email: str | None = None,
 ) -> None:
-    if not service.customer_email:
+    recipients = _dedup_emails(service.customer_email, extra_email)
+    if not recipients:
         return
     ticket = (service.request_no or "").strip() or str(service.id)
     if decision == "Approve":
@@ -307,15 +326,16 @@ def notify_customer_service_approval(
     ]
     if remarks:
         details.append(("Remarks", remarks))
-    _queue(
-        background_tasks,
-        _send_workflow_email,
-        service.customer_email,
-        recipient_name=(service.customer_name or "").strip() or "Sir/Ma'am",
-        subject=f"Service request update — Ticket ID: {ticket}",
-        intro=intro,
-        details=details,
-    )
+    for email in recipients:
+        _queue(
+            background_tasks,
+            _send_workflow_email,
+            email,
+            recipient_name=(service.customer_name or "").strip() or "Sir/Ma'am",
+            subject=f"Service request update — Ticket ID: {ticket}",
+            intro=intro,
+            details=details,
+        )
 
 
 def notify_customer_order_delivered(
@@ -510,12 +530,14 @@ def after_service_status_change(
     old_status: str | None,
     remarks: str | None = None,
 ) -> None:
+    order = db.get(Order, service.order_id) if service.order_id else None
     notify_customer_service_status(
         background_tasks,
         service,
         old_status=old_status,
         new_status=service.status,
         remarks=remarks,
+        extra_email=order.customer_email if order else None,
     )
 
 
