@@ -38,6 +38,10 @@ from app.services.service_unit_workflow import (
     observations_for_service,
     payment_requests_for_service,
     sync_service_request_from_units,
+    unit_requested_amount,
+    requires_admin_approval,
+    can_user_approve_amount,
+    APPROVAL_CAP_AMOUNT,
 )
 
 def _json_load_parts(observation) -> list[str]:
@@ -417,6 +421,7 @@ def build_unit_rows(
     *,
     item_code: str | None = None,
     engineer_id: int | None = None,
+    user: User | None = None,
 ) -> list[dict]:
     restore_assigned_placeholder_serials(db, service_id)
     stmt = (
@@ -526,6 +531,10 @@ def build_unit_rows(
             "payment_approval_step": payment.approval_step if payment else None,
             "payment_approval_total_steps": payment.approval_total_steps if payment else None,
             "payment_next_approver_role": payment.next_approver_role if payment else None,
+            "requested_total": unit_requested_amount(observation) if observation else None,
+            "requires_admin_approval": requires_admin_approval(unit_requested_amount(observation)) if observation else False,
+            "approval_cap_amount": APPROVAL_CAP_AMOUNT,
+            "can_approve": (can_user_approve_amount(user, unit_requested_amount(observation)) if observation else True) if user is not None else True,
         })
     return rows
 

@@ -159,6 +159,10 @@ from app.services.service_unit_workflow import (
     sync_aggregate_service_status,
     sync_service_request_from_units,
     verify_unit_serial,
+    unit_requested_amount,
+    requires_admin_approval,
+    can_user_approve_amount,
+    APPROVAL_CAP_AMOUNT,
 )
 from app.services.payment_approval_workflow import (
     approval_stage_payload,
@@ -736,7 +740,7 @@ def _distinct_order_email(order: Order | None, primary_email: str | None) -> str
     return order.customer_email
 
 
-def _hydrate_service(db: Session, service: ServiceRequest) -> ServiceOut:
+def _hydrate_service(db: Session, service: ServiceRequest, user: User | None = None) -> ServiceOut:
     order = db.get(Order, service.order_id) if service.order_id else None
     order_item = db.get(OrderItem, service.order_item_id) if service.order_item_id else None
     serial_context = _derive_service_context(db, order_item) if order_item else {}
@@ -809,7 +813,7 @@ def _hydrate_service(db: Session, service: ServiceRequest) -> ServiceOut:
         payment_requests=[_payment_out(db, row) for row in payment_requests],
         payment_approval_history=[_payment_approval_log_out(db, row) for row in payment_approval_logs],
         order_items=[ServiceOrderItemSummary(**row) for row in build_order_item_summaries(db, service.id)],
-        units=[ServiceRequestUnitOut(**row) for row in build_unit_rows(db, service.id)],
+        units=[ServiceRequestUnitOut(**row) for row in build_unit_rows(db, service.id, user=user)],
         required_document_types=customer_document_types(db, service),
         customer_documents_approved=customer_documents_approved(db, service),
         email_bounced=bounce_info(db, service.customer_email)[0],
@@ -994,7 +998,7 @@ def create_service(
     db.commit()
     db.refresh(service)
     _queue_service_request_acknowledgment_email(background_tasks, service)
-    return _hydrate_service(db, service)
+    return _hydrate_service(db, service, user=user)
 
 
 @router.get("/lookup/engineers")
@@ -1130,7 +1134,7 @@ def get_service(service_id: int, db: Session = Depends(get_db), user: User = Dep
         )
     restore_assigned_placeholder_serials(db, service.id)
     db.commit()
-    return _hydrate_service(db, service)
+    return _hydrate_service(db, service, user=user)
 
 
 @router.put("/{service_id}", response_model=ServiceOut)
@@ -1146,7 +1150,7 @@ def update_service(service_id: int, body: ServiceUpdate, db: Session = Depends(g
         setattr(service, field, value)
     db.commit()
     db.refresh(service)
-    return _hydrate_service(db, service)
+    return _hydrate_service(db, service, user=user)
 
 
 @router.delete("/{service_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -1205,7 +1209,7 @@ def identify_customer(service_id: int, body: ServiceIdentifyCustomer, db: Sessio
     _log_status(db, service, action="Customer Identified", user=user, old_status=old_status, new_status=service.status, metadata={"order_id": service.order_id, "order_item_id": service.order_item_id})
     db.commit()
     db.refresh(service)
-    return _hydrate_service(db, service)
+    return _hydrate_service(db, service, user=user)
 
 
 @router.post("/{service_id}/restart-team-review", response_model=ServiceOut)
@@ -1242,7 +1246,7 @@ def restart_service_team_review(
     )
     db.commit()
     db.refresh(service)
-    return _hydrate_service(db, service)
+    return _hydrate_service(db, service, user=user)
 
 
 @router.post("/{service_id}/verify-order", response_model=ServiceOut)
@@ -1288,7 +1292,7 @@ def verify_order_for_service_request(
     )
     db.commit()
     db.refresh(service)
-    return _hydrate_service(db, service)
+    return _hydrate_service(db, service, user=user)
 
 
 @router.get("/{service_id}/units", response_model=list[ServiceRequestUnitOut])
@@ -1372,7 +1376,7 @@ def assign_service_units(
             extra_email=order.customer_email if order else None,
         )
 
-    return _hydrate_service(db, service)
+    return _hydrate_service(db, service, user=user)
 
 
 @router.post("/{service_id}/assign-units-by-quantity", response_model=ServiceOut)
@@ -1445,7 +1449,7 @@ def assign_service_units_by_quantity(
             extra_email=order.customer_email if order else None,
         )
 
-    return _hydrate_service(db, service)
+    return _hydrate_service(db, service, user=user)
 
 
 @router.post("/{service_id}/units/add-by-serial", response_model=ServiceOut)
@@ -1507,7 +1511,7 @@ def add_service_unit_by_serial_endpoint(
     )
     db.commit()
     db.refresh(service)
-    return _hydrate_service(db, service)
+    return _hydrate_service(db, service, user=user)
 
 
 @router.post("/{service_id}/assign", response_model=ServiceOut)
@@ -1593,7 +1597,7 @@ def assign_service(
                 remarks=body.remarks,
             )
     after_service_status_change(background_tasks, db, service, old_status=old_status, remarks=body.remarks)
-    return _hydrate_service(db, service)
+    return _hydrate_service(db, service, user=user)
 
 
 @router.get("/lookup/service-users")
@@ -1646,7 +1650,7 @@ def assign_service_desk_user(
     )
     db.commit()
     db.refresh(service)
-    return _hydrate_service(db, service)
+    return _hydrate_service(db, service, user=user)
 
 
 @router.post("/{service_id}/return-to-service-manager", response_model=ServiceOut)
@@ -1677,7 +1681,7 @@ def return_service_to_manager(
     )
     db.commit()
     db.refresh(service)
-    return _hydrate_service(db, service)
+    return _hydrate_service(db, service, user=user)
 
 
 @router.post("/{service_id}/assignment-cancel", response_model=ServiceOut)
@@ -1722,7 +1726,7 @@ def cancel_assignment(service_id: int, db: Session = Depends(get_db), user: User
     )
     db.commit()
     db.refresh(service)
-    return _hydrate_service(db, service)
+    return _hydrate_service(db, service, user=user)
 
 
 @router.post("/{service_id}/units/billing", response_model=ServiceOut)
@@ -1770,7 +1774,7 @@ def set_service_unit_billing(
     )
     db.commit()
     db.refresh(service)
-    return _hydrate_service(db, service)
+    return _hydrate_service(db, service, user=user)
 
 
 @router.post("/{service_id}/verify-serial", response_model=ServiceOut)
@@ -1852,7 +1856,7 @@ def verify_serial(service_id: int, body: ServiceSerialVerifyIn, db: Session = De
     )
     db.commit()
     db.refresh(service)
-    return _hydrate_service(db, service)
+    return _hydrate_service(db, service, user=user)
 
 
 @router.post("/{service_id}/return-serial-mismatch", response_model=ServiceOut)
@@ -1907,7 +1911,7 @@ def return_serial_mismatch(
     )
     db.commit()
     db.refresh(service)
-    return _hydrate_service(db, service)
+    return _hydrate_service(db, service, user=user)
 
 
 @router.post("/{service_id}/serial-verification-review", response_model=ServiceOut)
@@ -2015,7 +2019,7 @@ def review_serial_verification(
     )
     db.commit()
     db.refresh(service)
-    return _hydrate_service(db, service)
+    return _hydrate_service(db, service, user=user)
 
 
 @router.post("/{service_id}/verify-serials-bulk", response_model=ServiceOut)
@@ -2055,7 +2059,7 @@ def verify_serials_bulk(
     )
     db.commit()
     db.refresh(service)
-    return _hydrate_service(db, service)
+    return _hydrate_service(db, service, user=user)
 
 
 @router.post("/{service_id}/observations", response_model=ServiceOut)
@@ -2106,7 +2110,7 @@ def submit_observation(service_id: int, body: ServiceObservationIn, db: Session 
     _log_status(db, service, action="Observation Submitted", user=user, old_status=old_status, new_status=service.status, remarks=body.remarks)
     db.commit()
     db.refresh(service)
-    return _hydrate_service(db, service)
+    return _hydrate_service(db, service, user=user)
 
 
 @router.post("/{service_id}/observations/bulk", response_model=ServiceOut)
@@ -2142,7 +2146,7 @@ def submit_observations_bulk(
     )
     db.commit()
     db.refresh(service)
-    return _hydrate_service(db, service)
+    return _hydrate_service(db, service, user=user)
 
 
 @router.post("/{service_id}/observations/cancel", response_model=ServiceOut)
@@ -2214,7 +2218,7 @@ def cancel_observation(
     )
     db.commit()
     db.refresh(service)
-    return _hydrate_service(db, service)
+    return _hydrate_service(db, service, user=user)
 
 
 @router.post("/{service_id}/approval", response_model=ServiceOut)
@@ -2256,6 +2260,14 @@ def service_approval(
             .where(ServiceObservation.service_request_id == service.id)
             .order_by(desc(ServiceObservation.submitted_at))
         )
+        if body.decision == "Approve":
+            amount = unit_requested_amount(latest_observation)
+            if not can_user_approve_amount(user, amount):
+                raise HTTPException(
+                    status.HTTP_403_FORBIDDEN,
+                    f"This needs Admin approval — the engineer's recommended work (₹{amount:,.0f}) is over the "
+                    f"₹{APPROVAL_CAP_AMOUNT:,.0f} Service Manager limit.",
+                )
         approval = ServiceApproval(
             service_request_id=service.id,
             observation_id=latest_observation.id if latest_observation else None,
@@ -2276,7 +2288,7 @@ def service_approval(
     db.commit()
     db.refresh(service)
     after_service_approval(background_tasks, db, service, decision=body.decision, remarks=body.remarks)
-    return _hydrate_service(db, service)
+    return _hydrate_service(db, service, user=user)
 
 
 @router.post("/{service_id}/approval/bulk", response_model=ServiceOut)
@@ -2308,7 +2320,7 @@ def service_approval_bulk(
     db.commit()
     db.refresh(service)
     after_service_approval(background_tasks, db, service, decision=body.decision, remarks=body.remarks)
-    return _hydrate_service(db, service)
+    return _hydrate_service(db, service, user=user)
 
 
 @router.post("/{service_id}/approval/cancel", response_model=ServiceOut)
@@ -2335,7 +2347,7 @@ def cancel_service_approval(service_id: int, db: Session = Depends(get_db), user
     _log_status(db, service, action="Approval Cancelled", user=user, old_status=old_status, new_status=service.status)
     db.commit()
     db.refresh(service)
-    return _hydrate_service(db, service)
+    return _hydrate_service(db, service, user=user)
 
 
 @router.post("/{service_id}/completion", response_model=ServiceOut)
@@ -2456,7 +2468,7 @@ async def complete_service(
     db.commit()
     db.refresh(service)
     after_service_status_change(background_tasks, db, service, old_status=old_status, remarks=completion_remarks)
-    return _hydrate_service(db, service)
+    return _hydrate_service(db, service, user=user)
 
 
 @router.post("/{service_id}/completion/cancel", response_model=ServiceOut)
@@ -2495,7 +2507,7 @@ def cancel_service_completion(service_id: int, db: Session = Depends(get_db), us
     _log_status(db, service, action="Completion Cancelled", user=user, old_status=old_status, new_status=service.status)
     db.commit()
     db.refresh(service)
-    return _hydrate_service(db, service)
+    return _hydrate_service(db, service, user=user)
 
 
 @router.post("/{service_id}/completion-approval", response_model=ServiceOut)
@@ -2544,7 +2556,7 @@ def review_completion(
     _log_status(db, service, action=action, user=user, old_status=old_status, new_status=service.status, remarks=remarks, metadata={"unit_id": unit_id})
     db.commit()
     db.refresh(service)
-    return _hydrate_service(db, service)
+    return _hydrate_service(db, service, user=user)
 
 
 @router.post("/{service_id}/payment-request", response_model=ServiceOut)
@@ -2667,7 +2679,7 @@ async def raise_payment_request(
     )
     db.commit()
     db.refresh(service)
-    return _hydrate_service(db, service)
+    return _hydrate_service(db, service, user=user)
 
 
 @router.post("/{service_id}/payment-request/cancel", response_model=ServiceOut)
@@ -2789,7 +2801,7 @@ def cancel_payment_request(
     )
     db.commit()
     db.refresh(service)
-    return _hydrate_service(db, service)
+    return _hydrate_service(db, service, user=user)
 
 
 @router.post("/{service_id}/payment-approval", response_model=ServiceOut)
@@ -2898,7 +2910,7 @@ async def approve_service_payment(
         db.commit()
         db.refresh(service)
         after_service_status_change(background_tasks, db, service, old_status=old_status, remarks=body.remarks)
-        return _hydrate_service(db, service)
+        return _hydrate_service(db, service, user=user)
 
     record_payment_approval(
         db,
@@ -2947,7 +2959,7 @@ async def approve_service_payment(
         )
         db.commit()
         db.refresh(service)
-        return _hydrate_service(db, service)
+        return _hydrate_service(db, service, user=user)
 
     payment_type = body.payment_type or latest_payment.payment_type or "Cash"
     if payment_type == "UPI" and not latest_payment.payment_qr_code_path:
@@ -3025,7 +3037,7 @@ async def approve_service_payment(
     db.commit()
     db.refresh(service)
     after_service_status_change(background_tasks, db, service, old_status=old_status, remarks=body.remarks)
-    return _hydrate_service(db, service)
+    return _hydrate_service(db, service, user=user)
 
 
 @router.patch("/{service_id}/payment-amount", response_model=ServiceOut)
@@ -3086,7 +3098,7 @@ def admin_update_service_payment_amount(
             transaction.payment_type = data["payment_type"]
     db.commit()
     db.refresh(service)
-    return _hydrate_service(db, service)
+    return _hydrate_service(db, service, user=user)
 
 
 @router.post("/{service_id}/close", response_model=ServiceOut)
@@ -3124,7 +3136,7 @@ def close_service_request(
     db.commit()
     db.refresh(service)
     after_service_status_change(background_tasks, db, service, old_status=old_status, remarks=remarks)
-    return _hydrate_service(db, service)
+    return _hydrate_service(db, service, user=user)
 
 
 @router.post("/{service_id}/reopen-to-engineer", response_model=ServiceOut)
@@ -3158,7 +3170,7 @@ def reopen_service_for_engineer(
     db.commit()
     db.refresh(service)
     after_service_status_change(background_tasks, db, service, old_status=old_status, remarks=remarks)
-    return _hydrate_service(db, service)
+    return _hydrate_service(db, service, user=user)
 
 
 @router.post("/{service_id}/status", response_model=ServiceOut)
@@ -3200,7 +3212,7 @@ def update_service_status(
     db.commit()
     db.refresh(service)
     after_service_status_change(background_tasks, db, service, old_status=old_status, remarks=remarks)
-    return _hydrate_service(db, service)
+    return _hydrate_service(db, service, user=user)
 
 
 @router.get("/{service_id}/history", response_model=list[ServiceHistoryEntry])
@@ -3256,7 +3268,7 @@ async def upload_document(
     _log_status(db, service, action="Document Uploaded", user=user, old_status=service.status, new_status=service.status, metadata={"document_type": document_type, "file_path": path})
     db.commit()
     db.refresh(service)
-    return _hydrate_service(db, service)
+    return _hydrate_service(db, service, user=user)
 
 
 @router.post("/{service_id}/documents/{document_id}/review", response_model=ServiceOut)
@@ -3292,7 +3304,7 @@ def review_document(service_id: int, document_id: int, body: ServiceDocumentRevi
     )
     db.commit()
     db.refresh(service)
-    return _hydrate_service(db, service)
+    return _hydrate_service(db, service, user=user)
 
 
 def _document_link_out(db: Session, service: ServiceRequest) -> ServiceDocumentLinkOut:

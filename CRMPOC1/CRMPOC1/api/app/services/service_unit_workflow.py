@@ -499,6 +499,30 @@ def backfill_unit_verification_from_service(db: Session, service: ServiceRequest
             unit.unit_status = UNIT_STATUS_SERIAL_VERIFIED
 
 
+# Service Manager (and service-desk roles) can approve the engineer's recommendation up to this amount on
+# their own; above it, only Admin/Sub Admin/Incool can approve — and they can always override at any amount.
+APPROVAL_CAP_AMOUNT = 2500
+ADMIN_OVERRIDE_ROLES = frozenset({"admin", "incool", "sub_admin"})
+
+
+def unit_requested_amount(observation: ServiceObservation | None) -> float:
+    if observation is None:
+        return 0.0
+    service_amt = float(observation.estimated_service_charge or 0)
+    parts_amt = float(observation.estimated_parts_charge or 0)
+    return service_amt + parts_amt
+
+
+def requires_admin_approval(amount: float) -> bool:
+    return amount > APPROVAL_CAP_AMOUNT
+
+
+def can_user_approve_amount(user: User, amount: float) -> bool:
+    if canonical_role_key(user.role) in ADMIN_OVERRIDE_ROLES:
+        return True
+    return not requires_admin_approval(amount)
+
+
 def approve_unit(
     db: Session,
     service: ServiceRequest,
@@ -510,6 +534,14 @@ def approve_unit(
 ) -> ServiceApproval:
     if unit.unit_status != UNIT_STATUS_PENDING_APPROVAL:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "This unit is not pending service approval")
+    if decision == "Approve":
+        amount = unit_requested_amount(observation)
+        if not can_user_approve_amount(user, amount):
+            raise HTTPException(
+                status.HTTP_403_FORBIDDEN,
+                f"This needs Admin approval — the engineer's recommended work (₹{amount:,.0f}) is over the "
+                f"₹{APPROVAL_CAP_AMOUNT:,.0f} Service Manager limit.",
+            )
     approval = ServiceApproval(
         service_request_id=service.id,
         service_request_unit_id=unit.id,

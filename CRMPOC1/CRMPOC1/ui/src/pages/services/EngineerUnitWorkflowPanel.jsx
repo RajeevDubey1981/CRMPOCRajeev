@@ -789,12 +789,15 @@ export default function EngineerUnitWorkflowPanel({
     if (isServiceTeam && unit.unit_status === "Pending Service Approval") {
       return (
         <div className="flex flex-col items-end gap-1">
+          {unit.requires_admin_approval && (
+            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800">Needs Admin</span>
+          )}
           <button
             type="button"
             onClick={() => openModal("approval", unit.id)}
             className="rounded-md bg-orange-500 px-3 py-1.5 text-xs text-white"
           >
-            Review &amp; approve
+            Review recommendation
           </button>
           {observed && (
             <button type="button" onClick={() => openModal("observation", unit.id)} className="text-xs text-sky-700 underline">
@@ -1055,7 +1058,7 @@ export default function EngineerUnitWorkflowPanel({
                 onClick={() => submitOne(unit.id)}
                 className="rounded-md bg-emerald-600 px-4 py-2 text-sm text-white"
               >
-                {unit.observation_id ? "Update observation" : "Submit observation"}
+                {unit.observation_id ? "Update recommendation" : "Send recommendation to Service Manager"}
               </button>
             )}
           </div>
@@ -1384,10 +1387,33 @@ export default function EngineerUnitWorkflowPanel({
       >
         <div className="space-y-3">
           <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+            <div className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-400">Engineer recommends</div>
             <div><strong>Problem:</strong> {unit.problem_found || "—"}</div>
             <div className="mt-1"><strong>Observation:</strong> {unit.observation_text || "—"}</div>
             <div className="mt-1"><strong>Recommended action:</strong> {unit.recommended_action || "—"}</div>
           </div>
+          {(unit.requested_total != null && unit.requested_total > 0) && (
+            <div className={`rounded-md border px-3 py-2 text-sm ${unit.requires_admin_approval ? "border-amber-300 bg-amber-50 text-amber-900" : "border-slate-200 bg-slate-50 text-slate-700"}`}>
+              <div className="flex items-center justify-between">
+                <span><strong>Requested amount:</strong> ₹{Number(unit.requested_total).toLocaleString("en-IN")}</span>
+                {unit.requires_admin_approval && (
+                  <span className="rounded-full bg-amber-200 px-2 py-0.5 text-[11px] font-bold text-amber-900">
+                    Needs Admin — over ₹{Number(unit.approval_cap_amount || 2500).toLocaleString("en-IN")}
+                  </span>
+                )}
+              </div>
+              {unit.estimated_service_charge != null || unit.estimated_parts_charge != null ? (
+                <div className="mt-0.5 text-xs text-slate-500">
+                  Service ₹{Number(unit.estimated_service_charge || 0).toLocaleString("en-IN")} + Parts ₹{Number(unit.estimated_parts_charge || 0).toLocaleString("en-IN")}
+                </div>
+              ) : null}
+            </div>
+          )}
+          {unit.can_approve === false && (
+            <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
+              This amount is over the Service Manager's ₹{Number(unit.approval_cap_amount || 2500).toLocaleString("en-IN")} limit — only Admin or Sub Admin can approve it.
+            </div>
+          )}
           <div>
             <FieldLabel>Approval remarks</FieldLabel>
             <textarea
@@ -1412,7 +1438,9 @@ export default function EngineerUnitWorkflowPanel({
             <button
               type="button"
               onClick={() => approveUnit(unit.id, "Approve")}
-              className="rounded-md bg-orange-500 px-4 py-2 text-sm text-white"
+              disabled={unit.can_approve === false}
+              title={unit.can_approve === false ? "Over the Service Manager's cap — needs Admin or Sub Admin" : undefined}
+              className="rounded-md bg-orange-500 px-4 py-2 text-sm text-white disabled:cursor-not-allowed disabled:opacity-50"
             >
               Approve
             </button>

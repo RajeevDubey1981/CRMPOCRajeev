@@ -189,6 +189,10 @@ class ServiceRequestUnitOut(BaseModel):
     payment_approval_step: int | None = None
     payment_approval_total_steps: int | None = None
     payment_next_approver_role: str | None = None
+    requested_total: float | None = None
+    requires_admin_approval: bool = False
+    approval_cap_amount: float | None = None
+    can_approve: bool = True
 
 
 class ServiceSerialVerifyIn(BaseModel):
