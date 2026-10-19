@@ -2,10 +2,37 @@
 rejection, role access, and the discuss-link into Queries."""
 from __future__ import annotations
 
+from app.models import Permission
+
 from tests.parts_base import PartsTestBase
 
 
 class CatalogueTests(PartsTestBase):
+    def _revoke_items_write(self, role_name):
+        """Mirror the Roles screen: untick create/edit/delete/export on "items" for a role, keep view ticked."""
+        from app.models import Role
+        role = self.db.query(Role).filter_by(name=role_name).one()
+        row = self.db.query(Permission).filter_by(role_id=role.id, module="items").one()
+        row.can_create = row.can_edit = row.can_delete = row.can_export = False
+        self.db.commit()
+
+    def test_revoking_items_permission_blocks_catalogue_edits_too(self):
+        """Regression: the Spare Parts catalogue must obey the real Roles-screen permission for "items",
+        not a hardcoded role list — this is the bug the user reported (unticking items for Service Manager
+        did nothing because the catalogue checked role name, not the Permission table)."""
+        self._revoke_items_write("service_manager")
+        r = self.post("/api/parts/catalogue", {"part_code": "SP-9", "part_name": "Door gasket"}, self.svm)
+        self.assertEqual(r.status_code, 403, r.text)
+
+        # view still works (can_view was left ticked)
+        self.assertEqual(self.get("/api/parts/catalogue", self.svm).status_code, 200)
+
+        # editing an existing part is blocked too
+        self.post("/api/parts/catalogue", {"part_code": "SP-10", "part_name": "Filter"}, self.admin)
+        part_id = self.get("/api/parts/catalogue", self.admin).json()[0]["id"]
+        r2 = self.put(f"/api/parts/catalogue/{part_id}", {"part_name": "Filter v2"}, self.svm)
+        self.assertEqual(r2.status_code, 403, r2.text)
+
     def test_service_manager_can_add_a_part_with_fitments(self):
         r = self.post("/api/parts/catalogue", {"part_code": "SP-CMP-1501", "part_name": "Inverter compressor 1.5 T", "part_ean": "8909000100011", "price": "6800.00", "fits": ["8901234500011"]}, self.svm)
         self.assertEqual(r.status_code, 201, r.text)

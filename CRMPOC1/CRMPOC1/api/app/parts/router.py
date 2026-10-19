@@ -108,8 +108,8 @@ class SparePartIn(BaseModel):
 
 
 @router.post("/catalogue", status_code=status.HTTP_201_CREATED)
-def create_part(body: SparePartIn, ctx: Ctx = Depends(get_ctx), pdb: Session = Depends(get_parts_db)):
-    require_catalogue_edit(ctx)
+def create_part(body: SparePartIn, ctx: Ctx = Depends(get_ctx), db: Session = Depends(get_db), pdb: Session = Depends(get_parts_db)):
+    require_catalogue_edit(ctx, db, flag="can_create")
     if pdb.scalar(select(SparePart.id).where(SparePart.part_code == body.part_code)):
         raise HTTPException(status.HTTP_409_CONFLICT, f"Part code '{body.part_code}' already exists")
     part = SparePart(
@@ -135,8 +135,8 @@ class SparePartPatch(BaseModel):
 
 
 @router.put("/catalogue/{part_id}")
-def update_part(part_id: int, body: SparePartPatch, ctx: Ctx = Depends(get_ctx), pdb: Session = Depends(get_parts_db)):
-    require_catalogue_edit(ctx)
+def update_part(part_id: int, body: SparePartPatch, ctx: Ctx = Depends(get_ctx), db: Session = Depends(get_db), pdb: Session = Depends(get_parts_db)):
+    require_catalogue_edit(ctx, db)
     part = pdb.get(SparePart, part_id)
     if part is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Part not found")
@@ -149,8 +149,8 @@ def update_part(part_id: int, body: SparePartPatch, ctx: Ctx = Depends(get_ctx),
 
 
 @router.post("/catalogue/{part_id}/fitments", status_code=status.HTTP_201_CREATED)
-def add_fitment(part_id: int, crm_item_code: str = Form(...), crm_item_name_cache: str | None = Form(None), ctx: Ctx = Depends(get_ctx), pdb: Session = Depends(get_parts_db)):
-    require_catalogue_edit(ctx)
+def add_fitment(part_id: int, crm_item_code: str = Form(...), crm_item_name_cache: str | None = Form(None), ctx: Ctx = Depends(get_ctx), db: Session = Depends(get_db), pdb: Session = Depends(get_parts_db)):
+    require_catalogue_edit(ctx, db)
     if pdb.get(SparePart, part_id) is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Part not found")
     if pdb.scalar(select(SparePartFitment.id).where(SparePartFitment.spare_part_id == part_id, SparePartFitment.crm_item_code == crm_item_code)):

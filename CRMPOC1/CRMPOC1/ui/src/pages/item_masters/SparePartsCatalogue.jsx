@@ -4,8 +4,7 @@ import { useAuth } from "../../auth/AuthContext.jsx";
 import Modal from "../../components/Modal.jsx";
 import { partsApi } from "../../api/parts.js";
 import { itemsApi } from "../../api/items.js";
-
-const EDIT_ROLES = new Set(["admin", "incool", "sub_admin", "service_manager", "indcool", "indcool service", "indcool_service"]);
+import { hasPermission } from "../../utils/permissions.js";
 
 const CATEGORIES = [
   "Compressor",
@@ -18,10 +17,6 @@ const CATEGORIES = [
   "Pipe / Fitting",
   "Miscellaneous",
 ];
-
-function roleKey(role) {
-  return (role || "").trim().toLowerCase();
-}
 
 function fmtPrice(v) {
   return v === null || v === undefined ? "—" : `₹${Number(v).toLocaleString("en-IN", { minimumFractionDigits: 2 })}`;
@@ -102,7 +97,8 @@ function ItemCodeAutocomplete({ fits, onAdd, onRemove }) {
 
 export default function SparePartsCatalogue() {
   const { user } = useAuth();
-  const canEdit = EDIT_ROLES.has(roleKey(user?.role));
+  const canEdit = hasPermission(user, "items", "can_edit");
+  const canCreate = hasPermission(user, "items", "can_create");
   const [parts, setParts] = useState([]);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(false);
@@ -187,7 +183,7 @@ export default function SparePartsCatalogue() {
           onChange={(e) => setSearch(e.target.value)}
           className="w-72 rounded-md border border-slate-300 px-3 py-2 text-sm"
         />
-        {canEdit && (
+        {canCreate && (
           <button
             type="button"
             onClick={openNew}

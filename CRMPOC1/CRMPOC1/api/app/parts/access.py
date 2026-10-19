@@ -14,16 +14,17 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from fastapi import Depends, HTTPException, status
+from sqlalchemy.orm import Session
 
 from app.deps import get_current_user
 from app.models.user import User
 from app.parts.db import parts_enabled
+from app.services.permissions import can_act_on
 from app.services.role_access import role_key
 
 SERVICE_MANAGER_ROLES = frozenset({"service_manager"})
 SUB_STAGE_ROLES = frozenset({"admin", "incool", "sub_admin"})
 SERVICE_DESK_ROLES = frozenset({"service", "indcool", "indcool service", "indcool_service"})
-CATALOGUE_EDIT_ROLES = SERVICE_MANAGER_ROLES | SUB_STAGE_ROLES
 SALES_READ_ROLES = frozenset({"sales", "sales_manager"})
 
 
@@ -49,10 +50,6 @@ class Ctx:
         return not self.is_engineer
 
     @property
-    def can_edit_catalogue(self) -> bool:
-        return self.role in CATALOGUE_EDIT_ROLES
-
-    @property
     def can_see_approvals(self) -> bool:
         return self.role in (SERVICE_MANAGER_ROLES | SUB_STAGE_ROLES | SERVICE_DESK_ROLES)
 
@@ -70,9 +67,11 @@ def get_ctx(user: User = Depends(get_current_user)) -> Ctx:
     return Ctx(user=user, role=role_key(user.role))
 
 
-def require_catalogue_edit(ctx: Ctx) -> None:
-    if not ctx.can_edit_catalogue:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only the Service Manager, Admin or Sub Admin can change the catalogue")
+def require_catalogue_edit(ctx: Ctx, db: Session, *, flag: str = "can_edit") -> None:
+    """The spare-parts catalogue lives under Item Master, so changing it needs the same Roles-screen
+    permission as editing an item (module "items"), not a fixed list of roles."""
+    if not can_act_on(db, ctx.user, "items", flag, None):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Your role cannot change the item/spare-parts catalogue")
 
 
 def require_approvals_access(ctx: Ctx) -> None:

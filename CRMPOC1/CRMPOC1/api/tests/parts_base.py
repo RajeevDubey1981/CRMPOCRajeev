@@ -16,9 +16,15 @@ from sqlalchemy.pool import StaticPool
 
 from app.database import Base, get_db
 from app.main import app
-from app.models import Role, User
+from app.models import Permission, Role, User
 from app.parts.db import PartsBase, get_parts_db, use_factory
 from app.security import create_access_token, hash_password
+
+ALL = (True, True, True, True, True)
+RO = (True, False, False, False, True)
+NONE = (False, False, False, False, False)
+# Matches app/seed.py's DEFAULT_ROLES "items" row for each role, so the tests reflect production permissions.
+ITEMS_PERMS = {"admin": ALL, "sub_admin": ALL, "service_manager": ALL, "engineer": RO, "sales": NONE}
 
 
 def sqlite_engine():
@@ -55,8 +61,14 @@ class PartsTestBase(unittest.TestCase):
         app.dependency_overrides[get_parts_db] = parts_override
         self.client = TestClient(app)
 
+        roles = {}
         for name in ("admin", "sub_admin", "service_manager", "engineer", "sales"):
-            self.db.add(Role(name=name, description=name))
+            r = Role(name=name, description=name)
+            self.db.add(r)
+            self.db.flush()
+            roles[name] = r
+        for name, (v, c, e, d, ex) in ITEMS_PERMS.items():
+            self.db.add(Permission(role_id=roles[name].id, module="items", can_view=v, can_create=c, can_edit=e, can_delete=d, can_export=ex))
         self.db.flush()
         self.admin = self._user("admin@t.com", "admin", "Admin")
         self.sub = self._user("sub@t.com", "sub_admin", "Sub Admin")
