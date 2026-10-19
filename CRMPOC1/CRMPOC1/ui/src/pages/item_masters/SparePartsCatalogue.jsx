@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { useAuth } from "../../auth/AuthContext.jsx";
 import Modal from "../../components/Modal.jsx";
 import { partsApi } from "../../api/parts.js";
+import { itemsApi } from "../../api/items.js";
 
 const EDIT_ROLES = new Set(["admin", "incool", "sub_admin", "service_manager", "indcool", "indcool service", "indcool_service"]);
 
@@ -27,7 +28,76 @@ function fmtPrice(v) {
 }
 
 function emptyForm() {
-  return { part_code: "", part_name: "", part_ean: "", category: "", price: "", engineer_visible: true, fits: "" };
+  return { part_code: "", part_name: "", part_ean: "", category: "", price: "", engineer_visible: true, fits: [] };
+}
+
+// Autocomplete for "fits item codes": shows matching item codes while you type, picked from the real Item Master
+// list, so the exact code never has to be typed out in full.
+function ItemCodeAutocomplete({ fits, onAdd, onRemove }) {
+  const [query, setQuery] = useState("");
+  const [suggestions, setSuggestions] = useState([]);
+  const [open, setOpen] = useState(false);
+  const timer = useRef(null);
+
+  useEffect(() => {
+    clearTimeout(timer.current);
+    if (!query.trim()) { setSuggestions([]); return; }
+    timer.current = setTimeout(async () => {
+      try {
+        const res = await itemsApi.list({ search: query.trim(), per_page: 8 });
+        const already = new Set(fits.map((f) => f.item_code));
+        setSuggestions((res.items || []).filter((i) => !already.has(i.item_code)));
+      } catch {
+        setSuggestions([]);
+      }
+    }, 250);
+    return () => clearTimeout(timer.current);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query]);
+
+  function pick(item) {
+    onAdd({ item_code: item.item_code, item_name: item.item_name });
+    setQuery("");
+    setSuggestions([]);
+    setOpen(false);
+  }
+
+  return (
+    <div className="relative">
+      <div className="flex min-h-[42px] flex-wrap items-center gap-1 rounded-md border border-slate-300 px-2 py-1.5">
+        {fits.map((f) => (
+          <span key={f.item_code} className="inline-flex items-center gap-1 rounded-full bg-brand-50 px-2 py-0.5 text-xs font-mono text-brand-800">
+            {f.item_code}
+            <button type="button" onClick={() => onRemove(f.item_code)} className="text-brand-500 hover:text-brand-800">×</button>
+          </span>
+        ))}
+        <input
+          value={query}
+          onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
+          onFocus={() => setOpen(true)}
+          onBlur={() => setTimeout(() => setOpen(false), 150)}
+          placeholder={fits.length ? "" : "Type an item code or name…"}
+          className="min-w-[140px] flex-1 border-0 text-sm outline-none focus:ring-0"
+        />
+      </div>
+      {open && suggestions.length > 0 && (
+        <div className="absolute z-10 mt-1 w-full rounded-md border border-slate-200 bg-white py-1 text-sm shadow-lg">
+          {suggestions.map((i) => (
+            <button
+              key={i.item_code}
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => pick(i)}
+              className="block w-full px-3 py-1.5 text-left hover:bg-slate-50"
+            >
+              <span className="font-mono text-xs text-slate-500">{i.item_code}</span>
+              <span className="ml-2 text-slate-800">{i.item_name}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function SparePartsCatalogue() {
@@ -68,7 +138,8 @@ export default function SparePartsCatalogue() {
     setEditing(part);
     setForm({
       part_code: part.part_code, part_name: part.part_name, part_ean: part.part_ean || "",
-      category: part.category || "", price: part.price ?? "", engineer_visible: part.engineer_visible, fits: (part.fits || []).join(", "),
+      category: part.category || "", price: part.price ?? "", engineer_visible: part.engineer_visible,
+      fits: (part.fits || []).map((code) => ({ item_code: code, item_name: "" })),
     });
     setFormErr("");
     setModalOpen(true);
@@ -82,20 +153,19 @@ export default function SparePartsCatalogue() {
     setSaving(true);
     setFormErr("");
     try {
-      const fits = form.fits.split(",").map((s) => s.trim()).filter(Boolean);
       if (editing) {
         await partsApi.updatePart(editing.id, {
           part_name: form.part_name.trim(), part_ean: form.part_ean.trim() || null, category: form.category.trim() || null,
           price: form.price === "" ? null : Number(form.price), engineer_visible: form.engineer_visible,
         });
-        for (const code of fits) {
-          if (!(editing.fits || []).includes(code)) await partsApi.addFitment(editing.id, code).catch(() => {});
+        for (const f of form.fits) {
+          if (!(editing.fits || []).includes(f.item_code)) await partsApi.addFitment(editing.id, f.item_code, f.item_name).catch(() => {});
         }
       } else {
         await partsApi.createPart({
           part_code: form.part_code.trim(), part_name: form.part_name.trim(), part_ean: form.part_ean.trim() || null,
           category: form.category.trim() || null, price: form.price === "" ? null : Number(form.price),
-          engineer_visible: form.engineer_visible, fits,
+          engineer_visible: form.engineer_visible, fits: form.fits.map((f) => f.item_code),
         });
       }
       setModalOpen(false);
@@ -208,8 +278,14 @@ export default function SparePartsCatalogue() {
             </div>
           </div>
           <div>
-            <label className="text-xs uppercase tracking-wide text-slate-500">Fits item codes (comma separated)</label>
-            <input value={form.fits} onChange={(e) => setForm((f) => ({ ...f, fits: e.target.value }))} placeholder="8901234500011, 8901234500042" className="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+            <label className="text-xs uppercase tracking-wide text-slate-500">Fits item codes</label>
+            <div className="mt-1">
+              <ItemCodeAutocomplete
+                fits={form.fits}
+                onAdd={(f) => setForm((cur) => ({ ...cur, fits: [...cur.fits, f] }))}
+                onRemove={(code) => setForm((cur) => ({ ...cur, fits: cur.fits.filter((f) => f.item_code !== code) }))}
+              />
+            </div>
           </div>
           <label className="flex items-center gap-2 text-sm text-slate-700">
             <input type="checkbox" checked={form.engineer_visible} onChange={(e) => setForm((f) => ({ ...f, engineer_visible: e.target.checked }))} />
