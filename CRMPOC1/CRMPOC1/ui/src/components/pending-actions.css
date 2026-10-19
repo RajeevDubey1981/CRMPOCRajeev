@@ -87,7 +87,7 @@
 .pa-hp { display: inline-flex; align-items: center; gap: 5px; background: #ea580c; color: #fff; font-weight: 800; font-size: 9.5px; letter-spacing: 0.06em; border-radius: 5px; padding: 2px 7px; text-transform: uppercase; }
 .pa-hp::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: #fff; animation: pa-blink 1.4s ease-in-out infinite; }
 @keyframes pa-blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
-.pa-tt { font-size: 13.5px; font-weight: 800; color: #12295c; margin: 3px 0 1px; overflow-wrap: anywhere; }
+.pa-tt { font-size: 13.5px; font-weight: 800; color: #12295c; margin: 3px 0 1px; overflow-wrap: break-word; }
 .pa-ms { font-size: 12.5px; color: #4b5565; }
 .pa-st { display: inline-block; margin-top: 5px; font-size: 10.5px; color: #475569; background: #f1f4f9; border: 1px solid #e3e9f2; border-radius: 5px; padding: 1px 8px; }
 .pa-ac { display: flex; gap: 7px; align-items: center; flex: none; }
