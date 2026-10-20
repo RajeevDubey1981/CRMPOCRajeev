@@ -121,6 +121,8 @@ function RequestDetail({ id, onClose, onChanged }) {
   const [discussMsg, setDiscussMsg] = useState("");
   const [discussing, setDiscussing] = useState(false);
   const [note, setNote] = useState("");
+  const [resubmitDesc, setResubmitDesc] = useState("");
+  const [resubmitting, setResubmitting] = useState(false);
 
   async function load() {
     try {
@@ -224,6 +226,33 @@ function RequestDetail({ id, onClose, onChanged }) {
             >
               Approve
             </button>
+          </div>
+        )}
+
+        {req.stage === "rejected" && (
+          <div className="rounded-md border border-rose-200 bg-rose-50 p-3">
+            <p className="mb-2 text-xs text-rose-800">
+              Rejected — see the reason in the timeline above. Fixing it below sends this same request (<span className="font-mono">{req.request_no}</span>) back through approval instead of starting over.
+            </p>
+            <div className="flex items-center gap-2">
+              <input
+                value={resubmitDesc}
+                onChange={(e) => setResubmitDesc(e.target.value)}
+                placeholder="Update the description (optional — leave blank to resubmit as-is)"
+                className="flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm"
+              />
+              <button
+                disabled={resubmitting}
+                onClick={() => {
+                  setResubmitting(true);
+                  act(() => partsApi.resubmit(req.id, resubmitDesc.trim() ? { description: resubmitDesc.trim() } : {})).finally(() => setResubmitting(false));
+                  setResubmitDesc("");
+                }}
+                className="rounded-md bg-amber-600 px-4 py-2 text-sm text-white hover:bg-amber-700 disabled:opacity-50"
+              >
+                {resubmitting ? "…" : "Resubmit"}
+              </button>
+            </div>
           </div>
         )}
 

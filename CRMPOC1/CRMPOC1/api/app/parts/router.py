@@ -286,6 +286,25 @@ def reject_request(request_id: int, body: RejectIn, ctx: Ctx = Depends(get_ctx),
     return _req_out(req, ctx)
 
 
+class ResubmitIn(BaseModel):
+    description: Optional[str] = None
+    amount: Optional[Decimal] = None
+
+
+@router.post("/requests/{request_id}/resubmit")
+def resubmit_request(request_id: int, body: ResubmitIn, ctx: Ctx = Depends(get_ctx), pdb: Session = Depends(get_parts_db)):
+    req = _load_request(pdb, request_id)
+    if req.crm_raised_by_user_id != ctx.user.id and not ctx.is_second_stage:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only the person who raised this request (or Admin) can resubmit it")
+    try:
+        svc.resubmit(pdb, req, user=ctx.user, description=body.description, amount=body.amount)
+    except svc.WrongStage as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc))
+    pdb.commit()
+    pdb.refresh(req)
+    return _req_out(req, ctx)
+
+
 class SuppliedIn(BaseModel):
     note: Optional[str] = None
 

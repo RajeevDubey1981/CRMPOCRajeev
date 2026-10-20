@@ -107,6 +107,27 @@ def reject(pdb: Session, req: ItemRequest, *, user: User, reason: str) -> ItemRe
     return req
 
 
+def resubmit(
+    pdb: Session, req: ItemRequest, *, user: User,
+    description: str | None = None, amount=None,
+) -> ItemRequest:
+    """A rejected request isn't a dead end -- whoever raised it fixes what the rejection reason pointed at
+    and sends it back through the same chain, under the same request_no, instead of starting over from
+    scratch with no link to what came before."""
+    if req.stage != "rejected":
+        raise WrongStage(f"Only a rejected request can be resubmitted (this one is {req.stage})")
+    if description:
+        req.description = description
+    if amount is not None:
+        req.amount = amount
+    req.stage = "svm"
+    req.decided_at = None
+    req.decided_by_user_id = None
+    req.decided_by_name = None
+    log(pdb, req, "resubmitted", f"Resubmitted by {user.name}", user)
+    return req
+
+
 def mark_supplied(pdb: Session, req: ItemRequest, *, user: User, note: str | None) -> ItemRequest:
     if req.stage != "done":
         raise WrongStage("Only an approved request can be marked supplied")

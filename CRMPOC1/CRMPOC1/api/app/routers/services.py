@@ -1124,6 +1124,59 @@ def my_assigned_units(db: Session = Depends(get_db), user: User = Depends(get_cu
     return [EngineerAssignedUnitGroup(**group) for group in build_engineer_unit_groups(db, user.id)]
 
 
+@router.get("/review-units")
+def list_review_units(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Every unit this Service Team/Manager/Admin user has (or will) touch in the approval chain, across all
+    service requests — the cross-request tracking view that Item Master's Approvals tab gives Parts requests,
+    but for the per-serial service-unit approval chain, which otherwise only lives inside each request's own page."""
+    if not (can_user_forward_at_all(user) or can_user_approve_at_all(user)):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only the Service Team, Service Manager, or Admin can view this")
+
+    statuses = ["Pending Service Team Review", "Pending Service Approval", "Approved for Service", "Rejected"]
+    stmt = (
+        select(ServiceRequestUnit, ServiceRequest)
+        .join(ServiceRequest, ServiceRequestUnit.service_request_id == ServiceRequest.id)
+        .where(ServiceRequestUnit.unit_status.in_(statuses), ServiceRequest.deleted_at.is_(None))
+        .order_by(desc(ServiceRequestUnit.updated_at))
+    )
+    if not can_view_all_service_requests(user):
+        if is_service_desk_user(user):
+            stmt = stmt.where(ServiceRequest.assigned_service_user_id == user.id)
+        else:
+            return []
+
+    rows = db.execute(stmt).all()
+    unit_ids = [unit.id for unit, _ in rows]
+    observations = {o.service_request_unit_id: o for o in db.scalars(
+        select(ServiceObservation).where(ServiceObservation.service_request_unit_id.in_(unit_ids))
+    )} if unit_ids else {}
+    approvals = {a.service_request_unit_id: a for a in db.scalars(
+        select(ServiceApproval).where(ServiceApproval.service_request_unit_id.in_(unit_ids))
+    )} if unit_ids else {}
+
+    out = []
+    for unit, service in rows:
+        observation = observations.get(unit.id)
+        amount = unit_requested_amount(observation) if observation else 0.0
+        approval = approvals.get(unit.id)
+        out.append({
+            "unit_id": unit.id,
+            "service_id": service.id,
+            "request_no": service.request_no,
+            "serial_no": unit.serial_no,
+            "customer_name": service.customer_name,
+            "problem_found": observation.problem_found if observation else None,
+            "recommended_action": observation.recommended_action if observation else None,
+            "requested_total": amount,
+            "requires_admin_approval": requires_admin_approval(amount),
+            "unit_status": unit.unit_status,
+            "decided_by_name": _user_name(db, approval.approved_by) if approval else None,
+            "decision_remarks": approval.remarks if approval else None,
+            "updated_at": unit.updated_at,
+        })
+    return out
+
+
 @router.get("/{service_id}", response_model=ServiceOut)
 def get_service(service_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     service = _load_visible_service(db, service_id, user)

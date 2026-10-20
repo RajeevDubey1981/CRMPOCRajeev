@@ -37,6 +37,7 @@ export const servicesApi = {
   approveBulk: (id, body) => api.post(`/api/services/${id}/approval/bulk`, body).then((r) => r.data),
   forward: (id, body) => api.post(`/api/services/${id}/forward`, body).then((r) => r.data),
   forwardBulk: (id, body) => api.post(`/api/services/${id}/forward/bulk`, body).then((r) => r.data),
+  reviewUnits: () => api.get("/api/services/review-units").then((r) => r.data),
   cancelApproval: (id) => api.post(`/api/services/${id}/approval/cancel`).then((r) => r.data),
   complete: (id, body) => api.post(`/api/services/${id}/completion`, body).then((r) => r.data),
   reviewCompletion: (id, body) => {
