@@ -12,6 +12,7 @@ export default function RaiseClaimPanel({ flow, context, triggerLabel, onSent })
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState([]);
   const [description, setDescription] = useState("");
+  const [amount, setAmount] = useState("");
   const [photos, setPhotos] = useState([]);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
@@ -32,7 +33,9 @@ export default function RaiseClaimPanel({ flow, context, triggerLabel, onSent })
     setErr("");
     setBusy(true);
     try {
-      const claim = await shortageClaimsApi.raise({ flow, items, description: description.trim(), ...context });
+      const body = { flow, items, description: description.trim(), ...context };
+      if (amount.trim() !== "") body.amount = Number(amount);
+      const claim = await shortageClaimsApi.raise(body);
       for (let i = 0; i < 4; i++) {
         if (photos[i]) await shortageClaimsApi.uploadPhoto(claim.id, photos[i], PHOTO_LABELS[i]);
       }
@@ -109,6 +112,14 @@ export default function RaiseClaimPanel({ flow, context, triggerLabel, onSent })
             </div>
           ))}
         </div>
+      </div>
+      <div>
+        <label className="text-xs uppercase tracking-wide text-slate-500">Claimed amount (₹) — optional</label>
+        <input
+          type="number" min="0" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)}
+          placeholder="At or under ₹2,500, Service Manager can close this claim outright"
+          className="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+        />
       </div>
       {err && <p className="rounded-md bg-rose-50 px-2 py-1 text-xs text-rose-700">{err}</p>}
       <div className="flex justify-end">

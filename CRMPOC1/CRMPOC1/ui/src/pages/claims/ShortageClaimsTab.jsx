@@ -4,6 +4,10 @@ import DateRangeFilter from "../../components/DateRangeFilter.jsx";
 import Modal from "../../components/Modal.jsx";
 import PartySummary from "../../components/claims/PartySummary.jsx";
 import { shortageClaimsApi, ITEMS_MISSING, RESP_LABEL } from "../../api/shortageClaims.js";
+import { useAuth } from "../../auth/AuthContext.jsx";
+import { roleKey } from "../../utils/roles.js";
+
+const APPROVAL_CAP_AMOUNT = 2500;
 
 function stagePill(stage) {
   if (stage === "done") return <span className="inline-flex rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">Closed</span>;
@@ -157,6 +161,8 @@ export default function ShortageClaimsTab() {
 }
 
 function ClaimDetail({ id, onClose, onChanged }) {
+  const { user } = useAuth();
+  const isServiceManager = roleKey(user?.role) === "service_manager";
   const [claim, setClaim] = useState(null);
   const [parties, setParties] = useState({ vendors: [], couriers: [] });
   const [err, setErr] = useState("");
@@ -165,6 +171,7 @@ function ClaimDetail({ id, onClose, onChanged }) {
   const [vendorId, setVendorId] = useState("");
   const [courierId, setCourierId] = useState("");
   const [insurer, setInsurer] = useState("");
+  const [amount, setAmount] = useState("");
   const [rejectReason, setRejectReason] = useState("");
 
   async function load() {
@@ -173,6 +180,7 @@ function ClaimDetail({ id, onClose, onChanged }) {
       setClaim(c);
       setParties(p);
       setRespType(c.responsible_type || "");
+      setAmount(c.amount != null ? String(c.amount) : "");
     } catch (e) {
       setErr(e.response?.data?.detail || "Could not load this claim");
     }
@@ -198,6 +206,7 @@ function ClaimDetail({ id, onClose, onChanged }) {
     if (respType === "mfg") body.vendor_id = Number(vendorId);
     if (respType === "trans") body.courier_id = Number(courierId);
     if (respType === "ins") body.insurer_name = insurer;
+    if (amount.trim() !== "") body.amount = Number(amount);
     await act(() => shortageClaimsApi.decide(id, body));
   }
 
@@ -211,6 +220,7 @@ function ClaimDetail({ id, onClose, onChanged }) {
           <div><span className="text-xs uppercase tracking-wide text-slate-500">Status</span><p>{stagePill(claim.stage)}</p></div>
           <div><span className="text-xs uppercase tracking-wide text-slate-500">Flow</span><p>{claim.flow === "installation" ? "Installation" : "Service"}</p></div>
           {claim.item_code && <div><span className="text-xs uppercase tracking-wide text-slate-500">Item code</span><p className="font-mono text-xs">{claim.item_code}</p></div>}
+          {claim.amount != null && <div><span className="text-xs uppercase tracking-wide text-slate-500">Amount</span><p>₹{Number(claim.amount).toLocaleString("en-IN")}</p></div>}
         </div>
         <div><span className="text-xs uppercase tracking-wide text-slate-500">Description</span><p className="text-sm text-slate-800">{claim.description}</p></div>
 
@@ -261,6 +271,14 @@ function ClaimDetail({ id, onClose, onChanged }) {
             {respType === "ins" && (
               <input value={insurer} onChange={(e) => setInsurer(e.target.value)} placeholder="Insurer / policy" className="mt-2 w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm" />
             )}
+            <div className="mt-2">
+              <label className="text-xs uppercase tracking-wide text-slate-500">Claimed amount (₹)</label>
+              <input
+                type="number" min="0" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)}
+                placeholder={`At or under ₹${APPROVAL_CAP_AMOUNT.toLocaleString("en-IN")}, Service Manager can close it outright`}
+                className="mt-1 w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm"
+              />
+            </div>
             <div className="mt-2 flex justify-end">
               <button disabled={busy || !respType} onClick={saveDecision} className="rounded-md bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50">Save decision</button>
             </div>
@@ -279,7 +297,9 @@ function ClaimDetail({ id, onClose, onChanged }) {
               Reject
             </button>
             <button disabled={busy} onClick={() => act(() => shortageClaimsApi.approve(id))} className="rounded-md bg-emerald-700 px-4 py-2 text-sm text-white hover:bg-emerald-800 disabled:opacity-50">
-              {claim.stage === "svm" ? "Claim this — forward to Admin" : "Claim this — close"}
+              {claim.stage === "svm"
+                ? (isServiceManager && claim.amount != null && claim.amount <= APPROVAL_CAP_AMOUNT ? "Claim this — close" : "Claim this — forward to Admin")
+                : "Claim this — close"}
             </button>
           </div>
         )}

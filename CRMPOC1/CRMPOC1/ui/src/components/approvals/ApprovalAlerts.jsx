@@ -59,6 +59,9 @@ export default function ApprovalAlerts() {
           key: `part-${r.id}`, kind: "parts request", no: r.request_no,
           what: r.part_name_cache || r.crm_item_name_cache || r.description || "Request",
           by: r.crm_raised_by_name, href: "/items?tab=approvals",
+          // A request raised against a service job is time-sensitive (the job is waiting on it) —
+          // alert for it even on the very first poll of the session, not only once it's "new".
+          alwaysAlert: !!r.crm_service_request_id,
         })),
         ...claims.filter((c) => c.can_act && (c.stage === "svm" || c.stage === "sub")).map((c) => ({
           key: `claim-${c.id}`, kind: "missing-item claim", no: c.claim_no,
@@ -92,6 +95,11 @@ export default function ApprovalAlerts() {
 
       if (seenRef.current === null) {
         seenRef.current = new Set(pending.map((p) => p.key));
+        const alwaysFresh = pending.filter((p) => p.alwaysAlert);
+        if (alwaysFresh.length > 0) {
+          beep();
+          setAlerts((prev) => [...prev, ...alwaysFresh.map((f) => ({ ...f, id: `${f.key}-${Date.now()}` }))]);
+        }
         return;
       }
       const fresh = pending.filter((p) => !seenRef.current.has(p.key));

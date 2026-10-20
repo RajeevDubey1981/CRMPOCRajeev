@@ -7,7 +7,7 @@ on the same Claims page."""
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import DateTime, ForeignKey, Integer, Numeric, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 
@@ -35,6 +35,9 @@ class ShortageClaim(Base, TimestampMixin):
     serial_no: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
 
     description: Mapped[str] = mapped_column(Text, nullable=False)
+    # Claimed value, if known at raise time. Above APPROVAL_CAP_AMOUNT (2500) — or if left blank — a Service
+    # Manager approval still needs Admin/Sub Admin after it; at or under it, Service Manager can close it outright.
+    amount: Mapped[Optional[float]] = mapped_column(Numeric(10, 2), nullable=True)
     stage: Mapped[str] = mapped_column(String(10), nullable=False, default="svm", index=True)
 
     responsible_type: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)  # mfg | trans | ins

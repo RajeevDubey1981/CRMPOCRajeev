@@ -42,6 +42,7 @@ SERVICE_MANAGER_ROLES = frozenset({"service_manager"})
 SECOND_STAGE_ROLES = frozenset({"admin", "incool", "sub_admin"})
 # Service Team can claim it out too, same as when deciding a parts request's approval.
 SERVICE_TEAM_ROLES = frozenset({"service", "indcool_service", "indcool", "indcool service"})
+APPROVAL_CAP_AMOUNT = 2500
 IMAGE_EXT = {".jpg", ".jpeg", ".png"}
 IMAGE_MIME = {"image/jpeg", "image/jpg", "image/png"}
 MAX_PHOTO_BYTES = 5 * 1024 * 1024
@@ -87,7 +88,7 @@ def _out(db: Session, c: ShortageClaim, role: str, can_edit: bool) -> dict:
     return {
         "id": c.id, "claim_no": c.claim_no, "flow": c.flow,
         "service_request_id": c.service_request_id, "installation_request_id": c.installation_request_id,
-        "item_request_id": c.item_request_id,
+        "item_request_id": c.item_request_id, "amount": float(c.amount) if c.amount is not None else None,
         "item_code": c.item_code, "serial_no": c.serial_no, "items": items,
         "description": c.description, "stage": c.stage,
         "responsible_type": c.responsible_type, "responsible_label": RESP_LABEL.get(c.responsible_type),
@@ -210,6 +211,7 @@ class ClaimIn(BaseModel):
     item_request_id: Optional[int] = None
     item_code: Optional[str] = None
     serial_no: Optional[str] = None
+    amount: Optional[float] = None
     items: list[str] = Field(min_length=1)
 
 
@@ -231,7 +233,7 @@ def raise_claim(body: ClaimIn, db: Session = Depends(get_db), user: User = Depen
     claim = ShortageClaim(
         claim_no=next_claim_no(db), flow=body.flow, service_request_id=body.service_request_id,
         installation_request_id=body.installation_request_id, item_request_id=body.item_request_id,
-        item_code=body.item_code, serial_no=body.serial_no,
+        item_code=body.item_code, serial_no=body.serial_no, amount=body.amount,
         description=body.description, stage="svm", raised_by_user_id=user.id,
     )
     db.add(claim)
@@ -270,6 +272,7 @@ class DecideIn(BaseModel):
     vendor_id: Optional[int] = None
     courier_id: Optional[int] = None
     insurer_name: Optional[str] = None
+    amount: Optional[float] = None
 
 
 @router.post("/{claim_id}/decide")
@@ -290,6 +293,8 @@ def decide(claim_id: int, body: DecideIn, db: Session = Depends(get_db), user: U
     claim.vendor_id = body.vendor_id if body.responsible_type == "mfg" else None
     claim.courier_id = body.courier_id if body.responsible_type == "trans" else None
     claim.insurer_name = body.insurer_name if body.responsible_type == "ins" else None
+    if body.amount is not None:
+        claim.amount = body.amount
     party = {"mfg": lambda: db.get(Vendor, body.vendor_id).name_of_firm, "trans": lambda: db.get(Courier, body.courier_id).courier_name, "ins": lambda: body.insurer_name}[body.responsible_type]()
     log(db, claim, "decided", f"{user.name} pinned this on {RESP_LABEL[body.responsible_type]} — {party}", user)
     db.commit()
@@ -310,7 +315,14 @@ def approve(claim_id: int, db: Session = Depends(get_db), user: User = Depends(g
         raise HTTPException(status.HTTP_400_BAD_REQUEST, f"This claim needs {REQUIRED_PHOTOS} photos before it can be approved; it has {n_photos}")
     if not claim.responsible_type:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Decide who is responsible before approving")
-    claim.stage = "sub" if claim.stage == "svm" else "done"
+    if claim.stage == "svm":
+        # Service Manager can close a claim outright at or under the cap; above it, or with no amount
+        # recorded, it still needs Admin/Sub Admin — same rule as the service-unit recommendation chain.
+        # Service Team always forwards: they recommend, they never finalize.
+        can_finalize_at_svm = role in SERVICE_MANAGER_ROLES and claim.amount is not None and float(claim.amount) <= APPROVAL_CAP_AMOUNT
+        claim.stage = "done" if can_finalize_at_svm else "sub"
+    else:
+        claim.stage = "done"
     if claim.stage == "done":
         claim.decided_at = datetime.now(timezone.utc)
         claim.decided_by_user_id = user.id
