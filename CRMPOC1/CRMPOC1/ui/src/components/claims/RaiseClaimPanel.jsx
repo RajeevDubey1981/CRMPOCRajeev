@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { shortageClaimsApi, ITEMS_MISSING } from "../../api/shortageClaims.js";
 
@@ -7,6 +7,8 @@ const PHOTO_LABELS = ["Box as received", "Seal / tape", "Empty space inside", "I
 /**
  * Lets an engineer report something missing from a new delivery (copper pipe, remote, gas charge ...), raised
  * from inside the actual Service or Installation step — collapsed to one button until they need it.
+ * For the "parts" flow (Service Team/Manager/Admin claiming out a parts request), the whoever-is-responsible
+ * decision is also made right here, at raise time, instead of as a separate step later.
  */
 export default function RaiseClaimPanel({ flow, context, triggerLabel, onSent }) {
   const [open, setOpen] = useState(false);
@@ -14,9 +16,18 @@ export default function RaiseClaimPanel({ flow, context, triggerLabel, onSent })
   const [description, setDescription] = useState("");
   const [amount, setAmount] = useState("");
   const [photos, setPhotos] = useState([]);
+  const [respType, setRespType] = useState("");
+  const [vendorId, setVendorId] = useState("");
+  const [courierId, setCourierId] = useState("");
+  const [insurer, setInsurer] = useState("");
+  const [parties, setParties] = useState({ vendors: [], couriers: [] });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [sent, setSent] = useState(null);
+
+  useEffect(() => {
+    if (open && flow === "parts") shortageClaimsApi.parties().then(setParties).catch(() => {});
+  }, [open, flow]);
 
   function toggleItem(i) {
     setItems((cur) => (cur.includes(i) ? cur.filter((x) => x !== i) : [...cur, i]));
@@ -35,6 +46,12 @@ export default function RaiseClaimPanel({ flow, context, triggerLabel, onSent })
     try {
       const body = { flow, items, description: description.trim(), ...context };
       if (amount.trim() !== "") body.amount = Number(amount);
+      if (flow === "parts" && respType) {
+        body.responsible_type = respType;
+        if (respType === "mfg") body.vendor_id = Number(vendorId);
+        if (respType === "trans") body.courier_id = Number(courierId);
+        if (respType === "ins") body.insurer_name = insurer;
+      }
       const claim = await shortageClaimsApi.raise(body);
       for (let i = 0; i < 4; i++) {
         if (photos[i]) await shortageClaimsApi.uploadPhoto(claim.id, photos[i], PHOTO_LABELS[i]);
@@ -121,6 +138,36 @@ export default function RaiseClaimPanel({ flow, context, triggerLabel, onSent })
           className="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
         />
       </div>
+      {flow === "parts" && (
+        <div className="rounded-md border border-slate-200 bg-white p-2">
+          <label className="text-xs uppercase tracking-wide text-slate-500">Term of claim — on whom (optional, can also be decided later)</label>
+          <div className="mt-2 grid grid-cols-3 gap-2">
+            {[["mfg", "Manufacturer"], ["trans", "Transporter"], ["ins", "Insurance"]].map(([k, l]) => (
+              <button
+                key={k} type="button" onClick={() => setRespType(k === respType ? "" : k)}
+                className={`rounded-md border px-2 py-2 text-xs font-semibold ${respType === k ? "border-brand-600 bg-brand-50 text-brand-800" : "border-slate-300 text-slate-600"}`}
+              >
+                {l}
+              </button>
+            ))}
+          </div>
+          {respType === "mfg" && (
+            <select value={vendorId} onChange={(e) => setVendorId(e.target.value)} className="mt-2 w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm">
+              <option value="">Select manufacturer</option>
+              {parties.vendors.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
+            </select>
+          )}
+          {respType === "trans" && (
+            <select value={courierId} onChange={(e) => setCourierId(e.target.value)} className="mt-2 w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm">
+              <option value="">Select transporter</option>
+              {parties.couriers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          )}
+          {respType === "ins" && (
+            <input value={insurer} onChange={(e) => setInsurer(e.target.value)} placeholder="Insurer / policy" className="mt-2 w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm" />
+          )}
+        </div>
+      )}
       {err && <p className="rounded-md bg-rose-50 px-2 py-1 text-xs text-rose-700">{err}</p>}
       <div className="flex justify-end">
         <button type="button" disabled={busy} onClick={send} className="rounded-md bg-amber-700 px-4 py-2 text-sm font-medium text-white hover:bg-amber-800 disabled:opacity-50">

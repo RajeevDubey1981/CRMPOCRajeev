@@ -212,6 +212,10 @@ class ClaimIn(BaseModel):
     item_code: Optional[str] = None
     serial_no: Optional[str] = None
     amount: Optional[float] = None
+    responsible_type: Optional[str] = None
+    vendor_id: Optional[int] = None
+    courier_id: Optional[int] = None
+    insurer_name: Optional[str] = None
     items: list[str] = Field(min_length=1)
 
 
@@ -229,11 +233,17 @@ def raise_claim(body: ClaimIn, db: Session = Depends(get_db), user: User = Depen
         role = role_key(user.role)
         if role not in SERVICE_MANAGER_ROLES and role not in SERVICE_TEAM_ROLES and role not in SECOND_STAGE_ROLES:
             raise HTTPException(status.HTTP_403_FORBIDDEN, "Your role cannot claim out a parts request")
+    if body.responsible_type is not None and body.responsible_type not in ("mfg", "trans", "ins"):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Unknown responsible party type")
 
     claim = ShortageClaim(
         claim_no=next_claim_no(db), flow=body.flow, service_request_id=body.service_request_id,
         installation_request_id=body.installation_request_id, item_request_id=body.item_request_id,
         item_code=body.item_code, serial_no=body.serial_no, amount=body.amount,
+        responsible_type=body.responsible_type,
+        vendor_id=body.vendor_id if body.responsible_type == "mfg" else None,
+        courier_id=body.courier_id if body.responsible_type == "trans" else None,
+        insurer_name=body.insurer_name if body.responsible_type == "ins" else None,
         description=body.description, stage="svm", raised_by_user_id=user.id,
     )
     db.add(claim)
@@ -241,6 +251,11 @@ def raise_claim(body: ClaimIn, db: Session = Depends(get_db), user: User = Depen
     for label in body.items:
         db.add(ShortageClaimItem(claim_id=claim.id, label=label))
     log(db, claim, "raised", f"Claim raised by {user.name}", user)
+    if claim.responsible_type:
+        party = {"mfg": lambda: db.get(Vendor, claim.vendor_id).name_of_firm if claim.vendor_id else None,
+                 "trans": lambda: db.get(Courier, claim.courier_id).courier_name if claim.courier_id else None,
+                 "ins": lambda: claim.insurer_name}[claim.responsible_type]()
+        log(db, claim, "decided", f"{user.name} pinned this on {RESP_LABEL[claim.responsible_type]}" + (f" — {party}" if party else ""), user)
     db.commit()
     db.refresh(claim)
     return _out(db, claim, role_key(user.role), can_act_on(db, user, "claims", "can_edit", None))
