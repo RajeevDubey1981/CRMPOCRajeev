@@ -24,4 +24,4 @@ export const shortageClaimsApi = {
 };
 
 export const ITEMS_MISSING = ["Copper pipe", "Remote control", "Gas charge", "Stabilizer", "Drain pipe", "Power cord", "Installation kit", "Other"];
-export const RESP_LABEL = { mfg: "Manufacturer", trans: "Transporter", ins: "Insurance" };
+export const RESP_LABEL = { mfg: "Manufacturer", trans: "Transporter", ins: "Insurance", company: "Company" };

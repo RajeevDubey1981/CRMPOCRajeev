@@ -16,7 +16,7 @@ from app.models._mixins import TimestampMixin
 
 FLOWS = ("service", "installation", "parts")
 STAGES = ("svm", "sub", "done", "rejected")
-RESPONSIBLE_TYPES = ("mfg", "trans", "ins")
+RESPONSIBLE_TYPES = ("mfg", "trans", "ins", "company")
 REQUIRED_PHOTOS = 4
 
 
@@ -40,7 +40,7 @@ class ShortageClaim(Base, TimestampMixin):
     amount: Mapped[Optional[float]] = mapped_column(Numeric(10, 2), nullable=True)
     stage: Mapped[str] = mapped_column(String(10), nullable=False, default="svm", index=True)
 
-    responsible_type: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)  # mfg | trans | ins
+    responsible_type: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)  # mfg | trans | ins | company
     vendor_id: Mapped[Optional[int]] = mapped_column(ForeignKey("vendors.id"), nullable=True)
     courier_id: Mapped[Optional[int]] = mapped_column(ForeignKey("couriers.id"), nullable=True)
     insurer_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)

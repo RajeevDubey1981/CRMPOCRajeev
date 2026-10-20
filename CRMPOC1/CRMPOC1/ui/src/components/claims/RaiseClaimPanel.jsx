@@ -41,12 +41,16 @@ export default function RaiseClaimPanel({ flow, context, triggerLabel, onSent })
     if (!description.trim()) { setErr("Describe what you found"); return; }
     const filled = photos.filter(Boolean).length;
     if (filled < 4) { setErr(`Add all 4 photos (${filled}/4 so far)`); return; }
+    if (flow === "parts" && !respType) { setErr("Pick who this claim is on"); return; }
+    if (flow === "parts" && respType === "mfg" && !vendorId) { setErr("Select the manufacturer"); return; }
+    if (flow === "parts" && respType === "trans" && !courierId) { setErr("Select the transporter"); return; }
+    if (flow === "parts" && respType === "ins" && !insurer.trim()) { setErr("Name the insurer / policy"); return; }
     setErr("");
     setBusy(true);
     try {
       const body = { flow, items, description: description.trim(), ...context };
       if (amount.trim() !== "") body.amount = Number(amount);
-      if (flow === "parts" && respType) {
+      if (flow === "parts") {
         body.responsible_type = respType;
         if (respType === "mfg") body.vendor_id = Number(vendorId);
         if (respType === "trans") body.courier_id = Number(courierId);
@@ -140,9 +144,9 @@ export default function RaiseClaimPanel({ flow, context, triggerLabel, onSent })
       </div>
       {flow === "parts" && (
         <div className="rounded-md border border-slate-200 bg-white p-2">
-          <label className="text-xs uppercase tracking-wide text-slate-500">Term of claim — on whom (optional, can also be decided later)</label>
-          <div className="mt-2 grid grid-cols-3 gap-2">
-            {[["mfg", "Manufacturer"], ["trans", "Transporter"], ["ins", "Insurance"]].map(([k, l]) => (
+          <label className="text-xs uppercase tracking-wide text-slate-500">Term of claim — on whom</label>
+          <div className="mt-2 grid grid-cols-4 gap-2">
+            {[["mfg", "Manufacturer"], ["trans", "Transporter"], ["ins", "Insurance"], ["company", "Company"]].map(([k, l]) => (
               <button
                 key={k} type="button" onClick={() => setRespType(k === respType ? "" : k)}
                 className={`rounded-md border px-2 py-2 text-xs font-semibold ${respType === k ? "border-brand-600 bg-brand-50 text-brand-800" : "border-slate-300 text-slate-600"}`}

@@ -48,7 +48,7 @@ IMAGE_MIME = {"image/jpeg", "image/jpg", "image/png"}
 MAX_PHOTO_BYTES = 5 * 1024 * 1024
 
 ITEMS_MISSING = ["Copper pipe", "Remote control", "Gas charge", "Stabilizer", "Drain pipe", "Power cord", "Installation kit", "Other"]
-RESP_LABEL = {"mfg": "Manufacturer", "trans": "Transporter", "ins": "Insurance"}
+RESP_LABEL = {"mfg": "Manufacturer", "trans": "Transporter", "ins": "Insurance", "company": "Company"}
 
 
 def can_act_on_stage(role: str, stage: str) -> bool:
@@ -233,8 +233,16 @@ def raise_claim(body: ClaimIn, db: Session = Depends(get_db), user: User = Depen
         role = role_key(user.role)
         if role not in SERVICE_MANAGER_ROLES and role not in SERVICE_TEAM_ROLES and role not in SECOND_STAGE_ROLES:
             raise HTTPException(status.HTTP_403_FORBIDDEN, "Your role cannot claim out a parts request")
-    if body.responsible_type is not None and body.responsible_type not in ("mfg", "trans", "ins"):
+    if body.flow == "parts" and not body.responsible_type:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Pick who this claim is on before sending it")
+    if body.responsible_type is not None and body.responsible_type not in ("mfg", "trans", "ins", "company"):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Unknown responsible party type")
+    if body.responsible_type == "mfg" and not body.vendor_id:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Pick the manufacturer")
+    if body.responsible_type == "trans" and not body.courier_id:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Pick the transporter")
+    if body.responsible_type == "ins" and not body.insurer_name:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Name the insurer / policy")
 
     claim = ShortageClaim(
         claim_no=next_claim_no(db), flow=body.flow, service_request_id=body.service_request_id,
@@ -254,7 +262,8 @@ def raise_claim(body: ClaimIn, db: Session = Depends(get_db), user: User = Depen
     if claim.responsible_type:
         party = {"mfg": lambda: db.get(Vendor, claim.vendor_id).name_of_firm if claim.vendor_id else None,
                  "trans": lambda: db.get(Courier, claim.courier_id).courier_name if claim.courier_id else None,
-                 "ins": lambda: claim.insurer_name}[claim.responsible_type]()
+                 "ins": lambda: claim.insurer_name,
+                 "company": lambda: None}[claim.responsible_type]()
         log(db, claim, "decided", f"{user.name} pinned this on {RESP_LABEL[claim.responsible_type]}" + (f" — {party}" if party else ""), user)
     db.commit()
     db.refresh(claim)
@@ -296,7 +305,7 @@ def decide(claim_id: int, body: DecideIn, db: Session = Depends(get_db), user: U
     role = role_key(user.role)
     if not can_act_on_stage(role, claim.stage) or not can_act_on(db, user, "claims", "can_edit", None):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "You cannot decide this claim at its current stage")
-    if body.responsible_type not in ("mfg", "trans", "ins"):
+    if body.responsible_type not in ("mfg", "trans", "ins", "company"):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Unknown responsible party type")
     if body.responsible_type == "mfg" and not body.vendor_id:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Pick the manufacturer")
@@ -310,8 +319,8 @@ def decide(claim_id: int, body: DecideIn, db: Session = Depends(get_db), user: U
     claim.insurer_name = body.insurer_name if body.responsible_type == "ins" else None
     if body.amount is not None:
         claim.amount = body.amount
-    party = {"mfg": lambda: db.get(Vendor, body.vendor_id).name_of_firm, "trans": lambda: db.get(Courier, body.courier_id).courier_name, "ins": lambda: body.insurer_name}[body.responsible_type]()
-    log(db, claim, "decided", f"{user.name} pinned this on {RESP_LABEL[body.responsible_type]} — {party}", user)
+    party = {"mfg": lambda: db.get(Vendor, body.vendor_id).name_of_firm, "trans": lambda: db.get(Courier, body.courier_id).courier_name, "ins": lambda: body.insurer_name, "company": lambda: None}[body.responsible_type]()
+    log(db, claim, "decided", f"{user.name} pinned this on {RESP_LABEL[body.responsible_type]}" + (f" — {party}" if party else ""), user)
     db.commit()
     db.refresh(claim)
     return _out(db, claim, role, True)  # can_edit already required to reach this point

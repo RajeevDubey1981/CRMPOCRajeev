@@ -249,8 +249,8 @@ function ClaimDetail({ id, onClose, onChanged }) {
         {claim.stage === "svm" && claim.can_act && (
           <div className="rounded-md border border-slate-200 p-3">
             <label className="text-xs uppercase tracking-wide text-slate-500">Term of claim — on whom, and on whose account</label>
-            <div className="mt-2 grid grid-cols-3 gap-2">
-              {[["mfg", "Manufacturer"], ["trans", "Transporter"], ["ins", "Insurance"]].map(([k, l]) => (
+            <div className="mt-2 grid grid-cols-4 gap-2">
+              {[["mfg", "Manufacturer"], ["trans", "Transporter"], ["ins", "Insurance"], ["company", "Company"]].map(([k, l]) => (
                 <button key={k} onClick={() => setRespType(k)} className={`rounded-md border px-2 py-2 text-xs font-semibold ${respType === k ? "border-brand-600 bg-brand-50 text-brand-800" : "border-slate-300 text-slate-600"}`}>
                   {l}
                 </button>
