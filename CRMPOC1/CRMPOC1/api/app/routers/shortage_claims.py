@@ -253,6 +253,15 @@ def raise_claim(body: ClaimIn, db: Session = Depends(get_db), user: User = Depen
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Service request not found")
     if body.flow == "installation" and body.installation_request_id is not None and db.get(InstallationRequest, body.installation_request_id) is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Installation request not found")
+    if body.flow == "service" and body.unit_id is not None:
+        # One claim per unit — raising a second one just duplicates the first instead of saying anything new.
+        already = db.scalar(
+            select(ShortageClaim.id)
+            .where(ShortageClaim.service_request_id == body.service_request_id, ShortageClaim.serial_no == body.serial_no)
+            .limit(1)
+        )
+        if already:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "A claim has already been raised for this unit")
     if body.flow == "parts":
         # Only whoever can act on a parts request's approval (Service Team, Service Manager, Admin/Sub Admin)
         # may claim it out from there — never the engineer who raised the request.

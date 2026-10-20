@@ -1571,7 +1571,7 @@ export default function EngineerUnitWorkflowPanel({
             onChanged={reloadServiceClaims}
             isServiceManager={isServiceManager}
           />
-          {canApproveUnits && (
+          {canApproveUnits && !hasClaim && (
             <RaiseClaimPanel
               flow="service"
               triggerLabel="Found something that was never delivered with this unit"
@@ -1587,6 +1587,11 @@ export default function EngineerUnitWorkflowPanel({
           {canApproveUnits && !hasClaim && (
             <div className="rounded-md border border-red-300 bg-red-50 px-3 py-2 text-xs font-medium text-red-700">
               Raise the claim above before you can Recommend or Approve this unit.
+            </div>
+          )}
+          {hasClaim && (
+            <div className="rounded-md border border-emerald-300 bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-800">
+              ✓ Claimed — this unit already has a claim raised against it.
             </div>
           )}
           <div className="flex justify-end gap-2 pt-2">
@@ -1697,6 +1702,7 @@ export default function EngineerUnitWorkflowPanel({
     if (!unit || activeModal?.type !== "completion") return null;
     const completion = completionRows[unit.id] || emptyCompletion(unit);
     const proof = completionProofs[unit.id];
+    const hasClaim = serviceClaims.some((c) => c.serial_no === unit.serial_no);
 
     return (
       <Modal
@@ -1838,17 +1844,19 @@ export default function EngineerUnitWorkflowPanel({
             onChanged={reloadServiceClaims}
             isServiceManager={isServiceManager}
           />
-          <RaiseClaimPanel
-            flow="service"
-            triggerLabel="Found something that was never delivered with this unit"
-            context={{
-              service_request_id: service?.id,
-              item_code: service?.item_code,
-              serial_no: unit.serial_no,
-              unit_id: unit.id,
-            }}
-            onSent={reloadServiceClaims}
-          />
+          {!hasClaim && (
+            <RaiseClaimPanel
+              flow="service"
+              triggerLabel="Found something that was never delivered with this unit"
+              context={{
+                service_request_id: service?.id,
+                item_code: service?.item_code,
+                serial_no: unit.serial_no,
+                unit_id: unit.id,
+              }}
+              onSent={reloadServiceClaims}
+            />
+          )}
           <div className="flex justify-end gap-2 pt-2">
             <button type="button" onClick={closeModal} className="rounded-md border border-slate-300 px-4 py-2 text-sm">
               Cancel
@@ -2436,7 +2444,14 @@ export default function EngineerUnitWorkflowPanel({
                   onCountChange={(n) => setPhotoCounts((c) => (c[unit.id] === n ? c : { ...c, [unit.id]: n }))}
                     />
                   </td>
-                  <td className="px-3 py-2"><StatusBadge value={unit.unit_status || "Assigned"} /></td>
+                  <td className="px-3 py-2">
+                    <StatusBadge value={unit.unit_status || "Assigned"} />
+                    {canSeeClaims && serviceClaims.some((c) => c.serial_no === unit.serial_no) && (
+                      <span className="ml-1 inline-block rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-red-700">
+                        Claimed
+                      </span>
+                    )}
+                  </td>
                   {isServiceTeam && (
                     <td className="max-w-xs px-3 py-2 text-xs text-slate-700">
                       {unit.return_remarks ? (
