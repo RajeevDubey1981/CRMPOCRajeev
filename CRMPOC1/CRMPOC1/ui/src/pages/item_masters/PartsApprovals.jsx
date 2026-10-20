@@ -6,6 +6,7 @@ import Modal from "../../components/Modal.jsx";
 import PartySummary from "../../components/claims/PartySummary.jsx";
 import RaiseClaimPanel from "../../components/claims/RaiseClaimPanel.jsx";
 import { partsApi, REQUEST_KINDS } from "../../api/parts.js";
+import { shortageClaimsApi, RESP_LABEL } from "../../api/shortageClaims.js";
 import { useAuth } from "../../auth/AuthContext.jsx";
 import { roleKey } from "../../utils/roles.js";
 
@@ -132,12 +133,16 @@ export function RequestDetail({ id, onClose, onChanged }) {
   const [note, setNote] = useState("");
   const [resubmitDesc, setResubmitDesc] = useState("");
   const [resubmitting, setResubmitting] = useState(false);
+  const [linkedClaims, setLinkedClaims] = useState([]);
 
   async function load() {
     try {
       setReq(await partsApi.requestDetail(id));
     } catch (e) {
       setErr(e.response?.data?.detail || "Could not load this request");
+    }
+    if (canClaim) {
+      shortageClaimsApi.list({ item_request_id: id }).then(setLinkedClaims).catch(() => {});
     }
   }
 
@@ -218,11 +223,31 @@ export function RequestDetail({ id, onClose, onChanged }) {
 
         {err && <p className="rounded-md bg-rose-50 px-2 py-1 text-xs text-rose-700">{err}</p>}
 
+        {linkedClaims.length > 0 && (
+          <div className="rounded-md border border-amber-300 bg-amber-50 p-3">
+            <span className="text-xs font-semibold uppercase tracking-wide text-amber-900">
+              {linkedClaims.length > 1 ? "Missing-item claims on this request" : "A missing-item claim was raised on this request"}
+            </span>
+            <ul className="mt-2 space-y-1">
+              {linkedClaims.map((c) => (
+                <li key={c.id} className="text-sm">
+                  <Link to="/claims" className="font-mono text-brand-700 hover:underline">{c.claim_no}</Link>
+                  {" — "}{c.stage === "done" ? "Closed" : c.stage === "rejected" ? "Rejected" : c.stage === "sub" ? "Pending Admin" : "Pending Service Manager"}
+                  {c.raised_by_name && <span className="text-slate-500"> · raised by {c.raised_by_name}</span>}
+                  {c.responsible_type && <span className="text-slate-500"> · on {RESP_LABEL[c.responsible_type]}</span>}
+                  {c.amount != null && <span className="text-slate-500"> · ₹{Number(c.amount).toLocaleString("en-IN")}</span>}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
         {canClaim && (
           <RaiseClaimPanel
             flow="parts"
             context={{ item_request_id: req.id, item_code: req.crm_item_code, serial_no: req.crm_serial_no }}
             triggerLabel="Claim it out (item missing / damaged)"
+            onSent={load}
           />
         )}
 

@@ -2171,6 +2171,36 @@ def _raise_part_requests_from_observation(
     pdb.commit()
 
 
+def _sync_linked_part_requests(
+    pdb: Session, service: ServiceRequest, serial_no: str | None, user: User, decision: str, remarks: str | None,
+) -> None:
+    """A part request raised straight from this unit's observation is the same decision as the
+    recommendation itself — approving or rejecting the work should carry the part along with it,
+    instead of making the Service Manager decide the same thing twice in two different screens.
+    Only touches requests still awaiting a decision; anything already decided, or needing photos it
+    doesn't have, is left for its own screen rather than failing the whole approval."""
+    if not serial_no:
+        return
+    linked = pdb.scalars(
+        select(ItemRequestModel).where(
+            ItemRequestModel.crm_service_request_id == service.id,
+            ItemRequestModel.crm_serial_no == serial_no,
+            ItemRequestModel.stage.in_(("svm", "sub")),
+        )
+    ).all()
+    if not linked:
+        return
+    for req in linked:
+        try:
+            if decision == "Approve":
+                parts_service.approve(pdb, req, user=user)
+            else:
+                parts_service.reject(pdb, req, user=user, reason=remarks or "Rejected alongside the service recommendation")
+        except (parts_service.WrongStage, parts_service.NotReady):
+            continue
+    pdb.commit()
+
+
 @router.post("/{service_id}/observations", response_model=ServiceOut)
 def submit_observation(service_id: int, body: ServiceObservationIn, db: Session = Depends(get_db), pdb: Session = Depends(get_parts_db), user: User = Depends(get_current_user)):
     service = _load_visible_service(db, service_id, user)
@@ -2400,6 +2430,7 @@ def service_approval(
     body: ServiceApprovalIn,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
+    pdb: Session = Depends(get_parts_db),
     user: User = Depends(get_current_user),
 ):
     service = _load_visible_service(db, service_id, user)
@@ -2420,6 +2451,7 @@ def service_approval(
         if observation is None:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "No observation found for this unit")
         approve_unit(db, service, unit, user, body.decision, body.remarks, observation)
+        _sync_linked_part_requests(pdb, service, unit.serial_no, user, body.decision, body.remarks)
     elif work_units:
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST,
@@ -2473,6 +2505,7 @@ def service_approval_bulk(
     body: ServiceBulkApprovalIn,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
+    pdb: Session = Depends(get_parts_db),
     user: User = Depends(get_current_user),
 ):
     service = _load_visible_service(db, service_id, user)
@@ -2483,6 +2516,11 @@ def service_approval_bulk(
 
     old_status = service.status
     approved = bulk_approve_units(db, service, user, body.decision, body.remarks, body.unit_ids)
+    approved_units = {u.id: u for u in list_work_units(db, service.id)}
+    for row in approved:
+        unit = approved_units.get(row.service_request_unit_id)
+        if unit is not None:
+            _sync_linked_part_requests(pdb, service, unit.serial_no, user, body.decision, body.remarks)
     _log_status(
         db,
         service,
