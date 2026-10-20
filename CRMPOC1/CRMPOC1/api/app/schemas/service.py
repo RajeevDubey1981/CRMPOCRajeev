@@ -263,6 +263,13 @@ class ServiceApprovalIn(BaseModel):
     unit_id: int | None = None
 
 
+class ServiceRecommendIn(BaseModel):
+    """Service Manager endorsing an over-cap unit for Admin/Sub Admin to decide — a courtesy note, not
+    a decision; the unit stays Pending Service Approval exactly as it already does."""
+    unit_id: int
+    remarks: str | None = None
+
+
 class ServiceBulkApprovalIn(BaseModel):
     decision: Literal["Approve", "Reject"]
     remarks: str | None = None

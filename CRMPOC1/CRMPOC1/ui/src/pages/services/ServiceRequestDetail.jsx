@@ -357,6 +357,7 @@ export default function ServiceRequestDetail() {
   const roleIsServiceTeam = isServiceTeamRole(role);
   const roleCanApproveUnits = canApproveServiceUnits(role);
   const roleCanForwardUnits = canForwardServiceUnits(role);
+  const roleIsServiceManager = role === "service_manager";
   const roleIsServiceDesk = isServiceDeskRole(role);
   const roleCanViewAllServices = canViewAllServiceRequests(role);
   const canAssignServiceDesk = canAssignServiceDeskUser(role);
@@ -572,6 +573,7 @@ export default function ServiceRequestDetail() {
   const isServiceTeam = roleIsServiceTeam;
   const canApproveUnits = roleCanApproveUnits;
   const canForwardUnits = roleCanForwardUnits;
+  const isServiceManager = roleIsServiceManager;
   const isEngineer = roleIsEngineer;
   const isVendor = roleIsVendor;
   const linkedCustomerSummary = [service.customer_name, service.customer_mobile, service.order_no].filter(Boolean).join(" • ");
@@ -1081,6 +1083,7 @@ export default function ServiceRequestDetail() {
           isEngineer={isEngineer}
           isVendor={isVendor}
           isServiceTeam={isServiceTeam}
+          isServiceManager={isServiceManager}
           canApproveUnits={canApproveUnits}
           canForwardUnits={canForwardUnits}
           isPaymentAdmin={roleIsPaymentAdmin}

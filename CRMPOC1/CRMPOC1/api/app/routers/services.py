@@ -38,6 +38,7 @@ from app.schemas.serial import SerialLookup
 from app.schemas.service import (
     SERVICE_STATUSES,
     ServiceApprovalIn,
+    ServiceRecommendIn,
     ServiceApprovalOut,
     ServiceAddUnitBySerialIn,
     ServiceAssignUnitsIn,
@@ -172,6 +173,7 @@ from app.services.service_unit_workflow import (
     forward_unit_to_manager,
     bulk_forward_units,
     APPROVAL_CAP_AMOUNT,
+    SERVICE_MANAGER_ROLES,
 )
 from app.services.payment_approval_workflow import (
     approval_stage_payload,
@@ -2496,6 +2498,35 @@ def service_approval(
     # recommendation was rejected, not the whole job, so the other units, engineer assignment, and
     # customer documents must not be wiped.
     after_service_approval(background_tasks, db, service, decision=body.decision, remarks=body.remarks, full_reset=body.unit_id is None)
+    return _hydrate_service(db, service, user=user)
+
+
+@router.post("/{service_id}/approval/recommend", response_model=ServiceOut)
+def service_approval_recommend(
+    service_id: int,
+    body: ServiceRecommendIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Service Manager's only action on a unit over their ₹2500 cap — it stays Pending Service Approval
+    (Admin/Sub Admin already see it there, same screen, same modal) but logs that the Service Manager
+    has reviewed and endorses it, so Admin isn't deciding blind."""
+    service = _load_visible_service(db, service_id, user)
+    role = canonical_role_key(user.role)
+    if role not in SERVICE_MANAGER_ROLES:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only the Service Manager needs to recommend — Admin or Sub Admin can approve this directly")
+    unit = db.get(ServiceRequestUnit, body.unit_id)
+    if unit is None or unit.service_request_id != service.id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Unit not found")
+    if unit.unit_status != "Pending Service Approval":
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "This unit is not pending approval")
+    _log_status(
+        db, service, action="Recommended to Admin", user=user,
+        old_status=service.status, new_status=service.status,
+        remarks=body.remarks, metadata={"unit_id": unit.id},
+    )
+    db.commit()
+    db.refresh(service)
     return _hydrate_service(db, service, user=user)
 
 

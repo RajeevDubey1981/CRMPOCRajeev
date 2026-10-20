@@ -236,6 +236,7 @@ export default function EngineerUnitWorkflowPanel({
   isEngineer,
   isVendor,
   isServiceTeam,
+  isServiceManager = false,
   canApproveUnits = isServiceTeam,
   canForwardUnits = isServiceTeam,
   isPaymentAdmin = false,
@@ -567,6 +568,17 @@ export default function EngineerUnitWorkflowPanel({
         remarks: approvalRemarks[unitId] || (decision === "Approve" ? "Approved" : "Rejected"),
       }),
       { successMessage: decision === "Approve" ? "Serial approved for service." : "Serial sent back." },
+    );
+    closeModal();
+  }
+
+  async function recommendUnit(unitId) {
+    await run(
+      () => servicesApi.recommendToAdmin(service.id, {
+        unit_id: unitId,
+        remarks: approvalRemarks[unitId] || "Recommended for Admin approval",
+      }),
+      { successMessage: "Recommended — Admin or Sub Admin will decide it from here." },
     );
     closeModal();
   }
@@ -1527,6 +1539,7 @@ export default function EngineerUnitWorkflowPanel({
           ) : unit.can_approve === false && (
             <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
               This amount is over the Service Manager's ₹{Number(unit.approval_cap_amount || 2500).toLocaleString("en-IN")} limit — only Admin or Sub Admin can approve it.
+              {isServiceManager && " Use Recommend below to send it to them with your note."}
             </div>
           )}
           <div>
@@ -1563,6 +1576,15 @@ export default function EngineerUnitWorkflowPanel({
             >
               Reject / Send back
             </button>
+            {isServiceManager && unit.can_approve === false && (
+              <button
+                type="button"
+                onClick={() => recommendUnit(unit.id)}
+                className="rounded-md border border-amber-400 bg-amber-50 px-4 py-2 text-sm font-medium text-amber-900 hover:bg-amber-100"
+              >
+                Recommend
+              </button>
+            )}
             <button
               type="button"
               onClick={() => approveUnit(unit.id, "Approve")}
