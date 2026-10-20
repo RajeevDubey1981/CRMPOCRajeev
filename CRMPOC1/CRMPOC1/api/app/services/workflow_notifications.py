@@ -548,7 +548,15 @@ def after_service_approval(
     *,
     decision: str,
     remarks: str | None = None,
+    full_reset: bool = True,
 ) -> None:
+    """full_reset=True is the original, whole-service reject: it was built for the single-serial-per-
+    request flow, where rejecting means the job itself is wrong and everything — units, engineer
+    assignment, even the customer's documents — needs re-verifying from scratch. Today's per-unit
+    recommend/approve/reject loop rejects one serial's recommended action, a routine step in an
+    ongoing job, not a verdict on the whole request — so it must NOT wipe the other units, the
+    engineer assignment, or force the customer to re-upload documents. Callers acting on a specific
+    unit_id (or a bulk set of them) pass full_reset=False."""
     engineer = resolve_service_engineer(db, service)
     if engineer is not None:
         notify_engineer_approval_decision(
@@ -558,7 +566,7 @@ def after_service_approval(
             decision=decision,
             remarks=remarks,
         )
-    if decision != "Reject":
+    if decision != "Reject" or not full_reset:
         return
 
     mark_latest_customer_documents_for_resubmission(db, service, remarks=remarks)

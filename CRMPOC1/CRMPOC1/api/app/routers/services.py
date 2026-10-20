@@ -2460,7 +2460,10 @@ def service_approval(
     _log_status(db, service, action="Service Approved" if body.decision == "Approve" else "Service Rejected", user=user, old_status=old_status, new_status=service.status, remarks=body.remarks)
     db.commit()
     db.refresh(service)
-    after_service_approval(background_tasks, db, service, decision=body.decision, remarks=body.remarks)
+    # A unit_id means this went through the per-serial recommend/approve/reject loop — one unit's
+    # recommendation was rejected, not the whole job, so the other units, engineer assignment, and
+    # customer documents must not be wiped.
+    after_service_approval(background_tasks, db, service, decision=body.decision, remarks=body.remarks, full_reset=body.unit_id is None)
     return _hydrate_service(db, service, user=user)
 
 
@@ -2492,7 +2495,9 @@ def service_approval_bulk(
     )
     db.commit()
     db.refresh(service)
-    after_service_approval(background_tasks, db, service, decision=body.decision, remarks=body.remarks)
+    # Bulk approval always acts on specific units, never "the whole job" — same reasoning as the
+    # single-unit path above.
+    after_service_approval(background_tasks, db, service, decision=body.decision, remarks=body.remarks, full_reset=False)
     return _hydrate_service(db, service, user=user)
 
 
