@@ -1152,7 +1152,7 @@ export default function EngineerUnitWorkflowPanel({
                         ))}
                       </div>
                     )}
-                    <p className="text-[11px] text-slate-500">Only real spare parts — these go to Parts approval as a Spare Part request.</p>
+                    <p className="text-[11px] font-semibold text-slate-600">Only real spare parts — these go to Parts approval as a Spare Part request.</p>
                   </div>
                 );
               })()}
@@ -1195,7 +1195,7 @@ export default function EngineerUnitWorkflowPanel({
                         ))}
                       </div>
                     )}
-                    <p className="text-[11px] text-slate-500">No catalogue — stays with this unit's service recommendation, not a Parts request.</p>
+                    <p className="text-[11px] font-semibold text-slate-600">No catalogue — stays with this unit's service recommendation, not a Parts request.</p>
                   </div>
                 );
               })()}
@@ -1203,22 +1203,22 @@ export default function EngineerUnitWorkflowPanel({
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <FieldLabel>Estimated service charge</FieldLabel>
-              <input
-                value={row.estimated_service_charge}
-                onChange={(e) => updateRow(unit.id, "estimated_service_charge", e.target.value)}
-                disabled={!canEdit}
-                placeholder="Estimated service charge"
-                className={inputClass(!canEdit)}
-              />
-            </div>
-            <div>
               <FieldLabel>Estimated parts charge</FieldLabel>
               <input
                 value={row.estimated_parts_charge}
                 onChange={(e) => updateRow(unit.id, "estimated_parts_charge", e.target.value)}
                 disabled={!canEdit}
                 placeholder="Estimated parts charge"
+                className={inputClass(!canEdit)}
+              />
+            </div>
+            <div>
+              <FieldLabel>Estimated service charge</FieldLabel>
+              <input
+                value={row.estimated_service_charge}
+                onChange={(e) => updateRow(unit.id, "estimated_service_charge", e.target.value)}
+                disabled={!canEdit}
+                placeholder="Estimated service charge"
                 className={inputClass(!canEdit)}
               />
             </div>
