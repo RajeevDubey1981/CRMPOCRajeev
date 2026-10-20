@@ -2,8 +2,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { partsApi } from "../../api/parts.js";
+import { servicesApi } from "../../api/services.js";
 import { shortageClaimsApi } from "../../api/shortageClaims.js";
 import { useAuth } from "../../auth/AuthContext.jsx";
+import { canApproveServiceUnits, canForwardServiceUnits } from "../../utils/roles.js";
 
 const APPROVAL_ROLES = new Set(["admin", "incool", "sub_admin", "service_manager", "service", "indcool", "indcool service", "indcool_service"]);
 const POLL_MS = 45000;
@@ -38,14 +40,17 @@ export default function ApprovalAlerts() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const canSeeApprovals = APPROVAL_ROLES.has((user?.role || "").trim().toLowerCase());
+  const canForwardUnits = canForwardServiceUnits(user?.role);
+  const canApproveUnits = canApproveServiceUnits(user?.role);
   const [alerts, setAlerts] = useState([]);
   const seenRef = useRef(null); // null until the first poll has set a baseline
 
   const poll = useCallback(async () => {
     try {
-      const [parts, claims] = await Promise.all([
+      const [parts, claims, reviewUnits] = await Promise.all([
         partsApi.requests({ mine: true }).catch(() => []),
         shortageClaimsApi.list({}).catch(() => []),
+        (canForwardUnits || canApproveUnits) ? servicesApi.reviewUnits().catch(() => []) : Promise.resolve([]),
       ]);
       const pending = [
         ...parts.filter((r) => r.can_act && (r.stage === "svm" || r.stage === "sub")).map((r) => ({
@@ -56,6 +61,18 @@ export default function ApprovalAlerts() {
         ...claims.filter((c) => c.can_act && (c.stage === "svm" || c.stage === "sub")).map((c) => ({
           key: `claim-${c.id}`, kind: "missing-item claim", no: c.claim_no,
           what: c.description || "Claim", by: c.raised_by_name, href: "/claims",
+        })),
+        // Service Team's own forward duty, and Service Manager/Admin's approval duty, for the
+        // per-serial service-unit chain — previously this queue was never polled at all.
+        ...reviewUnits.filter((u) => canForwardUnits && u.unit_status === "Pending Service Team Review").map((u) => ({
+          key: `svc-fwd-${u.unit_id}`, kind: "service recommendation", no: u.request_no,
+          what: u.recommended_action || u.problem_found || `Serial ${u.serial_no}`,
+          by: u.customer_name, href: `/services/${u.service_id}`,
+        })),
+        ...reviewUnits.filter((u) => canApproveUnits && u.unit_status === "Pending Service Approval").map((u) => ({
+          key: `svc-apr-${u.unit_id}`, kind: "service approval", no: u.request_no,
+          what: u.recommended_action || u.problem_found || `Serial ${u.serial_no}`,
+          by: u.customer_name, href: `/services/${u.service_id}`,
         })),
       ];
 
@@ -72,8 +89,7 @@ export default function ApprovalAlerts() {
     } catch {
       // keep the app usable even if a poll fails
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [canForwardUnits, canApproveUnits]);
 
   function dismiss(id) {
     setAlerts((prev) => prev.filter((a) => a.id !== id));
