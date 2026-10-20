@@ -17,6 +17,13 @@ function fmtDate(s) {
 
 const FILTERS = ["All", "Pending Service Team Review", "Pending Service Approval", "Approved for Service", "Rejected"];
 
+const CARD_STYLE = {
+  "Pending Service Team Review": { bar: "border-t-teal-500", chip: "bg-teal-50 text-teal-700" },
+  "Pending Service Approval": { bar: "border-t-amber-500", chip: "bg-amber-50 text-amber-700" },
+  "Approved for Service": { bar: "border-t-emerald-500", chip: "bg-emerald-50 text-emerald-700" },
+  "Rejected": { bar: "border-t-rose-500", chip: "bg-rose-50 text-rose-700" },
+};
+
 export default function ServiceReviewsPage() {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -54,17 +61,25 @@ export default function ServiceReviewsPage() {
         <p className="text-sm text-slate-500">Every unit you've forwarded, approved, or rejected across all service requests — where it is now, in one place.</p>
       </div>
 
-      <div className="flex flex-wrap gap-1">
-        {FILTERS.map((f) => (
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        {FILTERS.filter((f) => f !== "All").map((f) => (
           <button
             key={f}
-            onClick={() => setStatusFilter(f)}
-            className={`rounded-full px-3 py-1 text-xs font-medium ${statusFilter === f ? "bg-slate-800 text-white" : "bg-slate-100 text-slate-600"}`}
+            type="button"
+            onClick={() => setStatusFilter(statusFilter === f ? "All" : f)}
+            className={`rounded-lg border-t-[3px] bg-white p-2.5 text-left shadow-sm transition-transform hover:-translate-y-0.5 ${CARD_STYLE[f].bar} ${statusFilter === f ? "ring-2 ring-offset-1 ring-indcool-navy/30" : ""}`}
           >
-            {f}{f !== "All" && counts[f] ? ` (${counts[f]})` : ""}
+            <div className="text-xl font-extrabold tabular-nums text-slate-800">{counts[f] || 0}</div>
+            <div className={`mt-0.5 inline-block rounded-full px-1.5 py-0.5 text-[11px] font-semibold ${CARD_STYLE[f].chip}`}>{f}</div>
           </button>
         ))}
       </div>
+
+      {statusFilter !== "All" && (
+        <button type="button" onClick={() => setStatusFilter("All")} className="text-xs font-medium text-brand-700 hover:underline">
+          ← Show all statuses
+        </button>
+      )}
 
       {err && <div className="rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-700">{err}</div>}
 
