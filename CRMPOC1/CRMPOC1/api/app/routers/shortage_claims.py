@@ -59,6 +59,14 @@ def can_act_on_stage(role: str, stage: str) -> bool:
     return False
 
 
+def forbid_self_decision(claim: ShortageClaim, user: User, role: str) -> None:
+    """Whoever claimed it out can't also be the one who decides/approves it — Service Team and Service
+    Manager must hand a claim they raised to someone else, same as everywhere else in the CRM. Admin/Sub
+    Admin are the top of the chain and exempt."""
+    if claim.raised_by_user_id == user.id and role not in SECOND_STAGE_ROLES:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "You raised this claim — someone else needs to decide it")
+
+
 def next_claim_no(db: Session) -> str:
     n = db.scalar(select(ShortageClaim.id).order_by(ShortageClaim.id.desc()).limit(1)) or 0
     while True:
@@ -72,7 +80,7 @@ def log(db: Session, claim: ShortageClaim, kind: str, text: str, user: User | No
     db.add(ShortageClaimEvent(claim_id=claim.id, kind=kind, text=text, by_user_id=user.id if user else None))
 
 
-def _out(db: Session, c: ShortageClaim, role: str, can_edit: bool) -> dict:
+def _out(db: Session, c: ShortageClaim, role: str, can_edit: bool, user_id: int | None = None) -> dict:
     items = list(db.scalars(select(ShortageClaimItem.label).where(ShortageClaimItem.claim_id == c.id)))
     n_photos = len(db.scalars(select(ShortageClaimPhoto.id).where(ShortageClaimPhoto.claim_id == c.id)).all())
     raised_by = db.get(User, c.raised_by_user_id)
@@ -96,7 +104,7 @@ def _out(db: Session, c: ShortageClaim, role: str, can_edit: bool) -> dict:
         "raised_by_user_id": c.raised_by_user_id, "raised_by_name": raised_by.name if raised_by else None,
         "photo_count": n_photos, "required_photos": REQUIRED_PHOTOS,
         "created_at": c.created_at, "decided_at": c.decided_at,
-        "can_act": can_act_on_stage(role, c.stage) and can_edit,
+        "can_act": can_act_on_stage(role, c.stage) and can_edit and not (c.raised_by_user_id == user_id and role not in SECOND_STAGE_ROLES),
     }
 
 
@@ -130,7 +138,7 @@ def list_claims(
     rows = db.scalars(stmt.order_by(ShortageClaim.id.desc())).all()
     role = role_key(user.role)
     can_edit = can_act_on(db, user, "claims", "can_edit", None)
-    out = [_out(db, c, role, can_edit) for c in rows]
+    out = [_out(db, c, role, can_edit, user.id) for c in rows]
     if item:
         out = [o for o in out if item in o["items"]]
     return out
@@ -152,7 +160,7 @@ def export_csv(
     if responsible_type:
         stmt = stmt.where(ShortageClaim.responsible_type == responsible_type)
     stmt = dr.registered_between(stmt, ShortageClaim.created_at, date_from, date_to)
-    rows = [_out(db, c, role, can_edit) for c in db.scalars(stmt.order_by(ShortageClaim.id.desc())).all()]
+    rows = [_out(db, c, role, can_edit, user.id) for c in db.scalars(stmt.order_by(ShortageClaim.id.desc())).all()]
     if item:
         rows = [r for r in rows if item in r["items"]]
 
@@ -188,7 +196,7 @@ def list_parties(db: Session = Depends(get_db), user: User = Depends(get_current
 def get_claim(claim_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     claim = _load(db, user, claim_id)
     role = role_key(user.role)
-    out = _out(db, claim, role, can_act_on(db, user, "claims", "can_edit", None))
+    out = _out(db, claim, role, can_act_on(db, user, "claims", "can_edit", None), user.id)
     photos = db.scalars(select(ShortageClaimPhoto).where(ShortageClaimPhoto.claim_id == claim.id).order_by(ShortageClaimPhoto.id)).all()
     events = db.scalars(select(ShortageClaimEvent).where(ShortageClaimEvent.claim_id == claim.id).order_by(ShortageClaimEvent.id)).all()
     out["photos"] = [{"id": p.id, "file_path": p.file_path, "label": p.label, "uploaded_at": p.uploaded_at} for p in photos]
@@ -267,7 +275,7 @@ def raise_claim(body: ClaimIn, db: Session = Depends(get_db), user: User = Depen
         log(db, claim, "decided", f"{user.name} pinned this on {RESP_LABEL[claim.responsible_type]}" + (f" — {party}" if party else ""), user)
     db.commit()
     db.refresh(claim)
-    return _out(db, claim, role_key(user.role), can_act_on(db, user, "claims", "can_edit", None))
+    return _out(db, claim, role_key(user.role), can_act_on(db, user, "claims", "can_edit", None), user.id)
 
 
 @router.post("/{claim_id}/photos", status_code=status.HTTP_201_CREATED)
@@ -305,6 +313,7 @@ def decide(claim_id: int, body: DecideIn, db: Session = Depends(get_db), user: U
     role = role_key(user.role)
     if not can_act_on_stage(role, claim.stage) or not can_act_on(db, user, "claims", "can_edit", None):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "You cannot decide this claim at its current stage")
+    forbid_self_decision(claim, user, role)
     if body.responsible_type not in ("mfg", "trans", "ins", "company"):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Unknown responsible party type")
     if body.responsible_type == "mfg" and not body.vendor_id:
@@ -323,7 +332,7 @@ def decide(claim_id: int, body: DecideIn, db: Session = Depends(get_db), user: U
     log(db, claim, "decided", f"{user.name} pinned this on {RESP_LABEL[body.responsible_type]}" + (f" — {party}" if party else ""), user)
     db.commit()
     db.refresh(claim)
-    return _out(db, claim, role, True)  # can_edit already required to reach this point
+    return _out(db, claim, role, True, user.id)  # can_edit already required to reach this point
 
 
 @router.post("/{claim_id}/approve")
@@ -332,6 +341,7 @@ def approve(claim_id: int, db: Session = Depends(get_db), user: User = Depends(g
     role = role_key(user.role)
     if not can_act_on_stage(role, claim.stage) or not can_act_on(db, user, "claims", "can_edit", None):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "You cannot approve this claim at its current stage")
+    forbid_self_decision(claim, user, role)
     if claim.stage not in ("svm", "sub"):
         raise HTTPException(status.HTTP_409_CONFLICT, f"This claim is already {claim.stage}")
     n_photos = len(db.scalars(select(ShortageClaimPhoto.id).where(ShortageClaimPhoto.claim_id == claim.id)).all())
@@ -354,7 +364,7 @@ def approve(claim_id: int, db: Session = Depends(get_db), user: User = Depends(g
     log(db, claim, "approved", text, user)
     db.commit()
     db.refresh(claim)
-    return _out(db, claim, role, True)  # can_edit already required to reach this point
+    return _out(db, claim, role, True, user.id)  # can_edit already required to reach this point
 
 
 class RejectIn(BaseModel):
@@ -367,6 +377,7 @@ def reject(claim_id: int, body: RejectIn, db: Session = Depends(get_db), user: U
     role = role_key(user.role)
     if not can_act_on_stage(role, claim.stage) or not can_act_on(db, user, "claims", "can_edit", None):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "You cannot reject this claim at its current stage")
+    forbid_self_decision(claim, user, role)
     if claim.stage not in ("svm", "sub"):
         raise HTTPException(status.HTTP_409_CONFLICT, f"This claim is already {claim.stage}")
     claim.stage = "rejected"
@@ -375,4 +386,4 @@ def reject(claim_id: int, body: RejectIn, db: Session = Depends(get_db), user: U
     log(db, claim, "rejected", f"Rejected by {user.name}: {body.reason}", user)
     db.commit()
     db.refresh(claim)
-    return _out(db, claim, role, True)  # can_edit already required to reach this point
+    return _out(db, claim, role, True, user.id)  # can_edit already required to reach this point
