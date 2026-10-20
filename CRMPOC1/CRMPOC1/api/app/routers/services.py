@@ -17,6 +17,7 @@ from app.models.complaint import Complaint, ComplaintStatusLog
 from app.models.order import Order, OrderItem
 from app.models.payment import PaymentTransaction
 from app.models.payment_approval import PaymentApprovalLog
+from app.models.shortage_claim import ShortageClaim
 from app.models.service import (
     ServiceApproval,
     ServiceAssignment,
@@ -2426,6 +2427,16 @@ def service_forward_to_manager_bulk(
     return _hydrate_service(db, service, user=user)
 
 
+def _has_claim_for_unit(db: Session, service_id: int, serial_no: str | None) -> bool:
+    """A unit can only be Recommended or Approved once at least one claim has been raised against it —
+    raising it is how whoever's deciding records whether anything was found missing."""
+    return bool(db.scalar(
+        select(ShortageClaim.id)
+        .where(ShortageClaim.service_request_id == service_id, ShortageClaim.serial_no == serial_no)
+        .limit(1)
+    ))
+
+
 @router.post("/{service_id}/approval", response_model=ServiceOut)
 def service_approval(
     service_id: int,
@@ -2452,6 +2463,8 @@ def service_approval(
         observation = observations.get(unit.id)
         if observation is None:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "No observation found for this unit")
+        if body.decision == "Approve" and not _has_claim_for_unit(db, service.id, unit.serial_no):
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Raise a claim for this unit before it can be approved")
         approve_unit(db, service, unit, user, body.decision, body.remarks, observation)
         _sync_linked_part_requests(pdb, service, unit.serial_no, user, body.decision, body.remarks)
     elif work_units:
@@ -2520,6 +2533,8 @@ def service_approval_recommend(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Unit not found")
     if unit.unit_status != "Pending Service Approval":
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "This unit is not pending approval")
+    if not _has_claim_for_unit(db, service.id, unit.serial_no):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Raise a claim for this unit before it can be recommended")
     _log_status(
         db, service, action="Recommended to Admin", user=user,
         old_status=service.status, new_status=service.status,

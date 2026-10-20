@@ -1512,6 +1512,7 @@ export default function EngineerUnitWorkflowPanel({
   function renderApprovalModal() {
     const unit = activeUnit();
     if (!unit || activeModal?.type !== "approval") return null;
+    const hasClaim = serviceClaims.some((c) => c.serial_no === unit.serial_no);
 
     return (
       <Modal
@@ -1583,6 +1584,11 @@ export default function EngineerUnitWorkflowPanel({
               onSent={reloadServiceClaims}
             />
           )}
+          {canApproveUnits && !hasClaim && (
+            <div className="rounded-md border border-red-300 bg-red-50 px-3 py-2 text-xs font-medium text-red-700">
+              Raise the claim above before you can Recommend or Approve this unit.
+            </div>
+          )}
           <div className="flex justify-end gap-2 pt-2">
             <button type="button" onClick={closeModal} className="rounded-md border border-slate-300 px-4 py-2 text-sm">
               Cancel
@@ -1599,7 +1605,9 @@ export default function EngineerUnitWorkflowPanel({
               <button
                 type="button"
                 onClick={() => recommendUnit(unit.id)}
-                className="rounded-md border border-amber-400 bg-amber-50 px-4 py-2 text-sm font-medium text-amber-900 hover:bg-amber-100"
+                disabled={!hasClaim}
+                title={!hasClaim ? "Raise a claim first" : undefined}
+                className="rounded-md border border-amber-400 bg-amber-50 px-4 py-2 text-sm font-medium text-amber-900 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 Recommend
               </button>
@@ -1607,8 +1615,8 @@ export default function EngineerUnitWorkflowPanel({
             <button
               type="button"
               onClick={() => approveUnit(unit.id, "Approve")}
-              disabled={!canApproveUnits || unit.can_approve === false}
-              title={!canApproveUnits ? "Only the Service Manager or Admin can approve" : unit.can_approve === false ? "Over the Service Manager's cap — needs Admin or Sub Admin" : undefined}
+              disabled={!canApproveUnits || unit.can_approve === false || !hasClaim}
+              title={!canApproveUnits ? "Only the Service Manager or Admin can approve" : unit.can_approve === false ? "Over the Service Manager's cap — needs Admin or Sub Admin" : !hasClaim ? "Raise a claim first" : undefined}
               className="rounded-md bg-orange-500 px-4 py-2 text-sm text-white disabled:cursor-not-allowed disabled:opacity-50"
             >
               Approve
