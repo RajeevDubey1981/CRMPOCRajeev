@@ -93,6 +93,9 @@ class ServiceObservation(Base):
     observation: Mapped[str | None] = mapped_column(Text, nullable=True)
     recommended_action: Mapped[str | None] = mapped_column(Text, nullable=True)
     parts_required_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Other work/misc charges the engineer notes (AC wash, gas top-up ...) -- kept separate from
+    # parts_required_json so these never get raised as a bogus "Spare part" request in Parts approval.
+    misc_required_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     estimated_service_charge: Mapped[float | None] = mapped_column(Numeric(12, 2), nullable=True)
     estimated_parts_charge: Mapped[float | None] = mapped_column(Numeric(12, 2), nullable=True)
     remarks: Mapped[str | None] = mapped_column(Text, nullable=True)

@@ -395,6 +395,7 @@ def submit_unit_observation(
         existing.observation = body.observation
         existing.recommended_action = body.recommended_action
         existing.parts_required_json = json_dump(body.parts_required)
+        existing.misc_required_json = json_dump(body.misc_required)
         existing.estimated_service_charge = body.estimated_service_charge
         existing.estimated_parts_charge = body.estimated_parts_charge
         existing.remarks = body.remarks
@@ -416,6 +417,7 @@ def submit_unit_observation(
         observation=body.observation,
         recommended_action=body.recommended_action,
         parts_required_json=json_dump(body.parts_required),
+        misc_required_json=json_dump(body.misc_required),
         estimated_service_charge=body.estimated_service_charge,
         estimated_parts_charge=body.estimated_parts_charge,
         remarks=body.remarks,
@@ -473,6 +475,7 @@ def bulk_submit_observations(
             observation=item.observation,
             recommended_action=item.recommended_action,
             parts_required_json=json_dump(item.parts_required),
+            misc_required_json=json_dump(item.misc_required),
             estimated_service_charge=item.estimated_service_charge,
             estimated_parts_charge=item.estimated_parts_charge,
             remarks=item.remarks,

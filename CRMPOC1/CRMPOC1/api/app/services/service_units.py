@@ -55,6 +55,16 @@ def _json_load_parts(observation) -> list[str]:
         return []
 
 
+def _json_load_misc(observation) -> list[str]:
+    if observation is None or not observation.misc_required_json:
+        return []
+    try:
+        value = json.loads(observation.misc_required_json)
+        return value if isinstance(value, list) else []
+    except json.JSONDecodeError:
+        return []
+
+
 def _is_installed_order_item(db: Session, order_item: OrderItem) -> bool:
     return order_item_is_installed_for_service(db, order_item)
 
@@ -506,6 +516,7 @@ def build_unit_rows(
             "observation_text": observation.observation if observation else None,
             "recommended_action": observation.recommended_action if observation else None,
             "parts_required": _json_load_parts(observation),
+            "misc_required": _json_load_misc(observation),
             "estimated_service_charge": float(observation.estimated_service_charge) if observation and observation.estimated_service_charge is not None else None,
             "estimated_parts_charge": float(observation.estimated_parts_charge) if observation and observation.estimated_parts_charge is not None else None,
             "observation_remarks": observation.remarks if observation else None,

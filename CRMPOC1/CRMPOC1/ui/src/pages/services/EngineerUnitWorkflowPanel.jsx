@@ -85,6 +85,7 @@ function emptyRow(unit) {
     observation: unit.observation_text || "",
     recommended_action: unit.recommended_action || "",
     parts_required: (unit.parts_required || []).join(", "),
+    misc_required: (unit.misc_required || []).join(", "),
     estimated_service_charge: unit.estimated_service_charge ?? "",
     estimated_parts_charge: unit.estimated_parts_charge ?? "",
     remarks: unit.observation_remarks || "",
@@ -537,6 +538,9 @@ export default function EngineerUnitWorkflowPanel({
         parts_required: row.parts_required
           ? row.parts_required.split(",").map((item) => item.trim()).filter(Boolean)
           : [],
+        misc_required: row.misc_required
+          ? row.misc_required.split(",").map((item) => item.trim()).filter(Boolean)
+          : [],
         estimated_service_charge: row.estimated_service_charge === "" ? null : Number(row.estimated_service_charge),
         estimated_parts_charge: row.estimated_parts_charge === "" ? null : Number(row.estimated_parts_charge),
         remarks: row.remarks || null,
@@ -556,6 +560,9 @@ export default function EngineerUnitWorkflowPanel({
         recommended_action: row?.recommended_action || null,
         parts_required: row?.parts_required
           ? row.parts_required.split(",").map((item) => item.trim()).filter(Boolean)
+          : [],
+        misc_required: row?.misc_required
+          ? row.misc_required.split(",").map((item) => item.trim()).filter(Boolean)
           : [],
         estimated_service_charge: row?.estimated_service_charge === "" || row?.estimated_service_charge === undefined
           ? null
@@ -1092,35 +1099,23 @@ export default function EngineerUnitWorkflowPanel({
               className={inputClass(!canEdit)}
             />
           </div>
-          <div>
-            <FieldLabel>Parts required</FieldLabel>
-            {(() => {
-              const selected = (row.parts_required || "").split(",").map((p) => p.trim()).filter(Boolean);
-              const fitting = partsCatalogue.filter((p) => !unit.item_code || (p.fits || []).includes(unit.item_code));
-              const options = (fitting.length ? fitting : partsCatalogue).filter((p) => !selected.includes(p.part_name));
-              function addPart(name) {
-                if (!name || selected.includes(name)) return;
-                updateRow(unit.id, "parts_required", [...selected, name].join(", "));
-              }
-              function removePart(name) {
-                updateRow(unit.id, "parts_required", selected.filter((p) => p !== name).join(", "));
-              }
-              return (
-                <div className="space-y-1.5">
-                  {selected.length > 0 && (
-                    <div className="flex flex-wrap gap-1.5">
-                      {selected.map((name) => (
-                        <span key={name} className="inline-flex items-center gap-1 rounded-full bg-sky-100 px-2.5 py-1 text-xs font-medium text-sky-800">
-                          {name}
-                          {canEdit && (
-                            <button type="button" onClick={() => removePart(name)} className="text-sky-500 hover:text-sky-800">✕</button>
-                          )}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                  {canEdit && (
-                    <div className="flex gap-2">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div>
+              <FieldLabel>Parts required</FieldLabel>
+              {(() => {
+                const selected = (row.parts_required || "").split(",").map((p) => p.trim()).filter(Boolean);
+                const fitting = partsCatalogue.filter((p) => !unit.item_code || (p.fits || []).includes(unit.item_code));
+                const options = (fitting.length ? fitting : partsCatalogue).filter((p) => !selected.includes(p.part_name));
+                function addPart(name) {
+                  if (!name || selected.includes(name)) return;
+                  updateRow(unit.id, "parts_required", [...selected, name].join(", "));
+                }
+                function removePart(name) {
+                  updateRow(unit.id, "parts_required", selected.filter((p) => p !== name).join(", "));
+                }
+                return (
+                  <div className="space-y-1.5">
+                    {canEdit && (
                       <select
                         value=""
                         onChange={(e) => { if (e.target.value) addPart(e.target.value); }}
@@ -1131,24 +1126,80 @@ export default function EngineerUnitWorkflowPanel({
                           <option key={p.id} value={p.part_name}>{p.part_name}{p.part_code ? ` (${p.part_code})` : ""}</option>
                         ))}
                       </select>
-                    </div>
-                  )}
-                  {canEdit && (
-                    <input
-                      placeholder="Not in catalogue? Type a part name and press Enter"
-                      className={inputClass()}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") {
-                          e.preventDefault();
-                          addPart(e.currentTarget.value.trim());
-                          e.currentTarget.value = "";
-                        }
-                      }}
-                    />
-                  )}
-                </div>
-              );
-            })()}
+                    )}
+                    {canEdit && (
+                      <input
+                        placeholder="Not in catalogue? Type a part name and press Enter"
+                        className={inputClass()}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            addPart(e.currentTarget.value.trim());
+                            e.currentTarget.value = "";
+                          }
+                        }}
+                      />
+                    )}
+                    {selected.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5">
+                        {selected.map((name) => (
+                          <span key={name} className="inline-flex items-center gap-1 rounded-full bg-sky-100 px-2.5 py-1 text-xs font-medium text-sky-800">
+                            {name}
+                            {canEdit && (
+                              <button type="button" onClick={() => removePart(name)} className="text-sky-500 hover:text-sky-800">✕</button>
+                            )}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    <p className="text-[11px] text-slate-500">Only real spare parts — these go to Parts approval as a Spare Part request.</p>
+                  </div>
+                );
+              })()}
+            </div>
+            <div>
+              <FieldLabel>Other work / misc charge</FieldLabel>
+              {(() => {
+                const selected = (row.misc_required || "").split(",").map((p) => p.trim()).filter(Boolean);
+                function addMisc(name) {
+                  if (!name || selected.includes(name)) return;
+                  updateRow(unit.id, "misc_required", [...selected, name].join(", "));
+                }
+                function removeMisc(name) {
+                  updateRow(unit.id, "misc_required", selected.filter((p) => p !== name).join(", "));
+                }
+                return (
+                  <div className="space-y-1.5">
+                    {canEdit && (
+                      <input
+                        placeholder="e.g. AC wash, gas top-up — type and press Enter"
+                        className={inputClass()}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            addMisc(e.currentTarget.value.trim());
+                            e.currentTarget.value = "";
+                          }
+                        }}
+                      />
+                    )}
+                    {selected.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5">
+                        {selected.map((name) => (
+                          <span key={name} className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-1 text-xs font-medium text-amber-800">
+                            {name}
+                            {canEdit && (
+                              <button type="button" onClick={() => removeMisc(name)} className="text-amber-500 hover:text-amber-800">✕</button>
+                            )}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    <p className="text-[11px] text-slate-500">No catalogue — stays with this unit's service recommendation, not a Parts request.</p>
+                  </div>
+                );
+              })()}
+            </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -1527,6 +1578,9 @@ export default function EngineerUnitWorkflowPanel({
             <div><strong>Problem:</strong> {unit.problem_found || "—"}</div>
             <div className="mt-1"><strong>Observation:</strong> {unit.observation_text || "—"}</div>
             <div className="mt-1"><strong>Recommended action:</strong> {unit.recommended_action || "—"}</div>
+            {unit.misc_required && unit.misc_required.length > 0 && (
+              <div className="mt-1"><strong>Other work:</strong> {unit.misc_required.join(", ")}</div>
+            )}
           </div>
           {(unit.requested_total != null && unit.requested_total > 0) && (
             <div className={`rounded-md border px-3 py-2 text-sm ${unit.requires_admin_approval ? "border-amber-300 bg-amber-50 text-amber-900" : "border-slate-200 bg-slate-50 text-slate-700"}`}>
@@ -1649,6 +1703,9 @@ export default function EngineerUnitWorkflowPanel({
             <div><strong>Problem:</strong> {unit.problem_found || "—"}</div>
             <div className="mt-1"><strong>Observation:</strong> {unit.observation_text || "—"}</div>
             <div className="mt-1"><strong>Recommended action:</strong> {unit.recommended_action || "—"}</div>
+            {unit.misc_required && unit.misc_required.length > 0 && (
+              <div className="mt-1"><strong>Other work:</strong> {unit.misc_required.join(", ")}</div>
+            )}
           </div>
           {(unit.requested_total != null && unit.requested_total > 0) && (
             <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">

@@ -161,6 +161,7 @@ class ServiceRequestUnitOut(BaseModel):
     observation_text: str | None = None
     recommended_action: str | None = None
     parts_required: list[str] = []
+    misc_required: list[str] = []
     estimated_service_charge: float | None = None
     estimated_parts_charge: float | None = None
     observation_remarks: str | None = None
@@ -228,6 +229,7 @@ class ServiceObservationIn(BaseModel):
     observation: str | None = None
     recommended_action: str | None = None
     parts_required: list[str] = []
+    misc_required: list[str] = []
     estimated_service_charge: float | None = None
     estimated_parts_charge: float | None = None
     remarks: str | None = None
@@ -380,6 +382,7 @@ class ServiceObservationOut(BaseModel):
     observation: str | None
     recommended_action: str | None
     parts_required: list[str] = []
+    misc_required: list[str] = []
     estimated_service_charge: float | None
     estimated_parts_charge: float | None
     remarks: str | None
