@@ -112,7 +112,7 @@ export default function PartsApprovals() {
   );
 }
 
-function RequestDetail({ id, onClose, onChanged }) {
+export function RequestDetail({ id, onClose, onChanged }) {
   const [req, setReq] = useState(null);
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
