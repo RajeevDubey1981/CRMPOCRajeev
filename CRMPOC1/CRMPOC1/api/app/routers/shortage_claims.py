@@ -104,7 +104,8 @@ def _out(db: Session, c: ShortageClaim, role: str, can_edit: bool, user_id: int 
         "raised_by_user_id": c.raised_by_user_id, "raised_by_name": raised_by.name if raised_by else None,
         "photo_count": n_photos, "required_photos": REQUIRED_PHOTOS,
         "created_at": c.created_at, "decided_at": c.decided_at,
-        "can_act": can_act_on_stage(role, c.stage) and can_edit and not (c.raised_by_user_id == user_id and role not in SECOND_STAGE_ROLES),
+        "can_act": can_act_on_stage(role, c.stage) and can_edit,
+        "can_approve": can_act_on_stage(role, c.stage) and can_edit and not (c.raised_by_user_id == user_id and role not in SECOND_STAGE_ROLES),
     }
 
 
@@ -377,7 +378,6 @@ def reject(claim_id: int, body: RejectIn, db: Session = Depends(get_db), user: U
     role = role_key(user.role)
     if not can_act_on_stage(role, claim.stage) or not can_act_on(db, user, "claims", "can_edit", None):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "You cannot reject this claim at its current stage")
-    forbid_self_decision(claim, user, role)
     if claim.stage not in ("svm", "sub"):
         raise HTTPException(status.HTTP_409_CONFLICT, f"This claim is already {claim.stage}")
     claim.stage = "rejected"

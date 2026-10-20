@@ -1129,8 +1129,9 @@ def list_review_units(db: Session = Depends(get_db), user: User = Depends(get_cu
     """Every unit this Service Team/Manager/Admin user has (or will) touch in the approval chain, across all
     service requests — the cross-request tracking view that Item Master's Approvals tab gives Parts requests,
     but for the per-serial service-unit approval chain, which otherwise only lives inside each request's own page."""
-    if not (can_user_forward_at_all(user) or can_user_approve_at_all(user)):
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only the Service Team, Service Manager, or Admin can view this")
+    is_engineer = canonical_role_key(user.role) == "engineer"
+    if not (can_user_forward_at_all(user) or can_user_approve_at_all(user) or is_engineer):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only the Service Team, Service Manager, Admin, or the assigned engineer can view this")
 
     statuses = ["Pending Service Team Review", "Pending Service Approval", "Approved for Service", "Rejected"]
     stmt = (
@@ -1139,7 +1140,11 @@ def list_review_units(db: Session = Depends(get_db), user: User = Depends(get_cu
         .where(ServiceRequestUnit.unit_status.in_(statuses), ServiceRequest.deleted_at.is_(None))
         .order_by(desc(ServiceRequestUnit.updated_at))
     )
-    if not can_view_all_service_requests(user):
+    if is_engineer:
+        # An engineer only needs to see their own units here, and only the ones sent back to them —
+        # the review/approval queue itself is the reviewers' business, not theirs.
+        stmt = stmt.where(ServiceRequestUnit.assigned_engineer_id == user.id, ServiceRequestUnit.unit_status == "Rejected")
+    elif not can_view_all_service_requests(user):
         if is_service_desk_user(user):
             stmt = stmt.where(ServiceRequest.assigned_service_user_id == user.id)
         else:

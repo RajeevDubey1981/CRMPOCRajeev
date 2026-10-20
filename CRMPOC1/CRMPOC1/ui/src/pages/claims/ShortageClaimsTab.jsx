@@ -246,7 +246,7 @@ function ClaimDetail({ id, onClose, onChanged }) {
           </ul>
         </div>
 
-        {claim.stage === "svm" && claim.can_act && (
+        {claim.stage === "svm" && claim.can_approve && (
           <div className="rounded-md border border-slate-200 p-3">
             <label className="text-xs uppercase tracking-wide text-slate-500">Term of claim — on whom, and on whose account</label>
             <div className="mt-2 grid grid-cols-4 gap-2">
@@ -284,23 +284,29 @@ function ClaimDetail({ id, onClose, onChanged }) {
             </div>
           </div>
         )}
-        {claim.responsible_type && !(claim.stage === "svm" && claim.can_act) && (
+        {claim.responsible_type && !(claim.stage === "svm" && claim.can_approve) && (
           <div className="text-sm">{respPill(claim)} <b>{claim.party_name}</b></div>
         )}
 
         {err && <p className="rounded-md bg-rose-50 px-2 py-1 text-xs text-rose-700">{err}</p>}
 
-        {claim.can_act && (claim.stage === "svm" || claim.stage === "sub") && (
+        {(claim.can_act || claim.can_approve) && (claim.stage === "svm" || claim.stage === "sub") && (
           <div className="flex flex-wrap items-center justify-end gap-2 border-t border-slate-200 pt-3">
-            <input value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} placeholder="Reason to reject" className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
-            <button disabled={busy || !rejectReason.trim()} onClick={() => act(() => shortageClaimsApi.reject(id, rejectReason.trim()))} className="rounded-md border border-rose-300 px-4 py-2 text-sm text-rose-700 hover:bg-rose-50 disabled:opacity-50">
-              Reject
-            </button>
+            {claim.can_act && (
+              <>
+                <input value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} placeholder="Reason to reject" className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                <button disabled={busy || !rejectReason.trim()} onClick={() => act(() => shortageClaimsApi.reject(id, rejectReason.trim()))} className="rounded-md border border-rose-300 px-4 py-2 text-sm text-rose-700 hover:bg-rose-50 disabled:opacity-50">
+                  Reject
+                </button>
+              </>
+            )}
+            {claim.can_approve && (
             <button disabled={busy} onClick={() => act(() => shortageClaimsApi.approve(id))} className="rounded-md bg-emerald-700 px-4 py-2 text-sm text-white hover:bg-emerald-800 disabled:opacity-50">
               {claim.stage === "svm"
                 ? (isServiceManager && claim.amount != null && claim.amount <= APPROVAL_CAP_AMOUNT ? "Claim this — close" : "Claim this — forward to Admin")
                 : "Claim this — close"}
             </button>
+            )}
           </div>
         )}
       </div>

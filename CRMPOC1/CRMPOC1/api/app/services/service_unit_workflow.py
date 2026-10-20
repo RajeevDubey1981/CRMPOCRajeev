@@ -601,7 +601,9 @@ def approve_unit(
         approved_at=_now(),
     )
     db.add(approval)
-    unit.unit_status = UNIT_STATUS_APPROVED if decision == "Approve" else UNIT_STATUS_REJECTED
+    # A Service Manager rejection goes back to Service Team, not straight to a dead end — they decide
+    # whether to forward it again (e.g. after a correction) or send it back to the engineer themselves.
+    unit.unit_status = UNIT_STATUS_APPROVED if decision == "Approve" else UNIT_STATUS_PENDING_TEAM_REVIEW
     if decision == "Approve":
         service.approved_at = _now()
     sync_aggregate_service_status(db, service)

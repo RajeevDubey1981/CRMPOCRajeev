@@ -52,7 +52,7 @@ export default function ApprovalAlerts() {
       const [parts, claims, reviewUnits] = await Promise.all([
         partsApi.requests({ mine: true }).catch(() => []),
         shortageClaimsApi.list({}).catch(() => []),
-        (canForwardUnits || canApproveUnits) ? servicesApi.reviewUnits().catch(() => []) : Promise.resolve([]),
+        (canForwardUnits || canApproveUnits || isEngineer) ? servicesApi.reviewUnits().catch(() => []) : Promise.resolve([]),
       ]);
       const pending = [
         ...parts.filter((r) => r.can_act && (r.stage === "svm" || r.stage === "sub")).map((r) => ({
@@ -86,7 +86,9 @@ export default function ApprovalAlerts() {
           what: r.part_name_cache || r.crm_item_name_cache || r.description || "Request",
           by: null, href: "/items/my-requests", tone: "rejected",
         })),
-        ...reviewUnits.filter((u) => canForwardUnits && u.unit_status === "Rejected").map((u) => ({
+        // Service Team sent this unit back to the engineer for correction — the engineer needs to
+        // know so they can fix the observation and resubmit, restarting the review chain.
+        ...reviewUnits.filter((u) => isEngineer && u.unit_status === "Rejected").map((u) => ({
           key: `svc-rej-${u.unit_id}`, kind: "service recommendation", no: u.request_no,
           what: u.recommended_action || u.problem_found || `Serial ${u.serial_no}`,
           by: null, href: `/services/${u.service_id}`, tone: "rejected",
