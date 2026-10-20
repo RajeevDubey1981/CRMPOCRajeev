@@ -93,6 +93,17 @@ export default function RaiseClaimPanel({ flow, context, triggerLabel, onSent })
   }
 
   if (!open) {
+    if (flow === "service") {
+      return (
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className="mt-3 w-full animate-pulse rounded-md border-2 border-red-600 bg-red-50 px-4 py-3 text-base font-bold text-red-700 shadow-[0_0_14px_rgba(220,38,38,0.65)] hover:bg-red-100"
+        >
+          ⚠ Claim — mandatory
+        </button>
+      );
+    }
     return (
       <button
         type="button"
