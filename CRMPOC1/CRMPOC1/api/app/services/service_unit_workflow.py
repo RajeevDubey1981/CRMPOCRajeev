@@ -383,7 +383,13 @@ def submit_unit_observation(
         )
     )
     if existing is not None:
-        if canonical_role_key(user.role) != "engineer" or unit.unit_status not in {UNIT_STATUS_PENDING_TEAM_REVIEW, UNIT_STATUS_PENDING_APPROVAL, UNIT_STATUS_REJECTED}:
+        role = canonical_role_key(user.role)
+        is_editor_engineer = role == "engineer"
+        # Service Team/Manager/Admin may also correct the recommendation while it's still in review --
+        # the frontend already shows them this form, so the backend has to actually honor it.
+        is_reviewer_editor = can_user_forward_at_all(user) or can_user_approve_at_all(user)
+        status_allowed = unit.unit_status in {UNIT_STATUS_PENDING_TEAM_REVIEW, UNIT_STATUS_PENDING_APPROVAL, UNIT_STATUS_REJECTED}
+        if not status_allowed or not (is_editor_engineer or is_reviewer_editor):
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Observation already submitted for this serial")
         existing.problem_found = body.problem_found
         existing.observation = body.observation
@@ -393,7 +399,10 @@ def submit_unit_observation(
         existing.estimated_parts_charge = body.estimated_parts_charge
         existing.remarks = body.remarks
         existing.submitted_at = _now()
-        unit.unit_status = UNIT_STATUS_PENDING_TEAM_REVIEW
+        # Only the engineer re-editing restarts the review chain; a reviewer's own correction
+        # while handling it doesn't send their own in-progress item back a stage.
+        if is_editor_engineer:
+            unit.unit_status = UNIT_STATUS_PENDING_TEAM_REVIEW
         return existing
 
     observation = ServiceObservation(

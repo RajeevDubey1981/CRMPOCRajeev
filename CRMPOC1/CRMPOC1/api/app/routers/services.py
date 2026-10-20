@@ -2116,8 +2116,9 @@ def _raise_part_requests_from_observation(
 @router.post("/{service_id}/observations", response_model=ServiceOut)
 def submit_observation(service_id: int, body: ServiceObservationIn, db: Session = Depends(get_db), pdb: Session = Depends(get_parts_db), user: User = Depends(get_current_user)):
     service = _load_visible_service(db, service_id, user)
-    if not (_is_engineer(user) or _is_vendor(user)):
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only engineer or vendor can submit observation")
+    can_review_recommendation = can_user_forward_at_all(user) or can_user_approve_at_all(user)
+    if not (_is_engineer(user) or _is_vendor(user) or can_review_recommendation):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only engineer, vendor, or the reviewing team can submit observation")
     if _is_engineer(user) and not _engineer_can_work_on_service(db, service, user):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "This request is not assigned to you")
     if _is_vendor(user):
