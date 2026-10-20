@@ -88,7 +88,7 @@ export default function QueriesDashboard({ data, tile, onTile, kind, onKind, hol
         {canSeeApprovals && (
           <button
             type="button"
-            onClick={() => navigate("/items?tab=approvals")}
+            onClick={() => navigate("/approvals?tab=parts")}
             style={{ "--i": TILES.length, "--c": "#7c3aed", borderColor: "transparent" }}
             className="s-rise s-lift s-press relative overflow-hidden rounded-xl border-2 bg-white p-3.5 text-left shadow-sm q-approvals-pulse"
           >

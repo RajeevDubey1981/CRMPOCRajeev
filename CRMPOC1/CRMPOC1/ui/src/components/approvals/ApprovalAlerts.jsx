@@ -58,7 +58,7 @@ export default function ApprovalAlerts() {
         ...parts.filter((r) => r.can_act && (r.stage === "svm" || r.stage === "sub")).map((r) => ({
           key: `part-${r.id}`, kind: "parts request", no: r.request_no,
           what: r.part_name_cache || r.crm_item_name_cache || r.description || "Request",
-          by: r.crm_raised_by_name, href: "/items?tab=approvals",
+          by: r.crm_raised_by_name, href: "/approvals?tab=parts",
           // A request raised against a service job is time-sensitive (the job is waiting on it) —
           // alert for it even on the very first poll of the session, not only once it's "new".
           alwaysAlert: !!r.crm_service_request_id,

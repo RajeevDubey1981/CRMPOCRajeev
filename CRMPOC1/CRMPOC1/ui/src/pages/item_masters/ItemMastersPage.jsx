@@ -1,29 +1,16 @@
 import { useState } from "react";
-import { useSearchParams } from "react-router-dom";
 
-import { useAuth } from "../../auth/AuthContext.jsx";
 import ItemMasterList from "./ItemMasterList.jsx";
 import SparePartsCatalogue from "./SparePartsCatalogue.jsx";
-import PartsApprovals from "./PartsApprovals.jsx";
 
-const APPROVAL_ROLES = new Set(["admin", "incool", "sub_admin", "service_manager", "service", "indcool", "indcool service", "indcool_service"]);
-
-function roleKey(role) {
-  return (role || "").trim().toLowerCase();
-}
+// Approving parts/item requests now lives on the combined Approvals page (Parts tab), not here.
+const tabs = [
+  ["items", "Items"],
+  ["catalogue", "Spare parts"],
+];
 
 export default function ItemMastersPage() {
-  const { user } = useAuth();
-  const canSeeApprovals = APPROVAL_ROLES.has(roleKey(user?.role));
-  const [searchParams] = useSearchParams();
-  const initialTab = searchParams.get("tab") === "approvals" && canSeeApprovals ? "approvals" : "items";
-  const [tab, setTab] = useState(initialTab);
-
-  const tabs = [
-    ["items", "Items"],
-    ["catalogue", "Spare parts"],
-    ...(canSeeApprovals ? [["approvals", "Approvals"]] : []),
-  ];
+  const [tab, setTab] = useState("items");
 
   return (
     <div className="space-y-4">
@@ -43,7 +30,6 @@ export default function ItemMastersPage() {
       </nav>
       {tab === "items" && <ItemMasterList />}
       {tab === "catalogue" && <SparePartsCatalogue />}
-      {tab === "approvals" && canSeeApprovals && <PartsApprovals />}
     </div>
   );
 }
