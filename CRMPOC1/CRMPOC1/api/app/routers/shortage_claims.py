@@ -124,7 +124,7 @@ def _load(db: Session, user: User, claim_id: int) -> ShortageClaim:
 def list_claims(
     flow: Optional[str] = None, item: Optional[str] = None, responsible_type: Optional[str] = None,
     stage: Optional[str] = None, date_from: Optional[date] = None, date_to: Optional[date] = None,
-    item_request_id: Optional[int] = None,
+    item_request_id: Optional[int] = None, service_request_id: Optional[int] = None,
     db: Session = Depends(get_db), user: User = Depends(get_current_user),
 ):
     if not can_act_on(db, user, "claims", "can_view", None):
@@ -134,6 +134,8 @@ def list_claims(
         stmt = stmt.where(ShortageClaim.flow == flow)
     if item_request_id:
         stmt = stmt.where(ShortageClaim.item_request_id == item_request_id)
+    if service_request_id:
+        stmt = stmt.where(ShortageClaim.service_request_id == service_request_id)
     if responsible_type:
         stmt = stmt.where(ShortageClaim.responsible_type == responsible_type)
     if stage:

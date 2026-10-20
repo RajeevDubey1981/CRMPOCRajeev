@@ -9,6 +9,8 @@ import ScanInput from "../../components/scan/ScanInput.jsx";
 import StatusBadge from "../../components/StatusBadge.jsx";
 import RaisePartRequestPanel from "../../components/parts/RaisePartRequestPanel.jsx";
 import RaiseClaimPanel from "../../components/claims/RaiseClaimPanel.jsx";
+import LinkedClaimsPanel from "../../components/claims/LinkedClaimsPanel.jsx";
+import { shortageClaimsApi } from "../../api/shortageClaims.js";
 
 const PAYMENT_TYPES = ["Cash", "UPI"];
 const BILLING_LOCKED_STATUSES = ["Payment Completed", "Closed"];
@@ -244,6 +246,16 @@ export default function EngineerUnitWorkflowPanel({
   busy = false,
   actionError = "",
 }) {
+  const [serviceClaims, setServiceClaims] = useState([]);
+  const canSeeClaims = canApproveUnits || canForwardUnits;
+
+  function reloadServiceClaims() {
+    if (service?.id && canSeeClaims) {
+      shortageClaimsApi.list({ service_request_id: service.id }).then(setServiceClaims).catch(() => {});
+    }
+  }
+  useEffect(() => { reloadServiceClaims(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [service?.id, canSeeClaims]);
+
   const workUnits = useMemo(() => {
     const units = service?.units || [];
     if (isEngineer) {
@@ -1553,6 +1565,11 @@ export default function EngineerUnitWorkflowPanel({
               className={`${inputClass()} disabled:bg-slate-100 disabled:text-slate-500`}
             />
           </div>
+          <LinkedClaimsPanel
+            claims={serviceClaims.filter((c) => c.serial_no === unit.serial_no)}
+            onChanged={reloadServiceClaims}
+            isServiceManager={isServiceManager}
+          />
           {canApproveUnits && (
             <RaiseClaimPanel
               flow="service"
@@ -1562,6 +1579,7 @@ export default function EngineerUnitWorkflowPanel({
                 item_code: service?.item_code,
                 serial_no: unit.serial_no,
               }}
+              onSent={reloadServiceClaims}
             />
           )}
           <div className="flex justify-end gap-2 pt-2">
@@ -1806,6 +1824,11 @@ export default function EngineerUnitWorkflowPanel({
               }}
             />
           )}
+          <LinkedClaimsPanel
+            claims={serviceClaims.filter((c) => c.serial_no === unit.serial_no)}
+            onChanged={reloadServiceClaims}
+            isServiceManager={isServiceManager}
+          />
           <RaiseClaimPanel
             flow="service"
             triggerLabel="Found something that was never delivered with this unit"
@@ -1814,6 +1837,7 @@ export default function EngineerUnitWorkflowPanel({
               item_code: service?.item_code,
               serial_no: unit.serial_no,
             }}
+            onSent={reloadServiceClaims}
           />
           <div className="flex justify-end gap-2 pt-2">
             <button type="button" onClick={closeModal} className="rounded-md border border-slate-300 px-4 py-2 text-sm">

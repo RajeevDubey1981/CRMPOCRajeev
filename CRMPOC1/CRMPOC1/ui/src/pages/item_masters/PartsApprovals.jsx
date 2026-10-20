@@ -3,10 +3,11 @@ import { Link } from "react-router-dom";
 
 import DateRangeFilter from "../../components/DateRangeFilter.jsx";
 import Modal from "../../components/Modal.jsx";
+import LinkedClaimsPanel from "../../components/claims/LinkedClaimsPanel.jsx";
 import PartySummary from "../../components/claims/PartySummary.jsx";
 import RaiseClaimPanel from "../../components/claims/RaiseClaimPanel.jsx";
 import { partsApi, REQUEST_KINDS } from "../../api/parts.js";
-import { shortageClaimsApi, RESP_LABEL } from "../../api/shortageClaims.js";
+import { shortageClaimsApi } from "../../api/shortageClaims.js";
 import { useAuth } from "../../auth/AuthContext.jsx";
 import { roleKey } from "../../utils/roles.js";
 
@@ -223,24 +224,7 @@ export function RequestDetail({ id, onClose, onChanged }) {
 
         {err && <p className="rounded-md bg-rose-50 px-2 py-1 text-xs text-rose-700">{err}</p>}
 
-        {linkedClaims.length > 0 && (
-          <div className="rounded-md border border-amber-300 bg-amber-50 p-3">
-            <span className="text-xs font-semibold uppercase tracking-wide text-amber-900">
-              {linkedClaims.length > 1 ? "Missing-item claims on this request" : "A missing-item claim was raised on this request"}
-            </span>
-            <ul className="mt-2 space-y-1">
-              {linkedClaims.map((c) => (
-                <li key={c.id} className="text-sm">
-                  <Link to="/claims" className="font-mono text-brand-700 hover:underline">{c.claim_no}</Link>
-                  {" — "}{c.stage === "done" ? "Closed" : c.stage === "rejected" ? "Rejected" : c.stage === "sub" ? "Pending Admin" : "Pending Service Manager"}
-                  {c.raised_by_name && <span className="text-slate-500"> · raised by {c.raised_by_name}</span>}
-                  {c.responsible_type && <span className="text-slate-500"> · on {RESP_LABEL[c.responsible_type]}</span>}
-                  {c.amount != null && <span className="text-slate-500"> · ₹{Number(c.amount).toLocaleString("en-IN")}</span>}
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
+        <LinkedClaimsPanel claims={linkedClaims} onChanged={load} isServiceManager={roleKey(user?.role) === "service_manager"} />
 
         {canClaim && (
           <RaiseClaimPanel
