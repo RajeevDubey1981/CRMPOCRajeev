@@ -1540,6 +1540,17 @@ export default function EngineerUnitWorkflowPanel({
               className={`${inputClass()} disabled:bg-slate-100 disabled:text-slate-500`}
             />
           </div>
+          {canApproveUnits && (
+            <RaiseClaimPanel
+              flow="service"
+              triggerLabel="Found something that was never delivered with this unit"
+              context={{
+                service_request_id: service?.id,
+                item_code: service?.item_code,
+                serial_no: unit.serial_no,
+              }}
+            />
+          )}
           <div className="flex justify-end gap-2 pt-2">
             <button type="button" onClick={closeModal} className="rounded-md border border-slate-300 px-4 py-2 text-sm">
               Cancel
