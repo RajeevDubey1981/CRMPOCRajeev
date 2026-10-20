@@ -27,7 +27,7 @@ export default function PartySummary({ onPick, active }) {
     return () => { live = false; };
   }, []);
 
-  if (!counts || counts.total === 0) return null;
+  if (!counts) return null;
 
   return (
     <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
