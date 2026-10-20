@@ -40,6 +40,8 @@ router = APIRouter(prefix="/api/shortage-claims", tags=["shortage-claims"])
 
 SERVICE_MANAGER_ROLES = frozenset({"service_manager"})
 SECOND_STAGE_ROLES = frozenset({"admin", "incool", "sub_admin"})
+# Service Team can claim it out too, same as when deciding a parts request's approval.
+SERVICE_TEAM_ROLES = frozenset({"service", "indcool_service", "indcool", "indcool service"})
 IMAGE_EXT = {".jpg", ".jpeg", ".png"}
 IMAGE_MIME = {"image/jpeg", "image/jpg", "image/png"}
 MAX_PHOTO_BYTES = 5 * 1024 * 1024
@@ -50,7 +52,7 @@ RESP_LABEL = {"mfg": "Manufacturer", "trans": "Transporter", "ins": "Insurance"}
 
 def can_act_on_stage(role: str, stage: str) -> bool:
     if stage == "svm":
-        return role in SERVICE_MANAGER_ROLES or role in SECOND_STAGE_ROLES
+        return role in SERVICE_MANAGER_ROLES or role in SERVICE_TEAM_ROLES or role in SECOND_STAGE_ROLES
     if stage == "sub":
         return role in SECOND_STAGE_ROLES
     return False
@@ -85,6 +87,7 @@ def _out(db: Session, c: ShortageClaim, role: str, can_edit: bool) -> dict:
     return {
         "id": c.id, "claim_no": c.claim_no, "flow": c.flow,
         "service_request_id": c.service_request_id, "installation_request_id": c.installation_request_id,
+        "item_request_id": c.item_request_id,
         "item_code": c.item_code, "serial_no": c.serial_no, "items": items,
         "description": c.description, "stage": c.stage,
         "responsible_type": c.responsible_type, "responsible_label": RESP_LABEL.get(c.responsible_type),
@@ -204,6 +207,7 @@ class ClaimIn(BaseModel):
     description: str = Field(min_length=3)
     service_request_id: Optional[int] = None
     installation_request_id: Optional[int] = None
+    item_request_id: Optional[int] = None
     item_code: Optional[str] = None
     serial_no: Optional[str] = None
     items: list[str] = Field(min_length=1)
@@ -211,16 +215,23 @@ class ClaimIn(BaseModel):
 
 @router.post("", status_code=status.HTTP_201_CREATED)
 def raise_claim(body: ClaimIn, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    if body.flow not in ("service", "installation"):
+    if body.flow not in ("service", "installation", "parts"):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Unknown flow")
     if body.flow == "service" and body.service_request_id is not None and db.get(ServiceRequest, body.service_request_id) is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Service request not found")
     if body.flow == "installation" and body.installation_request_id is not None and db.get(InstallationRequest, body.installation_request_id) is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Installation request not found")
+    if body.flow == "parts":
+        # Only whoever can act on a parts request's approval (Service Team, Service Manager, Admin/Sub Admin)
+        # may claim it out from there — never the engineer who raised the request.
+        role = role_key(user.role)
+        if role not in SERVICE_MANAGER_ROLES and role not in SERVICE_TEAM_ROLES and role not in SECOND_STAGE_ROLES:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "Your role cannot claim out a parts request")
 
     claim = ShortageClaim(
         claim_no=next_claim_no(db), flow=body.flow, service_request_id=body.service_request_id,
-        installation_request_id=body.installation_request_id, item_code=body.item_code, serial_no=body.serial_no,
+        installation_request_id=body.installation_request_id, item_request_id=body.item_request_id,
+        item_code=body.item_code, serial_no=body.serial_no,
         description=body.description, stage="svm", raised_by_user_id=user.id,
     )
     db.add(claim)

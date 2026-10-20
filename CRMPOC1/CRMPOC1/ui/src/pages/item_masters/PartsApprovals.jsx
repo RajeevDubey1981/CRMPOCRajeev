@@ -4,7 +4,14 @@ import { Link } from "react-router-dom";
 import DateRangeFilter from "../../components/DateRangeFilter.jsx";
 import Modal from "../../components/Modal.jsx";
 import PartySummary from "../../components/claims/PartySummary.jsx";
+import RaiseClaimPanel from "../../components/claims/RaiseClaimPanel.jsx";
 import { partsApi, REQUEST_KINDS } from "../../api/parts.js";
+import { useAuth } from "../../auth/AuthContext.jsx";
+import { roleKey } from "../../utils/roles.js";
+
+// Service Team, Service Manager, Admin, Incool, Sub Admin — the same roles that can act on a parts
+// request's approval — can also claim it out from there. The engineer who raised it never can.
+const CLAIM_ROLES = new Set(["service", "indcool_service", "indcool", "indcool service", "service_manager", "admin", "incool", "sub_admin"]);
 
 const KIND_LABEL = Object.fromEntries(REQUEST_KINDS.map((k) => [k.value, k.label]));
 const KIND_PILL = { part: "bg-blue-100 text-blue-800", expense: "bg-amber-100 text-amber-800", ondemand: "bg-violet-100 text-violet-800", unit: "bg-rose-100 text-rose-800" };
@@ -113,6 +120,8 @@ export default function PartsApprovals() {
 }
 
 export function RequestDetail({ id, onClose, onChanged }) {
+  const { user } = useAuth();
+  const canClaim = CLAIM_ROLES.has(roleKey(user?.role));
   const [req, setReq] = useState(null);
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
@@ -208,6 +217,14 @@ export function RequestDetail({ id, onClose, onChanged }) {
         )}
 
         {err && <p className="rounded-md bg-rose-50 px-2 py-1 text-xs text-rose-700">{err}</p>}
+
+        {canClaim && (
+          <RaiseClaimPanel
+            flow="parts"
+            context={{ item_request_id: req.id, item_code: req.crm_item_code, serial_no: req.crm_serial_no }}
+            triggerLabel="Claim it out (item missing / damaged)"
+          />
+        )}
 
         {req.can_act && (
           <div className="flex flex-wrap items-center justify-end gap-2 border-t border-slate-200 pt-3">

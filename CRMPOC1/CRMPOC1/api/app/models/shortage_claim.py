@@ -7,14 +7,14 @@ on the same Claims page."""
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import DateTime, ForeignKey, String, Text
+from sqlalchemy import DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 
 from app.database import Base
 from app.models._mixins import TimestampMixin
 
-FLOWS = ("service", "installation")
+FLOWS = ("service", "installation", "parts")
 STAGES = ("svm", "sub", "done", "rejected")
 RESPONSIBLE_TYPES = ("mfg", "trans", "ins")
 REQUIRED_PHOTOS = 4
@@ -29,6 +29,8 @@ class ShortageClaim(Base, TimestampMixin):
 
     service_request_id: Mapped[Optional[int]] = mapped_column(ForeignKey("service_requests.id"), nullable=True, index=True)
     installation_request_id: Mapped[Optional[int]] = mapped_column(ForeignKey("installation_requests.id"), nullable=True, index=True)
+    # Parts requests live in the separate indcool_parts database, so this is a plain id, not a real FK.
+    item_request_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
     item_code: Mapped[Optional[str]] = mapped_column(String(100), nullable=True, index=True)
     serial_no: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
 
