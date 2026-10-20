@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 
+import { api } from "../../api/client.js";
 import { shortageClaimsApi, ITEMS_MISSING } from "../../api/shortageClaims.js";
+import { toDownloadUrl } from "../../utils/downloadUrl.js";
 
 const PHOTO_LABELS = ["Box as received", "Seal / tape", "Empty space inside", "Item's label on box"];
 
@@ -17,6 +19,7 @@ export default function RaiseClaimPanel({ flow, context, triggerLabel, onSent })
   const [amount, setAmount] = useState("");
   const [photos, setPhotos] = useState([]);
   const [extraPhotos, setExtraPhotos] = useState([]);
+  const [unitPhotos, setUnitPhotos] = useState([]);
   const [respType, setRespType] = useState("");
   const [vendorId, setVendorId] = useState("");
   const [courierId, setCourierId] = useState("");
@@ -29,6 +32,12 @@ export default function RaiseClaimPanel({ flow, context, triggerLabel, onSent })
   useEffect(() => {
     if (open && (flow === "parts" || flow === "service")) shortageClaimsApi.parties().then(setParties).catch(() => {});
   }, [open, flow]);
+
+  useEffect(() => {
+    if (open && flow === "service" && context?.unit_id) {
+      api.get(`/api/field-photos/service-units/${context.unit_id}`).then((r) => setUnitPhotos(r.data)).catch(() => setUnitPhotos([]));
+    }
+  }, [open, flow, context?.unit_id]);
 
   function toggleItem(i) {
     setItems((cur) => (cur.includes(i) ? cur.filter((x) => x !== i) : [...cur, i]));
@@ -130,9 +139,26 @@ export default function RaiseClaimPanel({ flow, context, triggerLabel, onSent })
       </div>
       {flow === "service" ? (
         <div>
-          <div className="rounded-md border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600">
-            The engineer's photos from verifying this serial will be attached automatically — no need to retake them.
-          </div>
+          <label className="text-xs uppercase tracking-wide text-slate-500">
+            Photos from serial verification ({unitPhotos.length}) — attached automatically, no need to retake them
+          </label>
+          {unitPhotos.length > 0 ? (
+            <div className="mt-1 grid grid-cols-4 gap-2">
+              {unitPhotos.map((p, i) => (
+                <a key={p.id} href={toDownloadUrl(p.file_path)} target="_blank" rel="noreferrer" className="block">
+                  <img
+                    src={toDownloadUrl(p.file_path)}
+                    alt={`Serial verification photo ${i + 1}`}
+                    className="h-16 w-full rounded border border-slate-200 object-cover"
+                  />
+                </a>
+              ))}
+            </div>
+          ) : (
+            <div className="mt-1 rounded-md border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600">
+              No photos found from serial verification for this unit yet.
+            </div>
+          )}
           <label className="mt-2 block text-xs uppercase tracking-wide text-slate-500">Add your own photos — optional</label>
           <input
             type="file" accept=".jpg,.jpeg,.png" multiple
