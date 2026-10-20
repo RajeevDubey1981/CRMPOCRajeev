@@ -107,7 +107,7 @@ export default function RaiseClaimPanel({ flow, context, triggerLabel, onSent })
   return (
     <div className="mt-3 space-y-3 rounded-md border border-amber-300 bg-amber-50 p-3">
       <div className="flex items-center justify-between">
-        <span className="text-sm font-medium text-amber-900">Report a missing item</span>
+        <span className="text-sm font-medium text-amber-900">{flow === "service" ? "Raise a claim (mandatory)" : "Report a missing item"}</span>
         <button type="button" onClick={() => setOpen(false)} className="text-xs text-amber-700 hover:underline">Cancel</button>
       </div>
       {flow !== "service" && (
