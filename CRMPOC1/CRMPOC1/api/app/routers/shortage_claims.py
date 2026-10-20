@@ -36,6 +36,7 @@ from app.services import date_range as dr
 from app.services.file_service import save_upload
 from app.services.permissions import can_act_on
 from app.services.role_access import role_key
+from app.services.serial_history import create_serial_history_event
 
 router = APIRouter(prefix="/api/shortage-claims", tags=["shortage-claims"])
 
@@ -315,6 +316,16 @@ def raise_claim(body: ClaimIn, db: Session = Depends(get_db), user: User = Depen
         log(db, claim, "decided", f"{user.name} pinned this on {RESP_LABEL[claim.responsible_type]}" + (f" — {party}" if party else ""), user)
     db.commit()
     db.refresh(claim)
+    if claim.serial_no:
+        create_serial_history_event(
+            db, serial_no=claim.serial_no, event_type="CLAIM", event_subtype="MISSING_ITEM_RAISED",
+            event_at=claim.created_at, performed_by_user_id=user.id, performed_by_name=user.name,
+            source_table="shortage_claims", source_id=claim.id,
+            title="Missing-item claim raised",
+            description=f"{claim.claim_no}: {claim.description[:200]}",
+            metadata={"claim_no": claim.claim_no, "flow": claim.flow, "amount": float(claim.amount) if claim.amount is not None else None},
+        )
+        db.commit()
     return _out(db, claim, role_key(user.role), can_act_on(db, user, "claims", "can_edit", None), user.id)
 
 
@@ -405,6 +416,16 @@ def approve(claim_id: int, db: Session = Depends(get_db), user: User = Depends(g
     log(db, claim, "approved", text, user)
     db.commit()
     db.refresh(claim)
+    if claim.serial_no and claim.stage == "done":
+        create_serial_history_event(
+            db, serial_no=claim.serial_no, event_type="CLAIM", event_subtype="MISSING_ITEM_CLOSED",
+            event_at=claim.decided_at, performed_by_user_id=user.id, performed_by_name=user.name,
+            source_table="shortage_claims", source_id=claim.id + 1_000_000,
+            title="Missing-item claim closed",
+            description=f"{claim.claim_no} closed" + (f" — on {RESP_LABEL.get(claim.responsible_type)}" if claim.responsible_type else ""),
+            metadata={"claim_no": claim.claim_no, "amount": float(claim.amount) if claim.amount is not None else None, "responsible_type": claim.responsible_type},
+        )
+        db.commit()
     return _out(db, claim, role, True, user.id)  # can_edit already required to reach this point
 
 
@@ -426,4 +447,14 @@ def reject(claim_id: int, body: RejectIn, db: Session = Depends(get_db), user: U
     log(db, claim, "rejected", f"Rejected by {user.name}: {body.reason}", user)
     db.commit()
     db.refresh(claim)
+    if claim.serial_no:
+        create_serial_history_event(
+            db, serial_no=claim.serial_no, event_type="CLAIM", event_subtype="MISSING_ITEM_REJECTED",
+            event_at=claim.decided_at, performed_by_user_id=user.id, performed_by_name=user.name,
+            source_table="shortage_claims", source_id=claim.id + 2_000_000,
+            title="Missing-item claim rejected",
+            description=f"{claim.claim_no} rejected: {body.reason}",
+            metadata={"claim_no": claim.claim_no, "reason": body.reason},
+        )
+        db.commit()
     return _out(db, claim, role, True, user.id)  # can_edit already required to reach this point

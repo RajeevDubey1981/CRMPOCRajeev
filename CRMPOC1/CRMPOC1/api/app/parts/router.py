@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime, timezone
 from decimal import Decimal
 from typing import Optional
 
@@ -20,6 +20,7 @@ from app.parts.models import ItemRequest, ItemRequestEvent, ItemRequestPhoto, Sp
 from app.parts.rules import KINDS, effective_required_photos, required_photos, stage_label
 from app.services import date_range as dr
 from app.services.file_service import save_upload
+from app.services.serial_history import create_serial_history_event
 
 router = APIRouter(prefix="/api/parts", tags=["parts"])
 
@@ -57,6 +58,23 @@ def _req_out(r: ItemRequest, ctx: Ctx) -> dict:
         "request_date": r.request_date.isoformat(), "created_at": r.created_at, "decided_at": r.decided_at,
         "can_act": ctx.can_act_on_stage(r.stage),
     }
+
+
+def _log_part_history(db: Session, req: ItemRequest, user: User, *, event_subtype: str, offset: int, event_at: datetime | None, title: str, description: str, extra: dict | None = None) -> None:
+    """One entry on the Serial History timeline (PART_REPLACEMENT) for this request's lifecycle, so a
+    serial's full history — parts/misc requests from either Service or Installation — shows in one place.
+    offset keeps each lifecycle stage its own row instead of overwriting the previous one (same source_id
+    would otherwise collide on the (source_table, source_id, event_type, serial_no) dedup key)."""
+    if not req.crm_serial_no:
+        return
+    create_serial_history_event(
+        db, serial_no=req.crm_serial_no, event_type="PART_REPLACEMENT", event_subtype=event_subtype,
+        event_at=event_at or datetime.now(timezone.utc), performed_by_user_id=user.id, performed_by_name=user.name,
+        source_table="parts_item_request", source_id=req.id + offset,
+        title=title, description=description,
+        metadata={"request_no": req.request_no, "kind": req.kind, "amount": float(req.amount) if req.amount is not None else None, **(extra or {})},
+    )
+    db.commit()
 
 
 def _load_request(pdb: Session, request_id: int) -> ItemRequest:
@@ -208,7 +226,7 @@ class RequestIn(BaseModel):
 
 
 @router.post("/requests", status_code=status.HTTP_201_CREATED)
-def raise_request(body: RequestIn, ctx: Ctx = Depends(get_ctx), pdb: Session = Depends(get_parts_db)):
+def raise_request(body: RequestIn, ctx: Ctx = Depends(get_ctx), db: Session = Depends(get_db), pdb: Session = Depends(get_parts_db)):
     if body.kind not in KINDS:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Unknown request kind")
     amount = body.amount
@@ -224,6 +242,12 @@ def raise_request(body: RequestIn, ctx: Ctx = Depends(get_ctx), pdb: Session = D
     )
     pdb.commit()
     pdb.refresh(req)
+    _log_part_history(
+        db, req, ctx.user, event_subtype="REQUESTED", offset=0, event_at=req.created_at,
+        title=f"{KINDS.get(req.kind, req.kind)} requested",
+        description=f"{req.request_no}: {req.description[:200]}",
+        extra={"service_request_no": req.crm_service_request_no, "installation_request_no": req.crm_installation_request_no},
+    )
     return _req_out(req, ctx)
 
 
@@ -253,7 +277,7 @@ async def upload_photo(request_id: int, photo: UploadFile = File(...), label: st
 
 
 @router.post("/requests/{request_id}/approve")
-def approve_request(request_id: int, ctx: Ctx = Depends(get_ctx), pdb: Session = Depends(get_parts_db)):
+def approve_request(request_id: int, ctx: Ctx = Depends(get_ctx), db: Session = Depends(get_db), pdb: Session = Depends(get_parts_db)):
     req = _load_request(pdb, request_id)
     if not ctx.can_act_on_stage(req.stage):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "You cannot approve this request at its current stage")
@@ -265,6 +289,11 @@ def approve_request(request_id: int, ctx: Ctx = Depends(get_ctx), pdb: Session =
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc))
     pdb.commit()
     pdb.refresh(req)
+    if req.stage == "done":
+        _log_part_history(
+            db, req, ctx.user, event_subtype="APPROVED", offset=1_000_000, event_at=req.decided_at,
+            title=f"{KINDS.get(req.kind, req.kind)} approved", description=f"{req.request_no} approved.",
+        )
     return _req_out(req, ctx)
 
 
@@ -273,7 +302,7 @@ class RejectIn(BaseModel):
 
 
 @router.post("/requests/{request_id}/reject")
-def reject_request(request_id: int, body: RejectIn, ctx: Ctx = Depends(get_ctx), pdb: Session = Depends(get_parts_db)):
+def reject_request(request_id: int, body: RejectIn, ctx: Ctx = Depends(get_ctx), db: Session = Depends(get_db), pdb: Session = Depends(get_parts_db)):
     req = _load_request(pdb, request_id)
     if not ctx.can_act_on_stage(req.stage):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "You cannot reject this request at its current stage")
@@ -283,6 +312,11 @@ def reject_request(request_id: int, body: RejectIn, ctx: Ctx = Depends(get_ctx),
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc))
     pdb.commit()
     pdb.refresh(req)
+    _log_part_history(
+        db, req, ctx.user, event_subtype="REJECTED", offset=2_000_000, event_at=req.decided_at,
+        title=f"{KINDS.get(req.kind, req.kind)} rejected", description=f"{req.request_no} rejected: {body.reason}",
+        extra={"reason": body.reason},
+    )
     return _req_out(req, ctx)
 
 
@@ -310,7 +344,7 @@ class SuppliedIn(BaseModel):
 
 
 @router.post("/requests/{request_id}/supplied")
-def supplied_request(request_id: int, body: SuppliedIn, ctx: Ctx = Depends(get_ctx), pdb: Session = Depends(get_parts_db)):
+def supplied_request(request_id: int, body: SuppliedIn, ctx: Ctx = Depends(get_ctx), db: Session = Depends(get_db), pdb: Session = Depends(get_parts_db)):
     req = _load_request(pdb, request_id)
     if ctx.is_engineer:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Only the Service Manager, Admin or Sub Admin confirm supply")
@@ -320,6 +354,11 @@ def supplied_request(request_id: int, body: SuppliedIn, ctx: Ctx = Depends(get_c
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc))
     pdb.commit()
     pdb.refresh(req)
+    _log_part_history(
+        db, req, ctx.user, event_subtype="SUPPLIED", offset=3_000_000, event_at=None,
+        title=f"{KINDS.get(req.kind, req.kind)} supplied",
+        description=f"{req.request_no} marked supplied" + (f": {body.note}" if body.note else ""),
+    )
     return _req_out(req, ctx)
 
 
