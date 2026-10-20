@@ -1595,7 +1595,7 @@ export default function EngineerUnitWorkflowPanel({
             </button>
             <button
               type="button"
-              onClick={() => approveUnit(unit.id, "Reject")}
+              onClick={() => { if (window.confirm("Reject and send this unit back to Service Team?")) approveUnit(unit.id, "Reject"); }}
               disabled={!canApproveUnits}
               className="rounded-md border border-rose-300 px-4 py-2 text-sm text-rose-700 disabled:cursor-not-allowed disabled:opacity-50"
             >
@@ -1604,7 +1604,7 @@ export default function EngineerUnitWorkflowPanel({
             {isServiceManager && unit.can_approve === false && (
               <button
                 type="button"
-                onClick={() => recommendUnit(unit.id)}
+                onClick={() => { if (window.confirm("Recommend this unit to Admin/Sub Admin for approval?")) recommendUnit(unit.id); }}
                 disabled={!hasClaim}
                 title={!hasClaim ? "Raise a claim first" : undefined}
                 className="rounded-md border border-amber-400 bg-amber-50 px-4 py-2 text-sm font-medium text-amber-900 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50"
@@ -1614,7 +1614,7 @@ export default function EngineerUnitWorkflowPanel({
             )}
             <button
               type="button"
-              onClick={() => approveUnit(unit.id, "Approve")}
+              onClick={() => { if (window.confirm("Approve this unit?")) approveUnit(unit.id, "Approve"); }}
               disabled={!canApproveUnits || unit.can_approve === false || !hasClaim}
               title={!canApproveUnits ? "Only the Service Manager or Admin can approve" : unit.can_approve === false ? "Over the Service Manager's cap — needs Admin or Sub Admin" : !hasClaim ? "Raise a claim first" : undefined}
               className="rounded-md bg-orange-500 px-4 py-2 text-sm text-white disabled:cursor-not-allowed disabled:opacity-50"

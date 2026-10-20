@@ -54,6 +54,8 @@ export default function LinkedClaimsPanel({ claims, onChanged, isServiceManager 
   }
 
   async function doApprove(c) {
+    const closing = c.stage !== "svm" || (isServiceManager && c.amount != null && c.amount <= APPROVAL_CAP_AMOUNT);
+    if (!window.confirm(closing ? `Close claim ${c.claim_no}?` : `Forward claim ${c.claim_no} to Admin/Sub Admin?`)) return;
     setBusyId(c.id); setErr("");
     try {
       await shortageClaimsApi.approve(c.id);
@@ -68,6 +70,7 @@ export default function LinkedClaimsPanel({ claims, onChanged, isServiceManager 
   async function doReject(c) {
     const reason = (forms[c.id]?.rejectReason || "").trim();
     if (!reason) { setErr("Give a reason to reject"); return; }
+    if (!window.confirm(`Reject claim ${c.claim_no}?`)) return;
     setBusyId(c.id); setErr("");
     try {
       await shortageClaimsApi.reject(c.id, reason);
