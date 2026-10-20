@@ -17,7 +17,7 @@ from app.parts import service as svc
 from app.parts.access import Ctx, get_ctx, require_approvals_access, require_catalogue_edit
 from app.parts.db import get_parts_db
 from app.parts.models import ItemRequest, ItemRequestEvent, ItemRequestPhoto, SparePart, SparePartFitment
-from app.parts.rules import KINDS, required_photos, stage_label
+from app.parts.rules import KINDS, effective_required_photos, required_photos, stage_label
 from app.services import date_range as dr
 from app.services.file_service import save_upload
 
@@ -51,7 +51,7 @@ def _req_out(r: ItemRequest, ctx: Ctx) -> dict:
         "description": r.description,
         "amount": (float(r.amount) if r.amount is not None else None) if ctx.can_see_amounts else None,
         "stage": r.stage, "stage_label": stage_label(r.kind, r.amount, r.stage),
-        "required_photos": required_photos(r.kind),
+        "required_photos": effective_required_photos(r),
         "crm_query_id": r.crm_query_id,
         "crm_raised_by_user_id": r.crm_raised_by_user_id, "crm_raised_by_name": r.crm_raised_by_name,
         "request_date": r.request_date.isoformat(), "created_at": r.created_at, "decided_at": r.decided_at,

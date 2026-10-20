@@ -34,6 +34,14 @@ def required_photos(kind: str) -> int:
     return REQUIRED_PHOTOS.get(kind, 0)
 
 
+def effective_required_photos(req) -> int:
+    """The photo count actually enforced for this request: its own override if one was set at creation
+    (e.g. 0 for requests the system auto-raises from an engineer's observation), else the kind's default."""
+    if req.required_photos_override is not None:
+        return req.required_photos_override
+    return required_photos(req.kind)
+
+
 def next_stage_on_approve(kind: str, amount, current_stage: str) -> str:
     """svm -> sub (if a second approval is needed) or done; sub -> done."""
     if current_stage == "svm":

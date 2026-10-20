@@ -2105,6 +2105,9 @@ def _raise_part_requests_from_observation(
             crm_serial_no=serial_no,
             spare_part_id=catalogue_by_name.get(name.lower()),
             part_name_cache=name,
+            # The engineer's observation already documents the problem — don't also demand the 4 proof
+            # photos meant for someone manually raising a part request with nothing else on file.
+            required_photos_override=0,
         )
         already.add(name.lower())
     pdb.commit()

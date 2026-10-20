@@ -87,6 +87,9 @@ class ItemRequest(PartsBase, Stamped):
     amount: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
 
     stage: Mapped[str] = mapped_column(String(10), nullable=False, default="svm", index=True)
+    # Overrides the kind-based photo mandate (e.g. 0 for requests the system auto-raises from an engineer's
+    # observation, which already documents the problem). Null means "use the normal rule for this kind".
+    required_photos_override: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     crm_query_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)  # the "discuss" thread, if any
 

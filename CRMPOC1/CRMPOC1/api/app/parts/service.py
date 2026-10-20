@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from app.models.user import User
 from app.models.user_query import UserQuery, UserQueryMember, UserQueryMessage
 from app.parts.models import ItemRequest, ItemRequestEvent, ItemRequestPhoto, SparePart
-from app.parts.rules import next_stage_on_approve, required_photos
+from app.parts.rules import effective_required_photos, next_stage_on_approve, required_photos
 from app.services import queries_service as qs
 
 
@@ -43,6 +43,7 @@ def create_request(
     crm_installation_request_id: int | None = None, crm_installation_request_no: str | None = None,
     crm_item_code: str | None = None, crm_item_name_cache: str | None = None, crm_serial_no: str | None = None,
     spare_part_id: int | None = None, part_name_cache: str | None = None, amount=None,
+    required_photos_override: int | None = None,
 ) -> ItemRequest:
     req = ItemRequest(
         request_no=next_request_no(pdb), kind=kind, description=description, stage="svm",
@@ -50,6 +51,7 @@ def create_request(
         crm_installation_request_id=crm_installation_request_id, crm_installation_request_no=crm_installation_request_no,
         crm_item_code=crm_item_code, crm_item_name_cache=crm_item_name_cache, crm_serial_no=crm_serial_no,
         spare_part_id=spare_part_id, part_name_cache=part_name_cache, amount=amount,
+        required_photos_override=required_photos_override,
         crm_raised_by_user_id=user.id, crm_raised_by_name=user.name, crm_raised_by_role=user.role,
     )
     pdb.add(req)
@@ -80,7 +82,7 @@ class WrongStage(Exception):
 def approve(pdb: Session, req: ItemRequest, *, user: User) -> ItemRequest:
     if req.stage not in ("svm", "sub"):
         raise WrongStage(f"This request is already {req.stage}")
-    need = required_photos(req.kind)
+    need = effective_required_photos(req)
     if need and photo_count(pdb, req) < need:
         raise NotReady(f"This request needs {need} photos before it can be approved; it has {photo_count(pdb, req)}")
     from_stage = req.stage
