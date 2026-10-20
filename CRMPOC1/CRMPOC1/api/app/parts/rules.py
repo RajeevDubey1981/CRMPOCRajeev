@@ -18,7 +18,7 @@ REQUIRED_PHOTOS = {
 
 # Above this amount, a "part" or "ondemand" request also needs Admin/Sub Admin after the Service Manager.
 # A "unit" (whole-unit replacement) always needs both, regardless of amount. "expense" always needs both.
-PART_AUTO_APPROVE_LIMIT = 1000
+PART_AUTO_APPROVE_LIMIT = 2500
 UNIT_VALUE_THRESHOLD = 15000
 
 

@@ -224,7 +224,7 @@ export function RequestDetail({ id, onClose, onChanged }) {
               onClick={() => act(() => partsApi.approve(req.id))}
               className="rounded-md bg-emerald-700 px-4 py-2 text-sm text-white hover:bg-emerald-800 disabled:opacity-50"
             >
-              Approve
+              {req.stage === "svm" && req.stage_label?.includes("then Admin") ? "Recommend" : "Approve"}
             </button>
           </div>
         )}
