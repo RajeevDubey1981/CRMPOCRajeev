@@ -240,7 +240,9 @@ class ClaimIn(BaseModel):
     vendor_id: Optional[int] = None
     courier_id: Optional[int] = None
     insurer_name: Optional[str] = None
-    items: list[str] = Field(min_length=1)
+    # Required for every flow except "service" — a service-flow claim is pinned on who's responsible
+    # instead, right here at raise time.
+    items: list[str] = Field(default_factory=list)
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)
@@ -257,7 +259,9 @@ def raise_claim(body: ClaimIn, db: Session = Depends(get_db), user: User = Depen
         role = role_key(user.role)
         if role not in SERVICE_MANAGER_ROLES and role not in SERVICE_TEAM_ROLES and role not in SECOND_STAGE_ROLES:
             raise HTTPException(status.HTTP_403_FORBIDDEN, "Your role cannot claim out a parts request")
-    if body.flow == "parts" and not body.responsible_type:
+    if body.flow != "service" and not body.items:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Pick what's missing")
+    if body.flow in ("parts", "service") and not body.responsible_type:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Pick who this claim is on before sending it")
     if body.responsible_type is not None and body.responsible_type not in ("mfg", "trans", "ins", "company"):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Unknown responsible party type")

@@ -5,10 +5,10 @@ import { shortageClaimsApi, ITEMS_MISSING } from "../../api/shortageClaims.js";
 const PHOTO_LABELS = ["Box as received", "Seal / tape", "Empty space inside", "Item's label on box"];
 
 /**
- * Lets an engineer report something missing from a new delivery (copper pipe, remote, gas charge ...), raised
- * from inside the actual Service or Installation step — collapsed to one button until they need it.
- * For the "parts" flow (Service Team/Manager/Admin claiming out a parts request), the whoever-is-responsible
- * decision is also made right here, at raise time, instead of as a separate step later.
+ * Raised from inside the actual Service/Installation step or its approval — collapsed to one button until
+ * needed. For "parts" and "service" flows the whoever-is-responsible decision (manufacturer, company,
+ * insurance or transport) is mandatory right here, at raise time, instead of as a separate step later.
+ * "installation" keeps the original what's-missing + 4-photo form.
  */
 export default function RaiseClaimPanel({ flow, context, triggerLabel, onSent }) {
   const [open, setOpen] = useState(false);
@@ -27,7 +27,7 @@ export default function RaiseClaimPanel({ flow, context, triggerLabel, onSent })
   const [sent, setSent] = useState(null);
 
   useEffect(() => {
-    if (open && flow === "parts") shortageClaimsApi.parties().then(setParties).catch(() => {});
+    if (open && (flow === "parts" || flow === "service")) shortageClaimsApi.parties().then(setParties).catch(() => {});
   }, [open, flow]);
 
   function toggleItem(i) {
@@ -38,22 +38,22 @@ export default function RaiseClaimPanel({ flow, context, triggerLabel, onSent })
   }
 
   async function send() {
-    if (!items.length) { setErr("Pick what's missing"); return; }
+    if (flow !== "service" && !items.length) { setErr("Pick what's missing"); return; }
     if (!description.trim()) { setErr("Describe what you found"); return; }
     if (flow !== "service") {
       const filled = photos.filter(Boolean).length;
       if (filled < 4) { setErr(`Add all 4 photos (${filled}/4 so far)`); return; }
     }
-    if (flow === "parts" && !respType) { setErr("Pick who this claim is on"); return; }
-    if (flow === "parts" && respType === "mfg" && !vendorId) { setErr("Select the manufacturer"); return; }
-    if (flow === "parts" && respType === "trans" && !courierId) { setErr("Select the transporter"); return; }
-    if (flow === "parts" && respType === "ins" && !insurer.trim()) { setErr("Name the insurer / policy"); return; }
+    if ((flow === "parts" || flow === "service") && !respType) { setErr("Pick who this claim is on"); return; }
+    if ((flow === "parts" || flow === "service") && respType === "mfg" && !vendorId) { setErr("Select the manufacturer"); return; }
+    if ((flow === "parts" || flow === "service") && respType === "trans" && !courierId) { setErr("Select the transporter"); return; }
+    if ((flow === "parts" || flow === "service") && respType === "ins" && !insurer.trim()) { setErr("Name the insurer / policy"); return; }
     setErr("");
     setBusy(true);
     try {
       const body = { flow, items, description: description.trim(), ...context };
       if (amount.trim() !== "") body.amount = Number(amount);
-      if (flow === "parts") {
+      if (flow === "parts" || flow === "service") {
         body.responsible_type = respType;
         if (respType === "mfg") body.vendor_id = Number(vendorId);
         if (respType === "trans") body.courier_id = Number(courierId);
@@ -101,21 +101,23 @@ export default function RaiseClaimPanel({ flow, context, triggerLabel, onSent })
         <span className="text-sm font-medium text-amber-900">Report a missing item</span>
         <button type="button" onClick={() => setOpen(false)} className="text-xs text-amber-700 hover:underline">Cancel</button>
       </div>
-      <div>
-        <label className="text-xs uppercase tracking-wide text-slate-500">What's missing (pick all that apply)</label>
-        <div className="mt-1 flex flex-wrap gap-1.5">
-          {ITEMS_MISSING.map((i) => (
-            <button
-              key={i}
-              type="button"
-              onClick={() => toggleItem(i)}
-              className={`rounded-full border px-2.5 py-1 text-xs font-medium ${items.includes(i) ? "border-brand-600 bg-brand-50 text-brand-800" : "border-slate-300 bg-white text-slate-700"}`}
-            >
-              {i}
-            </button>
-          ))}
+      {flow !== "service" && (
+        <div>
+          <label className="text-xs uppercase tracking-wide text-slate-500">What's missing (pick all that apply)</label>
+          <div className="mt-1 flex flex-wrap gap-1.5">
+            {ITEMS_MISSING.map((i) => (
+              <button
+                key={i}
+                type="button"
+                onClick={() => toggleItem(i)}
+                className={`rounded-full border px-2.5 py-1 text-xs font-medium ${items.includes(i) ? "border-brand-600 bg-brand-50 text-brand-800" : "border-slate-300 bg-white text-slate-700"}`}
+              >
+                {i}
+              </button>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
       <div>
         <label className="text-xs uppercase tracking-wide text-slate-500">Describe what you found</label>
         <textarea
@@ -172,11 +174,14 @@ export default function RaiseClaimPanel({ flow, context, triggerLabel, onSent })
           className="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
         />
       </div>
-      {flow === "parts" && (
+      {(flow === "parts" || flow === "service") && (
         <div className="rounded-md border border-slate-200 bg-white p-2">
-          <label className="text-xs uppercase tracking-wide text-slate-500">Term of claim — on whom</label>
+          <label className="text-xs uppercase tracking-wide text-slate-500">Term of claim — on whom (required)</label>
           <div className="mt-2 grid grid-cols-4 gap-2">
-            {[["mfg", "Manufacturer"], ["trans", "Transporter"], ["ins", "Insurance"], ["company", "Company"]].map(([k, l]) => (
+            {(flow === "service"
+              ? [["mfg", "Manufacturer"], ["company", "Company"], ["ins", "Insurance"], ["trans", "Transport"]]
+              : [["mfg", "Manufacturer"], ["trans", "Transporter"], ["ins", "Insurance"], ["company", "Company"]]
+            ).map(([k, l]) => (
               <button
                 key={k} type="button" onClick={() => setRespType(k === respType ? "" : k)}
                 className={`rounded-md border px-2 py-2 text-xs font-semibold ${respType === k ? "border-brand-600 bg-brand-50 text-brand-800" : "border-slate-300 text-slate-600"}`}
