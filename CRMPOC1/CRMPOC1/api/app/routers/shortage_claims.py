@@ -20,6 +20,7 @@ import io
 from app.database import get_db
 from app.deps import get_current_user
 from app.models.courier import Courier
+from app.models.field_photo import FieldPhoto
 from app.models.installation import InstallationRequest
 from app.models.service import ServiceRequest
 from app.models.shortage_claim import (
@@ -49,6 +50,14 @@ MAX_PHOTO_BYTES = 5 * 1024 * 1024
 
 ITEMS_MISSING = ["Copper pipe", "Remote control", "Gas charge", "Stabilizer", "Drain pipe", "Power cord", "Installation kit", "Other"]
 RESP_LABEL = {"mfg": "Manufacturer", "trans": "Transporter", "ins": "Insurance", "company": "Company"}
+
+
+def effective_required_photos(claim: ShortageClaim) -> int:
+    """REQUIRED_PHOTOS (4), unless the claim's own override says otherwise — set to 0 when the engineer's
+    serial-verification photos were already paired onto it at raise time."""
+    if claim.required_photos_override is not None:
+        return claim.required_photos_override
+    return REQUIRED_PHOTOS
 
 
 def can_act_on_stage(role: str, stage: str) -> bool:
@@ -102,7 +111,7 @@ def _out(db: Session, c: ShortageClaim, role: str, can_edit: bool, user_id: int 
         "responsible_type": c.responsible_type, "responsible_label": RESP_LABEL.get(c.responsible_type),
         "party_name": party_name, "resolution": c.resolution,
         "raised_by_user_id": c.raised_by_user_id, "raised_by_name": raised_by.name if raised_by else None,
-        "photo_count": n_photos, "required_photos": REQUIRED_PHOTOS,
+        "photo_count": n_photos, "required_photos": effective_required_photos(c),
         "created_at": c.created_at, "decided_at": c.decided_at,
         "can_act": can_act_on_stage(role, c.stage) and can_edit,
         "can_approve": can_act_on_stage(role, c.stage) and can_edit and not (c.raised_by_user_id == user_id and role not in SECOND_STAGE_ROLES),
@@ -223,6 +232,7 @@ class ClaimIn(BaseModel):
     service_request_id: Optional[int] = None
     installation_request_id: Optional[int] = None
     item_request_id: Optional[int] = None
+    unit_id: Optional[int] = None
     item_code: Optional[str] = None
     serial_no: Optional[str] = None
     amount: Optional[float] = None
@@ -273,6 +283,17 @@ def raise_claim(body: ClaimIn, db: Session = Depends(get_db), user: User = Depen
     for label in body.items:
         db.add(ShortageClaimItem(claim_id=claim.id, label=label))
     log(db, claim, "raised", f"Claim raised by {user.name}", user)
+    if body.flow == "service" and body.unit_id is not None:
+        # The engineer already photographed this exact unit to verify its serial — pair those photos
+        # onto the claim instead of making whoever's claiming it out take a fresh set of the same machine.
+        field_photos = db.scalars(
+            select(FieldPhoto).where(FieldPhoto.service_request_unit_id == body.unit_id).order_by(FieldPhoto.id)
+        ).all()
+        if field_photos:
+            for fp in field_photos:
+                db.add(ShortageClaimPhoto(claim_id=claim.id, file_path=fp.file_path, label="From serial verification", uploaded_by_user_id=fp.uploaded_by_user_id))
+            claim.required_photos_override = 0
+            log(db, claim, "photos_paired", f"{len(field_photos)} photo(s) from serial verification paired onto this claim", user)
     if claim.responsible_type:
         party = {"mfg": lambda: db.get(Vendor, claim.vendor_id).name_of_firm if claim.vendor_id else None,
                  "trans": lambda: db.get(Courier, claim.courier_id).courier_name if claim.courier_id else None,
@@ -351,8 +372,9 @@ def approve(claim_id: int, db: Session = Depends(get_db), user: User = Depends(g
     if claim.stage not in ("svm", "sub"):
         raise HTTPException(status.HTTP_409_CONFLICT, f"This claim is already {claim.stage}")
     n_photos = len(db.scalars(select(ShortageClaimPhoto.id).where(ShortageClaimPhoto.claim_id == claim.id)).all())
-    if n_photos < REQUIRED_PHOTOS:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"This claim needs {REQUIRED_PHOTOS} photos before it can be approved; it has {n_photos}")
+    need = effective_required_photos(claim)
+    if n_photos < need:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"This claim needs {need} photos before it can be approved; it has {n_photos}")
     if not claim.responsible_type:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Decide who is responsible before approving")
     if claim.stage == "svm":

@@ -39,6 +39,9 @@ class ShortageClaim(Base, TimestampMixin):
     # Manager approval still needs Admin/Sub Admin after it; at or under it, Service Manager can close it outright.
     amount: Mapped[Optional[float]] = mapped_column(Numeric(10, 2), nullable=True)
     stage: Mapped[str] = mapped_column(String(10), nullable=False, default="svm", index=True)
+    # Null = use REQUIRED_PHOTOS (4). Set to 0 when the engineer's serial-verification photos were already
+    # paired onto this claim at raise time — nothing further to prove, the machine's already on record.
+    required_photos_override: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
 
     responsible_type: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)  # mfg | trans | ins | company
     vendor_id: Mapped[Optional[int]] = mapped_column(ForeignKey("vendors.id"), nullable=True)

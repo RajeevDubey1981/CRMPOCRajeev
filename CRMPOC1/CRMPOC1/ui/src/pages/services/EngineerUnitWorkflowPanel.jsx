@@ -1578,6 +1578,7 @@ export default function EngineerUnitWorkflowPanel({
                 service_request_id: service?.id,
                 item_code: service?.item_code,
                 serial_no: unit.serial_no,
+                unit_id: unit.id,
               }}
               onSent={reloadServiceClaims}
             />
@@ -1836,6 +1837,7 @@ export default function EngineerUnitWorkflowPanel({
               service_request_id: service?.id,
               item_code: service?.item_code,
               serial_no: unit.serial_no,
+              unit_id: unit.id,
             }}
             onSent={reloadServiceClaims}
           />
