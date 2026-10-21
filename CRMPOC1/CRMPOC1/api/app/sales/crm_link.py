@@ -68,9 +68,17 @@ def max_partner_id(main_db: Session) -> int:
     return main_db.scalar(select(func.max(PartnerRegistration.id))) or 0
 
 
+# complaint types that are Sales enquiries: a Sales enquiry, or a website visitor who chose "Partner" (wants to become a dealer)
+SALES_QUERY_TYPES = ("sales", "partner")
+
+
+def is_partner_enquiry(c: Complaint) -> bool:
+    return (c.query_type or "").strip().lower() == "partner"
+
+
 def sales_complaints(main_db: Session, *, after_id: int = 0, since: datetime | None = None) -> list[Complaint]:
     stmt = select(Complaint).where(
-        Complaint.deleted_at.is_(None), func.lower(func.trim(Complaint.query_type)) == "sales", Complaint.id > after_id
+        Complaint.deleted_at.is_(None), func.lower(func.trim(Complaint.query_type)).in_(SALES_QUERY_TYPES), Complaint.id > after_id
     )
     if since is not None:
         stmt = stmt.where(Complaint.created_at >= since)
