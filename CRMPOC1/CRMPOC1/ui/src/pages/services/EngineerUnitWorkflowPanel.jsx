@@ -1287,7 +1287,7 @@ export default function EngineerUnitWorkflowPanel({
               value={serialInputs2[unit.id] || ""}
               onValue={(value) => setSerialInputs2((current) => ({ ...current, [unit.id]: value }))}
               className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-              placeholder="Serial number 2 (only if this unit has one)"
+              placeholder="Serial number 2"
             />
           )}
           {serialMismatch && (
@@ -1322,7 +1322,7 @@ export default function EngineerUnitWorkflowPanel({
             <button
               type="button"
               onClick={() => verifyOne(unit).then(closeModal)}
-              disabled={!serialInputs[unit.id]?.trim()}
+              disabled={!serialInputs[unit.id]?.trim() || (needsSecondSerial && !serialInputs2[unit.id]?.trim())}
               className="rounded-md bg-brand-600 px-3 py-2 text-sm text-white disabled:opacity-50"
             >
               {isChange ? "Submit changed serial" : "Submit serial for review"}
@@ -1381,12 +1381,12 @@ export default function EngineerUnitWorkflowPanel({
 
           {needsSecondSerial && (
             <div>
-              <label className="mb-1 block text-sm font-medium text-slate-700">Serial 2 to approve <span className="font-normal text-slate-500">(optional — leave blank if the product has only one serial)</span></label>
+              <label className="mb-1 block text-sm font-medium text-slate-700">Serial 2 to approve</label>
               <ScanInput
                 value={form.override_serial_2 || ""}
                 onValue={(value) => updateSerialReview(unit.id, "override_serial_2", value)}
                 className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm font-mono"
-                placeholder="Serial number 2 (only if this unit has one)"
+                placeholder="Serial number 2"
               />
             </div>
           )}
@@ -1444,7 +1444,7 @@ export default function EngineerUnitWorkflowPanel({
               <button
                 type="button"
                 onClick={() => submitSerialReview("override")}
-                disabled={!form.override_serial?.trim()}
+                disabled={!form.override_serial?.trim() || (needsSecondSerial && !form.override_serial_2?.trim())}
                 className="rounded-md border border-sky-300 px-3 py-2 text-sm text-sky-700 disabled:opacity-50"
               >
                 Override &amp; approve
@@ -1453,7 +1453,7 @@ export default function EngineerUnitWorkflowPanel({
             <button
               type="button"
               onClick={() => submitSerialReview("approve")}
-              disabled={!form.override_serial?.trim()}
+              disabled={!form.override_serial?.trim() || (needsSecondSerial && !form.override_serial_2?.trim())}
               className="rounded-md bg-emerald-600 px-3 py-2 text-sm text-white disabled:opacity-50"
             >
               Approve serial

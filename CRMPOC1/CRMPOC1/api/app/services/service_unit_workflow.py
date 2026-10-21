@@ -12,6 +12,7 @@ from sqlalchemy import desc, func, select
 from sqlalchemy.orm import Session
 
 from app.models.field_photo import FieldPhoto
+from app.models.item_master import ItemMaster
 from app.models.order import OrderItem
 from app.models.service import (
     ServiceApproval,
@@ -255,6 +256,35 @@ def units_without_observation(
 MIN_FIELD_PHOTOS = 1  # an engineer must photograph the machine before a serial can be verified
 
 
+_NO_SERIAL = {"0", "-", "--", "na", "n/a", "nil", "none", "null", "no"}
+
+
+def clean_serial(value: str | None) -> str | None:
+    """A typed placeholder (0, -, NA ...) is not a serial number: treat it as nothing entered."""
+    text = (value or "").strip()
+    return None if not text or text.lower() in _NO_SERIAL else text
+
+
+def product_serial_count(db: Session, order_item: OrderItem | None, fallback: int = 1) -> int:
+    """How many serials this product carries by default: one for a refrigerator or window AC, two for a split AC
+    (indoor and outdoor). It is the product's own setting in the item master, not whatever the screen happened to ask."""
+    master = db.get(ItemMaster, order_item.item_id) if order_item is not None and order_item.item_id else None
+    return int(master.serial_count) if master is not None and master.serial_count else fallback
+
+
+def apply_serial_rule(db: Session, order_item: OrderItem | None, serial_no_2: str | None, fallback: int = 1) -> str | None:
+    """The second serial for a unit of this product: none for a one-serial product, required for a two-serial one."""
+    second = clean_serial(serial_no_2)
+    count = product_serial_count(db, order_item, fallback)
+    if count < 2:
+        return None
+    if not second and order_item is not None:
+        second = clean_serial(order_item.serial_no_2)
+    if not second:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"This product has {count} serial numbers. Enter both serials.")
+    return second
+
+
 def verify_unit_serial(
     db: Session,
     service: ServiceRequest,
@@ -274,7 +304,7 @@ def verify_unit_serial(
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Serial verification is awaiting admin review")
 
     resolved_serial = (serial_no or "").strip() or unit_primary_serial(unit)
-    resolved_serial_2 = (serial_no_2 or "").strip() or None
+    resolved_serial_2 = clean_serial(serial_no_2)
     if not resolved_serial:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Serial number is required for this unit")
 
@@ -318,7 +348,7 @@ def verify_unit_serial(
         db.flush()
 
     unit.serial_no = resolved_serial
-    unit.serial_no_2 = resolved_serial_2 or lookup_item.serial_no_2
+    unit.serial_no_2 = apply_serial_rule(db, lookup_item, resolved_serial_2)
     unit.order_item_id = lookup_item.id
     unit.warranty_status = context["warranty_status"]
     unit.service_type = context["service_type"]

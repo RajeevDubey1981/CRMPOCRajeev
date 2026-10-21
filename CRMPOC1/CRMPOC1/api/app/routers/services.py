@@ -147,7 +147,9 @@ from app.services.service_units import (
     verify_order_for_service,
 )
 from app.services.service_unit_workflow import (
+    apply_serial_rule,
     backfill_unit_statuses,
+    clean_serial,
     backfill_unit_verification_from_service,
     bulk_approve_units,
     bulk_submit_observations,
@@ -2017,7 +2019,7 @@ def review_serial_verification(
         action = "Serial Verification Rejected"
     else:
         serial_no = (body.serial_no or unit.serial_no or "").strip()
-        serial_no_2 = (body.serial_no_2 or unit.serial_no_2 or "").strip() or None
+        serial_no_2 = clean_serial(body.serial_no_2) or clean_serial(unit.serial_no_2)
         if not serial_no:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Serial number is required")
 
@@ -2054,6 +2056,7 @@ def review_serial_verification(
                 "Serial number not found in order records. Reject, override with a corrected serial, or associate with order.",
             )
 
+        serial_no_2 = apply_serial_rule(db, item, serial_no_2)
         if decision == "override" and item.order_id == order_id:
             item.serial_no = serial_no
             if serial_no_2:
