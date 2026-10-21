@@ -57,6 +57,7 @@ from app.services.file_service import save_upload, to_public_upload_path
 from app.services.complaint_access import apply_complaint_assignment_scope
 from app.services.permissions import can_act_on, sub_module_scope
 from app.services.role_access import is_operations_admin
+from app.services.service_access import can_assign_service_desk_user
 from app.services.installation_workflow import (
     CUSTOMER_DOCUMENT_OPTIONS,
     PRE_ORDER_VERIFIED_STATUSES,
@@ -793,6 +794,7 @@ def list_complaints(
     priority: Literal["Normal", "High"] | None = None,
     date_from: date | None = None,
     date_to: date | None = None,
+    owner: str | None = None,
     sort: str = "-created_at",
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
@@ -823,6 +825,13 @@ def list_complaints(
         )
     if source:
         stmt = stmt.where(Complaint.source == source)
+    if owner and can_assign_service_desk_user(user):
+        # The service team member a complaint's service request is given to; "none" = has a service request nobody owns yet.
+        linked = select(ServiceRequest.complaint_id).where(ServiceRequest.complaint_id.is_not(None), ServiceRequest.deleted_at.is_(None))
+        if owner == "none":
+            stmt = stmt.where(Complaint.id.in_(linked.where(ServiceRequest.assigned_service_user_id.is_(None))))
+        elif owner.isdigit():
+            stmt = stmt.where(Complaint.id.in_(linked.where(ServiceRequest.assigned_service_user_id == int(owner))))
     if date_from:
         stmt = stmt.where(Complaint.comp_date >= date_from)
     if date_to:

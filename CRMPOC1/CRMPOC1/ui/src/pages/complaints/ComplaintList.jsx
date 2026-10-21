@@ -136,7 +136,7 @@ export default function ComplaintList() {
   const [filtersOpen, setFiltersOpen] = useState(false); // phones: the long filter form starts folded away
   const [filters, setFilters]           = useState({
     id: "", comp_no: "", customer_name: "", status: "",
-    mobile: "", source: "", date_from: "", date_to: "", priority: "",
+    mobile: "", source: "", date_from: "", date_to: "", priority: "", owner: "",
   });
   const [page, setPage]                 = useState(1);
   const [perPage, setPerPage]           = useState(20);
@@ -191,6 +191,7 @@ export default function ComplaintList() {
       status: filters.status || undefined,
       source: filters.source || undefined,
       priority: filters.priority || undefined,
+      owner: filters.owner || undefined,
       date_from: filters.date_from || undefined,
       date_to: filters.date_to || undefined,
     };
@@ -216,7 +217,7 @@ export default function ComplaintList() {
   }
 
   function resetFilters() {
-    setFilters({ id: "", comp_no: "", customer_name: "", status: "", mobile: "", source: "", date_from: "", date_to: "", priority: "" });
+    setFilters({ id: "", comp_no: "", customer_name: "", status: "", mobile: "", source: "", date_from: "", date_to: "", priority: "", owner: "" });
     setPage(1);
   }
 
@@ -518,6 +519,20 @@ export default function ComplaintList() {
               <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Registered</label>
               <DateRangeFilter from={filters.date_from} to={filters.date_to} onChange={(a, b) => { patch("date_from", a); patch("date_to", b); }} />
             </div>
+            {serviceUsers.length > 0 && (
+              <div>
+                <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-violet-700">Owner (service team)</label>
+                <select
+                  value={filters.owner}
+                  onChange={(e) => patch("owner", e.target.value)}
+                  className="w-full rounded border border-violet-300 bg-violet-50 px-2.5 py-1.5 text-base text-slate-700 sm:text-sm"
+                >
+                  <option value="">-- All owners --</option>
+                  <option value="none">Not given yet</option>
+                  {serviceUsers.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+                </select>
+              </div>
+            )}
           </div>
           <div className="flex gap-2">
             <button

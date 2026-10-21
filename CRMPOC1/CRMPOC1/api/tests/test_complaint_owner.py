@@ -90,6 +90,34 @@ class ComplaintOwnerTests(unittest.TestCase):
         r = self.client.post(f"/api/services/{self.sid}/assign-service-user", json={"service_user_id": self.vikash.id}, headers=self.h(self.eng))
         self.assertIn(r.status_code, (403, 404))
 
+    def ids(self, user, **params):
+        r = self.client.get("/api/complaints", params=params, headers=self.h(user))
+        self.assertEqual(r.status_code, 200, r.text)
+        return [i["id"] for i in r.json()["items"]]
+
+    def test_filter_by_owner(self):
+        other = Complaint(comp_no="IDC_2", customer_name="Hotel", customer_mobile="9000000001", query_type="Service", status="Pending")
+        sales = Complaint(comp_no="IDC_3", customer_name="Buyer", customer_mobile="9000000002", query_type="Sales", status="Pending")
+        self.db.add_all([other, sales])
+        self.db.flush()
+        self.db.add(ServiceRequest(request_no="SRV_2", status="New", customer_name="Hotel", customer_mobile="9000000001", complaint_id=other.id, assigned_service_user_id=self.kuldeep.id))
+        self.db.commit()
+        self.client.post(f"/api/services/{self.sid}/assign-service-user", json={"service_user_id": self.vikash.id}, headers=self.h(self.manager))
+        self.assertEqual(self.ids(self.manager, owner=str(self.vikash.id)), [self.cid])
+        self.assertEqual(self.ids(self.manager, owner=str(self.kuldeep.id)), [other.id])
+        self.assertCountEqual(self.ids(self.manager), [self.cid, other.id, sales.id])
+        self.assertEqual(self.ids(self.manager, owner="none"), [], "both service requests have an owner; the Sales complaint has no service request")
+
+    def test_not_given_yet_lists_only_service_requests_without_an_owner(self):
+        self.assertEqual(self.ids(self.manager, owner="none"), [self.cid])
+        self.client.post(f"/api/services/{self.sid}/assign-service-user", json={"service_user_id": self.vikash.id}, headers=self.h(self.manager))
+        self.assertEqual(self.ids(self.manager, owner="none"), [])
+
+    def test_the_owner_filter_is_for_the_service_manager_only(self):
+        self.client.post(f"/api/services/{self.sid}/assign-service-user", json={"service_user_id": self.vikash.id}, headers=self.h(self.manager))
+        # an engineer cannot narrow by owner: the parameter is ignored for them
+        self.assertEqual(self.ids(self.eng, owner=str(self.kuldeep.id)), self.ids(self.eng))
+
 
 if __name__ == "__main__":
     unittest.main()
