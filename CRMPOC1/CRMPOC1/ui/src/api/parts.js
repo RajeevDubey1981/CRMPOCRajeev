@@ -22,6 +22,7 @@ export const partsApi = {
   },
   approve: (id) => api.post(`/api/parts/requests/${id}/approve`, {}).then((r) => r.data),
   reject: (id, reason) => api.post(`/api/parts/requests/${id}/reject`, { reason }).then((r) => r.data),
+  returnToManager: (id, reason) => api.post(`/api/parts/requests/${id}/return`, { reason }).then((r) => r.data),
   resubmit: (id, body) => api.post(`/api/parts/requests/${id}/resubmit`, body || {}).then((r) => r.data),
   supplied: (id, note) => api.post(`/api/parts/requests/${id}/supplied`, { note }).then((r) => r.data),
   discuss: (id, message) => api.post(`/api/parts/requests/${id}/discuss`, { message }).then((r) => r.data),

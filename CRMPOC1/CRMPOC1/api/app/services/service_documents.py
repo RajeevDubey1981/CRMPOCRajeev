@@ -310,6 +310,9 @@ def delete_service_request_graph(db: Session, service: ServiceRequest) -> None:
         db.delete(row)
     for row in db.scalars(select(ServiceStatusLog).where(ServiceStatusLog.service_request_id == service.id)):
         db.delete(row)
+    # The history rows have no relationship to the request in the models, so the database may be told to remove the
+    # request first and refuse ("cannot delete a parent row"). Remove every child for certain before the request itself.
+    db.flush()
 
     for transaction_id in payment_transaction_ids:
         still_used = db.scalar(
@@ -322,6 +325,7 @@ def delete_service_request_graph(db: Session, service: ServiceRequest) -> None:
             if transaction:
                 db.delete(transaction)
 
+    db.flush()
     db.delete(service)
 
 

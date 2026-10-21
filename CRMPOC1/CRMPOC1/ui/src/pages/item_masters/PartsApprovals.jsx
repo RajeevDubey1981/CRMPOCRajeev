@@ -128,7 +128,8 @@ export function RequestDetail({ id, onClose, onChanged }) {
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
   const [rejectReason, setRejectReason] = useState("");
-  const [rejecting, setRejecting] = useState(false);
+  const [deciding, setDeciding] = useState("");
+  const [reasonErr, setReasonErr] = useState("");
   const [discussMsg, setDiscussMsg] = useState("");
   const [discussing, setDiscussing] = useState(false);
   const [note, setNote] = useState("");
@@ -156,11 +157,27 @@ export function RequestDetail({ id, onClose, onChanged }) {
       await fn();
       await load();
       onChanged?.();
+      return true;
     } catch (e) {
       setErr(e.response?.data?.detail || "Could not do that");
+      return false;
     } finally {
       setBusy(false);
     }
+  }
+
+  // Reject and Return both need the reason, so the other person knows why. Nothing is greyed out: asking for it is clearer.
+  async function decide(kind) {
+    const reason = rejectReason.trim();
+    if (reason.length < 2) {
+      setReasonErr(kind === "return" ? "Write why you are sending it back, so the Service Manager knows what to look at." : "Write why you are rejecting it, so the engineer knows what to fix.");
+      return;
+    }
+    setReasonErr("");
+    setDeciding(kind);
+    const ok = await act(() => (kind === "return" ? partsApi.returnToManager(req.id, reason) : partsApi.reject(req.id, reason)));
+    setDeciding("");
+    if (ok) setRejectReason("");
   }
 
   if (!req) {
@@ -236,22 +253,48 @@ export function RequestDetail({ id, onClose, onChanged }) {
         )}
 
         {req.can_act && (
-          <div className="flex flex-wrap items-center justify-end gap-2 border-t border-slate-200 pt-3">
-            <input value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} placeholder="Reason to reject" className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
-            <button
-              disabled={busy || !rejectReason.trim()}
-              onClick={() => { setRejecting(true); act(() => partsApi.reject(req.id, rejectReason.trim())).finally(() => setRejecting(false)); }}
-              className="rounded-md border border-rose-300 px-4 py-2 text-sm text-rose-700 hover:bg-rose-50 disabled:opacity-50"
-            >
-              {rejecting ? "…" : "Reject"}
-            </button>
-            <button
-              disabled={busy}
-              onClick={() => act(() => partsApi.approve(req.id))}
-              className="rounded-md bg-emerald-700 px-4 py-2 text-sm text-white hover:bg-emerald-800 disabled:opacity-50"
-            >
-              {req.stage === "svm" && req.stage_label?.includes("then Admin") ? "Recommend" : "Approve"}
-            </button>
+          <div className="space-y-2 border-t border-slate-200 pt-3">
+            <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500">Your decision</label>
+            <input
+              value={rejectReason}
+              onChange={(e) => { setRejectReason(e.target.value); setReasonErr(""); }}
+              placeholder="Reason (needed to reject or send back)"
+              aria-invalid={!!reasonErr}
+              className={`w-full rounded-md border px-3 py-2 text-sm ${reasonErr ? "border-rose-400 bg-rose-50" : "border-slate-300"}`}
+            />
+            {reasonErr && <p className="text-xs font-medium text-rose-700">{reasonErr}</p>}
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => decide("reject")}
+                className="rounded-md border border-rose-400 px-4 py-2 text-sm font-medium text-rose-700 hover:bg-rose-50 disabled:opacity-50"
+              >
+                {deciding === "reject" ? "…" : "Reject"}
+              </button>
+              {req.can_return && (
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => decide("return")}
+                  className="rounded-md border border-amber-400 px-4 py-2 text-sm font-medium text-amber-800 hover:bg-amber-50 disabled:opacity-50"
+                >
+                  {deciding === "return" ? "…" : "Return to Service Manager"}
+                </button>
+              )}
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => act(() => partsApi.approve(req.id))}
+                className="rounded-md bg-emerald-700 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-800 disabled:opacity-50"
+              >
+                {req.stage === "svm" && req.stage_label?.includes("then Admin") ? "Recommend" : "Approve"}
+              </button>
+            </div>
+            <p className="text-xs text-slate-500">
+              Reject closes the request, and the engineer can fix it and send it again.
+              {req.can_return ? " Return to Service Manager keeps it open and sends it back to be checked again." : ""}
+            </p>
           </div>
         )}
 

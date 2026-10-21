@@ -57,6 +57,7 @@ def _req_out(r: ItemRequest, ctx: Ctx) -> dict:
         "crm_raised_by_user_id": r.crm_raised_by_user_id, "crm_raised_by_name": r.crm_raised_by_name,
         "request_date": r.request_date.isoformat(), "created_at": r.created_at, "decided_at": r.decided_at,
         "can_act": ctx.can_act_on_stage(r.stage),
+        "can_return": ctx.is_second_stage and r.stage == "sub",  # Admin / Sub Admin: send it back to the Service Manager
     }
 
 
@@ -317,6 +318,24 @@ def reject_request(request_id: int, body: RejectIn, ctx: Ctx = Depends(get_ctx),
         title=f"{KINDS.get(req.kind, req.kind)} rejected", description=f"{req.request_no} rejected: {body.reason}",
         extra={"reason": body.reason},
     )
+    return _req_out(req, ctx)
+
+
+class ReturnIn(BaseModel):
+    reason: str = Field(min_length=2)
+
+
+@router.post("/requests/{request_id}/return")
+def return_request(request_id: int, body: ReturnIn, ctx: Ctx = Depends(get_ctx), pdb: Session = Depends(get_parts_db)):
+    req = _load_request(pdb, request_id)
+    if not ctx.is_second_stage:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only Admin or Sub Admin can send a request back to the Service Manager")
+    try:
+        svc.return_to_manager(pdb, req, user=ctx.user, reason=body.reason.strip())
+    except svc.WrongStage as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc))
+    pdb.commit()
+    pdb.refresh(req)
     return _req_out(req, ctx)
 
 

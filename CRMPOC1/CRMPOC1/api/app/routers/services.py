@@ -1234,6 +1234,13 @@ def delete_service(service_id: int, db: Session = Depends(get_db), user: User = 
             status.HTTP_400_BAD_REQUEST,
             "Service request cannot be deleted after completion or payment is started",
         )
+    claims = list(db.scalars(select(ShortageClaim.claim_no).where(ShortageClaim.service_request_id == service.id).order_by(ShortageClaim.id)))
+    if claims:
+        shown = ", ".join(claims[:5]) + (f" and {len(claims) - 5} more" if len(claims) > 5 else "")
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            f"This service request has {len(claims)} shortage claim(s) ({shown}). Settle or remove the claim(s) first, then delete the request.",
+        )
     delete_service_request_graph(db, service)
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)

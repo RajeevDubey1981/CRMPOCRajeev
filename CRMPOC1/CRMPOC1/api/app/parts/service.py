@@ -107,6 +107,16 @@ def reject(pdb: Session, req: ItemRequest, *, user: User, reason: str) -> ItemRe
     return req
 
 
+def return_to_manager(pdb: Session, req: ItemRequest, *, user: User, reason: str) -> ItemRequest:
+    """Admin or Sub Admin send a request that waits for them back to the Service Manager, with the reason, to be looked
+    at again. It is not a rejection: the request stays open and goes through the Service Manager once more."""
+    if req.stage != "sub":
+        raise WrongStage("Only a request waiting for Admin or Sub Admin can be returned to the Service Manager")
+    req.stage = "svm"
+    log(pdb, req, "returned", f"Returned to the Service Manager by {user.name}: {reason}", user)
+    return req
+
+
 def resubmit(
     pdb: Session, req: ItemRequest, *, user: User,
     description: str | None = None, amount=None,
