@@ -138,13 +138,30 @@ export function RequestDetail({ id, onClose, onChanged }) {
   const [linkedClaims, setLinkedClaims] = useState([]);
 
   async function load() {
+    let detail = null;
     try {
-      setReq(await partsApi.requestDetail(id));
+      detail = await partsApi.requestDetail(id);
+      setReq(detail);
     } catch (e) {
       setErr(e.response?.data?.detail || "Could not load this request");
     }
-    if (canClaim) {
-      shortageClaimsApi.list({ item_request_id: id }).then(setLinkedClaims).catch(() => {});
+    if (canClaim && detail) loadClaims(detail);
+  }
+
+  // Claims raised on this request itself, plus the ones the engineer raised from the service request for the same unit.
+  async function loadClaims(detail) {
+    try {
+      const own = await shortageClaimsApi.list({ item_request_id: id });
+      let all = own;
+      if (detail.crm_service_request_id) {
+        const fromService = await shortageClaimsApi.list({ service_request_id: detail.crm_service_request_id });
+        const sameUnit = fromService.filter((c) => !detail.crm_serial_no || !c.serial_no || c.serial_no === detail.crm_serial_no);
+        const seen = new Set(own.map((c) => c.id));
+        all = [...own, ...sameUnit.filter((c) => !seen.has(c.id))];
+      }
+      setLinkedClaims(all);
+    } catch {
+      /* the request itself still shows */
     }
   }
 
@@ -197,6 +214,19 @@ export function RequestDetail({ id, onClose, onChanged }) {
           {req.crm_installation_request_id && <div><span className="text-xs uppercase tracking-wide text-slate-500">Installation</span><p>{req.crm_installation_request_no || req.crm_installation_request_id}</p></div>}
         </div>
         <div><span className="text-xs uppercase tracking-wide text-slate-500">Description</span><p className="text-sm text-slate-800">{req.description}</p></div>
+
+        {req.engineer_photos?.length > 0 && (
+          <div>
+            <span className="text-xs uppercase tracking-wide text-slate-500">Engineer's photos ({req.engineer_photos.length}) — taken at the unit</span>
+            <div className="mt-1 grid grid-cols-4 gap-2">
+              {req.engineer_photos.map((p) => (
+                <a key={`fp-${p.id}`} href={p.file_path} target="_blank" rel="noreferrer" className="block overflow-hidden rounded-md border border-slate-200" title={p.uploaded_by_name ? `By ${p.uploaded_by_name}` : ""}>
+                  <img src={p.file_path} alt="Engineer's photo" className="h-20 w-full object-cover" />
+                </a>
+              ))}
+            </div>
+          </div>
+        )}
 
         {req.photos?.length > 0 && (
           <div>

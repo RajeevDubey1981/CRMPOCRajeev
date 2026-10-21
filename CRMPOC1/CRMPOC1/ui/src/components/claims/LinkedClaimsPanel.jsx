@@ -22,6 +22,17 @@ export default function LinkedClaimsPanel({ claims, onChanged, isServiceManager 
   const [forms, setForms] = useState({});
   const [busyId, setBusyId] = useState(null);
   const [err, setErr] = useState("");
+  const [photos, setPhotos] = useState({});
+
+  // The engineer's claim photos sit on the claim itself; the list only carries a count, so fetch them for display.
+  const claimKey = (claims || []).map((c) => c.id).join(",");
+  useEffect(() => {
+    (claims || []).forEach((c) => {
+      if (!c.photo_count) return;
+      shortageClaimsApi.get(c.id).then((d) => setPhotos((cur) => ({ ...cur, [c.id]: d.photos || [] }))).catch(() => {});
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [claimKey]);
 
   const needsParties = (claims || []).some((c) => c.can_approve && c.stage === "svm" && !c.responsible_type);
   useEffect(() => {
@@ -95,10 +106,20 @@ export default function LinkedClaimsPanel({ claims, onChanged, isServiceManager 
               {" — "}{stageLabel(c.stage)}
               {c.raised_by_name && <span className="text-slate-500"> · raised by {c.raised_by_name}</span>}
             </div>
-            {c.responsible_type && (
-              <div className="mt-1 text-xs text-slate-600">
-                On {RESP_LABEL[c.responsible_type]}{c.party_name ? ` — ${c.party_name}` : ""}
-                {c.amount != null && ` · ₹${Number(c.amount).toLocaleString("en-IN")}`}
+            <div className="mt-1 text-xs font-medium text-slate-700">
+              {c.responsible_type
+                ? <>Claim raised on <span className="font-semibold">{RESP_LABEL[c.responsible_type]}</span>{c.party_name ? ` — ${c.party_name}` : ""}</>
+                : "Not decided yet who this claim is on — the Service Manager picks the party"}
+              {c.amount != null && ` · ₹${Number(c.amount).toLocaleString("en-IN")}`}
+            </div>
+            {c.description && <div className="mt-1 text-xs text-slate-600">{c.description}</div>}
+            {photos[c.id]?.length > 0 && (
+              <div className="mt-2 grid grid-cols-4 gap-1.5">
+                {photos[c.id].map((p) => (
+                  <a key={p.id} href={p.file_path} target="_blank" rel="noreferrer" className="block overflow-hidden rounded-md border border-slate-200 bg-white" title={p.label || ""}>
+                    <img src={p.file_path} alt={p.label || "Claim photo"} className="h-16 w-full object-cover" />
+                  </a>
+                ))}
               </div>
             )}
             {canDecideParty && (

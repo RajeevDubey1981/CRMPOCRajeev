@@ -8,7 +8,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -19,7 +19,9 @@ from app.parts.db import get_parts_db
 from app.parts.models import ItemRequest, ItemRequestEvent, ItemRequestPhoto, SparePart, SparePartFitment
 from app.parts.rules import KINDS, effective_required_photos, required_photos, stage_label
 from app.services import date_range as dr
-from app.services.file_service import save_upload
+from app.models.field_photo import FieldPhoto
+from app.models.service import ServiceRequestUnit
+from app.services.file_service import save_upload, to_public_upload_path
 from app.services.serial_history import create_serial_history_event
 
 router = APIRouter(prefix="/api/parts", tags=["parts"])
@@ -252,14 +254,40 @@ def raise_request(body: RequestIn, ctx: Ctx = Depends(get_ctx), db: Session = De
     return _req_out(req, ctx)
 
 
+def _engineer_photos(db: Session, req: ItemRequest) -> list[dict]:
+    """The engineer's own geo-tagged photos of this unit (serial verification). A request raised from an observation
+    carries no photos of its own, so the approver would otherwise see nothing from the engineer."""
+    conds = []
+    if req.crm_serial_no:
+        conds.append(FieldPhoto.serial_no == req.crm_serial_no)
+    if req.crm_service_request_id:
+        units = select(ServiceRequestUnit.id).where(ServiceRequestUnit.service_request_id == req.crm_service_request_id)
+        if req.crm_serial_no:
+            units = units.where(ServiceRequestUnit.serial_no == req.crm_serial_no)
+        conds.append(FieldPhoto.service_request_unit_id.in_(units))
+    if not conds:
+        return []
+    rows = db.scalars(select(FieldPhoto).where(or_(*conds)).order_by(FieldPhoto.id)).all()
+    out = []
+    for r in rows:
+        who = db.get(User, r.uploaded_by_user_id) if r.uploaded_by_user_id else None
+        out.append({
+            "id": r.id, "file_path": to_public_upload_path(r.file_path), "serial_no": r.serial_no,
+            "captured_at": r.captured_at or r.created_at, "uploaded_by_name": who.name if who else None,
+            "map_url": f"https://www.google.com/maps?q={float(r.latitude):.7f},{float(r.longitude):.7f}",
+        })
+    return out
+
+
 @router.get("/requests/{request_id}")
-def get_request(request_id: int, ctx: Ctx = Depends(get_ctx), pdb: Session = Depends(get_parts_db)):
+def get_request(request_id: int, ctx: Ctx = Depends(get_ctx), pdb: Session = Depends(get_parts_db), db: Session = Depends(get_db)):
     req = _load_request(pdb, request_id)
     _own_or_approver(ctx, req)
     photos = pdb.scalars(select(ItemRequestPhoto).where(ItemRequestPhoto.item_request_id == req.id).order_by(ItemRequestPhoto.id)).all()
     events = pdb.scalars(select(ItemRequestEvent).where(ItemRequestEvent.item_request_id == req.id).order_by(ItemRequestEvent.id)).all()
     out = _req_out(req, ctx)
     out["photos"] = [{"id": p.id, "file_path": p.file_path, "label": p.label, "uploaded_at": p.uploaded_at} for p in photos]
+    out["engineer_photos"] = _engineer_photos(db, req)
     out["timeline"] = [{"id": e.id, "kind": e.kind, "text": e.text, "by_name": e.crm_by_name, "at": e.at} for e in events]
     return out
 
