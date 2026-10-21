@@ -108,7 +108,7 @@ export default function LinkedClaimsPanel({ claims, onChanged, isServiceManager 
             </div>
             <div className="mt-1 text-xs font-medium text-slate-700">
               {c.responsible_type
-                ? <>Claim raised on <span className="font-semibold">{RESP_LABEL[c.responsible_type]}</span>{c.party_name ? ` — ${c.party_name}` : ""}</>
+                ? <>Claim raised on <span className="font-semibold">{RESP_LABEL[c.responsible_type]}</span>{c.party_name ? ` — ${c.party_name}` : ""}{c.party_given_by ? <span className="font-normal text-slate-600"> · given by {c.party_given_by}</span> : null}</>
                 : "Not decided yet who this claim is on — the Service Manager picks the party"}
               {c.amount != null && ` · ₹${Number(c.amount).toLocaleString("en-IN")}`}
             </div>

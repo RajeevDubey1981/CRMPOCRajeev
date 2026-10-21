@@ -90,6 +90,17 @@ def log(db: Session, claim: ShortageClaim, kind: str, text: str, user: User | No
     db.add(ShortageClaimEvent(claim_id=claim.id, kind=kind, text=text, by_user_id=user.id if user else None))
 
 
+def _party_given_by(db: Session, c: ShortageClaim) -> str | None:
+    """Who said whom this claim is on (the Service Manager's decision), so Admin can see it."""
+    if not c.responsible_type:
+        return None
+    event = db.scalars(
+        select(ShortageClaimEvent).where(ShortageClaimEvent.claim_id == c.id, ShortageClaimEvent.kind == "decided").order_by(ShortageClaimEvent.id.desc())
+    ).first()
+    who = db.get(User, event.by_user_id) if event and event.by_user_id else None
+    return who.name if who else None
+
+
 def _out(db: Session, c: ShortageClaim, role: str, can_edit: bool, user_id: int | None = None) -> dict:
     items = list(db.scalars(select(ShortageClaimItem.label).where(ShortageClaimItem.claim_id == c.id)))
     n_photos = len(db.scalars(select(ShortageClaimPhoto.id).where(ShortageClaimPhoto.claim_id == c.id)).all())
@@ -110,7 +121,7 @@ def _out(db: Session, c: ShortageClaim, role: str, can_edit: bool, user_id: int 
         "item_code": c.item_code, "serial_no": c.serial_no, "items": items,
         "description": c.description, "stage": c.stage,
         "responsible_type": c.responsible_type, "responsible_label": RESP_LABEL.get(c.responsible_type),
-        "party_name": party_name, "resolution": c.resolution,
+        "party_name": party_name, "party_given_by": _party_given_by(db, c), "resolution": c.resolution,
         "raised_by_user_id": c.raised_by_user_id, "raised_by_name": raised_by.name if raised_by else None,
         "photo_count": n_photos, "required_photos": effective_required_photos(c),
         "created_at": c.created_at, "decided_at": c.decided_at,

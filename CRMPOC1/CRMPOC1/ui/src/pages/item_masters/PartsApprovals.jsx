@@ -5,7 +5,6 @@ import DateRangeFilter from "../../components/DateRangeFilter.jsx";
 import Modal from "../../components/Modal.jsx";
 import LinkedClaimsPanel from "../../components/claims/LinkedClaimsPanel.jsx";
 import PartySummary from "../../components/claims/PartySummary.jsx";
-import RaiseClaimPanel from "../../components/claims/RaiseClaimPanel.jsx";
 import { partsApi, REQUEST_KINDS } from "../../api/parts.js";
 import { shortageClaimsApi } from "../../api/shortageClaims.js";
 import { useAuth } from "../../auth/AuthContext.jsx";
@@ -273,15 +272,6 @@ export function RequestDetail({ id, onClose, onChanged }) {
         {err && <p className="rounded-md bg-rose-50 px-2 py-1 text-xs text-rose-700">{err}</p>}
 
         <LinkedClaimsPanel claims={linkedClaims} onChanged={load} isServiceManager={roleKey(user?.role) === "service_manager"} />
-
-        {canClaim && (
-          <RaiseClaimPanel
-            flow="parts"
-            context={{ item_request_id: req.id, item_code: req.crm_item_code, serial_no: req.crm_serial_no }}
-            triggerLabel="Claim it out (item missing / damaged)"
-            onSent={load}
-          />
-        )}
 
         {req.can_act && (
           <div className="space-y-2 border-t border-slate-200 pt-3">

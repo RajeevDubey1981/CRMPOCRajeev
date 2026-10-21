@@ -21,6 +21,7 @@ from app.parts.rules import KINDS, effective_required_photos, required_photos, s
 from app.services import date_range as dr
 from app.models.field_photo import FieldPhoto
 from app.models.service import ServiceRequestUnit
+from app.models.shortage_claim import ShortageClaim, ShortageClaimEvent
 from app.services.file_service import save_upload, to_public_upload_path
 from app.services.serial_history import create_serial_history_event
 
@@ -255,6 +256,42 @@ def raise_request(body: RequestIn, ctx: Ctx = Depends(get_ctx), db: Session = De
     return _req_out(req, ctx)
 
 
+RESP_LABEL = {"mfg": "Manufacturer", "trans": "Transporter", "ins": "Insurance", "company": "Company"}
+
+
+def _claims_for_request(db: Session, req: ItemRequest) -> list[ShortageClaim]:
+    """Claims raised on this request itself, or from its service request for the same unit."""
+    conds = [ShortageClaim.item_request_id == req.id]
+    if req.crm_service_request_id:
+        same_unit = ShortageClaim.service_request_id == req.crm_service_request_id
+        if req.crm_serial_no:
+            same_unit = same_unit & or_(ShortageClaim.serial_no.is_(None), ShortageClaim.serial_no == req.crm_serial_no)
+        conds.append(same_unit)
+    return list(db.scalars(select(ShortageClaim).where(or_(*conds)).order_by(ShortageClaim.id)).all())
+
+
+def _claim_party_text(db: Session, claim: ShortageClaim) -> str:
+    """"Company", "Manufacturer — Name" ... and who gave it, as the Service Manager decided it."""
+    from app.models.courier import Courier
+    from app.models.vendor import Vendor
+
+    party = None
+    if claim.responsible_type == "mfg" and claim.vendor_id:
+        v = db.get(Vendor, claim.vendor_id)
+        party = v.name_of_firm if v else None
+    elif claim.responsible_type == "trans" and claim.courier_id:
+        c = db.get(Courier, claim.courier_id)
+        party = c.courier_name if c else None
+    elif claim.responsible_type == "ins":
+        party = claim.insurer_name
+    text = RESP_LABEL.get(claim.responsible_type, "—") + (f" — {party}" if party else "")
+    event = db.scalars(
+        select(ShortageClaimEvent).where(ShortageClaimEvent.claim_id == claim.id, ShortageClaimEvent.kind == "decided").order_by(ShortageClaimEvent.id.desc())
+    ).first()
+    who = db.get(User, event.by_user_id) if event and event.by_user_id else None
+    return text + (f" (given by {who.name})" if who else "")
+
+
 def _engineer_photos(db: Session, req: ItemRequest) -> list[dict]:
     """The engineer's own geo-tagged photos of this unit (serial verification). A request raised from an observation
     carries no photos of its own, so the approver would otherwise see nothing from the engineer."""
@@ -311,12 +348,25 @@ def approve_request(request_id: int, ctx: Ctx = Depends(get_ctx), db: Session = 
     req = _load_request(pdb, request_id)
     if not ctx.can_act_on_stage(req.stage):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "You cannot approve this request at its current stage")
+    claims = _claims_for_request(db, req)
+    if req.stage == "svm":
+        # The Service Manager must say to whom a claim is given before passing the request on, so Admin can see it.
+        open_unassigned = [c.claim_no for c in claims if c.stage in ("svm", "sub") and not c.responsible_type]
+        if open_unassigned:
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                f"Say to whom the claim is given first ({', '.join(open_unassigned)}): pick Manufacturer, Transporter, Insurance or Company on the claim, then approve.",
+            )
     try:
         svc.approve(pdb, req, user=ctx.user)
     except svc.NotReady as exc:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc))
     except svc.WrongStage as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc))
+    if claims and req.stage in ("sub", "done"):
+        for c in claims:
+            if c.responsible_type:
+                svc.log(pdb, req, "claim_party", f"Claim {c.claim_no} is on {_claim_party_text(db, c)}", ctx.user)
     pdb.commit()
     pdb.refresh(req)
     if req.stage == "done":
