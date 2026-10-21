@@ -68,6 +68,15 @@ class ClaimPartyOnApprovalTests(PartsTestBase):
         self.db.commit()
         return c.claim_no
 
+    def test_an_older_claim_tied_to_another_request_is_not_shown_here(self):
+        from app.models.shortage_claim import ShortageClaim
+
+        old = self._request()
+        self.db.add(ShortageClaim(claim_no="SHC-00009", flow="parts", item_request_id=old, serial_no="SER-1", description="old", raised_by_user_id=self.eng.id, stage="svm", responsible_type="company"))
+        self.db.commit()
+        fresh = self._request()
+        self.assertEqual(self.post(f"/api/parts/requests/{fresh}/approve", {}, self.svm).status_code, 200, "the older claim is not this request's")
+
 
 if __name__ == "__main__":
     unittest.main()

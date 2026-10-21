@@ -264,7 +264,8 @@ def _claims_for_request(db: Session, req: ItemRequest) -> list[ShortageClaim]:
     may have claimed the unit under another request, and the approver has to see it all the same."""
     conds = [ShortageClaim.item_request_id == req.id]
     if req.crm_serial_no:
-        conds.append(ShortageClaim.serial_no == req.crm_serial_no)
+        # a claim already tied to a different request (an older one for the same unit) is that request's, not this one's
+        conds.append((ShortageClaim.serial_no == req.crm_serial_no) & or_(ShortageClaim.item_request_id.is_(None), ShortageClaim.item_request_id == req.id))
     if req.crm_service_request_id:
         # claims on this service request that name no unit still belong to it; ones for another unit do not
         conds.append((ShortageClaim.service_request_id == req.crm_service_request_id) & ShortageClaim.serial_no.is_(None))

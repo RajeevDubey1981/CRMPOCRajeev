@@ -152,7 +152,7 @@ export function RequestDetail({ id, onClose, onChanged }) {
   async function loadClaims(detail) {
     try {
       const lists = [await shortageClaimsApi.list({ item_request_id: id })];
-      if (detail.crm_serial_no) lists.push(await shortageClaimsApi.list({ serial_no: detail.crm_serial_no }));
+      if (detail.crm_serial_no) lists.push((await shortageClaimsApi.list({ serial_no: detail.crm_serial_no })).filter((c) => !c.item_request_id || c.item_request_id === id));
       if (detail.crm_service_request_id) lists.push((await shortageClaimsApi.list({ service_request_id: detail.crm_service_request_id })).filter((c) => !c.serial_no));
       const seen = new Set();
       setLinkedClaims(lists.flat().filter((c) => !seen.has(c.id) && seen.add(c.id)).sort((a, b) => a.id - b.id));
