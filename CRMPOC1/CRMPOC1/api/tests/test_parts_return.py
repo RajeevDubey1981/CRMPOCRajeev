@@ -73,5 +73,38 @@ class ReturnToServiceManagerTests(PartsTestBase):
         self.assertEqual(self.post(f"/api/parts/requests/{rid}/return", {}, self.sub).status_code, 422)
 
 
+class ReturnToServiceTeamTests(PartsTestBase):
+    _waiting_for_admin = ReturnToServiceManagerTests._waiting_for_admin
+
+    """The Service Manager (and Admin) can also send a request back to the service team to fix, without rejecting it."""
+
+    def _pending_svm(self):
+        r = self.post("/api/parts/requests", {"kind": "expense", "description": "Taxi to site", "amount": "400.00"}, self.eng)
+        return r.json()["id"]
+
+    def test_service_manager_returns_it_and_the_engineer_resubmits(self):
+        rid = self._pending_svm()
+        d = self.get(f"/api/parts/requests/{rid}", self.svm).json()
+        self.assertTrue(d["can_return_team"])
+        self.assertFalse(self.get(f"/api/parts/requests/{rid}", self.eng).json()["can_return_team"])
+        r = self.post(f"/api/parts/requests/{rid}/return-team", {"reason": "Add the bill number"}, self.svm)
+        self.assertEqual((r.status_code, r.json()["stage"], r.json()["stage_label"]), (200, "returned", "Returned to Service Team"))
+        self.assertIn("Returned to the Service Team by", self.get(f"/api/parts/requests/{rid}", self.svm).json()["timeline"][-1]["text"])
+        self.assertFalse(self.get(f"/api/parts/requests/{rid}", self.svm).json()["can_act"], "nothing waits on the manager now")
+        r = self.post(f"/api/parts/requests/{rid}/resubmit", {"description": "Taxi to site, bill 123"}, self.eng)
+        self.assertEqual((r.status_code, r.json()["stage"]), (200, "svm"))
+
+    def test_admin_can_return_to_team_from_the_admin_stage_and_a_reason_is_needed(self):
+        rid = self._waiting_for_admin()
+        self.assertEqual(self.post(f"/api/parts/requests/{rid}/return-team", {"reason": ""}, self.sub).status_code, 422)
+        self.assertEqual(self.post(f"/api/parts/requests/{rid}/return-team", {"reason": "Need a clearer photo"}, self.sub).json()["stage"], "returned")
+
+    def test_others_cannot_and_a_decided_request_cannot_be_returned(self):
+        rid = self._pending_svm()
+        self.assertIn(self.post(f"/api/parts/requests/{rid}/return-team", {"reason": "no"}, self.eng).status_code, (403, 404))
+        self.post(f"/api/parts/requests/{rid}/reject", {"reason": "no"}, self.svm)
+        self.assertIn(self.post(f"/api/parts/requests/{rid}/return-team", {"reason": "late"}, self.svm).status_code, (403, 409))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -55,7 +55,9 @@ def stage_label(kind: str, amount, stage: str) -> str:
     if stage == "done":
         return "Approved"
     if stage == "rejected":
-        return "Rejected"
+        return "Not approved"
+    if stage == "returned":
+        return "Returned to Service Team"
     if stage == "sub":
         return "Approved by Service Manager, pending Admin"
     if stage == "svm":

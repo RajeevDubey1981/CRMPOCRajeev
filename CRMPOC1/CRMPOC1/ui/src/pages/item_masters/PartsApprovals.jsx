@@ -20,7 +20,8 @@ const KIND_PILL = { part: "bg-blue-100 text-blue-800", expense: "bg-amber-100 te
 
 function stagePill(stage) {
   if (stage === "done") return <span className="inline-flex rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">Approved</span>;
-  if (stage === "rejected") return <span className="inline-flex rounded-full bg-rose-100 px-2 py-0.5 text-xs font-medium text-rose-700">Rejected</span>;
+  if (stage === "rejected") return <span className="inline-flex rounded-full bg-rose-100 px-2 py-0.5 text-xs font-medium text-rose-700">Not approved</span>;
+  if (stage === "returned") return <span className="inline-flex rounded-full bg-orange-100 px-2 py-0.5 text-xs font-medium text-orange-800">Returned to Service Team</span>;
   if (stage === "sub") return <span className="inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">Pending Admin</span>;
   return <span className="inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">Pending Service Manager</span>;
 }
@@ -187,12 +188,12 @@ export function RequestDetail({ id, onClose, onChanged }) {
   async function decide(kind) {
     const reason = rejectReason.trim();
     if (reason.length < 2) {
-      setReasonErr(kind === "return" ? "Write why you are sending it back, so the Service Manager knows what to look at." : "Write why you are rejecting it, so the engineer knows what to fix.");
+      setReasonErr(kind === "return" ? "Write why you are sending it back, so the Service Manager knows what to look at." : kind === "team" ? "Write what the service team should fix or add." : "Write why it is not approved, so the engineer knows what to fix.");
       return;
     }
     setReasonErr("");
     setDeciding(kind);
-    const ok = await act(() => (kind === "return" ? partsApi.returnToManager(req.id, reason) : partsApi.reject(req.id, reason)));
+    const ok = await act(() => (kind === "return" ? partsApi.returnToManager(req.id, reason) : kind === "team" ? partsApi.returnToTeam(req.id, reason) : partsApi.reject(req.id, reason)));
     setDeciding("");
     if (ok) setRejectReason("");
   }
@@ -288,7 +289,7 @@ export function RequestDetail({ id, onClose, onChanged }) {
             <input
               value={rejectReason}
               onChange={(e) => { setRejectReason(e.target.value); setReasonErr(""); }}
-              placeholder="Reason (needed to reject or send back)"
+              placeholder="Reason (needed for Not approved or Return)"
               aria-invalid={!!reasonErr}
               className={`w-full rounded-md border px-3 py-2 text-sm ${reasonErr ? "border-rose-400 bg-rose-50" : "border-slate-300"}`}
             />
@@ -300,8 +301,18 @@ export function RequestDetail({ id, onClose, onChanged }) {
                 onClick={() => decide("reject")}
                 className="rounded-md border border-rose-400 px-4 py-2 text-sm font-medium text-rose-700 hover:bg-rose-50 disabled:opacity-50"
               >
-                {deciding === "reject" ? "…" : "Reject"}
+                {deciding === "reject" ? "…" : "Not approved"}
               </button>
+              {req.can_return_team && (
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => decide("team")}
+                  className="rounded-md border border-orange-400 px-4 py-2 text-sm font-medium text-orange-800 hover:bg-orange-50 disabled:opacity-50"
+                >
+                  {deciding === "team" ? "…" : "Return to Service Team"}
+                </button>
+              )}
               {req.can_return && (
                 <button
                   type="button"
@@ -322,16 +333,16 @@ export function RequestDetail({ id, onClose, onChanged }) {
               </button>
             </div>
             <p className="text-xs text-slate-500">
-              Reject closes the request, and the engineer can fix it and send it again.
+              Not approved closes the request, and the engineer can fix it and send it again. Return to Service Team keeps it open for the engineer to fix or add something, then it comes back to you.
               {req.can_return ? " Return to Service Manager keeps it open and sends it back to be checked again." : ""}
             </p>
           </div>
         )}
 
-        {req.stage === "rejected" && (
+        {(req.stage === "rejected" || req.stage === "returned") && (
           <div className="rounded-md border border-rose-200 bg-rose-50 p-3">
             <p className="mb-2 text-xs text-rose-800">
-              Rejected — see the reason in the timeline above. Fixing it below sends this same request (<span className="font-mono">{req.request_no}</span>) back through approval instead of starting over.
+              {req.stage === "returned" ? "Returned to the Service Team" : "Not approved"} — see the reason in the timeline above. Fixing it below sends this same request (<span className="font-mono">{req.request_no}</span>) back through approval instead of starting over.
             </p>
             <div className="flex items-center gap-2">
               <input

@@ -59,7 +59,7 @@ class SparePartFitment(PartsBase):
 
 
 REQUEST_KINDS = ("part", "expense", "ondemand", "unit")
-REQUEST_STAGES = ("svm", "sub", "done", "rejected")  # waiting on Service Manager | waiting on Admin/Sub Admin | approved | rejected
+REQUEST_STAGES = ("svm", "sub", "done", "rejected", "returned")  # waiting on Service Manager | waiting on Admin/Sub Admin | approved | rejected | sent back to the service team to fix
 
 
 class ItemRequest(PartsBase, Stamped):

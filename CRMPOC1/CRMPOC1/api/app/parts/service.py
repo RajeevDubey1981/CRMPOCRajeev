@@ -107,6 +107,16 @@ def reject(pdb: Session, req: ItemRequest, *, user: User, reason: str) -> ItemRe
     return req
 
 
+def return_to_team(pdb: Session, req: ItemRequest, *, user: User, reason: str) -> ItemRequest:
+    """The approver is not rejecting, only asking the service team (the engineer who raised it) to fix or add something.
+    The request waits for them and goes through the same chain again once they resubmit it."""
+    if req.stage not in ("svm", "sub"):
+        raise WrongStage(f"This request is already {req.stage}")
+    req.stage = "returned"
+    log(pdb, req, "returned_team", f"Returned to the Service Team by {user.name}: {reason}", user)
+    return req
+
+
 def return_to_manager(pdb: Session, req: ItemRequest, *, user: User, reason: str) -> ItemRequest:
     """Admin or Sub Admin send a request that waits for them back to the Service Manager, with the reason, to be looked
     at again. It is not a rejection: the request stays open and goes through the Service Manager once more."""
@@ -124,8 +134,8 @@ def resubmit(
     """A rejected request isn't a dead end -- whoever raised it fixes what the rejection reason pointed at
     and sends it back through the same chain, under the same request_no, instead of starting over from
     scratch with no link to what came before."""
-    if req.stage != "rejected":
-        raise WrongStage(f"Only a rejected request can be resubmitted (this one is {req.stage})")
+    if req.stage not in ("rejected", "returned"):
+        raise WrongStage(f"Only a rejected or returned request can be resubmitted (this one is {req.stage})")
     if description:
         req.description = description
     if amount is not None:

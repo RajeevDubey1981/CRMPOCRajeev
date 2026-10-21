@@ -59,6 +59,7 @@ def _req_out(r: ItemRequest, ctx: Ctx) -> dict:
         "crm_raised_by_user_id": r.crm_raised_by_user_id, "crm_raised_by_name": r.crm_raised_by_name,
         "request_date": r.request_date.isoformat(), "created_at": r.created_at, "decided_at": r.decided_at,
         "can_act": ctx.can_act_on_stage(r.stage),
+        "can_return_team": ctx.can_act_on_stage(r.stage),  # whoever decides at this stage can send it back to the service team
         "can_return": ctx.is_second_stage and r.stage == "sub",  # Admin / Sub Admin: send it back to the Service Manager
     }
 
@@ -360,6 +361,20 @@ def return_request(request_id: int, body: ReturnIn, ctx: Ctx = Depends(get_ctx),
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Only Admin or Sub Admin can send a request back to the Service Manager")
     try:
         svc.return_to_manager(pdb, req, user=ctx.user, reason=body.reason.strip())
+    except svc.WrongStage as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc))
+    pdb.commit()
+    pdb.refresh(req)
+    return _req_out(req, ctx)
+
+
+@router.post("/requests/{request_id}/return-team")
+def return_request_to_team(request_id: int, body: ReturnIn, ctx: Ctx = Depends(get_ctx), pdb: Session = Depends(get_parts_db)):
+    req = _load_request(pdb, request_id)
+    if not ctx.can_act_on_stage(req.stage):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "You cannot send this request back at its current stage")
+    try:
+        svc.return_to_team(pdb, req, user=ctx.user, reason=body.reason.strip())
     except svc.WrongStage as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc))
     pdb.commit()

@@ -69,7 +69,7 @@ class PartsDbTests(PartsTestBase):
         self.assertIn("Service Manager", stage_label("part", 1500, "svm"))
         self.assertIn("Admin", stage_label("part", 1500, "svm"))  # "(then Admin)" hint when a second approval is coming
         self.assertEqual(stage_label("part", 800, "done"), "Approved")
-        self.assertEqual(stage_label("part", 800, "rejected"), "Rejected")
+        self.assertEqual(stage_label("part", 800, "rejected"), "Not approved")
 
     def test_no_foreign_key_into_the_crm_database(self):
         """Parts tables only ever reference the CRM by a plain integer/string column (crm_*), never a ForeignKey."""
