@@ -143,6 +143,7 @@ from app.services.service_units import (
     build_order_item_summaries,
     build_unit_rows,
     engineer_has_unit_assignment,
+    ensure_order_not_assigned_elsewhere,
     restore_assigned_placeholder_serials,
     verify_order_for_service,
 )
@@ -1709,6 +1710,8 @@ def assign_service_desk_user(
     if service.status == "Closed":
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Closed service requests cannot be assigned to a service user")
     target = _require_active_service_desk_user(db, body.service_user_id)
+    unit_items = db.scalars(select(ServiceRequestUnit.order_item_id).where(ServiceRequestUnit.service_request_id == service.id)).all()
+    ensure_order_not_assigned_elsewhere(db, service, [service.order_item_id, *unit_items])
     old_status = service.status
     previous_id = service.assigned_service_user_id
     service.assigned_service_user_id = target.id

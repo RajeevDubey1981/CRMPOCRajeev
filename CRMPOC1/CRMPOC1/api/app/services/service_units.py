@@ -680,6 +680,7 @@ def add_service_unit_by_serial(
                     f"Scanned serial belongs to item {order_item_code}, but this row is for item {target_code}.",
                 )
 
+            ensure_order_not_assigned_elsewhere(db, service, [order_item_for_row.id])
             existing_for_serial = db.scalar(
                 select(ServiceRequestUnit).where(
                     ServiceRequestUnit.service_request_id == service.id,
@@ -757,6 +758,49 @@ def add_service_unit_by_serial(
     return unit
 
 
+FINISHED_SERVICE_STATUSES = {"Closed", "Payment Completed", "Service Completed", "Cancelled", "Rejected"}
+
+
+def ensure_order_not_assigned_elsewhere(db: Session, service: ServiceRequest, order_item_ids) -> None:
+    """One order serial is serviced under one request at a time. If another open service request already has it with a
+    Service user or an engineer, refuse: the same order cannot be assigned twice."""
+    ids = {i for i in order_item_ids if i}
+    if not ids:
+        return
+    on_units = select(ServiceRequestUnit.service_request_id).where(ServiceRequestUnit.order_item_id.in_(ids))
+    others = db.scalars(
+        select(ServiceRequest).where(
+            ServiceRequest.id != service.id,
+            ServiceRequest.deleted_at.is_(None),
+            ServiceRequest.status.notin_(FINISHED_SERVICE_STATUSES),
+            or_(ServiceRequest.order_item_id.in_(ids), ServiceRequest.id.in_(on_units)),
+        ).order_by(ServiceRequest.id)
+    ).all()
+    for other in others:
+        people = []
+        if other.assigned_service_user_id:
+            owner = db.get(User, other.assigned_service_user_id)
+            people.append(f"{owner.name} (service team)" if owner else "a service team member")
+        engineer_ids = {
+            e for e in db.scalars(
+                select(ServiceRequestUnit.assigned_engineer_id).where(
+                    ServiceRequestUnit.service_request_id == other.id, ServiceRequestUnit.assigned_engineer_id.is_not(None)
+                )
+            )
+        }
+        for engineer_id in sorted(engineer_ids):
+            engineer = db.get(User, engineer_id)
+            people.append(f"{engineer.name} (engineer)" if engineer else "an engineer")
+        if not people:
+            continue
+        order = db.get(Order, other.order_id) if other.order_id else None
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            f"This order{f' {order.order_no}' if order else ''} is already assigned in {other.request_no} to {', '.join(people)}. "
+            "The same order cannot be assigned twice. Finish or close that request first.",
+        )
+
+
 def assign_units_to_engineer(
     db: Session,
     service: ServiceRequest,
@@ -785,6 +829,7 @@ def assign_units_to_engineer(
     if len(units) != len(set(unit_ids)):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "One or more selected units were not found on this service request")
 
+    ensure_order_not_assigned_elsewhere(db, service, [unit.order_item_id for unit in units])
     for unit in units:
         order_item = db.get(OrderItem, unit.order_item_id)
         if order_item is None or not _is_installed_order_item(db, order_item):
@@ -901,6 +946,7 @@ def assign_units_to_engineer_by_quantity(
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "billing_type must be Free or Paid")
 
     selected_units = eligible_units[:quantity]
+    ensure_order_not_assigned_elsewhere(db, service, [unit.order_item_id for unit in selected_units])
     now = _now()
     for unit in selected_units:
         order_item = db.get(OrderItem, unit.order_item_id) if unit.order_item_id else None
