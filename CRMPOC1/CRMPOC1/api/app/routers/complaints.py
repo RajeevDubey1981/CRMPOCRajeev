@@ -336,6 +336,12 @@ def _with_bounce_flags(db: Session, items: list[ComplaintListItem]) -> list[Comp
     return items
 
 
+def _with_owners(owners: dict, items: list[ComplaintListItem]) -> list[ComplaintListItem]:
+    for i in items:
+        i.service_owner_id, i.service_owner_name = owners.get(i.id, (None, None))
+    return items
+
+
 def _hydrate(db: Session, c: Complaint) -> dict:
     engineer_name = None
     if c.assigned_engineer:
@@ -546,6 +552,18 @@ def _linked_service_map(db: Session, complaint_ids: list[int]) -> dict[int, tupl
         )
     ).all()
     return {row.complaint_id: (row.id, row.request_no, row.status) for row in rows}
+
+
+def _service_owner_map(db: Session, complaint_ids: list[int]) -> dict[int, tuple[int, str | None]]:
+    """The service team member each complaint's service request is assigned to (its owner), for the list."""
+    if not complaint_ids:
+        return {}
+    rows = db.execute(
+        select(ServiceRequest.complaint_id, User.id, User.name)
+        .join(User, User.id == ServiceRequest.assigned_service_user_id)
+        .where(ServiceRequest.complaint_id.in_(complaint_ids), ServiceRequest.deleted_at.is_(None))
+    ).all()
+    return {row.complaint_id: (row.id, row.name) for row in rows}
 
 
 def _find_linked_installation_request(db: Session, complaint: Complaint) -> InstallationRequest | None:
@@ -866,9 +884,10 @@ def list_complaints(
         documents_received = _customer_documents_received_map(db, complaint_ids)
         linked_services = _linked_service_map(db, complaint_ids)
         linked_installations = _linked_installation_map(db, rows)
+    owners = _service_owner_map(db, complaint_ids)
 
     return ComplaintListResponse(
-        items=_with_bounce_flags(db, [
+        items=_with_owners(owners, _with_bounce_flags(db, [
             _list_row(
                 db, c,
                 call_counts.get(c.id, 0),
@@ -880,7 +899,7 @@ def list_complaints(
                 *(linked_installations.get(c.id) or (None, None)),
             )
             for c in rows
-        ]),
+        ])),
         total=total,
         page=page,
         per_page=per_page,
