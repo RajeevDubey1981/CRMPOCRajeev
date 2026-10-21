@@ -393,6 +393,19 @@ def bulk_verify_units(
     return verified
 
 
+def ensure_machine_photo_before_observation(db: Session, unit: ServiceRequestUnit, user: User) -> None:
+    """The engineer proves the visit with at least one photo of the machine; without it the observation is not accepted."""
+    if canonical_role_key(user.role) != "engineer":
+        return
+    photo_count = db.scalar(select(func.count(FieldPhoto.id)).where(FieldPhoto.service_request_unit_id == unit.id)) or 0
+    if photo_count < MIN_FIELD_PHOTOS:
+        serial = unit_primary_serial(unit) or f"unit #{unit.id}"
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            f"Add at least {MIN_FIELD_PHOTOS} photo of the machine (serial {serial}) before submitting the observation. Tap Photos on that serial.",
+        )
+
+
 def submit_unit_observation(
     db: Session,
     service: ServiceRequest,
@@ -436,6 +449,7 @@ def submit_unit_observation(
             unit.unit_status = UNIT_STATUS_PENDING_TEAM_REVIEW
         return existing
 
+    ensure_machine_photo_before_observation(db, unit, user)
     observation = ServiceObservation(
         service_request_id=service.id,
         service_request_unit_id=unit.id,
@@ -494,6 +508,7 @@ def bulk_submit_observations(
                 status.HTTP_400_BAD_REQUEST,
                 f"Observation already submitted for unit {item.unit_id}",
             )
+        ensure_machine_photo_before_observation(db, unit, user)
         observation = ServiceObservation(
             service_request_id=service.id,
             service_request_unit_id=unit.id,

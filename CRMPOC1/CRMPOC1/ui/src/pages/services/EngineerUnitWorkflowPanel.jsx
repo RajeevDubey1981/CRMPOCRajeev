@@ -321,6 +321,8 @@ export default function EngineerUnitWorkflowPanel({
 
   const unverifiedUnits = workUnits.filter((unit) => !unit.serial_verified_at && unit.unit_status === "Assigned");
   const unitsNeedingObservation = workUnits.filter((unit) => unit.serial_verified_at && !unit.observation_id);
+  // An engineer's observation needs at least 1 photo of the machine; a serial known to have none is held back.
+  const unitsReadyForObservation = unitsNeedingObservation.filter((unit) => !(isEngineer && photoCounts[unit.id] === 0));
   const unitsPendingApproval = workUnits.filter((unit) => unit.unit_status === "Pending Service Approval");
   const unitsPendingTeamReview = workUnits.filter((unit) => unit.unit_status === "Pending Service Team Review");
   const unitsAwaitingSerialReview = workUnits.filter(
@@ -551,7 +553,7 @@ export default function EngineerUnitWorkflowPanel({
   }
 
   async function submitAll() {
-    const payload = unitsNeedingObservation.map((unit) => {
+    const payload = unitsReadyForObservation.map((unit) => {
       const row = rows.find((item) => item.unit_id === unit.id);
       return {
         unit_id: unit.id,
@@ -814,11 +816,14 @@ export default function EngineerUnitWorkflowPanel({
     }
 
     if (!observed && canVerifyOrObserve) {
+      const needsPhoto = isEngineer && photoCounts[unit.id] === 0;
       return (
         <button
           type="button"
           onClick={() => openModal("observation", unit.id)}
-          className="rounded-md bg-emerald-600 px-3 py-1.5 text-xs text-white"
+          disabled={needsPhoto}
+          title={needsPhoto ? "Add at least 1 photo of the machine first (tap Photos on this serial)" : undefined}
+          className="rounded-md bg-emerald-600 px-3 py-1.5 text-xs text-white disabled:opacity-50"
         >
           Add observation
         </button>
@@ -2365,8 +2370,14 @@ export default function EngineerUnitWorkflowPanel({
           </button>
         )}
         {canVerifyOrObserve && unitsNeedingObservation.length > 0 && (
-          <button type="button" onClick={submitAll} className="rounded-md bg-emerald-600 px-3 py-2 text-sm text-white">
-            Submit all observations ({unitsNeedingObservation.length})
+          <button
+            type="button"
+            onClick={submitAll}
+            disabled={unitsReadyForObservation.length === 0}
+            title={unitsReadyForObservation.length < unitsNeedingObservation.length ? "Serials without a photo are left out: add at least 1 photo to each first" : undefined}
+            className="rounded-md bg-emerald-600 px-3 py-2 text-sm text-white disabled:opacity-50"
+          >
+            Submit all observations ({unitsReadyForObservation.length}{unitsReadyForObservation.length < unitsNeedingObservation.length ? ` of ${unitsNeedingObservation.length}` : ""})
           </button>
         )}
         {canForwardUnits && unitsPendingTeamReview.length > 0 && (
@@ -2429,6 +2440,11 @@ export default function EngineerUnitWorkflowPanel({
                 <div className="mt-2 space-y-1 text-xs text-slate-600">
                   <WorkflowSteps unit={unit} />
                   <div>{progressSummary(unit)}</div>
+                </div>
+              )}
+              {isEngineer && verified && !unit.observation_id && photoCounts[unit.id] === 0 && (
+                <div className="mt-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                  Add at least 1 photo of the machine before you can submit the observation.
                 </div>
               )}
               {isEngineer && !verified && photoCounts[unit.id] === 0 && (
