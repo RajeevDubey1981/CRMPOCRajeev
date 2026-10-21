@@ -51,6 +51,23 @@ class ClaimPartyOnApprovalTests(PartsTestBase):
         self._claim(rid)
         self.assertEqual(self.post(f"/api/parts/requests/{rid}/approve", {}, self.admin).status_code, 200)
 
+    def test_a_claim_on_the_same_unit_under_another_service_request_is_found(self):
+        rid = self._request()
+        self._claim(None, serial_no="SER-1", service_request_id=99)
+        other_unit = self._claim_other_unit()
+        r = self.post(f"/api/parts/requests/{rid}/approve", {}, self.svm)
+        self.assertEqual(r.status_code, 409, "the claim for this serial has no party yet")
+        self.assertIn("SHC-00001", r.json()["detail"])
+        self.assertNotIn(other_unit, r.json()["detail"], "a claim for a different unit does not count")
+
+    def _claim_other_unit(self):
+        from app.models.shortage_claim import ShortageClaim
+
+        c = ShortageClaim(claim_no="SHC-00002", flow="service", service_request_id=42, serial_no="OTHER", description="x", raised_by_user_id=self.eng.id, stage="svm")
+        self.db.add(c)
+        self.db.commit()
+        return c.claim_no
+
 
 if __name__ == "__main__":
     unittest.main()

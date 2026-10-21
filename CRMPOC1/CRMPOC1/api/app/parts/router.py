@@ -260,13 +260,14 @@ RESP_LABEL = {"mfg": "Manufacturer", "trans": "Transporter", "ins": "Insurance",
 
 
 def _claims_for_request(db: Session, req: ItemRequest) -> list[ShortageClaim]:
-    """Claims raised on this request itself, or from its service request for the same unit."""
+    """Claims raised on this request itself, or for the same unit (same serial) from any service request: the engineer
+    may have claimed the unit under another request, and the approver has to see it all the same."""
     conds = [ShortageClaim.item_request_id == req.id]
+    if req.crm_serial_no:
+        conds.append(ShortageClaim.serial_no == req.crm_serial_no)
     if req.crm_service_request_id:
-        same_unit = ShortageClaim.service_request_id == req.crm_service_request_id
-        if req.crm_serial_no:
-            same_unit = same_unit & or_(ShortageClaim.serial_no.is_(None), ShortageClaim.serial_no == req.crm_serial_no)
-        conds.append(same_unit)
+        # claims on this service request that name no unit still belong to it; ones for another unit do not
+        conds.append((ShortageClaim.service_request_id == req.crm_service_request_id) & ShortageClaim.serial_no.is_(None))
     return list(db.scalars(select(ShortageClaim).where(or_(*conds)).order_by(ShortageClaim.id)).all())
 
 

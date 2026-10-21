@@ -151,15 +151,11 @@ export function RequestDetail({ id, onClose, onChanged }) {
   // Claims raised on this request itself, plus the ones the engineer raised from the service request for the same unit.
   async function loadClaims(detail) {
     try {
-      const own = await shortageClaimsApi.list({ item_request_id: id });
-      let all = own;
-      if (detail.crm_service_request_id) {
-        const fromService = await shortageClaimsApi.list({ service_request_id: detail.crm_service_request_id });
-        const sameUnit = fromService.filter((c) => !detail.crm_serial_no || !c.serial_no || c.serial_no === detail.crm_serial_no);
-        const seen = new Set(own.map((c) => c.id));
-        all = [...own, ...sameUnit.filter((c) => !seen.has(c.id))];
-      }
-      setLinkedClaims(all);
+      const lists = [await shortageClaimsApi.list({ item_request_id: id })];
+      if (detail.crm_serial_no) lists.push(await shortageClaimsApi.list({ serial_no: detail.crm_serial_no }));
+      if (detail.crm_service_request_id) lists.push((await shortageClaimsApi.list({ service_request_id: detail.crm_service_request_id })).filter((c) => !c.serial_no));
+      const seen = new Set();
+      setLinkedClaims(lists.flat().filter((c) => !seen.has(c.id) && seen.add(c.id)).sort((a, b) => a.id - b.id));
     } catch {
       /* the request itself still shows */
     }
