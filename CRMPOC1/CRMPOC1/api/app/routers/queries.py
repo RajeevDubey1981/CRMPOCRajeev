@@ -213,7 +213,7 @@ def _detail(db: Session, user: User, q: UserQuery, unread_before: int | None = N
         **item.model_dump(), messages=out_msgs, members=member_rows, events=history, can_reply=can_reply, can_close=q.status != "Closed",
         can_reopen=q.status == "Closed", can_forward=holder_or_staff and q.status != "Closed", can_manage=holder_or_staff and q.status != "Closed",
         can_set_priority=staff, can_ring=staff and q.status == "Open", can_see_history=holder_or_staff, alarm_count=q.alarm_count or 0,
-        private_now=bool(qs.people_out(db, q)),
+        private_now=bool(qs.people_out(db, q)), delete_on=qs.delete_on(q),
     )
 
 

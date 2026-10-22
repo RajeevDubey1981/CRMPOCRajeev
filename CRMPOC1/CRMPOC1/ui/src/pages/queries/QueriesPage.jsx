@@ -374,6 +374,12 @@ function Thread({ id, staff, onChanged }) {
         </div>
       )}
 
+      {thread.delete_on && (
+        <div className="border-t border-amber-200 bg-amber-50 px-4 py-1.5 text-xs text-amber-900">
+          This conversation is closed. It will be deleted for good on {new Date(thread.delete_on).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}, three months after it was closed. Reopen it to keep it.
+        </div>
+      )}
+
       {tab === "hist" && thread.can_see_history ? <History events={thread.events} /> : (
         <div className="flex-1 space-y-2.5 overflow-y-auto bg-slate-50 px-4 py-3" style={{ maxHeight: "calc(100vh - 26rem)", minHeight: "10rem" }}>
           {thread.messages.map((m, index) => {

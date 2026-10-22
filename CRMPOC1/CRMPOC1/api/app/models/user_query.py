@@ -62,6 +62,20 @@ class UserQueryAttachment(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 
+class UserQueryPurge(Base):
+    """A conversation that was deleted for good three months after it was closed. Only the number and the dates are kept,
+    never what was said, so there is a record that it existed and when it went."""
+
+    __tablename__ = "user_query_purges"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    query_no: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    purged_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    message_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    attachment_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+
 class UserQueryRead(Base):
     """How far a person has read a thread: messages after this one (from others) count as unread for them."""
 

@@ -176,6 +176,7 @@ class QueryDetail(QueryListItem):
     can_see_history: bool = False
     alarm_count: int = 0
     private_now: bool = False  # someone is out, so new messages are private
+    delete_on: datetime | None = None  # a closed conversation is deleted for good three months after it closed
 
 
 class QuerySummary(BaseModel):
