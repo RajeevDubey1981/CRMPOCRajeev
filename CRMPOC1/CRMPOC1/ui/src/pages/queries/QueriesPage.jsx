@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
 import { announceQueriesChanged, queriesApi } from "../../api/queries.js";
+import QueryAttachment from "../../components/queries/QueryAttachment.jsx";
 import { useAuth } from "../../auth/AuthContext.jsx";
 import DateRangeFilter from "../../components/DateRangeFilter.jsx";
 import QueriesDashboard from "../../components/queries/QueriesDashboard.jsx";
@@ -206,6 +207,31 @@ function People({ thread, busy, onAdd, onRemove, onAddBack }) {
   );
 }
 
+const MAX_UPLOAD = 2 * 1024 * 1024;
+
+// A full-screen screenshot can be over 2 MB: make a picture that is too big smaller (JPG) so it can still be sent.
+async function shrinkImage(file) {
+  if (!file.type?.startsWith("image/") || file.type === "image/gif" || file.size <= MAX_UPLOAD) return file;
+  try {
+    const bitmap = await createImageBitmap(file);
+    let scale = Math.min(1, 2400 / Math.max(bitmap.width, bitmap.height));
+    for (let quality = 0.85; quality >= 0.4; quality -= 0.15, scale *= 0.85) {
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.round(bitmap.width * scale);
+      canvas.height = Math.round(bitmap.height * scale);
+      canvas.getContext("2d").drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+      const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", quality));
+      if (blob && blob.size <= MAX_UPLOAD) {
+        const base = (file.name || "screenshot").replace(/\.[^.]+$/, "");
+        return new File([blob], `${base}.jpg`, { type: "image/jpeg" });
+      }
+    }
+  } catch {
+    /* fall through: the server says if it is still too big */
+  }
+  return file;
+}
+
 function Thread({ id, staff, onChanged }) {
   const [thread, setThread] = useState(null);
   const [err, setErr] = useState("");
@@ -266,7 +292,8 @@ function Thread({ id, staff, onChanged }) {
     const picked = Array.from(list || []).filter(Boolean);
     if (picked.length === 0) return;
     setErr("");
-    for (const original of picked) {
+    for (const raw of picked) {
+      const original = await shrinkImage(raw);
       const named = original.name && original.name !== "image.png"
         ? original
         : new File([original], `screenshot-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-")}.${(original.type.split("/")[1] || "png").replace("jpeg", "jpg")}`, { type: original.type });
@@ -276,7 +303,7 @@ function Thread({ id, staff, onChanged }) {
         setFiles((cur) => [...cur, saved]);
       } catch (e) {
         const detail = e.response?.data?.detail;
-        setErr(typeof detail === "string" ? detail : "That file could not be added. Use a picture (PNG, JPG), PDF or Word file under 8 MB");
+        setErr(typeof detail === "string" ? detail : "That file could not be added. Any file up to 2 MB works");
       } finally {
         setUploading((n) => n - 1);
       }
@@ -401,13 +428,7 @@ function Thread({ id, staff, onChanged }) {
                 {m.body && <div className="mt-1.5 whitespace-pre-wrap break-words pl-8 text-slate-700">{m.body}</div>}
                 {m.attachments?.length > 0 && (
                   <div className="mt-2 flex flex-wrap gap-2 pl-8">
-                    {m.attachments.map((a) => (a.is_image ? (
-                      <a key={a.id} href={a.file_path} target="_blank" rel="noreferrer" title={a.file_name} className="block overflow-hidden rounded-lg border border-slate-200 bg-white">
-                        <img src={a.file_path} alt={a.file_name} className="max-h-48 max-w-full object-contain" />
-                      </a>
-                    ) : (
-                      <a key={a.id} href={a.file_path} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50">📎 {a.file_name}</a>
-                    )))}
+                    {m.attachments.map((a) => <QueryAttachment key={a.id} file={a} />)}
                   </div>
                 )}
                 {m.is_private && (
@@ -441,7 +462,7 @@ function Thread({ id, staff, onChanged }) {
             <div className="mt-2 flex flex-wrap gap-2">
               {files.map((f) => (
                 <div key={f.id} className="relative overflow-hidden rounded-lg border border-slate-200 bg-white">
-                  {f.is_image ? <img src={f.file_path} alt={f.file_name} className="h-16 w-20 object-cover" /> : <div className="flex h-16 w-28 items-center gap-1 px-2 text-xs text-slate-600">📎 <span className="line-clamp-2 break-all">{f.file_name}</span></div>}
+                  {f.is_image ? <QueryAttachment file={f} size="small" /> : <div className="flex h-16 w-28 items-center gap-1 px-2 text-xs text-slate-600">📎 <span className="line-clamp-2 break-all">{f.file_name}</span></div>}
                   <button type="button" aria-label="Remove" onClick={() => setFiles((cur) => cur.filter((x) => x.id !== f.id))} className="absolute right-0.5 top-0.5 rounded-full bg-slate-900/70 px-1.5 text-xs leading-5 text-white hover:bg-slate-900">×</button>
                 </div>
               ))}
@@ -450,9 +471,9 @@ function Thread({ id, staff, onChanged }) {
           )}
           <div className="mt-2 flex items-center justify-between">
             <span className="flex items-center gap-3 text-xs text-slate-400">
-              <label className="cursor-pointer rounded-md border border-slate-300 px-2 py-1 text-slate-600 hover:bg-slate-50" title="Add a picture or file">
+              <label className="cursor-pointer rounded-md border border-slate-300 px-2 py-1 text-slate-600 hover:bg-slate-50" title="Add a picture or any file up to 2 MB">
                 📎 Add
-                <input type="file" multiple accept="image/png,image/jpeg,application/pdf,.doc,.docx" className="hidden" onChange={(e) => { addFiles(e.target.files); e.target.value = ""; }} />
+                <input type="file" multiple className="hidden" onChange={(e) => { addFiles(e.target.files); e.target.value = ""; }} />
               </label>
               <span>Ctrl + Enter to send · paste a screenshot with Ctrl + V{thread.members.filter((m) => m.active).length > 2 ? ` · goes to ${thread.members.filter((m) => m.active).length - 1} people` : ""}</span>
             </span>

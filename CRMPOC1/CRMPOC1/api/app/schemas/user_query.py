@@ -62,7 +62,7 @@ class QueryReply(BaseModel):
 
 class QueryAttachmentOut(BaseModel):
     id: int
-    file_path: str
+    url: str  # where the people in the conversation download it; never a public link
     file_name: str
     content_type: str | None = None
     size_bytes: int = 0

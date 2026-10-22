@@ -8,10 +8,14 @@ answers in 24 hours rings an alarm for the person who has to answer it. Every st
 
 from __future__ import annotations
 
+import mimetypes
 import os
-from datetime import date, timedelta
+import re
+import uuid
+from datetime import date, datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from fastapi.responses import FileResponse
 from sqlalchemy import and_, false, func, or_, select
 from sqlalchemy.orm import Session
 
@@ -35,23 +39,37 @@ from app.schemas.user_query import (
     QuerySummary,
 )
 from app.services import queries_service as qs
-from app.services.file_service import save_upload, to_public_upload_path
+from app.config import settings
+from app.services.file_service import to_public_upload_path
 from app.services.date_range import IST, registered_between
 from app.services.queries_service import STAFF_ROLES, aware, is_staff, now
 from app.services.role_access import role_key
 
 router = APIRouter(prefix="/api/queries", tags=["queries"])
 
-ATTACH_EXT = {".png", ".jpg", ".jpeg", ".pdf", ".doc", ".docx"}
-ATTACH_MIME = {"image/png", "image/jpeg", "image/jpg", "application/pdf", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"}
-ATTACH_MAX_BYTES = 8 * 1024 * 1024  # a full-screen screenshot is often over 2 MB
-IMAGE_EXT = {".png", ".jpg", ".jpeg"}
+# Any file up to 2 MB can be attached. Programs and scripts are not accepted (they can harm whoever opens them).
+ATTACH_MAX_BYTES = 2 * 1024 * 1024
+BLOCKED_EXT = {".exe", ".bat", ".cmd", ".com", ".scr", ".msi", ".dll", ".js", ".vbs", ".ps1", ".jar", ".sh", ".apk", ".app", ".reg", ".lnk"}
+IMAGE_SIGNATURES = {".png": b"\x89PNG\r\n\x1a\n", ".jpg": b"\xff\xd8\xff", ".jpeg": b"\xff\xd8\xff"}
+IMAGE_TYPES = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg"}
+
+
+def _ext(name: str) -> str:
+    return os.path.splitext(name or "")[1].lower()
+
+
+def _is_image(a: UserQueryAttachment) -> bool:
+    """A real PNG or JPG (by its first bytes, not its name) can be shown in the thread; everything else is a download."""
+    ext = _ext(a.file_name)
+    if ext not in IMAGE_SIGNATURES:
+        return False
+    return (a.content_type or "") == IMAGE_TYPES[ext]
 
 
 def _attachment_out(a: UserQueryAttachment) -> QueryAttachmentOut:
     return QueryAttachmentOut(
-        id=a.id, file_path=to_public_upload_path(a.file_path) or a.file_path, file_name=a.file_name, content_type=a.content_type,
-        size_bytes=a.size_bytes or 0, is_image=os.path.splitext(a.file_name or "")[1].lower() in IMAGE_EXT,
+        id=a.id, url=f"/api/queries/attachments/{a.id}/download", file_name=a.file_name, content_type=a.content_type,
+        size_bytes=a.size_bytes or 0, is_image=_is_image(a),
     )
 
 
@@ -378,13 +396,67 @@ async def upload_attachment(file: UploadFile = File(...), db: Session = Depends(
     pending = db.scalar(select(func.count(UserQueryAttachment.id)).where(UserQueryAttachment.uploaded_by == user.id, UserQueryAttachment.message_id.is_(None))) or 0
     if pending >= 30:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Too many files waiting to be sent. Send your message first")
-    path = await save_upload(file, module="queries", allowed_ext=ATTACH_EXT, allowed_mime=ATTACH_MIME, max_bytes=ATTACH_MAX_BYTES)
-    name = os.path.basename((file.filename or "").replace("\\", "/")) or "file"
-    row = UserQueryAttachment(uploaded_by=user.id, file_path=path, file_name=name[:200], content_type=(file.content_type or "")[:100] or None, size_bytes=getattr(file, "size", None) or 0)
+    name = os.path.basename((file.filename or "").replace("\\", "/")).strip() or "file"
+    ext = _ext(name)
+    if ext in BLOCKED_EXT:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"{ext} files cannot be attached. Zip it, or send another kind of file")
+    contents = await file.read(ATTACH_MAX_BYTES + 1)
+    if len(contents) > ATTACH_MAX_BYTES:
+        raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, "This file is over 2 MB. Send a smaller one")
+    if not contents:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "That file is empty")
+    kind = (file.content_type or "").split(";")[0].strip().lower()
+    if ext in IMAGE_SIGNATURES and contents.startswith(IMAGE_SIGNATURES[ext]):
+        kind = IMAGE_TYPES[ext]
+    elif ext in IMAGE_SIGNATURES:
+        kind = "application/octet-stream"  # not really a picture: it only downloads
+    else:
+        kind = kind if kind and kind not in IMAGE_TYPES.values() else (mimetypes.guess_type(name)[0] or "application/octet-stream")
+    safe_ext = ext if re.fullmatch(r"\.[a-z0-9]{1,10}", ext) else ""
+    stamp = datetime.now(timezone.utc)
+    folder = settings.resolved_upload_dir / "queries" / f"{stamp.year:04d}" / f"{stamp.month:02d}"
+    os.makedirs(folder, exist_ok=True)
+    full = folder / f"{uuid.uuid4().hex}{safe_ext}"
+    full.write_bytes(contents)
+    row = UserQueryAttachment(
+        uploaded_by=user.id, file_path=to_public_upload_path(str(full)), file_name=name[:200], content_type=kind[:100], size_bytes=len(contents),
+    )
     db.add(row)
     db.commit()
     db.refresh(row)
     return _attachment_out(row)
+
+
+@router.get("/attachments/{attachment_id}/download")
+def download_attachment(attachment_id: int, inline: bool = False, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Anybody who is in the conversation, and could read that message, can download the file. Nobody else can."""
+    a = db.get(UserQueryAttachment, attachment_id)
+    if a is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "File not found")
+    if a.message_id is None:
+        if a.uploaded_by != user.id:  # added but not sent yet: only the one adding it
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "File not found")
+    else:
+        msg = db.get(UserQueryMessage, a.message_id)
+        q = _load(db, user, msg.query_id) if msg else None
+        if q is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "File not found")
+        if not is_staff(user):
+            mine = [m for m in qs.stretches(db, [q.id], user.id).get(q.id, [])]
+            if not qs.message_visible(msg, mine):
+                raise HTTPException(status.HTTP_404_NOT_FOUND, "File not found")
+    raw = (a.file_path or "").replace("\\", "/")
+    rel = raw.split("/uploads/", 1)[1] if "/uploads/" in raw else raw
+    base = (settings.resolved_upload_dir / "queries").resolve()
+    full = (settings.resolved_upload_dir / rel).resolve() if not os.path.isabs(rel) else __import__("pathlib").Path(rel).resolve()
+    if base not in full.parents or not full.is_file():
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "The file is no longer there")
+    show = inline and _is_image(a)
+    headers = {"X-Content-Type-Options": "nosniff", "Cache-Control": "private, max-age=3600"}
+    return FileResponse(
+        full, media_type=a.content_type if show else "application/octet-stream", filename=a.file_name,
+        content_disposition_type="inline" if show else "attachment", headers=headers,
+    )
 
 
 def _claim_attachments(db: Session, user: User, ids: list[int], message: UserQueryMessage) -> None:

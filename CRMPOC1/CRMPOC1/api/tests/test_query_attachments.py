@@ -18,6 +18,7 @@ from app.config import settings
 from app.database import Base, get_db
 from app.main import app
 from app.models import User
+from app.models.user_query import UserQueryAttachment
 from app.security import create_access_token, hash_password
 from app.seed import seed_roles
 
@@ -87,8 +88,8 @@ class QueryAttachmentTests(unittest.TestCase):
         last = r.json()["messages"][-1]
         self.assertEqual(last["body"], "See this")
         self.assertEqual([a["file_name"] for a in last["attachments"]], ["screenshot.png"])
-        self.assertIn("queries", last["attachments"][0]["file_path"])
-        self.assertTrue(last["attachments"][0]["file_path"].endswith(".png"))
+        self.assertEqual(last["attachments"][0]["url"], f"/api/queries/attachments/{last['attachments'][0]['id']}/download")
+        self.assertNotIn("file_path", last["attachments"][0], "the place on disk is never shown")
         # the other side reads it too
         seen = self.client.get(f"/api/queries/{self.qid}", headers=self.h(self.admin)).json()["messages"][-1]
         self.assertEqual(len(seen["attachments"]), 1)
@@ -104,9 +105,47 @@ class QueryAttachmentTests(unittest.TestCase):
     def test_nothing_to_send_is_refused(self):
         self.assertEqual(self.reply(self.eng, "", []).status_code, 422)
 
-    def test_only_pictures_and_documents_are_accepted(self):
+    def test_any_file_up_to_2_mb_is_accepted_but_not_programs_or_bigger_ones(self):
+        for name, data, mime in (("report.pdf", b"%PDF-1.4 x", "application/pdf"), ("notes.txt", b"hello", "text/plain"), ("sheet.xlsx", b"PKx", "application/octet-stream"), ("data.csv", b"a,b", "text/csv")):
+            self.assertEqual(self.upload(self.eng, name, data, mime).status_code, 201, name)
+        self.assertEqual(self.upload(self.eng, "ok.bin", b"x" * (2 * 1024 * 1024), "application/octet-stream").status_code, 201, "exactly 2 MB is fine")
+        self.assertEqual(self.upload(self.eng, "big.bin", b"x" * (2 * 1024 * 1024 + 1), "application/octet-stream").status_code, 413)
         self.assertEqual(self.upload(self.eng, "run.exe", b"MZ" + b"\x00" * 20, "application/octet-stream").status_code, 400)
-        self.assertEqual(self.upload(self.eng, "fake.png", b"not really a png", "image/png").status_code, 400)
+        self.assertEqual(self.upload(self.eng, "empty.txt", b"", "text/plain").status_code, 400)
+
+    def test_a_fake_picture_only_downloads_it_is_never_shown_as_one(self):
+        up = self.upload(self.eng, "fake.png", b"not really a png", "image/png")
+        self.assertEqual(up.status_code, 201)
+        self.assertFalse(up.json()["is_image"])
+
+    def test_everyone_in_the_conversation_can_download_it_and_nobody_else(self):
+        up = self.upload(self.eng, "report.pdf", b"%PDF-1.4 hello", "application/pdf").json()
+        self.assertEqual(self.client.get(up["url"], headers=self.h(self.eng)).status_code, 200, "the one adding it, before sending")
+        self.assertEqual(self.client.get(up["url"], headers=self.h(self.admin)).status_code, 404, "not sent yet: private to the uploader")
+        self.reply(self.eng, "here", [up["id"]])
+        mine = self.client.get(up["url"], headers=self.h(self.eng))
+        self.assertEqual((mine.status_code, mine.content), (200, b"%PDF-1.4 hello"))
+        self.assertIn("attachment", mine.headers["content-disposition"])
+        self.assertIn("report.pdf", mine.headers["content-disposition"])
+        self.assertEqual(mine.headers["x-content-type-options"], "nosniff")
+        self.assertEqual(self.client.get(up["url"], headers=self.h(self.admin)).status_code, 200, "the Admin team")
+        self.assertEqual(self.client.get(up["url"], headers=self.h(self.other)).status_code, 404, "someone not in it")
+        self.assertEqual(self.client.get(up["url"]).status_code, 401, "not signed in")
+        # added to the conversation, they can download it too
+        sub = self._user("sub@t.com", "sub_admin")
+        self.db.commit()
+        self.client.post(f"/api/queries/{self.qid}/members", json={"user_id": self.other.id, "kind": "member", "share_history": True}, headers=self.h(sub))
+        self.assertEqual(self.client.get(up["url"], headers=self.h(self.other)).status_code, 200)
+
+    def test_a_picture_shows_inline_for_the_thread_and_the_files_are_not_public_links(self):
+        up = self.upload(self.eng).json()
+        self.reply(self.eng, "", [up["id"]])
+        shown = self.client.get(up["url"], params={"inline": True}, headers=self.h(self.eng))
+        self.assertEqual(shown.headers["content-type"], "image/png")
+        self.assertIn("inline", shown.headers["content-disposition"])
+        with self.Session() as s:
+            public = s.get(UserQueryAttachment, up["id"]).file_path
+        self.assertEqual(self.client.get(public).status_code, 404, "the old public address no longer works")
 
     def test_nobody_can_send_someone_elses_or_an_already_used_upload(self):
         up = self.upload(self.eng).json()["id"]

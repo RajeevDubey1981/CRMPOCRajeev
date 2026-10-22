@@ -75,7 +75,18 @@ app.include_router(marketing_router)
 app.include_router(parts_router)
 app.include_router(sarvam_api.router)
 app.include_router(site_api.router)
-app.mount("/uploads", StaticFiles(directory=str(settings.resolved_upload_dir)), name="uploads")
+class PublicUploads(StaticFiles):
+    """The uploads folder, except the files attached to conversations: those are only given to the people in them."""
+
+    async def get_response(self, path: str, scope):
+        if path.replace("\\", "/").lstrip("/").startswith("queries/"):
+            from fastapi import HTTPException
+
+            raise HTTPException(404)
+        return await super().get_response(path, scope)
+
+
+app.mount("/uploads", PublicUploads(directory=str(settings.resolved_upload_dir)), name="uploads")
 
 
 @app.on_event("startup")
