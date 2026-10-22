@@ -37,6 +37,7 @@ from app.schemas.installation import (
     PaymentApprovalLogOut,
 )
 from app.services.engineer_assignment import get_engineer_assignment_options
+from app.services.installation_stages import STAGE_STATUSES, stage_counts
 from app.services.geo import canonical_state, clean_pincode
 from app.services.file_service import read_upload_bytes, save_upload, to_public_upload_path
 from app.services.role_access import is_operations_admin, is_system_admin
@@ -174,6 +175,7 @@ def _list_row(
     complaint_map: dict[int, tuple[int, str]] | None = None,
     orders_by_id: dict[int, Order] | None = None,
     group_counts: dict[tuple[str, str, str], tuple[int, int]] | None = None,
+    group_stages: dict[tuple[str, str, str], dict[str, int]] | None = None,
 ) -> InstallationListItem:
     engineer_name = None
     if inst.assigned_engineer:
@@ -203,6 +205,7 @@ def _list_row(
         vendor_name or "-",
     )
     pending_count, completed_count = (group_counts or {}).get(group_key, (None, None))
+    stages_here = (group_stages or {}).get(group_key)
     complaint_id = None
     complaint_no = None
     if inst.order_item_id and complaint_map:
@@ -237,6 +240,7 @@ def _list_row(
         complaint_no=complaint_no,
         group_pending_count=pending_count,
         group_completed_count=completed_count,
+        group_stage_counts=stage_counts(stages_here) if stages_here is not None else None,
     )
 
 
@@ -496,6 +500,7 @@ def list_installations(
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=200),
     status_filter: str | None = Query(None, alias="status"),
+    stage: str | None = None,
     search: str | None = None,
     date_from: date | None = None,
     date_to: date | None = None,
@@ -543,6 +548,11 @@ def list_installations(
     if date_to:
         stmt = stmt.where(InstallationRequest.request_date <= date_to)
 
+    # the stage chips count everything the other filters let through, so they stay put while one stage is picked
+    pre_stage_ids_subq = stmt.with_only_columns(InstallationRequest.id).order_by(None).subquery()
+    if stage and stage in STAGE_STATUSES:
+        stmt = stmt.where(InstallationRequest.status.in_(STAGE_STATUSES[stage]))
+
     filtered_ids_subq = stmt.with_only_columns(InstallationRequest.id).order_by(None).subquery()
     stmt = stmt.order_by(desc(InstallationRequest.request_date))
 
@@ -574,6 +584,36 @@ def list_installations(
         for v in db.scalars(select(Vendor).where(Vendor.id.in_(vendor_ids))).all():
             vendor_map[v.id] = v.name_of_firm
 
+    status_counts = {
+        s: int(n or 0)
+        for s, n in db.execute(
+            select(InstallationRequest.status, func.count(InstallationRequest.id))
+            .join(pre_stage_ids_subq, pre_stage_ids_subq.c.id == InstallationRequest.id)
+            .group_by(InstallationRequest.status)
+        ).all()
+    }
+    group_stages: dict[tuple[str, str, str], dict[str, int]] = {}
+    for item_code, order_no, vendor_name, st, n in db.execute(
+        select(
+            func.coalesce(OrderItem.item_code, "-"),
+            func.coalesce(Order.order_no, "-"),
+            func.coalesce(Vendor.name_of_firm, "-"),
+            InstallationRequest.status,
+            func.count(InstallationRequest.id),
+        )
+        .select_from(InstallationRequest)
+        .join(pre_stage_ids_subq, pre_stage_ids_subq.c.id == InstallationRequest.id)
+        .outerjoin(OrderItem, OrderItem.id == InstallationRequest.order_item_id)
+        .outerjoin(Order, Order.id == func.coalesce(OrderItem.order_id, InstallationRequest.order_id))
+        .outerjoin(Vendor, Vendor.id == Order.vendor_id)
+        .group_by(
+            func.coalesce(OrderItem.item_code, "-"), func.coalesce(Order.order_no, "-"), func.coalesce(Vendor.name_of_firm, "-"),
+            InstallationRequest.status,
+        )
+    ).all():
+        slot = group_stages.setdefault((item_code or "-", order_no or "-", vendor_name or "-"), {})
+        slot[st] = slot.get(st, 0) + int(n or 0)
+
     group_counts: dict[tuple[str, str, str], tuple[int, int]] = {}
     group_rows = db.execute(
         select(
@@ -604,12 +644,13 @@ def list_installations(
 
     return InstallationListResponse(
         items=[
-            _list_row(db, inst, order_map, order_item_map, vendor_map, complaint_map, orders_by_id, group_counts)
+            _list_row(db, inst, order_map, order_item_map, vendor_map, complaint_map, orders_by_id, group_counts, group_stages)
             for inst in rows
         ],
         total=total,
         page=page,
         per_page=per_page,
+        stage_counts=stage_counts(status_counts),
     )
 
 
