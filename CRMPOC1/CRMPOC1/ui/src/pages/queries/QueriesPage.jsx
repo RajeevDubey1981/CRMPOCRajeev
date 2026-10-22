@@ -161,7 +161,7 @@ function People({ thread, busy, onAdd, onRemove, onAddBack }) {
   }, [open]);
 
   return (
-    <div className="relative mt-2 inline-block text-xs" ref={boxRef}>
+    <div className="relative mt-2 flex flex-wrap items-center gap-2 text-xs" ref={boxRef}>
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
@@ -171,6 +171,15 @@ function People({ thread, busy, onAdd, onRemove, onAddBack }) {
         {inside.length} in{out.length > 0 ? ` · ${out.length} out` : ""}
         <span className={`text-slate-400 transition-transform ${open ? "rotate-180" : ""}`}>▾</span>
       </button>
+      {thread.can_manage && (
+        <>
+          <button type="button" disabled={busy} onClick={() => onAdd("member")} className="rounded-full border border-brand-600 bg-white px-3 py-1 font-semibold text-brand-700 hover:bg-sky-50 disabled:opacity-60">+ Add person</button>
+          <button type="button" disabled={busy} onClick={() => onAdd("cc")} className="rounded-full border border-slate-300 bg-white px-3 py-1 font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60">+ CC</button>
+          {inside.some((m) => !m.is_holder) && (
+            <button type="button" onClick={() => setOpen(true)} className="rounded-full border border-rose-200 bg-white px-3 py-1 font-semibold text-rose-700 hover:bg-rose-50">Take out</button>
+          )}
+        </>
+      )}
       {open && (
         <div className="s-pop absolute left-0 top-full z-20 mt-1.5 w-[22rem] rounded-xl border border-slate-200 bg-white p-3.5 text-sm shadow-xl">
           <div className="mb-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-400">In this conversation</div>
@@ -199,7 +208,7 @@ function People({ thread, busy, onAdd, onRemove, onAddBack }) {
             </>
           )}
           {thread.can_manage && (
-            <button type="button" disabled={busy} onClick={onAdd} className="mt-3 w-full rounded-md border border-brand-600 py-2 text-center text-sm font-semibold text-brand-700 hover:bg-sky-50">+ Add or CC</button>
+            <button type="button" disabled={busy} onClick={() => onAdd("member")} className="mt-3 w-full rounded-md border border-brand-600 py-2 text-center text-sm font-semibold text-brand-700 hover:bg-sky-50">+ Add or CC</button>
           )}
         </div>
       )}
@@ -242,6 +251,7 @@ function Thread({ id, staff, onChanged }) {
   const [tab, setTab] = useState("chat");
   const [forwarding, setForwarding] = useState(false);
   const [adding, setAdding] = useState(false);
+  const [addKind, setAddKind] = useState("member");
   const endRef = useRef(null);
 
   const load = useCallback(() => {
@@ -366,7 +376,7 @@ function Thread({ id, staff, onChanged }) {
             {thread.can_reopen && <button type="button" disabled={busy} onClick={() => act(() => queriesApi.reopen(id))} className="s-press rounded-md border border-slate-300 px-3 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-60">Reopen</button>}
           </div>
         </div>
-        <People thread={thread} busy={busy} onAdd={() => setAdding(true)} onRemove={takeOut} onAddBack={(m) => act(() => queriesApi.addMember(id, m.user_id, m.kind === "cc" ? "cc" : "member", true))} />
+        <People thread={thread} busy={busy} onAdd={(kind) => { setAddKind(kind || "member"); setAdding(true); }} onRemove={takeOut} onAddBack={(m) => act(() => queriesApi.addMember(id, m.user_id, m.kind === "cc" ? "cc" : "member", true))} />
         {thread.private_now && (
           <div className="s-pop mt-2 rounded-md border border-violet-200 bg-violet-50 px-3 py-1.5 text-xs text-violet-800">
             🔒 Someone is out of this conversation. What you write now is private to the people in it, until you add them back.
@@ -489,7 +499,7 @@ function Thread({ id, staff, onChanged }) {
       )}
 
       <ForwardModal open={forwarding} thread={thread} onClose={() => setForwarding(false)} onDone={done} />
-      <AddPeopleModal open={adding} thread={thread} onClose={() => setAdding(false)} onDone={done} />
+      <AddPeopleModal open={adding} thread={thread} initialKind={addKind} onClose={() => setAdding(false)} onDone={done} />
     </div>
   );
 }
