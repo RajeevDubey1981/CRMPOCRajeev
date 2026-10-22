@@ -8,20 +8,22 @@ answers in 24 hours rings an alarm for the person who has to answer it. Every st
 
 from __future__ import annotations
 
+import os
 from datetime import date, timedelta
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from sqlalchemy import and_, false, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.deps import get_current_user
 from app.models.user import User
-from app.models.user_query import UserQuery, UserQueryEvent, UserQueryMember, UserQueryMessage, UserQueryRead
+from app.models.user_query import UserQuery, UserQueryAttachment, UserQueryEvent, UserQueryMember, UserQueryMessage, UserQueryRead
 from app.schemas.user_query import (
     ForwardIn,
     MemberIn,
     PriorityIn,
+    QueryAttachmentOut,
     QueryCreate,
     QueryDetail,
     QueryEventOut,
@@ -33,11 +35,25 @@ from app.schemas.user_query import (
     QuerySummary,
 )
 from app.services import queries_service as qs
+from app.services.file_service import save_upload, to_public_upload_path
 from app.services.date_range import IST, registered_between
 from app.services.queries_service import STAFF_ROLES, aware, is_staff, now
 from app.services.role_access import role_key
 
 router = APIRouter(prefix="/api/queries", tags=["queries"])
+
+ATTACH_EXT = {".png", ".jpg", ".jpeg", ".pdf", ".doc", ".docx"}
+ATTACH_MIME = {"image/png", "image/jpeg", "image/jpg", "application/pdf", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"}
+ATTACH_MAX_BYTES = 8 * 1024 * 1024  # a full-screen screenshot is often over 2 MB
+IMAGE_EXT = {".png", ".jpg", ".jpeg"}
+
+
+def _attachment_out(a: UserQueryAttachment) -> QueryAttachmentOut:
+    return QueryAttachmentOut(
+        id=a.id, file_path=to_public_upload_path(a.file_path) or a.file_path, file_name=a.file_name, content_type=a.content_type,
+        size_bytes=a.size_bytes or 0, is_image=os.path.splitext(a.file_name or "")[1].lower() in IMAGE_EXT,
+    )
+
 
 # who a query can be forwarded to, or who can be added to a conversation
 FORWARD_ROLES = frozenset({"service_manager", "sales_manager", "service", "sales", "engineer", "vendor", "admin", "sub_admin", "incool"})
@@ -117,7 +133,7 @@ def _list_items(db: Session, user: User, rows: list[UserQuery]) -> list[QueryLis
             id=q.id, subject=q.subject, category=q.category, related_to=q.related_to, query_no=qs.query_no(q.id), raised_on=qs.raised_day(q), status=q.status,
             owner_id=q.owner_id, owner_name=owner.name if owner else None, owner_role=owner.role if owner else None,
             created_at=q.created_at, last_message_at=q.last_message_at,
-            last_message_preview=" ".join(m.body.split())[:160] if m else "",
+            last_message_preview=(" ".join(m.body.split())[:160] or "Sent a picture") if m else "",
             last_sender_name=sender.name if sender else None,
             message_count=int(counts.get(q.id, 0)), unread_count=int(unread.get(q.id, 0)),
             priority=q.priority or "normal", holder_id=q.holder_id, holder_name=holder.name if holder else None, holder_role=holder.role if holder else None,
@@ -158,12 +174,17 @@ def _detail(db: Session, user: User, q: UserQuery, unread_before: int | None = N
             return []
         return [people[uid].name for uid, rows in by_user.items() if uid in people and not is_staff(people[uid]) and not qs.message_visible(msg, rows)]
 
+    attachments: dict[int, list[UserQueryAttachment]] = {}
+    if msgs:
+        for a in db.scalars(select(UserQueryAttachment).where(UserQueryAttachment.message_id.in_([m.id for m in msgs])).order_by(UserQueryAttachment.id)):
+            attachments.setdefault(a.message_id, []).append(a)
     out_msgs = [
         QueryMessageOut(
             id=m.id, sender_id=m.sender_id, sender_name=people[m.sender_id].name if m.sender_id in people else None,
             sender_role=people[m.sender_id].role if m.sender_id in people else None,
             from_staff=m.sender_id in people and role_key(people[m.sender_id].role) in STAFF_ROLES, mine=m.sender_id == user.id,
             body=m.body, created_at=m.created_at, is_private=bool(m.is_private), hidden_from=hidden_from(m) if staff else [],
+            attachments=[_attachment_out(a) for a in attachments.get(m.id, [])],
         )
         for m in msgs
     ]
@@ -351,6 +372,32 @@ def create_query(body: QueryCreate, db: Session = Depends(get_db), user: User = 
     return _detail(db, user, q)
 
 
+@router.post("/attachments", response_model=QueryAttachmentOut, status_code=status.HTTP_201_CREATED)
+async def upload_attachment(file: UploadFile = File(...), db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Upload a pasted or chosen picture or file. It waits, unattached, until the message that carries it is sent."""
+    pending = db.scalar(select(func.count(UserQueryAttachment.id)).where(UserQueryAttachment.uploaded_by == user.id, UserQueryAttachment.message_id.is_(None))) or 0
+    if pending >= 30:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Too many files waiting to be sent. Send your message first")
+    path = await save_upload(file, module="queries", allowed_ext=ATTACH_EXT, allowed_mime=ATTACH_MIME, max_bytes=ATTACH_MAX_BYTES)
+    name = os.path.basename((file.filename or "").replace("\\", "/")) or "file"
+    row = UserQueryAttachment(uploaded_by=user.id, file_path=path, file_name=name[:200], content_type=(file.content_type or "")[:100] or None, size_bytes=getattr(file, "size", None) or 0)
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return _attachment_out(row)
+
+
+def _claim_attachments(db: Session, user: User, ids: list[int], message: UserQueryMessage) -> None:
+    """Join the files this person uploaded to the message they are sending; nobody else's, and none already used."""
+    if not ids:
+        return
+    rows = list(db.scalars(select(UserQueryAttachment).where(UserQueryAttachment.id.in_(set(ids)))))
+    if len(rows) != len(set(ids)) or any(r.uploaded_by != user.id or r.message_id is not None for r in rows):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "One of the files can no longer be sent. Add it again")
+    for r in rows:
+        r.message_id = message.id
+
+
 @router.get("/{query_id}", response_model=QueryDetail)
 def get_query(query_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     q = _load(db, user, query_id)
@@ -369,7 +416,10 @@ def reply(query_id: int, body: QueryReply, db: Session = Depends(get_db), user: 
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "This query is closed. Reopen it, or raise a new query")
     stamp = now()
     private = bool(qs.people_out(db, q))
-    db.add(UserQueryMessage(query_id=q.id, sender_id=user.id, body=body.body, created_at=stamp, is_private=private))
+    message = UserQueryMessage(query_id=q.id, sender_id=user.id, body=body.body, created_at=stamp, is_private=private)
+    db.add(message)
+    db.flush()
+    _claim_attachments(db, user, body.attachment_ids, message)
     q.last_message_at = stamp
     mine = qs.active_stretch(qs.stretches(db, [q.id], user.id).get(q.id, []))
     is_cc = mine is not None and mine.kind == "cc" and not staff and q.holder_id != user.id

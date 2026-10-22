@@ -46,6 +46,22 @@ class UserQueryMessage(Base):
     is_private: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=false())
 
 
+class UserQueryAttachment(Base):
+    """A picture or file pasted or attached to a message. It is uploaded first (message_id empty) and joined to the
+    message when that is sent, so a pasted screenshot can go with the words or on its own."""
+
+    __tablename__ = "user_query_attachments"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    message_id: Mapped[int | None] = mapped_column(ForeignKey("user_query_messages.id"), nullable=True, index=True)
+    uploaded_by: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    file_path: Mapped[str] = mapped_column(String(500), nullable=False)
+    file_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    content_type: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    size_bytes: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
 class UserQueryRead(Base):
     """How far a person has read a thread: messages after this one (from others) count as unread for them."""
 

@@ -1,6 +1,6 @@
 from datetime import date, datetime
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 CATEGORIES = ("General", "Order", "Service request", "Installation", "Complaint", "Payment", "Bid", "App or login", "Other")
 
@@ -45,15 +45,28 @@ class QueryCreate(BaseModel):
 
 
 class QueryReply(BaseModel):
-    body: str = Field(min_length=1, max_length=4000)
+    body: str = Field("", max_length=4000)
+    attachment_ids: list[int] = Field(default_factory=list, max_length=10)
 
     @field_validator("body")
     @classmethod
     def _body(cls, v):
-        v = _text(v)
-        if not v:
-            raise ValueError("Write your message")
-        return v
+        return _text(v)
+
+    @model_validator(mode="after")
+    def _something_to_send(self):
+        if not self.body and not self.attachment_ids:
+            raise ValueError("Write your message or add a picture")
+        return self
+
+
+class QueryAttachmentOut(BaseModel):
+    id: int
+    file_path: str
+    file_name: str
+    content_type: str | None = None
+    size_bytes: int = 0
+    is_image: bool = False
 
 
 class QueryMessageOut(BaseModel):
@@ -67,6 +80,7 @@ class QueryMessageOut(BaseModel):
     created_at: datetime
     is_private: bool = False  # sent while someone was taken out of the conversation
     hidden_from: list[str] = []  # for the Admin team: who it was kept from
+    attachments: list[QueryAttachmentOut] = []
 
 
 class QueryMemberOut(BaseModel):

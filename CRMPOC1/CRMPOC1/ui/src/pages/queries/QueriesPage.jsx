@@ -210,6 +210,8 @@ function Thread({ id, staff, onChanged }) {
   const [thread, setThread] = useState(null);
   const [err, setErr] = useState("");
   const [text, setText] = useState("");
+  const [files, setFiles] = useState([]); // pictures and files waiting to be sent with the message
+  const [uploading, setUploading] = useState(0);
   const [busy, setBusy] = useState(false);
   const [tab, setTab] = useState("chat");
   const [forwarding, setForwarding] = useState(false);
@@ -225,6 +227,7 @@ function Thread({ id, staff, onChanged }) {
   useEffect(() => {
     setThread(null);
     setText("");
+    setFiles([]);
     setTab("chat");
     load();
     const timer = setInterval(load, 30000);
@@ -254,8 +257,36 @@ function Thread({ id, staff, onChanged }) {
 
   async function send(e) {
     e?.preventDefault();
-    if (!text.trim()) return;
-    if (await act(() => queriesApi.reply(id, text))) setText("");
+    if ((!text.trim() && files.length === 0) || uploading > 0) return;
+    if (await act(() => queriesApi.reply(id, text, files.map((f) => f.id)))) { setText(""); setFiles([]); }
+  }
+
+  // Paste a screenshot (or any copied picture or file), drop one in, or choose one: each goes up at once and waits to be sent.
+  async function addFiles(list) {
+    const picked = Array.from(list || []).filter(Boolean);
+    if (picked.length === 0) return;
+    setErr("");
+    for (const original of picked) {
+      const named = original.name && original.name !== "image.png"
+        ? original
+        : new File([original], `screenshot-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-")}.${(original.type.split("/")[1] || "png").replace("jpeg", "jpg")}`, { type: original.type });
+      setUploading((n) => n + 1);
+      try {
+        const saved = await queriesApi.upload(named);
+        setFiles((cur) => [...cur, saved]);
+      } catch (e) {
+        const detail = e.response?.data?.detail;
+        setErr(typeof detail === "string" ? detail : "That file could not be added. Use a picture (PNG, JPG), PDF or Word file under 8 MB");
+      } finally {
+        setUploading((n) => n - 1);
+      }
+    }
+  }
+  function onPaste(e) {
+    const pasted = Array.from(e.clipboardData?.files || []);
+    if (pasted.length === 0) return; // plain text pastes as usual
+    e.preventDefault();
+    addFiles(pasted);
   }
   function takeOut(m) {
     if (!window.confirm(`Take ${m.name} out of this conversation?\n\nThey will not see it, or anything said while they are out, until you add them back. The others can talk privately.`)) return;
@@ -361,7 +392,18 @@ function Thread({ id, staff, onChanged }) {
                   <span className="ml-auto shrink-0 text-[11px] text-slate-400">{timeAgo(m.created_at)}</span>
                   {isNew && <span className="rounded bg-rose-600 px-1 text-[10px] font-semibold text-white">new</span>}
                 </div>
-                <div className="mt-1.5 whitespace-pre-wrap break-words pl-8 text-slate-700">{m.body}</div>
+                {m.body && <div className="mt-1.5 whitespace-pre-wrap break-words pl-8 text-slate-700">{m.body}</div>}
+                {m.attachments?.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-2 pl-8">
+                    {m.attachments.map((a) => (a.is_image ? (
+                      <a key={a.id} href={a.file_path} target="_blank" rel="noreferrer" title={a.file_name} className="block overflow-hidden rounded-lg border border-slate-200 bg-white">
+                        <img src={a.file_path} alt={a.file_name} className="max-h-48 max-w-full object-contain" />
+                      </a>
+                    ) : (
+                      <a key={a.id} href={a.file_path} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50">📎 {a.file_name}</a>
+                    )))}
+                  </div>
+                )}
                 {m.is_private && (
                   <div className="mt-1.5 pl-8">
                     <span className="inline-flex items-center gap-1 rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-semibold text-violet-700">🔒 private{m.hidden_from?.length ? `, not shown to ${m.hidden_from.join(", ")}` : ""}</span>
@@ -383,12 +425,32 @@ function Thread({ id, staff, onChanged }) {
             maxLength={4000}
             onChange={(e) => setText(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) send(e); }}
-            placeholder={thread.status === "Closed" ? "Write here to reopen this query" : thread.private_now ? "Write a private reply to the people in this conversation" : "Write your reply"}
+            onPaste={onPaste}
+            onDragOver={(e) => { if (e.dataTransfer?.types?.includes("Files")) e.preventDefault(); }}
+            onDrop={(e) => { if (e.dataTransfer?.files?.length) { e.preventDefault(); addFiles(e.dataTransfer.files); } }}
+            placeholder={thread.status === "Closed" ? "Write here to reopen this query" : thread.private_now ? "Write a private reply to the people in this conversation" : "Write your reply, or paste a screenshot here"}
             className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
           />
+          {(files.length > 0 || uploading > 0) && (
+            <div className="mt-2 flex flex-wrap gap-2">
+              {files.map((f) => (
+                <div key={f.id} className="relative overflow-hidden rounded-lg border border-slate-200 bg-white">
+                  {f.is_image ? <img src={f.file_path} alt={f.file_name} className="h-16 w-20 object-cover" /> : <div className="flex h-16 w-28 items-center gap-1 px-2 text-xs text-slate-600">📎 <span className="line-clamp-2 break-all">{f.file_name}</span></div>}
+                  <button type="button" aria-label="Remove" onClick={() => setFiles((cur) => cur.filter((x) => x.id !== f.id))} className="absolute right-0.5 top-0.5 rounded-full bg-slate-900/70 px-1.5 text-xs leading-5 text-white hover:bg-slate-900">×</button>
+                </div>
+              ))}
+              {uploading > 0 && <div className="grid h-16 w-20 place-items-center rounded-lg border border-dashed border-slate-300 text-xs text-slate-500">Adding…</div>}
+            </div>
+          )}
           <div className="mt-2 flex items-center justify-between">
-            <span className="text-xs text-slate-400">Ctrl + Enter to send{thread.members.filter((m) => m.active).length > 2 ? ` · goes to ${thread.members.filter((m) => m.active).length - 1} people` : ""}</span>
-            <button type="submit" disabled={busy || !text.trim()} className="s-press rounded-md bg-brand-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-50">
+            <span className="flex items-center gap-3 text-xs text-slate-400">
+              <label className="cursor-pointer rounded-md border border-slate-300 px-2 py-1 text-slate-600 hover:bg-slate-50" title="Add a picture or file">
+                📎 Add
+                <input type="file" multiple accept="image/png,image/jpeg,application/pdf,.doc,.docx" className="hidden" onChange={(e) => { addFiles(e.target.files); e.target.value = ""; }} />
+              </label>
+              <span>Ctrl + Enter to send · paste a screenshot with Ctrl + V{thread.members.filter((m) => m.active).length > 2 ? ` · goes to ${thread.members.filter((m) => m.active).length - 1} people` : ""}</span>
+            </span>
+            <button type="submit" disabled={busy || uploading > 0 || (!text.trim() && files.length === 0)} className="s-press rounded-md bg-brand-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-50">
               {busy ? "Sending..." : "Send reply"}
             </button>
           </div>

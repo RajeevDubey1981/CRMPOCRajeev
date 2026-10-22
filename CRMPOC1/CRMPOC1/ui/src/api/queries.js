@@ -7,7 +7,12 @@ export const queriesApi = {
   list: (params) => api.get("/api/queries", { params }).then((r) => r.data),
   get: (id) => api.get(`/api/queries/${id}`).then((r) => r.data),
   create: (body) => api.post("/api/queries", body).then((r) => r.data),
-  reply: (id, body) => api.post(`/api/queries/${id}/messages`, { body }).then((r) => r.data),
+  reply: (id, body, attachment_ids = []) => api.post(`/api/queries/${id}/messages`, { body: body || "", attachment_ids }).then((r) => r.data),
+  upload: (file) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    return api.post("/api/queries/attachments", fd).then((r) => r.data);
+  },
   close: (id) => api.post(`/api/queries/${id}/close`).then((r) => r.data),
   reopen: (id) => api.post(`/api/queries/${id}/reopen`).then((r) => r.data),
   people: (params) => api.get("/api/queries/people", { params }).then((r) => r.data),
