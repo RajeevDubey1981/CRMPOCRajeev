@@ -279,8 +279,8 @@ def answered(q: UserQuery) -> None:
     q.awaiting_since = None
 
 
-# ---------------- clean-up: a conversation is deleted for good three months after it was closed ----------------
-RETENTION = timedelta(days=90)
+# ---------------- clean-up: a conversation is deleted for good six months after it was closed ----------------
+RETENTION = timedelta(days=180)
 
 
 def delete_on(q: UserQuery):
@@ -307,7 +307,7 @@ def _remove_uploaded_file(public_path: str) -> None:
 
 
 def purge_closed(db: Session, retention: timedelta = RETENTION) -> int:
-    """Delete every conversation closed longer ago than the retention (3 months): its messages, pictures and files,
+    """Delete every conversation closed longer ago than the retention (6 months): its messages, pictures and files,
     members, history and reminders. Only a bare record (number, dates, counts) stays. Returns how many went."""
     from app.models.pending_action import UserPendingAction
     from app.models.user_query import (
@@ -376,7 +376,7 @@ def _loop() -> None:
                 with SessionLocal() as db:
                     removed = purge_closed(db)
                 if removed:
-                    log.info("Deleted %s conversation(s) closed more than 3 months ago", removed)
+                    log.info("Deleted %s conversation(s) closed more than 6 months ago", removed)
             except Exception:
                 log.exception("Query clean-up failed")
         tick += 1

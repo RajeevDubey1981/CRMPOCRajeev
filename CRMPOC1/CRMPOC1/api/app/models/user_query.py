@@ -63,7 +63,7 @@ class UserQueryAttachment(Base):
 
 
 class UserQueryPurge(Base):
-    """A conversation that was deleted for good three months after it was closed. Only the number and the dates are kept,
+    """A conversation that was deleted for good six months after it was closed. Only the number and the dates are kept,
     never what was said, so there is a record that it existed and when it went."""
 
     __tablename__ = "user_query_purges"

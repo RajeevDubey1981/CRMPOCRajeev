@@ -376,7 +376,7 @@ function Thread({ id, staff, onChanged }) {
 
       {thread.delete_on && (
         <div className="border-t border-amber-200 bg-amber-50 px-4 py-1.5 text-xs text-amber-900">
-          This conversation is closed. It will be deleted for good on {new Date(thread.delete_on).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}, three months after it was closed. Reopen it to keep it.
+          This conversation is closed. It will be deleted for good on {new Date(thread.delete_on).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}, six months after it was closed. Reopen it to keep it.
         </div>
       )}
 

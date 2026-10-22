@@ -1,4 +1,4 @@
-"""Keep a bare record (number and dates, never the content) of each conversation deleted three months after it closed.
+"""Keep a bare record (number and dates, never the content) of each conversation deleted six months after it closed.
 
 Revision ID: 0081_query_purge_log
 Revises: 0080_query_attachments

@@ -30,7 +30,7 @@ PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 64
 
 
 class QueryPurgeTests(unittest.TestCase):
-    """A conversation is deleted for good three months after it was closed, with its pictures and files."""
+    """A conversation is deleted for good six months after it was closed, with its pictures and files."""
 
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
@@ -98,7 +98,7 @@ class QueryPurgeTests(unittest.TestCase):
     def test_a_conversation_closed_over_three_months_ago_goes_with_everything_in_it(self):
         qid, path = self.conversation()
         self.assertTrue(any(Path(self._tmp.name).rglob("*.png")), "the picture is on disk")
-        self.close(qid, 91)
+        self.close(qid, 181)
         self.assertEqual(self.purge(), 1)
         for model in (UserQuery, UserQueryMessage, UserQueryAttachment, UserQueryMember, UserQueryEvent, UserQueryRead):
             self.assertEqual(self.count(model), 0, model.__name__)
@@ -111,15 +111,15 @@ class QueryPurgeTests(unittest.TestCase):
         open_id, _ = self.conversation(False)
         recent_id, _ = self.conversation(False)
         edge_id, _ = self.conversation(False)
-        self.close(recent_id, 30)
-        self.close(edge_id, 89)
+        self.close(recent_id, 60)
+        self.close(edge_id, 179)
         self.assertEqual(self.purge(), 0)
         self.assertEqual(self.count(UserQuery), 3)
         self.assertEqual(self.client.get(f"/api/queries/{open_id}", headers=self.h(self.eng)).json()["delete_on"], None)
 
     def test_a_reopened_conversation_is_not_deleted(self):
         qid, _ = self.conversation(False)
-        self.close(qid, 120)
+        self.close(qid, 200)
         self.assertEqual(self.client.post(f"/api/queries/{qid}/reopen", headers=self.h(self.admin)).status_code, 200)
         self.assertEqual(self.purge(), 0)
         self.assertEqual(self.count(UserQuery), 1)
@@ -133,12 +133,12 @@ class QueryPurgeTests(unittest.TestCase):
         when = datetime.fromisoformat(shown)
         if when.tzinfo is None:
             when = when.replace(tzinfo=timezone.utc)
-        self.assertIn((when - qs.now()).days, (79, 80), "ten days after closing leaves about 80")
+        self.assertIn((when - qs.now()).days, (169, 170), "ten days after closing leaves about 170")
 
     def test_only_one_conversation_goes_and_the_others_keep_their_files(self):
         old, _ = self.conversation()
         keep, _ = self.conversation()
-        self.close(old, 100)
+        self.close(old, 190)
         self.assertEqual(self.purge(), 1)
         self.assertEqual(self.count(UserQuery), 1)
         self.assertEqual(len(list(Path(self._tmp.name).rglob("*.png"))), 1)
