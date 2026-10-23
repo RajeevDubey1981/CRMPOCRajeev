@@ -1417,7 +1417,7 @@ async def update_status(
     qr_content_type = None
     qr_size_bytes = None
     if qr_code is not None and qr_code.filename:
-        qr_blob, qr_filename, qr_content_type, qr_size_bytes = await read_upload_bytes(qr_code)
+        qr_blob, qr_filename, qr_content_type, qr_size_bytes = await read_upload_bytes(qr_code, reencode_images=False)
 
     if is_operations_admin(user) and inst.status == "Payment Pending" and new_status in {"Completed", "Rejected", "Returned"}:
         ensure_current_stage_approver(user, inst.payment_approval_stage)
@@ -1663,7 +1663,7 @@ async def bulk_update_status(
     qr_content_type = None
     qr_size_bytes = None
     if qr_code is not None and qr_code.filename:
-        qr_blob, qr_filename, qr_content_type, qr_size_bytes = await read_upload_bytes(qr_code)
+        qr_blob, qr_filename, qr_content_type, qr_size_bytes = await read_upload_bytes(qr_code, reencode_images=False)
     doc_path = None
     if (
         document is not None

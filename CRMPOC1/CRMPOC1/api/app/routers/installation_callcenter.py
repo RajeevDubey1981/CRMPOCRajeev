@@ -1022,7 +1022,7 @@ async def raise_installation_payment_request(
     qr_content_type = None
     qr_size_bytes = None
     if qr_code is not None and qr_code.filename:
-        qr_blob, qr_filename, qr_content_type, qr_size_bytes = await read_upload_bytes(qr_code)
+        qr_blob, qr_filename, qr_content_type, qr_size_bytes = await read_upload_bytes(qr_code, reencode_images=False)
 
     _prepare_engineer_payment_request(
         db,
@@ -1104,7 +1104,7 @@ async def raise_bulk_installation_payment_request(
     qr_content_type = None
     qr_size_bytes = None
     if qr_code is not None and qr_code.filename:
-        qr_blob, qr_filename, qr_content_type, qr_size_bytes = await read_upload_bytes(qr_code)
+        qr_blob, qr_filename, qr_content_type, qr_size_bytes = await read_upload_bytes(qr_code, reencode_images=False)
 
     for inst in rows:
         _prepare_engineer_payment_request(

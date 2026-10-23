@@ -2866,7 +2866,7 @@ async def raise_payment_request(
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "QR Code is required when payment type is UPI")
     qr_path = None
     if qr_code is not None and qr_code.filename:
-        qr_path = await save_upload(qr_code, module="services")
+        qr_path = await save_upload(qr_code, module="services", reencode_images=False)
     old_status = service.status
     requested_by_type = "service_team" if _is_service_team(user) else "engineer" if _is_engineer(user) else "vendor"
     has_unit_workflow = bool(list_work_units(db, service.id))

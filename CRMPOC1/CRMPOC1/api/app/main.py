@@ -83,7 +83,11 @@ class PublicUploads(StaticFiles):
             from fastapi import HTTPException
 
             raise HTTPException(404)
-        return await super().get_response(path, scope)
+        response = await super().get_response(path, scope)
+        # Every upload is already content-signature-checked and re-saved through Pillow before it's
+        # stored, but this stops a browser from ever second-guessing the Content-Type we gave it.
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        return response
 
 
 app.mount("/uploads", PublicUploads(directory=str(settings.resolved_upload_dir)), name="uploads")
