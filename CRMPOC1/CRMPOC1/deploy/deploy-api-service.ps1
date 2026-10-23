@@ -16,8 +16,8 @@ function Copy-FolderContent {
     $Source,
     $Destination,
     "/E",
-    "/XD", "venv", "__pycache__", ".pytest_cache", ".mypy_cache",
-    "/XF", "*.pyc", "*.pyo"
+    "/XD", "venv", "__pycache__", ".pytest_cache", ".mypy_cache", "tests", "uploads",
+    "/XF", "*.pyc", "*.pyo", "*.log", "*.sql", "tmp_*", "_gst_probe*", "dump_local.py"
   )
 
   & robocopy @robocopyArgs | Out-Null

@@ -207,12 +207,11 @@ def _resolve_item_name(db: Session, item_id: int | None) -> str | None:
 
 
 def _resolve_item_code(db: Session, item_id: int | None, fallback: str | None = None) -> str | None:
-    if fallback:
-        return fallback
-    if item_id is None:
-        return None
-    i = db.get(ItemMaster, item_id)
-    return i.item_code if i else None
+    if item_id is not None:
+        item = db.get(ItemMaster, item_id)
+        if item and item.item_code:
+            return item.item_code
+    return fallback or None
 
 
 def _resolve_serial_count(db: Session, item_id: int | None, item_code: str | None = None) -> int:
@@ -1241,7 +1240,7 @@ async def import_order_items_csv(
                     item.item_id = int(raw_item_id_for_template)
                 except ValueError:
                     raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Row {idx}: invalid Item ID '{raw_item_id_for_template}'")
-            item.item_code = raw_item_code_for_template or _resolve_item_code(db, item.item_id, None)
+            item.item_code = _resolve_item_code(db, item.item_id, raw_item_code_for_template)
             db.add(item)
             db.flush()
             created += 1
@@ -1271,7 +1270,7 @@ async def import_order_items_csv(
             except ValueError:
                 raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Row {idx}: invalid Item ID '{raw_item_id}'")
         raw_item_code = (row.get("Item Code") or "").strip()
-        item.item_code = raw_item_code or _resolve_item_code(db, item.item_id, item.item_code)
+        item.item_code = _resolve_item_code(db, item.item_id, raw_item_code or item.item_code)
         serial_count = _resolve_serial_count(db, item.item_id, item.item_code)
         serial_1 = (row.get("Serial Number 1") or "").strip()
         serial_2 = (row.get("Serial Number 2") or "").strip()

@@ -26,6 +26,13 @@ ROOT_ENV_FILE = ROOT / ".env"
 API_SKIP_DIRS = {"venv", "__pycache__", ".pytest_cache", ".mypy_cache", "uploads", ".git"}
 API_SKIP_FILES = {".env", ".env.local", "uvicorn.stdout.log"}
 API_SKIP_SUFFIXES = {".log", ".pyc", ".pyo"}
+API_DEPLOY_DIRS = {"app", "alembic", "sales_alembic", "marketing_alembic", "templates"}
+API_DEPLOY_FILES = {
+    "requirements.txt",
+    "alembic.ini",
+    "alembic_sales.ini",
+    "alembic_marketing.ini",
+}
 
 
 def load_config() -> dict[str, str]:
@@ -374,6 +381,8 @@ def iter_api_files() -> list[Path]:
         if not path.is_file():
             continue
         rel_parts = path.relative_to(API_DIR).parts
+        if not rel_parts or (rel_parts[0] not in API_DEPLOY_DIRS and path.name not in API_DEPLOY_FILES):
+            continue
         if any(part in API_SKIP_DIRS for part in rel_parts):
             continue
         if path.name in API_SKIP_FILES:
