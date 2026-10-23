@@ -8,6 +8,7 @@ from app.models.complaint import Complaint, ComplaintStatusLog
 from app.models.installation import HistoricalInstallationCompletion, InstallationRequest
 from app.models.call import Call
 from app.models.claim import Claim, ClaimPhoto
+from app.models.shortage_claim import ShortageClaim, ShortageClaimEvent, ShortageClaimItem, ShortageClaimPhoto
 from app.models.serial_history import SerialHistoryEvent
 from app.models.payment import PaymentTransaction
 from app.models.payment_approval import PaymentApprovalLog
@@ -30,7 +31,7 @@ from app.models.pending_action import UserPendingAction
 from app.models.partner_registration import PartnerRegistration
 from app.models.partner_agreement import PartnerAgreement, PartnerAgreementEvent
 from app.models.field_photo import FieldPhoto
-from app.models.user_query import UserQuery, UserQueryEvent, UserQueryMember, UserQueryMessage, UserQueryRead
+from app.models.user_query import UserQuery, UserQueryAttachment, UserQueryEvent, UserQueryMember, UserQueryMessage, UserQueryPurge, UserQueryRead
 from app.models.bid import Bid, BidEvent, BidLine, BidRequest, BidReminder
 from app.models.email_bounce import EmailBounce
 from app.models.email_send_log import EmailSendLog

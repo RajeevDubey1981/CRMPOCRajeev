@@ -1,11 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { servicesApi } from "../../api/services.js";
+import { partsApi } from "../../api/parts.js";
 import { engineerIdsMatch } from "../../utils/engineerAssignment.js";
 import Modal from "../../components/Modal.jsx";
 import FieldPhotos from "../../components/fieldphoto/FieldPhotos.jsx";
 import ScanInput from "../../components/scan/ScanInput.jsx";
 import StatusBadge from "../../components/StatusBadge.jsx";
+import RaisePartRequestPanel from "../../components/parts/RaisePartRequestPanel.jsx";
+import RaiseClaimPanel from "../../components/claims/RaiseClaimPanel.jsx";
+import LinkedClaimsPanel from "../../components/claims/LinkedClaimsPanel.jsx";
+import { shortageClaimsApi } from "../../api/shortageClaims.js";
 
 const PAYMENT_TYPES = ["Cash", "UPI"];
 const BILLING_LOCKED_STATUSES = ["Payment Completed", "Closed"];
@@ -80,6 +85,7 @@ function emptyRow(unit) {
     observation: unit.observation_text || "",
     recommended_action: unit.recommended_action || "",
     parts_required: (unit.parts_required || []).join(", "),
+    misc_required: (unit.misc_required || []).join(", "),
     estimated_service_charge: unit.estimated_service_charge ?? "",
     estimated_parts_charge: unit.estimated_parts_charge ?? "",
     remarks: unit.observation_remarks || "",
@@ -233,11 +239,24 @@ export default function EngineerUnitWorkflowPanel({
   isEngineer,
   isVendor,
   isServiceTeam,
+  isServiceManager = false,
+  canApproveUnits = isServiceTeam,
+  canForwardUnits = isServiceTeam,
   isPaymentAdmin = false,
   run,
   busy = false,
   actionError = "",
 }) {
+  const [serviceClaims, setServiceClaims] = useState([]);
+  const canSeeClaims = canApproveUnits || canForwardUnits;
+
+  function reloadServiceClaims() {
+    if (service?.id && canSeeClaims) {
+      shortageClaimsApi.list({ service_request_id: service.id }).then(setServiceClaims).catch(() => {});
+    }
+  }
+  useEffect(() => { reloadServiceClaims(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [service?.id, canSeeClaims]);
+
   const workUnits = useMemo(() => {
     const units = service?.units || [];
     if (isEngineer) {
@@ -245,6 +264,11 @@ export default function EngineerUnitWorkflowPanel({
     }
     return units.filter((unit) => unit.assigned_engineer_id);
   }, [service?.units, isEngineer, userId]);
+
+  const [partsCatalogue, setPartsCatalogue] = useState([]);
+  useEffect(() => {
+    partsApi.catalogue({}).then(setPartsCatalogue).catch(() => setPartsCatalogue([]));
+  }, []);
 
   const [photoCounts, setPhotoCounts] = useState({}); // photos taken per serial, reported by the Photos button
   const [rows, setRows] = useState([]);
@@ -255,6 +279,7 @@ export default function EngineerUnitWorkflowPanel({
   const [completionProofs, setCompletionProofs] = useState({});
   const [paymentQrCodes, setPaymentQrCodes] = useState({});
   const [approvalRemarks, setApprovalRemarks] = useState({});
+  const [forwardRemarks, setForwardRemarks] = useState({});
   const [serialReviewForms, setSerialReviewForms] = useState({});
   const [paymentApprovalForms, setPaymentApprovalForms] = useState({});
   const [completionReviewRemarks, setCompletionReviewRemarks] = useState({});
@@ -296,7 +321,10 @@ export default function EngineerUnitWorkflowPanel({
 
   const unverifiedUnits = workUnits.filter((unit) => !unit.serial_verified_at && unit.unit_status === "Assigned");
   const unitsNeedingObservation = workUnits.filter((unit) => unit.serial_verified_at && !unit.observation_id);
+  // An engineer's observation needs at least 1 photo of the machine; a serial known to have none is held back.
+  const unitsReadyForObservation = unitsNeedingObservation.filter((unit) => !(isEngineer && photoCounts[unit.id] === 0));
   const unitsPendingApproval = workUnits.filter((unit) => unit.unit_status === "Pending Service Approval");
+  const unitsPendingTeamReview = workUnits.filter((unit) => unit.unit_status === "Pending Service Team Review");
   const unitsAwaitingSerialReview = workUnits.filter(
     (unit) => unit.unit_status === "Serial Verification Pending",
   );
@@ -512,6 +540,9 @@ export default function EngineerUnitWorkflowPanel({
         parts_required: row.parts_required
           ? row.parts_required.split(",").map((item) => item.trim()).filter(Boolean)
           : [],
+        misc_required: row.misc_required
+          ? row.misc_required.split(",").map((item) => item.trim()).filter(Boolean)
+          : [],
         estimated_service_charge: row.estimated_service_charge === "" ? null : Number(row.estimated_service_charge),
         estimated_parts_charge: row.estimated_parts_charge === "" ? null : Number(row.estimated_parts_charge),
         remarks: row.remarks || null,
@@ -522,7 +553,7 @@ export default function EngineerUnitWorkflowPanel({
   }
 
   async function submitAll() {
-    const payload = unitsNeedingObservation.map((unit) => {
+    const payload = unitsReadyForObservation.map((unit) => {
       const row = rows.find((item) => item.unit_id === unit.id);
       return {
         unit_id: unit.id,
@@ -531,6 +562,9 @@ export default function EngineerUnitWorkflowPanel({
         recommended_action: row?.recommended_action || null,
         parts_required: row?.parts_required
           ? row.parts_required.split(",").map((item) => item.trim()).filter(Boolean)
+          : [],
+        misc_required: row?.misc_required
+          ? row.misc_required.split(",").map((item) => item.trim()).filter(Boolean)
           : [],
         estimated_service_charge: row?.estimated_service_charge === "" || row?.estimated_service_charge === undefined
           ? null
@@ -559,10 +593,40 @@ export default function EngineerUnitWorkflowPanel({
     closeModal();
   }
 
+  async function recommendUnit(unitId) {
+    await run(
+      () => servicesApi.recommendToAdmin(service.id, {
+        unit_id: unitId,
+        remarks: approvalRemarks[unitId] || "Recommended for Admin approval",
+      }),
+      { successMessage: "Recommended — Admin or Sub Admin will decide it from here." },
+    );
+    closeModal();
+  }
+
   async function approveAllPending() {
     await run(
       () => servicesApi.approveBulk(service.id, { decision: "Approve", remarks: "Bulk approved" }),
       { successMessage: "All pending serials approved." },
+    );
+  }
+
+  async function forwardUnit(unitId, decision) {
+    await run(
+      () => servicesApi.forward(service.id, {
+        unit_id: unitId,
+        decision,
+        remarks: forwardRemarks[unitId] || (decision === "Forward" ? "Forwarded" : "Sent back"),
+      }),
+      { successMessage: decision === "Forward" ? "Forwarded to the Service Manager." : "Sent back to the engineer." },
+    );
+    closeModal();
+  }
+
+  async function forwardAllPending() {
+    await run(
+      () => servicesApi.forwardBulk(service.id, { decision: "Forward", remarks: "Bulk forwarded" }),
+      { successMessage: "All pending serials forwarded to the Service Manager." },
     );
   }
 
@@ -684,6 +748,9 @@ export default function EngineerUnitWorkflowPanel({
     if (!unit.observation_id) {
       return "Awaiting observation";
     }
+    if (unit.unit_status === "Pending Service Team Review") {
+      return "Awaiting Service Team review";
+    }
     if (unit.unit_status === "Pending Service Approval") {
       return "Awaiting approval";
     }
@@ -749,11 +816,14 @@ export default function EngineerUnitWorkflowPanel({
     }
 
     if (!observed && canVerifyOrObserve) {
+      const needsPhoto = isEngineer && photoCounts[unit.id] === 0;
       return (
         <button
           type="button"
           onClick={() => openModal("observation", unit.id)}
-          className="rounded-md bg-emerald-600 px-3 py-1.5 text-xs text-white"
+          disabled={needsPhoto}
+          title={needsPhoto ? "Add at least 1 photo of the machine first (tap Photos on this serial)" : undefined}
+          className="rounded-md bg-emerald-600 px-3 py-1.5 text-xs text-white disabled:opacity-50"
         >
           Add observation
         </button>
@@ -784,15 +854,49 @@ export default function EngineerUnitWorkflowPanel({
       );
     }
 
+    if (unit.unit_status === "Pending Service Team Review") {
+      if (isServiceTeam) {
+        return (
+          <div className="flex flex-col items-end gap-1">
+            <button
+              type="button"
+              onClick={() => openModal("forward", unit.id)}
+              className="rounded-md bg-teal-600 px-3 py-1.5 text-xs text-white"
+            >
+              Review &amp; forward
+            </button>
+            {observed && (
+              <button type="button" onClick={() => openModal("observation", unit.id)} className="text-xs text-sky-700 underline">
+                View observation
+              </button>
+            )}
+          </div>
+        );
+      }
+      return (
+        <div className="flex flex-col items-end gap-1">
+          <span className="text-xs text-slate-500">Awaiting Service Team review</span>
+          {observed && (
+            <button type="button" onClick={() => openModal("observation", unit.id)} className="text-xs text-sky-700 underline">
+              View observation
+            </button>
+          )}
+        </div>
+      );
+    }
+
     if (isServiceTeam && unit.unit_status === "Pending Service Approval") {
       return (
         <div className="flex flex-col items-end gap-1">
+          {unit.requires_admin_approval && (
+            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800">Needs Admin</span>
+          )}
           <button
             type="button"
             onClick={() => openModal("approval", unit.id)}
             className="rounded-md bg-orange-500 px-3 py-1.5 text-xs text-white"
           >
-            Review &amp; approve
+            Review recommendation
           </button>
           {observed && (
             <button type="button" onClick={() => openModal("observation", unit.id)} className="text-xs text-sky-700 underline">
@@ -951,7 +1055,7 @@ export default function EngineerUnitWorkflowPanel({
     const unit = activeUnit();
     if (!unit || activeModal?.type !== "observation") return null;
     const row = rows.find((item) => item.unit_id === unit.id) || emptyRow(unit);
-    const observationEditable = ["Pending Service Approval", "Rejected"].includes(unit.unit_status);
+    const observationEditable = ["Pending Service Team Review", "Pending Service Approval", "Rejected"].includes(unit.unit_status);
     const readOnly = Boolean(unit.observation_id && !observationEditable);
     const canEdit = canVerifyOrObserve && (!unit.observation_id || observationEditable) && unit.serial_verified_at;
 
@@ -1000,27 +1104,109 @@ export default function EngineerUnitWorkflowPanel({
               className={inputClass(!canEdit)}
             />
           </div>
-          <div>
-            <FieldLabel>Parts required</FieldLabel>
-            <input
-              value={row.parts_required}
-              onChange={(e) => updateRow(unit.id, "parts_required", e.target.value)}
-              disabled={!canEdit}
-              placeholder="Parts required (comma separated)"
-              className={inputClass(!canEdit)}
-            />
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div>
+              <FieldLabel>Parts required</FieldLabel>
+              {(() => {
+                const selected = (row.parts_required || "").split(",").map((p) => p.trim()).filter(Boolean);
+                const fitting = partsCatalogue.filter((p) => !unit.item_code || (p.fits || []).includes(unit.item_code));
+                const options = (fitting.length ? fitting : partsCatalogue).filter((p) => !selected.includes(p.part_name));
+                function addPart(name) {
+                  if (!name || selected.includes(name)) return;
+                  updateRow(unit.id, "parts_required", [...selected, name].join(", "));
+                }
+                function removePart(name) {
+                  updateRow(unit.id, "parts_required", selected.filter((p) => p !== name).join(", "));
+                }
+                return (
+                  <div className="space-y-1.5">
+                    {canEdit && (
+                      <select
+                        value=""
+                        onChange={(e) => { if (e.target.value) addPart(e.target.value); }}
+                        className={inputClass()}
+                      >
+                        <option value="">{options.length ? "+ Add a part from the catalogue..." : "No catalogue parts available"}</option>
+                        {options.map((p) => (
+                          <option key={p.id} value={p.part_name}>{p.part_name}{p.part_code ? ` (${p.part_code})` : ""}</option>
+                        ))}
+                      </select>
+                    )}
+                    {canEdit && (
+                      <input
+                        placeholder="Not in catalogue? Type a part name and press Enter"
+                        className={inputClass()}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            addPart(e.currentTarget.value.trim());
+                            e.currentTarget.value = "";
+                          }
+                        }}
+                      />
+                    )}
+                    {selected.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5">
+                        {selected.map((name) => (
+                          <span key={name} className="inline-flex items-center gap-1 rounded-full bg-sky-100 px-2.5 py-1 text-xs font-medium text-sky-800">
+                            {name}
+                            {canEdit && (
+                              <button type="button" onClick={() => removePart(name)} className="text-sky-500 hover:text-sky-800">✕</button>
+                            )}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    <p className="text-[11px] font-semibold text-slate-600">Only real spare parts — these go to Parts approval as a Spare Part request.</p>
+                  </div>
+                );
+              })()}
+            </div>
+            <div>
+              <FieldLabel>Other work / misc charge</FieldLabel>
+              {(() => {
+                const selected = (row.misc_required || "").split(",").map((p) => p.trim()).filter(Boolean);
+                function addMisc(name) {
+                  if (!name || selected.includes(name)) return;
+                  updateRow(unit.id, "misc_required", [...selected, name].join(", "));
+                }
+                function removeMisc(name) {
+                  updateRow(unit.id, "misc_required", selected.filter((p) => p !== name).join(", "));
+                }
+                return (
+                  <div className="space-y-1.5">
+                    {canEdit && (
+                      <input
+                        placeholder="e.g. AC wash, gas top-up — type and press Enter"
+                        className={inputClass()}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            addMisc(e.currentTarget.value.trim());
+                            e.currentTarget.value = "";
+                          }
+                        }}
+                      />
+                    )}
+                    {selected.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5">
+                        {selected.map((name) => (
+                          <span key={name} className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-1 text-xs font-medium text-amber-800">
+                            {name}
+                            {canEdit && (
+                              <button type="button" onClick={() => removeMisc(name)} className="text-amber-500 hover:text-amber-800">✕</button>
+                            )}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    <p className="text-[11px] font-semibold text-slate-600">No catalogue — stays with this unit's service recommendation, not a Parts request.</p>
+                  </div>
+                );
+              })()}
+            </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <div>
-              <FieldLabel>Estimated service charge</FieldLabel>
-              <input
-                value={row.estimated_service_charge}
-                onChange={(e) => updateRow(unit.id, "estimated_service_charge", e.target.value)}
-                disabled={!canEdit}
-                placeholder="Estimated service charge"
-                className={inputClass(!canEdit)}
-              />
-            </div>
             <div>
               <FieldLabel>Estimated parts charge</FieldLabel>
               <input
@@ -1028,6 +1214,16 @@ export default function EngineerUnitWorkflowPanel({
                 onChange={(e) => updateRow(unit.id, "estimated_parts_charge", e.target.value)}
                 disabled={!canEdit}
                 placeholder="Estimated parts charge"
+                className={inputClass(!canEdit)}
+              />
+            </div>
+            <div>
+              <FieldLabel>Estimated service charge</FieldLabel>
+              <input
+                value={row.estimated_service_charge}
+                onChange={(e) => updateRow(unit.id, "estimated_service_charge", e.target.value)}
+                disabled={!canEdit}
+                placeholder="Estimated service charge"
                 className={inputClass(!canEdit)}
               />
             </div>
@@ -1053,7 +1249,7 @@ export default function EngineerUnitWorkflowPanel({
                 onClick={() => submitOne(unit.id)}
                 className="rounded-md bg-emerald-600 px-4 py-2 text-sm text-white"
               >
-                {unit.observation_id ? "Update observation" : "Submit observation"}
+                {unit.observation_id ? "Update recommendation" : "Send recommendation to Service Manager"}
               </button>
             )}
           </div>
@@ -1372,6 +1568,7 @@ export default function EngineerUnitWorkflowPanel({
   function renderApprovalModal() {
     const unit = activeUnit();
     if (!unit || activeModal?.type !== "approval") return null;
+    const hasClaim = serviceClaims.some((c) => c.serial_no === unit.serial_no);
 
     return (
       <Modal
@@ -1382,10 +1579,41 @@ export default function EngineerUnitWorkflowPanel({
       >
         <div className="space-y-3">
           <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+            <div className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-400">Engineer recommends</div>
             <div><strong>Problem:</strong> {unit.problem_found || "—"}</div>
             <div className="mt-1"><strong>Observation:</strong> {unit.observation_text || "—"}</div>
             <div className="mt-1"><strong>Recommended action:</strong> {unit.recommended_action || "—"}</div>
+            {unit.misc_required && unit.misc_required.length > 0 && (
+              <div className="mt-1"><strong>Other work:</strong> {unit.misc_required.join(", ")}</div>
+            )}
           </div>
+          {(unit.requested_total != null && unit.requested_total > 0) && (
+            <div className={`rounded-md border px-3 py-2 text-sm ${unit.requires_admin_approval ? "border-amber-300 bg-amber-50 text-amber-900" : "border-slate-200 bg-slate-50 text-slate-700"}`}>
+              <div className="flex items-center justify-between">
+                <span><strong>Requested amount:</strong> ₹{Number(unit.requested_total).toLocaleString("en-IN")}</span>
+                {unit.requires_admin_approval && (
+                  <span className="rounded-full bg-amber-200 px-2 py-0.5 text-[11px] font-bold text-amber-900">
+                    Needs Admin — over ₹{Number(unit.approval_cap_amount || 2500).toLocaleString("en-IN")}
+                  </span>
+                )}
+              </div>
+              {unit.estimated_service_charge != null || unit.estimated_parts_charge != null ? (
+                <div className="mt-0.5 text-xs text-slate-500">
+                  Service ₹{Number(unit.estimated_service_charge || 0).toLocaleString("en-IN")} + Parts ₹{Number(unit.estimated_parts_charge || 0).toLocaleString("en-IN")}
+                </div>
+              ) : null}
+            </div>
+          )}
+          {!canApproveUnits ? (
+            <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
+              You can view and recommend, but only the Service Manager or Admin can approve or reject this.
+            </div>
+          ) : unit.can_approve === false && (
+            <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
+              This amount is over the Service Manager's ₹{Number(unit.approval_cap_amount || 2500).toLocaleString("en-IN")} limit — only Admin or Sub Admin can approve it.
+              {isServiceManager && " Use Recommend below to send it to them with your note."}
+            </div>
+          )}
           <div>
             <FieldLabel>Approval remarks</FieldLabel>
             <textarea
@@ -1393,7 +1621,116 @@ export default function EngineerUnitWorkflowPanel({
               onChange={(e) => setApprovalRemarks((current) => ({ ...current, [unit.id]: e.target.value }))}
               rows={3}
               placeholder="Approval remarks"
-              className={inputClass()}
+              disabled={!canApproveUnits}
+              className={`${inputClass()} disabled:bg-slate-100 disabled:text-slate-500`}
+            />
+          </div>
+          <LinkedClaimsPanel
+            claims={serviceClaims.filter((c) => c.serial_no === unit.serial_no)}
+            onChanged={reloadServiceClaims}
+            isServiceManager={isServiceManager}
+          />
+          {canApproveUnits && !hasClaim && (
+            <RaiseClaimPanel
+              flow="service"
+              triggerLabel="Found something that was never delivered with this unit"
+              context={{
+                service_request_id: service?.id,
+                item_code: service?.item_code,
+                serial_no: unit.serial_no,
+                unit_id: unit.id,
+              }}
+              onSent={reloadServiceClaims}
+            />
+          )}
+          {canApproveUnits && !hasClaim && (
+            <div className="rounded-md border border-red-300 bg-red-50 px-3 py-2 text-xs font-medium text-red-700">
+              Raise the claim above before you can Recommend or Approve this unit.
+            </div>
+          )}
+          {hasClaim && (
+            <div className="rounded-md border border-emerald-300 bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-800">
+              ✓ Claimed — this unit already has a claim raised against it.
+            </div>
+          )}
+          <div className="flex justify-end gap-2 pt-2">
+            <button type="button" onClick={closeModal} className="rounded-md border border-slate-300 px-4 py-2 text-sm">
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => { if (window.confirm("Reject and send this unit back to Service Team?")) approveUnit(unit.id, "Reject"); }}
+              disabled={!canApproveUnits}
+              className="rounded-md border border-rose-300 px-4 py-2 text-sm text-rose-700 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Reject / Send back
+            </button>
+            {isServiceManager && unit.can_approve === false && (
+              <button
+                type="button"
+                onClick={() => { if (window.confirm("Recommend this unit to Admin/Sub Admin for approval?")) recommendUnit(unit.id); }}
+                disabled={!hasClaim}
+                title={!hasClaim ? "Raise a claim first" : undefined}
+                className="rounded-md border border-amber-400 bg-amber-50 px-4 py-2 text-sm font-medium text-amber-900 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Recommend
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => { if (window.confirm("Approve this unit?")) approveUnit(unit.id, "Approve"); }}
+              disabled={!canApproveUnits || unit.can_approve === false || !hasClaim}
+              title={!canApproveUnits ? "Only the Service Manager or Admin can approve" : unit.can_approve === false ? "Over the Service Manager's cap — needs Admin or Sub Admin" : !hasClaim ? "Raise a claim first" : undefined}
+              className="rounded-md bg-orange-500 px-4 py-2 text-sm text-white disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Approve
+            </button>
+          </div>
+        </div>
+      </Modal>
+    );
+  }
+
+  function renderForwardModal() {
+    const unit = activeUnit();
+    if (!unit || activeModal?.type !== "forward") return null;
+
+    return (
+      <Modal
+        open
+        onClose={closeModal}
+        title={`Service Team review — ${unit.serial_no || "Serial"}`}
+        maxWidth="max-w-lg"
+      >
+        <div className="space-y-3">
+          <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+            <div className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-400">Engineer recommends</div>
+            <div><strong>Problem:</strong> {unit.problem_found || "—"}</div>
+            <div className="mt-1"><strong>Observation:</strong> {unit.observation_text || "—"}</div>
+            <div className="mt-1"><strong>Recommended action:</strong> {unit.recommended_action || "—"}</div>
+            {unit.misc_required && unit.misc_required.length > 0 && (
+              <div className="mt-1"><strong>Other work:</strong> {unit.misc_required.join(", ")}</div>
+            )}
+          </div>
+          {(unit.requested_total != null && unit.requested_total > 0) && (
+            <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+              <strong>Requested amount:</strong> ₹{Number(unit.requested_total).toLocaleString("en-IN")}
+            </div>
+          )}
+          {!canForwardUnits && (
+            <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
+              You can view this, but only the Service Team or Admin can forward it to the Service Manager.
+            </div>
+          )}
+          <div>
+            <FieldLabel>Remarks (optional)</FieldLabel>
+            <textarea
+              value={forwardRemarks[unit.id] || ""}
+              onChange={(e) => setForwardRemarks((current) => ({ ...current, [unit.id]: e.target.value }))}
+              rows={3}
+              placeholder="Remarks"
+              disabled={!canForwardUnits}
+              className={`${inputClass()} disabled:bg-slate-100 disabled:text-slate-500`}
             />
           </div>
           <div className="flex justify-end gap-2 pt-2">
@@ -1402,17 +1739,19 @@ export default function EngineerUnitWorkflowPanel({
             </button>
             <button
               type="button"
-              onClick={() => approveUnit(unit.id, "Reject")}
-              className="rounded-md border border-rose-300 px-4 py-2 text-sm text-rose-700"
+              onClick={() => forwardUnit(unit.id, "Reject")}
+              disabled={!canForwardUnits}
+              className="rounded-md border border-rose-300 px-4 py-2 text-sm text-rose-700 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              Reject / Send back
+              Send back to engineer
             </button>
             <button
               type="button"
-              onClick={() => approveUnit(unit.id, "Approve")}
-              className="rounded-md bg-orange-500 px-4 py-2 text-sm text-white"
+              onClick={() => forwardUnit(unit.id, "Forward")}
+              disabled={!canForwardUnits}
+              className="rounded-md bg-teal-600 px-4 py-2 text-sm text-white disabled:cursor-not-allowed disabled:opacity-50"
             >
-              Approve
+              Forward to Service Manager
             </button>
           </div>
         </div>
@@ -1425,6 +1764,7 @@ export default function EngineerUnitWorkflowPanel({
     if (!unit || activeModal?.type !== "completion") return null;
     const completion = completionRows[unit.id] || emptyCompletion(unit);
     const proof = completionProofs[unit.id];
+    const hasClaim = serviceClaims.some((c) => c.serial_no === unit.serial_no);
 
     return (
       <Modal
@@ -1551,6 +1891,34 @@ export default function EngineerUnitWorkflowPanel({
               </div>
             ) : null;
           })()}
+          {completion.completion_status === "Waiting for Part" && (
+            <RaisePartRequestPanel
+              context={{
+                crm_service_request_id: service?.id,
+                crm_service_request_no: service?.request_no,
+                crm_item_code: service?.item_code,
+                crm_serial_no: unit.serial_no,
+              }}
+            />
+          )}
+          <LinkedClaimsPanel
+            claims={serviceClaims.filter((c) => c.serial_no === unit.serial_no)}
+            onChanged={reloadServiceClaims}
+            isServiceManager={isServiceManager}
+          />
+          {!hasClaim && (
+            <RaiseClaimPanel
+              flow="service"
+              triggerLabel="Found something that was never delivered with this unit"
+              context={{
+                service_request_id: service?.id,
+                item_code: service?.item_code,
+                serial_no: unit.serial_no,
+                unit_id: unit.id,
+              }}
+              onSent={reloadServiceClaims}
+            />
+          )}
           <div className="flex justify-end gap-2 pt-2">
             <button type="button" onClick={closeModal} className="rounded-md border border-slate-300 px-4 py-2 text-sm">
               Cancel
@@ -2002,11 +2370,22 @@ export default function EngineerUnitWorkflowPanel({
           </button>
         )}
         {canVerifyOrObserve && unitsNeedingObservation.length > 0 && (
-          <button type="button" onClick={submitAll} className="rounded-md bg-emerald-600 px-3 py-2 text-sm text-white">
-            Submit all observations ({unitsNeedingObservation.length})
+          <button
+            type="button"
+            onClick={submitAll}
+            disabled={unitsReadyForObservation.length === 0}
+            title={unitsReadyForObservation.length < unitsNeedingObservation.length ? "Serials without a photo are left out: add at least 1 photo to each first" : undefined}
+            className="rounded-md bg-emerald-600 px-3 py-2 text-sm text-white disabled:opacity-50"
+          >
+            Submit all observations ({unitsReadyForObservation.length}{unitsReadyForObservation.length < unitsNeedingObservation.length ? ` of ${unitsNeedingObservation.length}` : ""})
           </button>
         )}
-        {isServiceTeam && unitsPendingApproval.length > 0 && (
+        {canForwardUnits && unitsPendingTeamReview.length > 0 && (
+          <button type="button" onClick={forwardAllPending} className="rounded-md bg-teal-600 px-3 py-2 text-sm text-white">
+            Forward all pending ({unitsPendingTeamReview.length})
+          </button>
+        )}
+        {canApproveUnits && unitsPendingApproval.length > 0 && (
           <button type="button" onClick={approveAllPending} className="rounded-md bg-orange-500 px-3 py-2 text-sm text-white">
             Approve all pending ({unitsPendingApproval.length})
           </button>
@@ -2061,6 +2440,11 @@ export default function EngineerUnitWorkflowPanel({
                 <div className="mt-2 space-y-1 text-xs text-slate-600">
                   <WorkflowSteps unit={unit} />
                   <div>{progressSummary(unit)}</div>
+                </div>
+              )}
+              {isEngineer && verified && !unit.observation_id && photoCounts[unit.id] === 0 && (
+                <div className="mt-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                  Add at least 1 photo of the machine before you can submit the observation.
                 </div>
               )}
               {isEngineer && !verified && photoCounts[unit.id] === 0 && (
@@ -2133,7 +2517,14 @@ export default function EngineerUnitWorkflowPanel({
                   onCountChange={(n) => setPhotoCounts((c) => (c[unit.id] === n ? c : { ...c, [unit.id]: n }))}
                     />
                   </td>
-                  <td className="px-3 py-2"><StatusBadge value={unit.unit_status || "Assigned"} /></td>
+                  <td className="px-3 py-2">
+                    <StatusBadge value={unit.unit_status || "Assigned"} />
+                    {canSeeClaims && serviceClaims.some((c) => c.serial_no === unit.serial_no) && (
+                      <span className="ml-1 inline-block rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-red-700">
+                        Claimed
+                      </span>
+                    )}
+                  </td>
                   {isServiceTeam && (
                     <td className="max-w-xs px-3 py-2 text-xs text-slate-700">
                       {unit.return_remarks ? (
@@ -2170,6 +2561,7 @@ export default function EngineerUnitWorkflowPanel({
       {renderObservationModal()}
       {renderSerialModal()}
       {renderSerialReviewModal()}
+      {renderForwardModal()}
       {renderApprovalModal()}
       {renderCompletionReviewModal()}
       {renderCompletionModal()}

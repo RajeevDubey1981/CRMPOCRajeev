@@ -25,7 +25,8 @@ import Permissions from "./pages/admin/Permissions.jsx";
 import PaymentHistory from "./pages/admin/PaymentHistory.jsx";
 import ProjectList from "./pages/projects/ProjectList.jsx";
 import ProjectDetail from "./pages/projects/ProjectDetail.jsx";
-import ItemMasterList from "./pages/item_masters/ItemMasterList.jsx";
+import ItemMastersPage from "./pages/item_masters/ItemMastersPage.jsx";
+import MyPartRequests from "./pages/item_masters/MyPartRequests.jsx";
 import ItemMasterCreate from "./pages/item_masters/ItemMasterCreate.jsx";
 import ItemMasterDetail from "./pages/item_masters/ItemMasterDetail.jsx";
 import CourierList from "./pages/couriers/CourierList.jsx";
@@ -36,7 +37,7 @@ import MarketUsers from "./pages/market/MarketUsers.jsx";
 import MarketItems from "./pages/market/MarketItems.jsx";
 import MarketOrders from "./pages/market/MarketOrders.jsx";
 import MarketCategories from "./pages/market/MarketCategories.jsx";
-import ClaimList from "./pages/claims/ClaimList.jsx";
+import ClaimsPage from "./pages/claims/ClaimsPage.jsx";
 import ClaimCreate from "./pages/claims/ClaimCreate.jsx";
 import ClaimDetail from "./pages/claims/ClaimDetail.jsx";
 import OrderList from "./pages/orders/OrderList.jsx";
@@ -46,6 +47,7 @@ import SerialDetails from "./pages/SerialDetails.jsx";
 import SerialHistory from "./pages/serials/SerialHistory.jsx";
 import HistoricalInstallation from "./pages/serials/HistoricalInstallation.jsx";
 import ServiceRequestList from "./pages/services/ServiceRequestList.jsx";
+import ApprovalsPage from "./pages/approvals/ApprovalsPage.jsx";
 import ServiceRequestCreate from "./pages/services/ServiceRequestCreate.jsx";
 import ServiceRequestDetail from "./pages/services/ServiceRequestDetail.jsx";
 import EngineerAssignedUnits from "./pages/services/EngineerAssignedUnits.jsx";
@@ -175,9 +177,11 @@ export default function App() {
         <Route path="/partner-registrations" element={<PermissionRoute module="partner_registrations"><PartnerRegistrationList /></PermissionRoute>} />
         <Route path="/partner-registrations/:id/review" element={<PermissionRoute module="partner_registrations"><PartnerRegistrationReview /></PermissionRoute>} />
         <Route path="/services/my-units" element={<EngineerAssignedUnits />} />
+        <Route path="/approvals" element={<ApprovalsPage />} />
         <Route path="/services/new" element={<PermissionRoute module="services" action="can_create"><ServiceRequestCreate /></PermissionRoute>} />
         <Route path="/services/:id" element={<PermissionRoute module="services"><ServiceRequestDetail /></PermissionRoute>} />
-        <Route path="/items" element={<PermissionRoute module="items"><ItemMasterList /></PermissionRoute>} />
+        <Route path="/items" element={<PermissionRoute module="items"><ItemMastersPage /></PermissionRoute>} />
+        <Route path="/items/my-requests" element={<MyPartRequests />} />
         <Route path="/items/new" element={<PermissionRoute module="items" action="can_create"><ItemMasterCreate /></PermissionRoute>} />
         <Route path="/items/:id" element={<PermissionRoute module="items"><ItemMasterDetail /></PermissionRoute>} />
         <Route path="/couriers" element={<OperationsAdminRoute><CourierList /></OperationsAdminRoute>} />
@@ -190,7 +194,7 @@ export default function App() {
         <Route path="/installations/new" element={<PermissionRoute module="installations" action="can_create"><InstallationCreate /></PermissionRoute>} />
         <Route path="/installations/bulk-workflow" element={<PermissionRoute module="installations"><BulkInstallationWorkflowPage /></PermissionRoute>} />
         <Route path="/installations/:id" element={<PermissionRoute module="installations"><InstallationDetail /></PermissionRoute>} />
-        <Route path="/claims" element={<PermissionRoute module="claims"><ClaimList /></PermissionRoute>} />
+        <Route path="/claims" element={<PermissionRoute module="claims"><ClaimsPage /></PermissionRoute>} />
         <Route path="/claims/new" element={<PermissionRoute module="claims" action="can_create"><ClaimCreate /></PermissionRoute>} />
         <Route path="/claims/:id" element={<PermissionRoute module="claims"><ClaimDetail /></PermissionRoute>} />
         <Route path="/sales/*" element={<PermissionRoute module="sales"><SalesRoutes /></PermissionRoute>} />

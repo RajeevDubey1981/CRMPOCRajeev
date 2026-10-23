@@ -38,6 +38,11 @@ from app.services.service_unit_workflow import (
     observations_for_service,
     payment_requests_for_service,
     sync_service_request_from_units,
+    unit_requested_amount,
+    requires_admin_approval,
+    can_user_approve_amount,
+    can_user_forward_at_all,
+    APPROVAL_CAP_AMOUNT,
 )
 
 def _json_load_parts(observation) -> list[str]:
@@ -45,6 +50,16 @@ def _json_load_parts(observation) -> list[str]:
         return []
     try:
         value = json.loads(observation.parts_required_json)
+        return value if isinstance(value, list) else []
+    except json.JSONDecodeError:
+        return []
+
+
+def _json_load_misc(observation) -> list[str]:
+    if observation is None or not observation.misc_required_json:
+        return []
+    try:
+        value = json.loads(observation.misc_required_json)
         return value if isinstance(value, list) else []
     except json.JSONDecodeError:
         return []
@@ -226,7 +241,9 @@ def verify_order_for_service(
     service.order_id = order.id
     service.customer_name = order.customer_name or service.customer_name
     service.customer_mobile = order.customer_contact or service.customer_mobile
-    service.customer_email = order.customer_email or service.customer_email
+    # Keep the complaint-registration email as primary — fill in from the order only when empty,
+    # so it's never lost to the order's own email; notifications send to both when they differ.
+    service.customer_email = service.customer_email or order.customer_email
     service.customer_address = order.customer_address or service.customer_address
     service.customer_identified_at = _now()
     if service.status == "New":
@@ -417,6 +434,7 @@ def build_unit_rows(
     *,
     item_code: str | None = None,
     engineer_id: int | None = None,
+    user: User | None = None,
 ) -> list[dict]:
     restore_assigned_placeholder_serials(db, service_id)
     stmt = (
@@ -498,6 +516,7 @@ def build_unit_rows(
             "observation_text": observation.observation if observation else None,
             "recommended_action": observation.recommended_action if observation else None,
             "parts_required": _json_load_parts(observation),
+            "misc_required": _json_load_misc(observation),
             "estimated_service_charge": float(observation.estimated_service_charge) if observation and observation.estimated_service_charge is not None else None,
             "estimated_parts_charge": float(observation.estimated_parts_charge) if observation and observation.estimated_parts_charge is not None else None,
             "observation_remarks": observation.remarks if observation else None,
@@ -526,6 +545,11 @@ def build_unit_rows(
             "payment_approval_step": payment.approval_step if payment else None,
             "payment_approval_total_steps": payment.approval_total_steps if payment else None,
             "payment_next_approver_role": payment.next_approver_role if payment else None,
+            "requested_total": unit_requested_amount(observation) if observation else None,
+            "requires_admin_approval": requires_admin_approval(unit_requested_amount(observation)) if observation else False,
+            "approval_cap_amount": APPROVAL_CAP_AMOUNT,
+            "can_approve": (can_user_approve_amount(user, unit_requested_amount(observation)) if observation else True) if user is not None else True,
+            "can_forward": can_user_forward_at_all(user) if user is not None else True,
         })
     return rows
 
@@ -656,6 +680,7 @@ def add_service_unit_by_serial(
                     f"Scanned serial belongs to item {order_item_code}, but this row is for item {target_code}.",
                 )
 
+            ensure_order_not_assigned_elsewhere(db, service, [order_item_for_row.id])
             existing_for_serial = db.scalar(
                 select(ServiceRequestUnit).where(
                     ServiceRequestUnit.service_request_id == service.id,
@@ -733,6 +758,49 @@ def add_service_unit_by_serial(
     return unit
 
 
+FINISHED_SERVICE_STATUSES = {"Closed", "Payment Completed", "Service Completed", "Cancelled", "Rejected"}
+
+
+def ensure_order_not_assigned_elsewhere(db: Session, service: ServiceRequest, order_item_ids) -> None:
+    """One order serial is serviced under one request at a time. If another open service request already has it with a
+    Service user or an engineer, refuse: the same order cannot be assigned twice."""
+    ids = {i for i in order_item_ids if i}
+    if not ids:
+        return
+    on_units = select(ServiceRequestUnit.service_request_id).where(ServiceRequestUnit.order_item_id.in_(ids))
+    others = db.scalars(
+        select(ServiceRequest).where(
+            ServiceRequest.id != service.id,
+            ServiceRequest.deleted_at.is_(None),
+            ServiceRequest.status.notin_(FINISHED_SERVICE_STATUSES),
+            or_(ServiceRequest.order_item_id.in_(ids), ServiceRequest.id.in_(on_units)),
+        ).order_by(ServiceRequest.id)
+    ).all()
+    for other in others:
+        people = []
+        if other.assigned_service_user_id:
+            owner = db.get(User, other.assigned_service_user_id)
+            people.append(f"{owner.name} (service team)" if owner else "a service team member")
+        engineer_ids = {
+            e for e in db.scalars(
+                select(ServiceRequestUnit.assigned_engineer_id).where(
+                    ServiceRequestUnit.service_request_id == other.id, ServiceRequestUnit.assigned_engineer_id.is_not(None)
+                )
+            )
+        }
+        for engineer_id in sorted(engineer_ids):
+            engineer = db.get(User, engineer_id)
+            people.append(f"{engineer.name} (engineer)" if engineer else "an engineer")
+        if not people:
+            continue
+        order = db.get(Order, other.order_id) if other.order_id else None
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            f"This order{f' {order.order_no}' if order else ''} is already assigned in {other.request_no} to {', '.join(people)}. "
+            "The same order cannot be assigned twice. Finish or close that request first.",
+        )
+
+
 def assign_units_to_engineer(
     db: Session,
     service: ServiceRequest,
@@ -761,6 +829,7 @@ def assign_units_to_engineer(
     if len(units) != len(set(unit_ids)):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "One or more selected units were not found on this service request")
 
+    ensure_order_not_assigned_elsewhere(db, service, [unit.order_item_id for unit in units])
     for unit in units:
         order_item = db.get(OrderItem, unit.order_item_id)
         if order_item is None or not _is_installed_order_item(db, order_item):
@@ -877,6 +946,7 @@ def assign_units_to_engineer_by_quantity(
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "billing_type must be Free or Paid")
 
     selected_units = eligible_units[:quantity]
+    ensure_order_not_assigned_elsewhere(db, service, [unit.order_item_id for unit in selected_units])
     now = _now()
     for unit in selected_units:
         order_item = db.get(OrderItem, unit.order_item_id) if unit.order_item_id else None

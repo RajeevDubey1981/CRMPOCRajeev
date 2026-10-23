@@ -156,6 +156,32 @@ class FieldPhotoTests(unittest.TestCase):
         ok = self.client.post(url, json=body, headers=self.h(self.eng1))
         self.assertEqual(ok.status_code, 200, ok.text)
 
+    def test_engineer_cannot_submit_an_observation_without_a_photo(self):
+        from datetime import datetime, timezone
+
+        from sqlalchemy import create_engine
+        from sqlalchemy.orm import sessionmaker
+        from sqlalchemy.pool import StaticPool
+        from app.parts.db import PartsBase, use_factory
+
+        parts_engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+        PartsBase.metadata.create_all(parts_engine)
+        use_factory(sessionmaker(bind=parts_engine, autoflush=False, autocommit=False, future=True), parts_engine)
+        self.addCleanup(use_factory, None, None)
+        self.unit.serial_verified_at = datetime.now(timezone.utc)
+        self.unit.unit_status = "Serial Verified"
+        self.db.commit()
+        sid = self.unit.service_request_id
+        body = {"unit_id": self.unit.id, "problem_found": "Fan issue", "observation": "Replace fan"}
+        r = self.client.post(f"/api/services/{sid}/observations", json=body, headers=self.h(self.eng1))
+        self.assertEqual(r.status_code, 400, r.text)
+        self.assertIn("at least 1 photo", r.json()["detail"])
+        bulk = self.client.post(f"/api/services/{sid}/observations/bulk", json={"observations": [body]}, headers=self.h(self.eng1))
+        self.assertEqual(bulk.status_code, 400, bulk.text)
+        self.assertEqual(self.post(f"/api/field-photos/service-units/{self.unit.id}", self.eng1).status_code, 201)
+        ok = self.client.post(f"/api/services/{sid}/observations", json=body, headers=self.h(self.eng1))
+        self.assertEqual(ok.status_code, 200, ok.text)
+
     def test_missing_serial_is_404(self):
         self.assertEqual(self.post("/api/field-photos/service-units/9999", self.eng1).status_code, 404)
         self.assertEqual(self.client.get("/api/field-photos/installation-serials/9999", headers=self.h(self.admin)).status_code, 404)

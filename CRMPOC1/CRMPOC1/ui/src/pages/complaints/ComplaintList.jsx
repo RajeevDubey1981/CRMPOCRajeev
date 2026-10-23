@@ -18,6 +18,7 @@ import LinkedRequestCell from "../../components/complaints/LinkedRequestCell.jsx
 import ReferenceChip from "../../components/complaints/ReferenceChip.jsx";
 import PageLoader from "../../components/PageLoader.jsx";
 import { complaintsApi } from "../../api/complaints.js";
+import { servicesApi } from "../../api/services.js";
 import { api } from "../../api/client.js";
 import { useAuth } from "../../auth/AuthContext.jsx";
 import { isOperationsAdminRole } from "../../utils/roles.js";
@@ -135,7 +136,7 @@ export default function ComplaintList() {
   const [filtersOpen, setFiltersOpen] = useState(false); // phones: the long filter form starts folded away
   const [filters, setFilters]           = useState({
     id: "", comp_no: "", customer_name: "", status: "",
-    mobile: "", source: "", date_from: "", date_to: "", priority: "",
+    mobile: "", source: "", date_from: "", date_to: "", priority: "", owner: "",
   });
   const [page, setPage]                 = useState(1);
   const [perPage, setPerPage]           = useState(20);
@@ -145,6 +146,32 @@ export default function ComplaintList() {
   const [actionRemark, setActionRemark] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [viewTarget, setViewTarget]       = useState(null);
+  // Service Manager / Admin / Sub Admin give a complaint's service request to a service team member (its owner).
+  // The lookup answers with an empty list for anyone else, so the button only shows for those who may use it.
+  const [serviceUsers, setServiceUsers] = useState([]);
+  const [ownerTarget, setOwnerTarget]   = useState(null);
+  const [ownerId, setOwnerId]           = useState("");
+  const [ownerBusy, setOwnerBusy]       = useState(false);
+  const [ownerErr, setOwnerErr]         = useState("");
+  useEffect(() => {
+    api.get("/api/services/lookup/service-users").then((r) => setServiceUsers(Array.isArray(r.data) ? r.data : [])).catch(() => setServiceUsers([]));
+  }, []);
+
+  async function saveOwner() {
+    if (!ownerTarget || !ownerId) return;
+    setOwnerBusy(true);
+    setOwnerErr("");
+    try {
+      await servicesApi.assignServiceUser(ownerTarget.service_request_id, { service_user_id: Number(ownerId), remarks: null });
+      setOwnerTarget(null);
+      setOwnerId("");
+      load();
+    } catch (e) {
+      setOwnerErr(e.response?.data?.detail || "Could not assign the owner");
+    } finally {
+      setOwnerBusy(false);
+    }
+  }
 
   // Load summary counts for stat cards
   useEffect(() => {
@@ -164,6 +191,7 @@ export default function ComplaintList() {
       status: filters.status || undefined,
       source: filters.source || undefined,
       priority: filters.priority || undefined,
+      owner: filters.owner || undefined,
       date_from: filters.date_from || undefined,
       date_to: filters.date_to || undefined,
     };
@@ -189,7 +217,7 @@ export default function ComplaintList() {
   }
 
   function resetFilters() {
-    setFilters({ id: "", comp_no: "", customer_name: "", status: "", mobile: "", source: "", date_from: "", date_to: "", priority: "" });
+    setFilters({ id: "", comp_no: "", customer_name: "", status: "", mobile: "", source: "", date_from: "", date_to: "", priority: "", owner: "" });
     setPage(1);
   }
 
@@ -315,6 +343,15 @@ export default function ComplaintList() {
             className={`rounded border border-slate-300 text-slate-700 hover:bg-slate-50 ${size}`}
           >
             Edit
+          </button>
+        )}
+        {serviceUsers.length > 0 && c.service_request_id && (
+          <button
+            title="Give this service request to a service team member (the owner)"
+            onClick={() => { setOwnerTarget(c); setOwnerId(c.service_owner_id ? String(c.service_owner_id) : ""); setOwnerErr(""); }}
+            className={`rounded border font-medium ${c.service_owner_name ? "border-violet-500 bg-violet-50 text-violet-800 hover:bg-violet-100" : "border-violet-300 text-violet-700 hover:bg-violet-50"} ${size}`}
+          >
+            {c.service_owner_name ? `Owner: ${c.service_owner_name}` : "Assign owner"}
           </button>
         )}
         {canEditComplaints && (
@@ -482,6 +519,20 @@ export default function ComplaintList() {
               <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Registered</label>
               <DateRangeFilter from={filters.date_from} to={filters.date_to} onChange={(a, b) => { patch("date_from", a); patch("date_to", b); }} />
             </div>
+            {serviceUsers.length > 0 && (
+              <div>
+                <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-violet-700">Owner (service team)</label>
+                <select
+                  value={filters.owner}
+                  onChange={(e) => patch("owner", e.target.value)}
+                  className="w-full rounded border border-violet-300 bg-violet-50 px-2.5 py-1.5 text-base text-slate-700 sm:text-sm"
+                >
+                  <option value="">-- All owners --</option>
+                  <option value="none">Not given yet</option>
+                  {serviceUsers.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+                </select>
+              </div>
+            )}
           </div>
           <div className="flex gap-2">
             <button
@@ -508,14 +559,15 @@ export default function ComplaintList() {
       <div className="hidden rounded bg-white shadow-sm xl:block">
         <table className="w-full table-fixed text-xs">
           <colgroup>
+            <col style={{ width: "11%" }} />
+            <col style={{ width: "9%" }} />
             <col style={{ width: "13%" }} />
-            <col style={{ width: "14%" }} />
-            <col style={{ width: "13%" }} />
-            <col style={{ width: "13%" }} />
-            <col style={{ width: "15%" }} />
             <col style={{ width: "10%" }} />
-            <col style={{ width: "8%" }} />
-            <col style={{ width: "14%" }} />
+            <col style={{ width: "11%" }} />
+            <col style={{ width: "13%" }} />
+            <col style={{ width: "9%" }} />
+            <col style={{ width: "6%" }} />
+            <col style={{ width: "18%" }} />
           </colgroup>
           <thead className="text-left">
             <tr>
@@ -594,6 +646,7 @@ export default function ComplaintList() {
                   </td>
                   <td className="space-y-1 break-words px-3 py-2">
                     <div><CellLabel>Engineer</CellLabel> {c.assigned_engineer_name || "—"}</div>
+                    {c.service_request_id && <div><CellLabel>Owner</CellLabel> {c.service_owner_name || "—"}</div>}
                     <div><CellLabel>Address</CellLabel> {c.customer_address || "—"}</div>
                   </td>
                   <td className="space-y-1 break-words px-3 py-2">
@@ -656,6 +709,7 @@ export default function ComplaintList() {
                 <CardRow label="Problem Description">{c.problem_description || "—"}</CardRow>
                 <CardRow label="Remark">{c.remark || "—"}</CardRow>
                 <CardRow label="Assigned Engineer">{c.assigned_engineer_name || "—"}</CardRow>
+                {c.service_request_id && <CardRow label="Owner">{c.service_owner_name || "—"}</CardRow>}
                 <CardRow label="Customer Address">{c.customer_address || "—"}</CardRow>
                 <CardRow label="Created By">{c.created_by_name || "—"}</CardRow>
                 <CardRow label="Registered">{registeredParts(c.created_at) ? `${registeredParts(c.created_at).date}, ${registeredParts(c.created_at).time} · ${registeredParts(c.created_at).ago}` : "—"}</CardRow>
@@ -719,6 +773,31 @@ export default function ComplaintList() {
           onSaved={() => { setEditTarget(null); load(); }}
         />
       )}
+
+      {/* ── Assign owner (service team member) ── */}
+      <Modal open={!!ownerTarget} onClose={() => setOwnerTarget(null)} title="Assign owner">
+        <div className="space-y-3">
+          <p className="text-sm text-slate-600">
+            Service request <span className="font-mono">{ownerTarget?.service_request_no}</span> — {ownerTarget?.customer_name}. The owner sees it in their own list and takes it forward.
+          </p>
+          <div className="grid gap-2">
+            {serviceUsers.map((u) => (
+              <label key={u.id} className={`flex cursor-pointer items-center gap-3 rounded border px-3 py-2 text-sm ${String(u.id) === ownerId ? "border-violet-500 bg-violet-50" : "border-slate-300 hover:bg-slate-50"}`}>
+                <input type="radio" name="owner" value={u.id} checked={String(u.id) === ownerId} onChange={() => setOwnerId(String(u.id))} />
+                <span className="font-medium text-slate-800">{u.name}</span>
+                {u.phone && <span className="text-xs text-slate-500">{u.phone}</span>}
+              </label>
+            ))}
+          </div>
+          {ownerErr && <p className="text-sm text-rose-700">{ownerErr}</p>}
+          <div className="flex justify-end gap-2">
+            <button onClick={() => setOwnerTarget(null)} className="rounded border border-slate-300 px-3 py-2 text-sm">Cancel</button>
+            <button onClick={saveOwner} disabled={!ownerId || ownerBusy} className="rounded bg-violet-700 px-3 py-2 text-sm text-white hover:bg-violet-800 disabled:opacity-50">
+              {ownerBusy ? "Saving…" : "Assign owner"}
+            </button>
+          </div>
+        </div>
+      </Modal>
 
       {/* ── Record Action Modal ── */}
       <Modal

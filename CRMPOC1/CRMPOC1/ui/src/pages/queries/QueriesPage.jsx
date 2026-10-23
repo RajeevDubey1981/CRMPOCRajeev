@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
 import { announceQueriesChanged, queriesApi } from "../../api/queries.js";
+import QueryAttachment from "../../components/queries/QueryAttachment.jsx";
 import { useAuth } from "../../auth/AuthContext.jsx";
 import DateRangeFilter from "../../components/DateRangeFilter.jsx";
 import QueriesDashboard from "../../components/queries/QueriesDashboard.jsx";
@@ -58,6 +59,11 @@ function PriorityChip({ priority }) {
   return <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${PRIORITY_STYLE[priority]}`}>{PRIORITY_LABEL[priority]}</span>;
 }
 
+const CATEGORY_ICON = { Parts: "🔧", Claims: "📦", Installation: "🛠️", Service: "🔧", Payment: "💳", Order: "📦", Complaint: "⚠️" };
+function CategoryIcon({ category }) {
+  return <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-slate-100 text-lg" aria-hidden="true">{CATEGORY_ICON[category] || "💬"}</span>;
+}
+
 function BellIcon({ size = 20 }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -73,46 +79,55 @@ function leftText(q) {
   return h > 0 ? `${h} h ${m} m` : `${m} min`;
 }
 
+const DOT_COLOR = { Open: "bg-amber-500", Answered: "bg-emerald-600", Closed: "bg-slate-400" };
+
 function QueryList({ rows, activeId, staff, loading, term = "", numberOn = false, dateOn = false }) {
   if (loading && rows.length === 0) return <p className="p-4 text-sm text-slate-500">Loading...</p>;
   if (rows.length === 0) return <p className="p-4 text-sm text-slate-500">No queries here.</p>;
   return (
     <ul className="divide-y divide-slate-100">
-      {rows.map((q) => (
-        <li key={q.id}>
-          <Link
-            to={`/queries/${q.id}`}
-            className={`block border-l-4 px-3 py-2.5 transition-colors hover:bg-sky-50 ${String(q.id) === String(activeId) ? "bg-sky-50" : ""} ${q.alarm_for_me ? "border-l-rose-600 bg-rose-50/60" : q.priority === "urgent" ? "border-l-rose-500" : q.priority === "high" ? "border-l-orange-400" : "border-l-transparent"}`}
-          >
-            <div className="flex items-start justify-between gap-2">
-              <span className={`text-sm ${q.unread_count > 0 ? "font-bold text-slate-900" : "font-medium text-slate-800"}`}><Mark text={q.subject} term={term} /></span>
-              <div className="flex shrink-0 items-center gap-1.5">
-                <QueryNo no={q.query_no} hit={numberOn || isTypedNumber(term, q.query_no, q.id)} />
-                {q.unread_count > 0 && <span className="rounded-full bg-rose-600 px-1.5 py-0.5 text-[10px] font-bold text-white">{q.unread_count} new</span>}
+      {rows.map((q) => {
+        const who = staff ? q.owner_name : q.holder_name;
+        const flagged = q.alarm_for_me ? { text: "No reply in 24 h", cls: "bg-rose-100 text-rose-700" }
+          : q.overdue ? { text: "Overdue", cls: "bg-rose-100 text-rose-700" }
+          : q.status === "Open" && q.hours_left != null && q.hours_left < 6 ? { text: `${leftText(q)} left`, cls: "bg-amber-100 text-amber-800" } : null;
+        return (
+          <li key={q.id} className="group relative">
+            <Link
+              to={`/queries/${q.id}`}
+              className={`block border-l-4 px-3 py-2.5 transition-colors hover:bg-sky-50 ${String(q.id) === String(activeId) ? "bg-sky-50" : ""} ${q.alarm_for_me ? "border-l-rose-600 bg-rose-50/60" : q.priority === "urgent" ? "border-l-rose-500" : q.priority === "high" ? "border-l-orange-400" : "border-l-transparent"}`}
+            >
+              <div className="flex items-start gap-2">
+                <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${DOT_COLOR[q.status] || "bg-slate-300"}`} aria-hidden="true" />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className={`truncate text-sm ${q.unread_count > 0 ? "font-bold text-slate-900" : "font-semibold text-slate-800"}`}>
+                      {who ? <Mark text={who} term={term} /> : <Mark text={q.subject} term={term} />}
+                    </span>
+                    {q.member_count > 1 && <span className="shrink-0 text-xs text-slate-400">+{q.member_count - 1}</span>}
+                    <span className="ml-auto shrink-0 text-[11px] text-slate-400">{timeAgo(q.last_message_at)}</span>
+                  </div>
+                  <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[11px] text-slate-500">
+                    <QueryNo no={q.query_no} hit={numberOn || isTypedNumber(term, q.query_no, q.id)} />
+                    <span>{q.category}</span>
+                    <StatusChip status={q.status} />
+                    <PriorityChip priority={q.priority} />
+                    {flagged && <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${flagged.cls}`}>{flagged.text}</span>}
+                    {q.unread_count > 0 && <span className="rounded-full bg-rose-600 px-1.5 py-0.5 text-[10px] font-bold text-white">{q.unread_count} new</span>}
+                  </div>
+                </div>
               </div>
+            </Link>
+            <div className="pointer-events-none absolute inset-1 z-10 flex flex-col justify-center overflow-hidden rounded-lg bg-indcool-navy px-3 py-2 text-white opacity-0 shadow-xl transition-opacity duration-150 group-hover:opacity-100">
+              <div className="truncate text-xs font-bold text-sky-300"><Mark text={q.subject} term={term} /></div>
+              <div className="mt-0.5 line-clamp-2 text-[11px] text-slate-200">
+                {q.last_sender_name ? `${q.last_sender_name}: ` : ""}<Mark text={q.last_message_preview} term={term} />
+              </div>
+              {q.raised_on && <div className="mt-1 text-[10px] text-slate-400">Raised {dayText(q.raised_on)}</div>}
             </div>
-            <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500">
-              <StatusChip status={q.status} />
-              <PriorityChip priority={q.priority} />
-              {q.alarm_for_me ? <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[11px] font-bold text-rose-700">No reply in 24 h</span>
-                : q.overdue ? <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[11px] font-semibold text-rose-700">Overdue</span>
-                : q.status === "Open" && q.hours_left != null && q.hours_left < 6 ? <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800">{leftText(q)} left</span> : null}
-              {(staff || q.holder_id) && <span className="font-medium text-slate-700">{staff ? <Mark text={q.owner_name} term={term} /> : ""}</span>}
-              {q.holder_name && <span title="Who has to answer it">→ <Mark text={q.holder_name} term={term} /></span>}
-              {q.member_count > 1 && <span>· {q.member_count} people</span>}
-              <span>{q.category}</span>
-              {q.related_to && <span>· <Mark text={q.related_to} term={term} /></span>}
-              <span className="ml-auto">{timeAgo(q.last_message_at)}</span>
-            </div>
-            <div className="mt-1.5">
-              <RaisedDate day={q.raised_on} hit={dateOn || isTypedDay(term, q.raised_on)} />
-            </div>
-            <p className="mt-1 line-clamp-2 text-xs text-slate-600">
-              {q.last_sender_name ? `${q.last_sender_name}: ` : ""}<Mark text={q.last_message_preview} term={term} />
-            </p>
-          </Link>
-        </li>
-      ))}
+          </li>
+        );
+      })}
     </ul>
   );
 }
@@ -133,40 +148,110 @@ function History({ events }) {
 }
 
 function People({ thread, busy, onAdd, onRemove, onAddBack }) {
+  const [open, setOpen] = useState(false);
+  const boxRef = useRef(null);
   const inside = thread.members.filter((m) => m.active);
   const out = thread.members.filter((m) => !m.active);
+
+  useEffect(() => {
+    if (!open) return;
+    const close = (e) => { if (!boxRef.current?.contains(e.target)) setOpen(false); };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, [open]);
+
   return (
-    <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs">
-      <span className="font-semibold text-slate-500">In this conversation:</span>
-      {inside.map((m) => (
-        <span key={m.user_id} className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white py-0.5 pl-2.5 pr-1.5 text-slate-700">
-          {m.is_holder && <span title="Has to answer" className="text-amber-600">★</span>}
-          <b className="font-semibold">{m.name}</b>
-          <span className="text-slate-400">{m.kind === "cc" ? "CC" : m.kind === "owner" ? "asked" : roleLabel(m.role)}</span>
-          {thread.can_manage && !m.is_holder && (
-            <button type="button" disabled={busy} title={`Take ${m.name} out for a private talk`} onClick={() => onRemove(m)} className="grid h-4 w-4 place-items-center rounded-full bg-slate-100 text-[10px] leading-none text-slate-500 hover:bg-rose-100 hover:text-rose-700">✕</button>
+    <div className="relative mt-2 flex flex-wrap items-center gap-2 text-xs" ref={boxRef}>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1 font-semibold text-slate-700 hover:bg-slate-50"
+      >
+        <span aria-hidden="true">👥</span>
+        {inside.length} in{out.length > 0 ? ` · ${out.length} out` : ""}
+        <span className={`text-slate-400 transition-transform ${open ? "rotate-180" : ""}`}>▾</span>
+      </button>
+      {thread.can_manage && (
+        <>
+          <button type="button" disabled={busy} onClick={() => onAdd("member")} className="rounded-full border border-brand-600 bg-white px-3 py-1 font-semibold text-brand-700 hover:bg-sky-50 disabled:opacity-60">+ Add person</button>
+          <button type="button" disabled={busy} onClick={() => onAdd("cc")} className="rounded-full border border-slate-300 bg-white px-3 py-1 font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60">+ CC</button>
+          {inside.some((m) => !m.is_holder) && (
+            <button type="button" onClick={() => setOpen(true)} className="rounded-full border border-rose-200 bg-white px-3 py-1 font-semibold text-rose-700 hover:bg-rose-50">Take out</button>
           )}
-        </span>
-      ))}
-      {out.map((m) => (
-        <span key={`out-${m.user_id}`} className="inline-flex items-center gap-1 rounded-full border border-dashed border-slate-300 bg-slate-50 py-0.5 pl-2.5 pr-1.5 text-slate-500">
-          <span className="line-through">{m.name}</span><span>out</span>
-          {thread.can_manage && <button type="button" disabled={busy} onClick={() => onAddBack(m)} className="rounded-full bg-sky-100 px-1.5 text-[10px] font-semibold text-sky-800 hover:bg-sky-200">Add back</button>}
-        </span>
-      ))}
-      {thread.can_manage && <button type="button" disabled={busy} onClick={onAdd} className="rounded-full border border-brand-600 px-2.5 py-0.5 font-semibold text-brand-700 hover:bg-sky-50">+ Add or CC</button>}
+        </>
+      )}
+      {open && (
+        <div className="s-pop absolute left-0 top-full z-20 mt-1.5 w-[22rem] rounded-xl border border-slate-200 bg-white p-3.5 text-sm shadow-xl">
+          <div className="mb-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-400">In this conversation</div>
+          <div className="flex flex-col gap-1">
+            {inside.map((m) => (
+              <div key={m.user_id} className="flex items-center gap-2.5 rounded-md px-2 py-1.5 hover:bg-slate-50">
+                {m.is_holder && <span title="Has to answer" className="text-amber-600">★</span>}
+                <span className="min-w-0 flex-1 truncate"><b className="font-semibold">{m.name}</b> <span className="text-slate-400">{m.kind === "cc" ? "CC" : m.kind === "owner" ? "asked" : roleLabel(m.role)}</span></span>
+                {thread.can_manage && !m.is_holder && (
+                  <button type="button" disabled={busy} title={`Take ${m.name} out for a private talk`} onClick={() => onRemove(m)} className="shrink-0 rounded-md border border-slate-200 px-2 py-1 text-xs font-semibold text-slate-500 hover:border-rose-300 hover:bg-rose-50 hover:text-rose-700">Take out</button>
+                )}
+              </div>
+            ))}
+          </div>
+          {out.length > 0 && (
+            <>
+              <div className="mb-1.5 mt-3 text-[10px] font-bold uppercase tracking-wide text-slate-400">Taken out ({out.length})</div>
+              <div className="flex flex-col gap-1">
+                {out.map((m) => (
+                  <div key={`out-${m.user_id}`} className="flex items-center gap-2.5 rounded-md px-2 py-1.5 text-slate-500">
+                    <span className="min-w-0 flex-1 truncate line-through">{m.name}</span>
+                    {thread.can_manage && <button type="button" disabled={busy} onClick={() => onAddBack(m)} className="shrink-0 rounded-md border border-sky-200 bg-sky-50 px-2.5 py-1 text-xs font-semibold text-sky-800 hover:bg-sky-100">Add back</button>}
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+          {thread.can_manage && (
+            <button type="button" disabled={busy} onClick={() => onAdd("member")} className="mt-3 w-full rounded-md border border-brand-600 py-2 text-center text-sm font-semibold text-brand-700 hover:bg-sky-50">+ Add or CC</button>
+          )}
+        </div>
+      )}
     </div>
   );
+}
+
+const MAX_UPLOAD = 2 * 1024 * 1024;
+
+// A full-screen screenshot can be over 2 MB: make a picture that is too big smaller (JPG) so it can still be sent.
+async function shrinkImage(file) {
+  if (!file.type?.startsWith("image/") || file.type === "image/gif" || file.size <= MAX_UPLOAD) return file;
+  try {
+    const bitmap = await createImageBitmap(file);
+    let scale = Math.min(1, 2400 / Math.max(bitmap.width, bitmap.height));
+    for (let quality = 0.85; quality >= 0.4; quality -= 0.15, scale *= 0.85) {
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.round(bitmap.width * scale);
+      canvas.height = Math.round(bitmap.height * scale);
+      canvas.getContext("2d").drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+      const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", quality));
+      if (blob && blob.size <= MAX_UPLOAD) {
+        const base = (file.name || "screenshot").replace(/\.[^.]+$/, "");
+        return new File([blob], `${base}.jpg`, { type: "image/jpeg" });
+      }
+    }
+  } catch {
+    /* fall through: the server says if it is still too big */
+  }
+  return file;
 }
 
 function Thread({ id, staff, onChanged }) {
   const [thread, setThread] = useState(null);
   const [err, setErr] = useState("");
   const [text, setText] = useState("");
+  const [files, setFiles] = useState([]); // pictures and files waiting to be sent with the message
+  const [uploading, setUploading] = useState(0);
   const [busy, setBusy] = useState(false);
   const [tab, setTab] = useState("chat");
   const [forwarding, setForwarding] = useState(false);
   const [adding, setAdding] = useState(false);
+  const [addKind, setAddKind] = useState("member");
   const endRef = useRef(null);
 
   const load = useCallback(() => {
@@ -178,6 +263,7 @@ function Thread({ id, staff, onChanged }) {
   useEffect(() => {
     setThread(null);
     setText("");
+    setFiles([]);
     setTab("chat");
     load();
     const timer = setInterval(load, 30000);
@@ -207,8 +293,37 @@ function Thread({ id, staff, onChanged }) {
 
   async function send(e) {
     e?.preventDefault();
-    if (!text.trim()) return;
-    if (await act(() => queriesApi.reply(id, text))) setText("");
+    if ((!text.trim() && files.length === 0) || uploading > 0) return;
+    if (await act(() => queriesApi.reply(id, text, files.map((f) => f.id)))) { setText(""); setFiles([]); }
+  }
+
+  // Paste a screenshot (or any copied picture or file), drop one in, or choose one: each goes up at once and waits to be sent.
+  async function addFiles(list) {
+    const picked = Array.from(list || []).filter(Boolean);
+    if (picked.length === 0) return;
+    setErr("");
+    for (const raw of picked) {
+      const original = await shrinkImage(raw);
+      const named = original.name && original.name !== "image.png"
+        ? original
+        : new File([original], `screenshot-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-")}.${(original.type.split("/")[1] || "png").replace("jpeg", "jpg")}`, { type: original.type });
+      setUploading((n) => n + 1);
+      try {
+        const saved = await queriesApi.upload(named);
+        setFiles((cur) => [...cur, saved]);
+      } catch (e) {
+        const detail = e.response?.data?.detail;
+        setErr(typeof detail === "string" ? detail : "That file could not be added. Any file up to 2 MB works");
+      } finally {
+        setUploading((n) => n - 1);
+      }
+    }
+  }
+  function onPaste(e) {
+    const pasted = Array.from(e.clipboardData?.files || []);
+    if (pasted.length === 0) return; // plain text pastes as usual
+    e.preventDefault();
+    addFiles(pasted);
   }
   function takeOut(m) {
     if (!window.confirm(`Take ${m.name} out of this conversation?\n\nThey will not see it, or anything said while they are out, until you add them back. The others can talk privately.`)) return;
@@ -224,16 +339,30 @@ function Thread({ id, staff, onChanged }) {
   return (
     <div className="flex min-h-[24rem] flex-col">
       <div className="border-b border-slate-200 px-4 py-3">
-        <div className="flex flex-wrap items-start justify-between gap-2">
-          <div>
-            <div className="flex flex-wrap items-center gap-2">
-              <h2 className="text-base font-semibold text-slate-800">{thread.subject}</h2>
-              <StatusChip status={thread.status} />
-              <PriorityChip priority={thread.priority} />
-            </div>
-            <div className="mt-1 text-xs text-slate-500">
-              {staff && <span className="mr-2 font-medium text-slate-700">{thread.owner_name} ({roleLabel(thread.owner_role)})</span>}
-              {thread.category}{thread.related_to ? ` · ${thread.related_to}` : ""} · started {timeAgo(thread.created_at)}
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="flex min-w-0 gap-3">
+            <CategoryIcon category={thread.category} />
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <QueryNo no={thread.query_no} />
+                <h2 className="truncate text-base font-semibold text-slate-800">{thread.subject}</h2>
+                <StatusChip status={thread.status} />
+                <PriorityChip priority={thread.priority} />
+              </div>
+              <div className="mt-2 grid grid-cols-2 gap-x-5 gap-y-1 text-xs sm:grid-cols-4">
+                {[
+                  staff && thread.owner_name ? ["Raised by", `${thread.owner_name} (${roleLabel(thread.owner_role)})`] : null,
+                  thread.holder_name && thread.status !== "Closed" ? ["With now", `${thread.holder_name} (${roleLabel(thread.holder_role)})`, true] : null,
+                  ["Category", thread.category + (thread.related_to ? ` · ${thread.related_to}` : "")],
+                  ["Started", timeAgo(thread.created_at)],
+                  ["Raised", dayText(thread.raised_on)],
+                ].filter(Boolean).map(([l, v, hot]) => (
+                  <div key={l}>
+                    <div className="text-[10px] font-bold uppercase tracking-wide text-slate-400">{l}</div>
+                    <div className={`font-medium ${hot ? "text-sky-700" : "text-slate-700"}`}>{v}</div>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -247,14 +376,7 @@ function Thread({ id, staff, onChanged }) {
             {thread.can_reopen && <button type="button" disabled={busy} onClick={() => act(() => queriesApi.reopen(id))} className="s-press rounded-md border border-slate-300 px-3 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-60">Reopen</button>}
           </div>
         </div>
-        <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-600">
-          <QueryNo no={thread.query_no} />
-          <RaisedDate day={thread.raised_on} />
-        </div>
-        {thread.holder_name && thread.status !== "Closed" && (
-          <div className="mt-2 rounded-md bg-slate-100 px-3 py-1.5 text-xs text-slate-700">With now: <b>{thread.holder_name}</b> ({roleLabel(thread.holder_role)})</div>
-        )}
-        <People thread={thread} busy={busy} onAdd={() => setAdding(true)} onRemove={takeOut} onAddBack={(m) => act(() => queriesApi.addMember(id, m.user_id, m.kind === "cc" ? "cc" : "member", true))} />
+        <People thread={thread} busy={busy} onAdd={(kind) => { setAddKind(kind || "member"); setAdding(true); }} onRemove={takeOut} onAddBack={(m) => act(() => queriesApi.addMember(id, m.user_id, m.kind === "cc" ? "cc" : "member", true))} />
         {thread.private_now && (
           <div className="s-pop mt-2 rounded-md border border-violet-200 bg-violet-50 px-3 py-1.5 text-xs text-violet-800">
             🔒 Someone is out of this conversation. What you write now is private to the people in it, until you add them back.
@@ -263,20 +385,20 @@ function Thread({ id, staff, onChanged }) {
       </div>
 
       {thread.alarm_for_me && (
-        <div className="q-alarm mx-4 mt-3 flex flex-wrap items-center gap-3 rounded-lg bg-rose-600 px-4 py-3 text-white">
-          <span className="q-bell grid h-10 w-10 shrink-0 place-items-center rounded-full bg-white/20"><BellIcon /></span>
+        <div className="q-alarm mx-4 mt-3 flex flex-wrap items-center gap-3 rounded-lg bg-rose-600 px-4 py-2.5 text-white">
+          <span className="q-bell grid h-8 w-8 shrink-0 place-items-center rounded-full bg-white/20"><BellIcon size={16} /></span>
           <div className="min-w-0 flex-1">
-            <div className="text-sm font-bold">This query has waited over 24 hours for you</div>
-            <div className="text-xs text-white/90">Answer it, or forward it to the right person.</div>
+            <div className="text-sm font-bold leading-tight">This query has waited over 24 hours for you</div>
+            <div className="text-xs text-white/85">Answer it, or forward it to the right person.</div>
           </div>
         </div>
       )}
       {waiting && !thread.alarm_for_me && (
-        <div className={`mx-4 mt-3 flex flex-wrap items-center gap-3 rounded-lg px-3 py-2 text-xs ${thread.overdue ? "bg-rose-50 text-rose-700" : thread.hours_left < 6 ? "bg-amber-50 text-amber-800" : "bg-emerald-50 text-emerald-800"}`}>
-          <span>{thread.overdue ? "No reply for 24 hours" : "Reply due within"}</span>
-          <b className="text-base tabular-nums">{thread.overdue ? "OVERDUE" : leftText(thread)}</b>
-          <span className="h-2 min-w-[6rem] flex-1 overflow-hidden rounded-full bg-black/10"><span className="block h-full rounded-full bg-current transition-all" style={{ width: `${thread.overdue ? 100 : pct}%` }} /></span>
-          <span>{thread.holder_name ? `Alarm rings for ${thread.holder_name}` : "Alarm rings for the Admin team"}{thread.alarm_count ? ` · rung ${thread.alarm_count}×` : ""}</span>
+        <div className={`mx-4 mt-3 flex flex-wrap items-center gap-2.5 rounded-lg px-3 py-1.5 text-xs ${thread.overdue ? "bg-rose-50 text-rose-700" : thread.hours_left < 6 ? "bg-amber-50 text-amber-800" : "bg-emerald-50 text-emerald-800"}`}>
+          <span className="whitespace-nowrap">{thread.overdue ? "No reply for 24 hours" : "Reply due within"}</span>
+          <b className="tabular-nums">{thread.overdue ? "OVERDUE" : leftText(thread)}</b>
+          <span className="h-1.5 min-w-[5rem] flex-1 overflow-hidden rounded-full bg-black/10"><span className="block h-full rounded-full bg-current transition-all" style={{ width: `${thread.overdue ? 100 : pct}%` }} /></span>
+          <span className="whitespace-nowrap text-[11px] opacity-80">{thread.holder_name ? `Rings for ${thread.holder_name}` : "Rings for the Admin team"}{thread.alarm_count ? ` · ${thread.alarm_count}×` : ""}</span>
           {thread.can_ring && thread.overdue && <button type="button" disabled={busy} onClick={() => act(() => queriesApi.ring(id))} className="rounded-md bg-rose-600 px-2.5 py-1 font-semibold text-white hover:bg-rose-700 disabled:opacity-60">Ring again</button>}
         </div>
       )}
@@ -289,21 +411,41 @@ function Thread({ id, staff, onChanged }) {
         </div>
       )}
 
+      {thread.delete_on && (
+        <div className="border-t border-amber-200 bg-amber-50 px-4 py-1.5 text-xs text-amber-900">
+          This conversation is closed. It will be deleted for good on {new Date(thread.delete_on).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}, six months after it was closed. Reopen it to keep it.
+        </div>
+      )}
+
       {tab === "hist" && thread.can_see_history ? <History events={thread.events} /> : (
-        <div className="flex-1 space-y-3 overflow-y-auto bg-slate-50 px-4 py-3" style={{ maxHeight: "calc(100vh - 26rem)", minHeight: "10rem" }}>
+        <div className="flex-1 space-y-2.5 overflow-y-auto bg-slate-50 px-4 py-3" style={{ maxHeight: "calc(100vh - 26rem)", minHeight: "10rem" }}>
           {thread.messages.map((m, index) => {
             const newOnes = thread.unread_count || 0;
             const isNew = !m.mine && index >= thread.messages.length - newOnes;
+            const kind = m.mine ? "you" : m.from_staff ? "staff" : "customer";
+            const borderCls = { you: "border-amber-300 bg-amber-50/60", staff: "border-sky-300 bg-sky-50/60", customer: "border-slate-300 bg-white" }[kind];
+            const avCls = { you: "bg-amber-600", staff: "bg-indcool-blue", customer: "bg-slate-400" }[kind];
+            const who = m.mine ? "You" : m.sender_name;
             return (
-              <div key={m.id} className={`flex ${m.mine ? "justify-end" : "justify-start"}`}>
-                <div className={`max-w-[85%] rounded-lg px-3 py-2 text-sm shadow-sm ${m.mine ? "bg-indcool-navy text-white" : m.from_staff ? "border border-emerald-200 bg-emerald-50 text-slate-800" : "border border-slate-200 bg-white text-slate-800"} ${m.is_private ? "ring-1 ring-violet-300" : ""}`}>
-                  <div className={`mb-0.5 text-[11px] font-semibold ${m.mine ? "text-slate-200" : "text-slate-500"}`}>
-                    {m.mine ? "You" : m.sender_name}{!m.mine && m.from_staff ? " · Admin team" : ""} · {timeAgo(m.created_at)}
-                    {m.is_private && <span className={`ml-1 rounded px-1 text-[10px] ${m.mine ? "bg-violet-400/40 text-white" : "bg-violet-100 text-violet-700"}`}>🔒 private{m.hidden_from?.length ? `, not shown to ${m.hidden_from.join(", ")}` : ""}</span>}
-                    {isNew && <span className="ml-1 rounded bg-rose-600 px-1 text-[10px] text-white">new</span>}
-                  </div>
-                  <div className="whitespace-pre-wrap break-words">{m.body}</div>
+              <div key={m.id} style={{ "--i": Math.min(index, 8) }} className={`s-rise rounded-xl border-[1.5px] px-3.5 py-2.5 text-sm shadow-sm ${borderCls}`}>
+                <div className="flex items-center gap-2">
+                  <span className={`grid h-6 w-6 shrink-0 place-items-center rounded-full text-[10px] font-bold text-white ${avCls}`}>{(who || "?").slice(0, 1).toUpperCase()}</span>
+                  <span className="font-semibold text-slate-800">{who}</span>
+                  {!m.mine && m.from_staff && <span className="text-[11px] text-slate-400">Admin team</span>}
+                  <span className="ml-auto shrink-0 text-[11px] text-slate-400">{timeAgo(m.created_at)}</span>
+                  {isNew && <span className="rounded bg-rose-600 px-1 text-[10px] font-semibold text-white">new</span>}
                 </div>
+                {m.body && <div className="mt-1.5 whitespace-pre-wrap break-words pl-8 text-slate-700">{m.body}</div>}
+                {m.attachments?.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-2 pl-8">
+                    {m.attachments.map((a) => <QueryAttachment key={a.id} file={a} />)}
+                  </div>
+                )}
+                {m.is_private && (
+                  <div className="mt-1.5 pl-8">
+                    <span className="inline-flex items-center gap-1 rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-semibold text-violet-700">🔒 private{m.hidden_from?.length ? `, not shown to ${m.hidden_from.join(", ")}` : ""}</span>
+                  </div>
+                )}
               </div>
             );
           })}
@@ -320,12 +462,32 @@ function Thread({ id, staff, onChanged }) {
             maxLength={4000}
             onChange={(e) => setText(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) send(e); }}
-            placeholder={thread.status === "Closed" ? "Write here to reopen this query" : thread.private_now ? "Write a private reply to the people in this conversation" : "Write your reply"}
+            onPaste={onPaste}
+            onDragOver={(e) => { if (e.dataTransfer?.types?.includes("Files")) e.preventDefault(); }}
+            onDrop={(e) => { if (e.dataTransfer?.files?.length) { e.preventDefault(); addFiles(e.dataTransfer.files); } }}
+            placeholder={thread.status === "Closed" ? "Write here to reopen this query" : thread.private_now ? "Write a private reply to the people in this conversation" : "Write your reply, or paste a screenshot here"}
             className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
           />
+          {(files.length > 0 || uploading > 0) && (
+            <div className="mt-2 flex flex-wrap gap-2">
+              {files.map((f) => (
+                <div key={f.id} className="relative overflow-hidden rounded-lg border border-slate-200 bg-white">
+                  {f.is_image ? <QueryAttachment file={f} size="small" /> : <div className="flex h-16 w-28 items-center gap-1 px-2 text-xs text-slate-600">📎 <span className="line-clamp-2 break-all">{f.file_name}</span></div>}
+                  <button type="button" aria-label="Remove" onClick={() => setFiles((cur) => cur.filter((x) => x.id !== f.id))} className="absolute right-0.5 top-0.5 rounded-full bg-slate-900/70 px-1.5 text-xs leading-5 text-white hover:bg-slate-900">×</button>
+                </div>
+              ))}
+              {uploading > 0 && <div className="grid h-16 w-20 place-items-center rounded-lg border border-dashed border-slate-300 text-xs text-slate-500">Adding…</div>}
+            </div>
+          )}
           <div className="mt-2 flex items-center justify-between">
-            <span className="text-xs text-slate-400">Ctrl + Enter to send{thread.members.filter((m) => m.active).length > 2 ? ` · goes to ${thread.members.filter((m) => m.active).length - 1} people` : ""}</span>
-            <button type="submit" disabled={busy || !text.trim()} className="s-press rounded-md bg-brand-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-50">
+            <span className="flex items-center gap-3 text-xs text-slate-400">
+              <label className="cursor-pointer rounded-md border border-slate-300 px-2 py-1 text-slate-600 hover:bg-slate-50" title="Add a picture or any file up to 2 MB">
+                📎 Add
+                <input type="file" multiple className="hidden" onChange={(e) => { addFiles(e.target.files); e.target.value = ""; }} />
+              </label>
+              <span>Ctrl + Enter to send · paste a screenshot with Ctrl + V{thread.members.filter((m) => m.active).length > 2 ? ` · goes to ${thread.members.filter((m) => m.active).length - 1} people` : ""}</span>
+            </span>
+            <button type="submit" disabled={busy || uploading > 0 || (!text.trim() && files.length === 0)} className="s-press rounded-md bg-brand-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-50">
               {busy ? "Sending..." : "Send reply"}
             </button>
           </div>
@@ -337,7 +499,7 @@ function Thread({ id, staff, onChanged }) {
       )}
 
       <ForwardModal open={forwarding} thread={thread} onClose={() => setForwarding(false)} onDone={done} />
-      <AddPeopleModal open={adding} thread={thread} onClose={() => setAdding(false)} onDone={done} />
+      <AddPeopleModal open={adding} thread={thread} initialKind={addKind} onClose={() => setAdding(false)} onDone={done} />
     </div>
   );
 }

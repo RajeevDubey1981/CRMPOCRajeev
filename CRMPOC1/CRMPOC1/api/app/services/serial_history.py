@@ -17,8 +17,12 @@ from app.models.service import (
     ServiceRequest,
     ServiceRequestUnit,
 )
+from app.models.shortage_claim import ShortageClaim
 from app.models.user import User
 from app.models.vendor import Vendor
+from app.parts.db import new_parts_session, parts_enabled
+from app.parts.models import ItemRequest as PartsItemRequest
+from app.parts.rules import KINDS as PART_KINDS
 from app.services.order_item_context import service_billing_label
 
 EVENT_TYPES = {
@@ -514,6 +518,127 @@ def backfill_serial_history_for_serial(db: Session, serial_no: str) -> bool:
                 remarks=claim.admin_remark or claim.notes,
                 metadata={"claim_id": claim.claim_id, "status": claim.status},
             )
+
+    shortage_claims = db.scalars(
+        select(ShortageClaim).where(func.lower(func.coalesce(ShortageClaim.serial_no, "")) == primary_serial.lower())
+    ).all()
+    for sc in shortage_claims:
+        create_serial_history_event(
+            db,
+            serial_no=primary_serial,
+            serial_no_2=secondary_serial,
+            order_item_id=item.id,
+            event_type=EVENT_TYPES["CLAIM"],
+            event_subtype="MISSING_ITEM_RAISED",
+            event_at=sc.created_at,
+            performed_by_user_id=sc.raised_by_user_id,
+            performed_by_name=_performed_by_name(db, sc.raised_by_user_id),
+            source_table="shortage_claims",
+            source_id=sc.id,
+            title="Missing-item claim raised",
+            description=f"{sc.claim_no}: {sc.description[:200]}",
+            metadata={"claim_no": sc.claim_no, "flow": sc.flow, "amount": _format_history_amount(sc.amount)},
+        )
+        if sc.stage == "done" and sc.decided_at:
+            create_serial_history_event(
+                db,
+                serial_no=primary_serial,
+                serial_no_2=secondary_serial,
+                order_item_id=item.id,
+                event_type=EVENT_TYPES["CLAIM"],
+                event_subtype="MISSING_ITEM_CLOSED",
+                event_at=sc.decided_at,
+                performed_by_user_id=sc.decided_by_user_id,
+                performed_by_name=_performed_by_name(db, sc.decided_by_user_id),
+                source_table="shortage_claims",
+                source_id=sc.id + 1000000,
+                title="Missing-item claim closed",
+                description=f"{sc.claim_no} closed.",
+                metadata={"claim_no": sc.claim_no, "amount": _format_history_amount(sc.amount), "responsible_type": sc.responsible_type},
+            )
+        elif sc.stage == "rejected" and sc.decided_at:
+            create_serial_history_event(
+                db,
+                serial_no=primary_serial,
+                serial_no_2=secondary_serial,
+                order_item_id=item.id,
+                event_type=EVENT_TYPES["CLAIM"],
+                event_subtype="MISSING_ITEM_REJECTED",
+                event_at=sc.decided_at,
+                performed_by_user_id=sc.decided_by_user_id,
+                performed_by_name=_performed_by_name(db, sc.decided_by_user_id),
+                source_table="shortage_claims",
+                source_id=sc.id + 2000000,
+                title="Missing-item claim rejected",
+                description=f"{sc.claim_no} rejected.",
+                metadata={"claim_no": sc.claim_no},
+            )
+
+    # Parts/misc requests live in the separate indcool_parts database — pulled in here with its own
+    # short-lived session so one serial's history shows them alongside everything else, whether they
+    # were raised from a service visit or an installation. Silently skipped while Parts is switched off.
+    if parts_enabled():
+        pdb = new_parts_session()
+        try:
+            item_requests = pdb.scalars(
+                select(PartsItemRequest).where(func.lower(func.coalesce(PartsItemRequest.crm_serial_no, "")) == primary_serial.lower())
+            ).all()
+            for ir in item_requests:
+                create_serial_history_event(
+                    db,
+                    serial_no=primary_serial,
+                    serial_no_2=secondary_serial,
+                    order_item_id=item.id,
+                    event_type=EVENT_TYPES["PART_REPLACEMENT"],
+                    event_subtype="REQUESTED",
+                    event_at=ir.created_at,
+                    performed_by_user_id=ir.crm_raised_by_user_id,
+                    performed_by_name=ir.crm_raised_by_name,
+                    source_table="parts_item_request",
+                    source_id=ir.id,
+                    title=f"{PART_KINDS.get(ir.kind, ir.kind)} requested",
+                    description=f"{ir.request_no}: {ir.description[:200]}",
+                    metadata={
+                        "request_no": ir.request_no, "kind": ir.kind, "amount": _format_history_amount(ir.amount),
+                        "service_request_no": ir.crm_service_request_no, "installation_request_no": ir.crm_installation_request_no,
+                    },
+                )
+                if ir.stage == "done" and ir.decided_at:
+                    create_serial_history_event(
+                        db,
+                        serial_no=primary_serial,
+                        serial_no_2=secondary_serial,
+                        order_item_id=item.id,
+                        event_type=EVENT_TYPES["PART_REPLACEMENT"],
+                        event_subtype="APPROVED",
+                        event_at=ir.decided_at,
+                        performed_by_user_id=ir.decided_by_user_id,
+                        performed_by_name=ir.decided_by_name,
+                        source_table="parts_item_request",
+                        source_id=ir.id + 1000000,
+                        title=f"{PART_KINDS.get(ir.kind, ir.kind)} approved",
+                        description=f"{ir.request_no} approved.",
+                        metadata={"request_no": ir.request_no, "kind": ir.kind, "amount": _format_history_amount(ir.amount)},
+                    )
+                elif ir.stage == "rejected" and ir.decided_at:
+                    create_serial_history_event(
+                        db,
+                        serial_no=primary_serial,
+                        serial_no_2=secondary_serial,
+                        order_item_id=item.id,
+                        event_type=EVENT_TYPES["PART_REPLACEMENT"],
+                        event_subtype="REJECTED",
+                        event_at=ir.decided_at,
+                        performed_by_user_id=ir.decided_by_user_id,
+                        performed_by_name=ir.decided_by_name,
+                        source_table="parts_item_request",
+                        source_id=ir.id + 2000000,
+                        title=f"{PART_KINDS.get(ir.kind, ir.kind)} rejected",
+                        description=f"{ir.request_no} rejected.",
+                        metadata={"request_no": ir.request_no, "kind": ir.kind},
+                    )
+        finally:
+            pdb.close()
 
     complaints = db.scalars(
         select(Complaint).where(

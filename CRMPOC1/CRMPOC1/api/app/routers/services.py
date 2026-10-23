@@ -10,10 +10,14 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.deps import get_current_user
+from app.parts.db import get_parts_db
+from app.parts.models import ItemRequest as ItemRequestModel, SparePart
+from app.parts import service as parts_service
 from app.models.complaint import Complaint, ComplaintStatusLog
 from app.models.order import Order, OrderItem
 from app.models.payment import PaymentTransaction
 from app.models.payment_approval import PaymentApprovalLog
+from app.models.shortage_claim import ShortageClaim
 from app.models.service import (
     ServiceApproval,
     ServiceAssignment,
@@ -35,6 +39,7 @@ from app.schemas.serial import SerialLookup
 from app.schemas.service import (
     SERVICE_STATUSES,
     ServiceApprovalIn,
+    ServiceRecommendIn,
     ServiceApprovalOut,
     ServiceAddUnitBySerialIn,
     ServiceAssignUnitsIn,
@@ -43,6 +48,8 @@ from app.schemas.service import (
     ServiceDeskReturnIn,
     ServiceDeskUserAssignIn,
     ServiceBulkApprovalIn,
+    ServiceForwardIn,
+    ServiceBulkForwardIn,
     ServiceBulkObservationsIn,
     ServiceBulkSerialVerifyIn,
     ServiceCompletionIn,
@@ -136,11 +143,14 @@ from app.services.service_units import (
     build_order_item_summaries,
     build_unit_rows,
     engineer_has_unit_assignment,
+    ensure_order_not_assigned_elsewhere,
     restore_assigned_placeholder_serials,
     verify_order_for_service,
 )
 from app.services.service_unit_workflow import (
+    apply_serial_rule,
     backfill_unit_statuses,
+    clean_serial,
     backfill_unit_verification_from_service,
     bulk_approve_units,
     bulk_submit_observations,
@@ -159,6 +169,15 @@ from app.services.service_unit_workflow import (
     sync_aggregate_service_status,
     sync_service_request_from_units,
     verify_unit_serial,
+    unit_requested_amount,
+    requires_admin_approval,
+    can_user_approve_amount,
+    can_user_approve_at_all,
+    can_user_forward_at_all,
+    forward_unit_to_manager,
+    bulk_forward_units,
+    APPROVAL_CAP_AMOUNT,
+    SERVICE_MANAGER_ROLES,
 )
 from app.services.payment_approval_workflow import (
     approval_stage_payload,
@@ -502,14 +521,21 @@ def _send_document_link_email(
     service: ServiceRequest,
     upload_url: str,
     required_documents: list[str] | None = None,
+    extra_email: str | None = None,
 ) -> None:
-    send_document_upload_link_email(
-        to=service.customer_email or "",
-        customer_name=service.customer_name,
-        ticket_id=service.request_no,
-        upload_url=upload_url,
-        required_documents=required_documents,
-    )
+    seen = set()
+    for email in [service.customer_email, extra_email]:
+        email = (email or "").strip()
+        if not email or email.lower() in seen:
+            continue
+        seen.add(email.lower())
+        send_document_upload_link_email(
+            to=email,
+            customer_name=service.customer_name,
+            ticket_id=service.request_no,
+            upload_url=upload_url,
+            required_documents=required_documents,
+        )
 
 
 def _log_status(
@@ -626,6 +652,7 @@ def _observation_out(db: Session, row: ServiceObservation) -> ServiceObservation
         observation=row.observation,
         recommended_action=row.recommended_action,
         parts_required=_json_load(row.parts_required_json, []),
+        misc_required=_json_load(row.misc_required_json, []),
         estimated_service_charge=float(row.estimated_service_charge) if row.estimated_service_charge is not None else None,
         estimated_parts_charge=float(row.estimated_parts_charge) if row.estimated_parts_charge is not None else None,
         remarks=row.remarks,
@@ -719,7 +746,17 @@ def _payment_approval_log_out(db: Session, row: PaymentApprovalLog) -> PaymentAp
     )
 
 
-def _hydrate_service(db: Session, service: ServiceRequest) -> ServiceOut:
+def _distinct_order_email(order: Order | None, primary_email: str | None) -> str | None:
+    """The order's buyer email, but only when it's set and differs from the request's own email —
+    so the UI shows it as a second address rather than repeating the same one."""
+    if order is None or not order.customer_email:
+        return None
+    if (primary_email or "").strip().lower() == order.customer_email.strip().lower():
+        return None
+    return order.customer_email
+
+
+def _hydrate_service(db: Session, service: ServiceRequest, user: User | None = None) -> ServiceOut:
     order = db.get(Order, service.order_id) if service.order_id else None
     order_item = db.get(OrderItem, service.order_item_id) if service.order_item_id else None
     serial_context = _derive_service_context(db, order_item) if order_item else {}
@@ -792,11 +829,14 @@ def _hydrate_service(db: Session, service: ServiceRequest) -> ServiceOut:
         payment_requests=[_payment_out(db, row) for row in payment_requests],
         payment_approval_history=[_payment_approval_log_out(db, row) for row in payment_approval_logs],
         order_items=[ServiceOrderItemSummary(**row) for row in build_order_item_summaries(db, service.id)],
-        units=[ServiceRequestUnitOut(**row) for row in build_unit_rows(db, service.id)],
+        units=[ServiceRequestUnitOut(**row) for row in build_unit_rows(db, service.id, user=user)],
         required_document_types=customer_document_types(db, service),
         customer_documents_approved=customer_documents_approved(db, service),
         email_bounced=bounce_info(db, service.customer_email)[0],
         email_bounce_reason=bounce_info(db, service.customer_email)[1],
+        order_email=_distinct_order_email(order, service.customer_email),
+        order_email_bounced=bounce_info(db, _distinct_order_email(order, service.customer_email))[0] if _distinct_order_email(order, service.customer_email) else False,
+        order_email_bounce_reason=bounce_info(db, _distinct_order_email(order, service.customer_email))[1] if _distinct_order_email(order, service.customer_email) else None,
     )
 
 
@@ -974,7 +1014,7 @@ def create_service(
     db.commit()
     db.refresh(service)
     _queue_service_request_acknowledgment_email(background_tasks, service)
-    return _hydrate_service(db, service)
+    return _hydrate_service(db, service, user=user)
 
 
 @router.get("/lookup/engineers")
@@ -1091,6 +1131,64 @@ def my_assigned_units(db: Session = Depends(get_db), user: User = Depends(get_cu
     return [EngineerAssignedUnitGroup(**group) for group in build_engineer_unit_groups(db, user.id)]
 
 
+@router.get("/review-units")
+def list_review_units(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Every unit this Service Team/Manager/Admin user has (or will) touch in the approval chain, across all
+    service requests — the cross-request tracking view that Item Master's Approvals tab gives Parts requests,
+    but for the per-serial service-unit approval chain, which otherwise only lives inside each request's own page."""
+    is_engineer = canonical_role_key(user.role) == "engineer"
+    if not (can_user_forward_at_all(user) or can_user_approve_at_all(user) or is_engineer):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only the Service Team, Service Manager, Admin, or the assigned engineer can view this")
+
+    statuses = ["Pending Service Team Review", "Pending Service Approval", "Approved for Service", "Rejected"]
+    stmt = (
+        select(ServiceRequestUnit, ServiceRequest)
+        .join(ServiceRequest, ServiceRequestUnit.service_request_id == ServiceRequest.id)
+        .where(ServiceRequestUnit.unit_status.in_(statuses), ServiceRequest.deleted_at.is_(None))
+        .order_by(desc(ServiceRequestUnit.updated_at))
+    )
+    if is_engineer:
+        # An engineer only needs to see their own units here, and only the ones sent back to them —
+        # the review/approval queue itself is the reviewers' business, not theirs.
+        stmt = stmt.where(ServiceRequestUnit.assigned_engineer_id == user.id, ServiceRequestUnit.unit_status == "Rejected")
+    elif not can_view_all_service_requests(user):
+        if is_service_desk_user(user):
+            stmt = stmt.where(ServiceRequest.assigned_service_user_id == user.id)
+        else:
+            return []
+
+    rows = db.execute(stmt).all()
+    unit_ids = [unit.id for unit, _ in rows]
+    observations = {o.service_request_unit_id: o for o in db.scalars(
+        select(ServiceObservation).where(ServiceObservation.service_request_unit_id.in_(unit_ids))
+    )} if unit_ids else {}
+    approvals = {a.service_request_unit_id: a for a in db.scalars(
+        select(ServiceApproval).where(ServiceApproval.service_request_unit_id.in_(unit_ids))
+    )} if unit_ids else {}
+
+    out = []
+    for unit, service in rows:
+        observation = observations.get(unit.id)
+        amount = unit_requested_amount(observation) if observation else 0.0
+        approval = approvals.get(unit.id)
+        out.append({
+            "unit_id": unit.id,
+            "service_id": service.id,
+            "request_no": service.request_no,
+            "serial_no": unit.serial_no,
+            "customer_name": service.customer_name,
+            "problem_found": observation.problem_found if observation else None,
+            "recommended_action": observation.recommended_action if observation else None,
+            "requested_total": amount,
+            "requires_admin_approval": requires_admin_approval(amount),
+            "unit_status": unit.unit_status,
+            "decided_by_name": _user_name(db, approval.approved_by) if approval else None,
+            "decision_remarks": approval.remarks if approval else None,
+            "updated_at": unit.updated_at,
+        })
+    return out
+
+
 @router.get("/{service_id}", response_model=ServiceOut)
 def get_service(service_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     service = _load_visible_service(db, service_id, user)
@@ -1110,7 +1208,7 @@ def get_service(service_id: int, db: Session = Depends(get_db), user: User = Dep
         )
     restore_assigned_placeholder_serials(db, service.id)
     db.commit()
-    return _hydrate_service(db, service)
+    return _hydrate_service(db, service, user=user)
 
 
 @router.put("/{service_id}", response_model=ServiceOut)
@@ -1126,7 +1224,7 @@ def update_service(service_id: int, body: ServiceUpdate, db: Session = Depends(g
         setattr(service, field, value)
     db.commit()
     db.refresh(service)
-    return _hydrate_service(db, service)
+    return _hydrate_service(db, service, user=user)
 
 
 @router.delete("/{service_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -1138,6 +1236,13 @@ def delete_service(service_id: int, db: Session = Depends(get_db), user: User = 
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST,
             "Service request cannot be deleted after completion or payment is started",
+        )
+    claims = list(db.scalars(select(ShortageClaim.claim_no).where(ShortageClaim.service_request_id == service.id).order_by(ShortageClaim.id)))
+    if claims:
+        shown = ", ".join(claims[:5]) + (f" and {len(claims) - 5} more" if len(claims) > 5 else "")
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            f"This service request has {len(claims)} shortage claim(s) ({shown}). Settle or remove the claim(s) first, then delete the request.",
         )
     delete_service_request_graph(db, service)
     db.commit()
@@ -1158,7 +1263,9 @@ def identify_customer(service_id: int, body: ServiceIdentifyCustomer, db: Sessio
         # Customer context only — order is linked when service team runs verify-order (loads units).
         service.customer_name = order.customer_name or service.customer_name
         service.customer_mobile = order.customer_contact or service.customer_mobile
-        service.customer_email = order.customer_email or service.customer_email
+        # Keep the complaint-registration email as primary — fill in from the order only when empty,
+        # so it's never lost to the order's own email; notifications send to both when they differ.
+        service.customer_email = service.customer_email or order.customer_email
         service.customer_address = order.customer_address or service.customer_address
     elif any([body.customer_name, body.customer_mobile, body.customer_email, body.customer_address]):
         service.customer_name = body.customer_name or service.customer_name
@@ -1183,7 +1290,7 @@ def identify_customer(service_id: int, body: ServiceIdentifyCustomer, db: Sessio
     _log_status(db, service, action="Customer Identified", user=user, old_status=old_status, new_status=service.status, metadata={"order_id": service.order_id, "order_item_id": service.order_item_id})
     db.commit()
     db.refresh(service)
-    return _hydrate_service(db, service)
+    return _hydrate_service(db, service, user=user)
 
 
 @router.post("/{service_id}/restart-team-review", response_model=ServiceOut)
@@ -1220,7 +1327,7 @@ def restart_service_team_review(
     )
     db.commit()
     db.refresh(service)
-    return _hydrate_service(db, service)
+    return _hydrate_service(db, service, user=user)
 
 
 @router.post("/{service_id}/verify-order", response_model=ServiceOut)
@@ -1266,7 +1373,7 @@ def verify_order_for_service_request(
     )
     db.commit()
     db.refresh(service)
-    return _hydrate_service(db, service)
+    return _hydrate_service(db, service, user=user)
 
 
 @router.get("/{service_id}/units", response_model=list[ServiceRequestUnitOut])
@@ -1347,9 +1454,10 @@ def assign_service_units(
             background_tasks,
             service,
             completion_code=completion_code,
+            extra_email=order.customer_email if order else None,
         )
 
-    return _hydrate_service(db, service)
+    return _hydrate_service(db, service, user=user)
 
 
 @router.post("/{service_id}/assign-units-by-quantity", response_model=ServiceOut)
@@ -1419,9 +1527,10 @@ def assign_service_units_by_quantity(
             background_tasks,
             service,
             completion_code=completion_code,
+            extra_email=order.customer_email if order else None,
         )
 
-    return _hydrate_service(db, service)
+    return _hydrate_service(db, service, user=user)
 
 
 @router.post("/{service_id}/units/add-by-serial", response_model=ServiceOut)
@@ -1483,7 +1592,7 @@ def add_service_unit_by_serial_endpoint(
     )
     db.commit()
     db.refresh(service)
-    return _hydrate_service(db, service)
+    return _hydrate_service(db, service, user=user)
 
 
 @router.post("/{service_id}/assign", response_model=ServiceOut)
@@ -1557,6 +1666,7 @@ def assign_service(
                 background_tasks,
                 service,
                 completion_code=completion_code,
+                extra_email=order.customer_email if order else None,
             )
     else:
         vendor = db.get(Vendor, body.assignee_id)
@@ -1568,7 +1678,7 @@ def assign_service(
                 remarks=body.remarks,
             )
     after_service_status_change(background_tasks, db, service, old_status=old_status, remarks=body.remarks)
-    return _hydrate_service(db, service)
+    return _hydrate_service(db, service, user=user)
 
 
 @router.get("/lookup/service-users")
@@ -1600,6 +1710,8 @@ def assign_service_desk_user(
     if service.status == "Closed":
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Closed service requests cannot be assigned to a service user")
     target = _require_active_service_desk_user(db, body.service_user_id)
+    unit_items = db.scalars(select(ServiceRequestUnit.order_item_id).where(ServiceRequestUnit.service_request_id == service.id)).all()
+    ensure_order_not_assigned_elsewhere(db, service, [service.order_item_id, *unit_items])
     old_status = service.status
     previous_id = service.assigned_service_user_id
     service.assigned_service_user_id = target.id
@@ -1621,7 +1733,7 @@ def assign_service_desk_user(
     )
     db.commit()
     db.refresh(service)
-    return _hydrate_service(db, service)
+    return _hydrate_service(db, service, user=user)
 
 
 @router.post("/{service_id}/return-to-service-manager", response_model=ServiceOut)
@@ -1652,7 +1764,7 @@ def return_service_to_manager(
     )
     db.commit()
     db.refresh(service)
-    return _hydrate_service(db, service)
+    return _hydrate_service(db, service, user=user)
 
 
 @router.post("/{service_id}/assignment-cancel", response_model=ServiceOut)
@@ -1697,7 +1809,7 @@ def cancel_assignment(service_id: int, db: Session = Depends(get_db), user: User
     )
     db.commit()
     db.refresh(service)
-    return _hydrate_service(db, service)
+    return _hydrate_service(db, service, user=user)
 
 
 @router.post("/{service_id}/units/billing", response_model=ServiceOut)
@@ -1745,7 +1857,7 @@ def set_service_unit_billing(
     )
     db.commit()
     db.refresh(service)
-    return _hydrate_service(db, service)
+    return _hydrate_service(db, service, user=user)
 
 
 @router.post("/{service_id}/verify-serial", response_model=ServiceOut)
@@ -1827,7 +1939,7 @@ def verify_serial(service_id: int, body: ServiceSerialVerifyIn, db: Session = De
     )
     db.commit()
     db.refresh(service)
-    return _hydrate_service(db, service)
+    return _hydrate_service(db, service, user=user)
 
 
 @router.post("/{service_id}/return-serial-mismatch", response_model=ServiceOut)
@@ -1882,7 +1994,7 @@ def return_serial_mismatch(
     )
     db.commit()
     db.refresh(service)
-    return _hydrate_service(db, service)
+    return _hydrate_service(db, service, user=user)
 
 
 @router.post("/{service_id}/serial-verification-review", response_model=ServiceOut)
@@ -1910,7 +2022,7 @@ def review_serial_verification(
         action = "Serial Verification Rejected"
     else:
         serial_no = (body.serial_no or unit.serial_no or "").strip()
-        serial_no_2 = (body.serial_no_2 or unit.serial_no_2 or "").strip() or None
+        serial_no_2 = clean_serial(body.serial_no_2) or clean_serial(unit.serial_no_2)
         if not serial_no:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Serial number is required")
 
@@ -1947,6 +2059,7 @@ def review_serial_verification(
                 "Serial number not found in order records. Reject, override with a corrected serial, or associate with order.",
             )
 
+        serial_no_2 = apply_serial_rule(db, item, serial_no_2)
         if decision == "override" and item.order_id == order_id:
             item.serial_no = serial_no
             if serial_no_2:
@@ -1990,7 +2103,7 @@ def review_serial_verification(
     )
     db.commit()
     db.refresh(service)
-    return _hydrate_service(db, service)
+    return _hydrate_service(db, service, user=user)
 
 
 @router.post("/{service_id}/verify-serials-bulk", response_model=ServiceOut)
@@ -2030,14 +2143,87 @@ def verify_serials_bulk(
     )
     db.commit()
     db.refresh(service)
-    return _hydrate_service(db, service)
+    return _hydrate_service(db, service, user=user)
+
+
+def _raise_part_requests_from_observation(
+    pdb: Session, service: ServiceRequest, serial_no: str | None, parts: list[str], user: User,
+) -> None:
+    """Parts an engineer lists in Observation go straight into the real approval queue (same svm->admin chain
+    as the standalone "raise a part request" flow) instead of sitting as inert text nobody reviews."""
+    names = [p.strip() for p in (parts or []) if p and p.strip()]
+    if not names:
+        return
+    already = {
+        (r.part_name_cache or "").strip().lower()
+        for r in pdb.scalars(
+            select(ItemRequestModel).where(
+                ItemRequestModel.crm_service_request_id == service.id,
+                ItemRequestModel.crm_serial_no == serial_no,
+            )
+        )
+    }
+    catalogue_by_name = {
+        (p.part_name or "").strip().lower(): p.id
+        for p in pdb.scalars(select(SparePart).where(SparePart.part_name.in_(names)))
+    }
+    for name in names:
+        if name.lower() in already:
+            continue
+        parts_service.create_request(
+            pdb,
+            kind="part",
+            description=f"Part needed for {service.request_no}, serial {serial_no or '—'}: {name}",
+            user=user,
+            crm_service_request_id=service.id,
+            crm_service_request_no=service.request_no,
+            crm_serial_no=serial_no,
+            spare_part_id=catalogue_by_name.get(name.lower()),
+            part_name_cache=name,
+            # The engineer's observation already documents the problem — don't also demand the 4 proof
+            # photos meant for someone manually raising a part request with nothing else on file.
+            required_photos_override=0,
+        )
+        already.add(name.lower())
+    pdb.commit()
+
+
+def _sync_linked_part_requests(
+    pdb: Session, service: ServiceRequest, serial_no: str | None, user: User, decision: str, remarks: str | None,
+) -> None:
+    """A part request raised straight from this unit's observation is the same decision as the
+    recommendation itself — approving or rejecting the work should carry the part along with it,
+    instead of making the Service Manager decide the same thing twice in two different screens.
+    Only touches requests still awaiting a decision; anything already decided, or needing photos it
+    doesn't have, is left for its own screen rather than failing the whole approval."""
+    if not serial_no:
+        return
+    linked = pdb.scalars(
+        select(ItemRequestModel).where(
+            ItemRequestModel.crm_service_request_id == service.id,
+            ItemRequestModel.crm_serial_no == serial_no,
+            ItemRequestModel.stage.in_(("svm", "sub")),
+        )
+    ).all()
+    if not linked:
+        return
+    for req in linked:
+        try:
+            if decision == "Approve":
+                parts_service.approve(pdb, req, user=user)
+            else:
+                parts_service.reject(pdb, req, user=user, reason=remarks or "Rejected alongside the service recommendation")
+        except (parts_service.WrongStage, parts_service.NotReady):
+            continue
+    pdb.commit()
 
 
 @router.post("/{service_id}/observations", response_model=ServiceOut)
-def submit_observation(service_id: int, body: ServiceObservationIn, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+def submit_observation(service_id: int, body: ServiceObservationIn, db: Session = Depends(get_db), pdb: Session = Depends(get_parts_db), user: User = Depends(get_current_user)):
     service = _load_visible_service(db, service_id, user)
-    if not (_is_engineer(user) or _is_vendor(user)):
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only engineer or vendor can submit observation")
+    can_review_recommendation = can_user_forward_at_all(user) or can_user_approve_at_all(user)
+    if not (_is_engineer(user) or _is_vendor(user) or can_review_recommendation):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only engineer, vendor, or the reviewing team can submit observation")
     if _is_engineer(user) and not _engineer_can_work_on_service(db, service, user):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "This request is not assigned to you")
     if _is_vendor(user):
@@ -2054,6 +2240,7 @@ def submit_observation(service_id: int, body: ServiceObservationIn, db: Session 
         if unit is None or unit.service_request_id != service.id:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Unit not found on this service request")
         submit_unit_observation(db, service, unit, user, body, _json_dump)
+        _raise_part_requests_from_observation(pdb, service, unit.serial_no, body.parts_required, user)
     elif work_units:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Select a unit (serial row) for this observation")
     else:
@@ -2069,6 +2256,7 @@ def submit_observation(service_id: int, body: ServiceObservationIn, db: Session 
             observation=body.observation,
             recommended_action=body.recommended_action,
             parts_required_json=_json_dump(body.parts_required),
+            misc_required_json=_json_dump(body.misc_required),
             estimated_service_charge=body.estimated_service_charge,
             estimated_parts_charge=body.estimated_parts_charge,
             remarks=body.remarks,
@@ -2077,11 +2265,12 @@ def submit_observation(service_id: int, body: ServiceObservationIn, db: Session 
         db.add(observation)
         service.status = "Pending Service Approval"
         service.status_date = _now()
+        _raise_part_requests_from_observation(pdb, service, service.serial_no, body.parts_required, user)
 
     _log_status(db, service, action="Observation Submitted", user=user, old_status=old_status, new_status=service.status, remarks=body.remarks)
     db.commit()
     db.refresh(service)
-    return _hydrate_service(db, service)
+    return _hydrate_service(db, service, user=user)
 
 
 @router.post("/{service_id}/observations/bulk", response_model=ServiceOut)
@@ -2089,6 +2278,7 @@ def submit_observations_bulk(
     service_id: int,
     body: ServiceBulkObservationsIn,
     db: Session = Depends(get_db),
+    pdb: Session = Depends(get_parts_db),
     user: User = Depends(get_current_user),
 ):
     service = _load_visible_service(db, service_id, user)
@@ -2106,6 +2296,8 @@ def submit_observations_bulk(
         if item.unit_id is None:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "unit_id is required for each observation row")
     created = bulk_submit_observations(db, service, user, body.observations, _json_dump)
+    for item, observation in zip(body.observations, created):
+        _raise_part_requests_from_observation(pdb, service, observation.serial_no, item.parts_required, user)
     _log_status(
         db,
         service,
@@ -2117,7 +2309,7 @@ def submit_observations_bulk(
     )
     db.commit()
     db.refresh(service)
-    return _hydrate_service(db, service)
+    return _hydrate_service(db, service, user=user)
 
 
 @router.post("/{service_id}/observations/cancel", response_model=ServiceOut)
@@ -2189,7 +2381,75 @@ def cancel_observation(
     )
     db.commit()
     db.refresh(service)
-    return _hydrate_service(db, service)
+    return _hydrate_service(db, service, user=user)
+
+
+@router.post("/{service_id}/forward", response_model=ServiceOut)
+def service_forward_to_manager(
+    service_id: int,
+    body: ServiceForwardIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    service = _load_visible_service(db, service_id, user)
+    if not can_user_forward_at_all(user):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only the Service Team or Admin can review this before it reaches the Service Manager")
+    if body.decision == "Reject" and not body.remarks:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Remarks are mandatory when sending back to the engineer")
+    if body.unit_id is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "unit_id is required")
+
+    unit = db.get(ServiceRequestUnit, body.unit_id)
+    if unit is None or unit.service_request_id != service.id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Unit not found")
+    old_status = service.status
+    forward_unit_to_manager(db, service, unit, user, body.decision, body.remarks)
+    sync_aggregate_service_status(db, service)
+    _log_status(
+        db, service,
+        action="Forwarded to Service Manager" if body.decision == "Forward" else "Sent Back to Engineer",
+        user=user, old_status=old_status, new_status=service.status, remarks=body.remarks,
+        metadata={"unit_id": unit.id},
+    )
+    db.commit()
+    db.refresh(service)
+    return _hydrate_service(db, service, user=user)
+
+
+@router.post("/{service_id}/forward/bulk", response_model=ServiceOut)
+def service_forward_to_manager_bulk(
+    service_id: int,
+    body: ServiceBulkForwardIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    service = _load_visible_service(db, service_id, user)
+    if not can_user_forward_at_all(user):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only the Service Team or Admin can review this before it reaches the Service Manager")
+    if body.decision == "Reject" and not body.remarks:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Remarks are mandatory when sending back to the engineer")
+
+    old_status = service.status
+    forwarded = bulk_forward_units(db, service, user, body.decision, body.remarks, body.unit_ids)
+    _log_status(
+        db, service,
+        action="Forwarded to Service Manager (Bulk)" if body.decision == "Forward" else "Sent Back to Engineer (Bulk)",
+        user=user, old_status=old_status, new_status=service.status, remarks=body.remarks,
+        metadata={"unit_ids": [u.id for u in forwarded]},
+    )
+    db.commit()
+    db.refresh(service)
+    return _hydrate_service(db, service, user=user)
+
+
+def _has_claim_for_unit(db: Session, service_id: int, serial_no: str | None) -> bool:
+    """A unit can only be Recommended or Approved once at least one claim has been raised against it —
+    raising it is how whoever's deciding records whether anything was found missing."""
+    return bool(db.scalar(
+        select(ShortageClaim.id)
+        .where(ShortageClaim.service_request_id == service_id, ShortageClaim.serial_no == serial_no)
+        .limit(1)
+    ))
 
 
 @router.post("/{service_id}/approval", response_model=ServiceOut)
@@ -2198,11 +2458,12 @@ def service_approval(
     body: ServiceApprovalIn,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
+    pdb: Session = Depends(get_parts_db),
     user: User = Depends(get_current_user),
 ):
     service = _load_visible_service(db, service_id, user)
-    if not _is_service_team(user):
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only Indcool Service can approve service")
+    if not can_user_approve_at_all(user):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only the Service Manager or Admin can decide this — your role can recommend, not approve")
     if body.decision == "Reject" and not body.remarks:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Remarks are mandatory when rejecting")
 
@@ -2217,7 +2478,10 @@ def service_approval(
         observation = observations.get(unit.id)
         if observation is None:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "No observation found for this unit")
+        if body.decision == "Approve" and not _has_claim_for_unit(db, service.id, unit.serial_no):
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Raise a claim for this unit before it can be approved")
         approve_unit(db, service, unit, user, body.decision, body.remarks, observation)
+        _sync_linked_part_requests(pdb, service, unit.serial_no, user, body.decision, body.remarks)
     elif work_units:
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST,
@@ -2231,6 +2495,14 @@ def service_approval(
             .where(ServiceObservation.service_request_id == service.id)
             .order_by(desc(ServiceObservation.submitted_at))
         )
+        if body.decision == "Approve":
+            amount = unit_requested_amount(latest_observation)
+            if not can_user_approve_amount(user, amount):
+                raise HTTPException(
+                    status.HTTP_403_FORBIDDEN,
+                    f"This needs Admin approval — the engineer's recommended work (₹{amount:,.0f}) is over the "
+                    f"₹{APPROVAL_CAP_AMOUNT:,.0f} Service Manager limit.",
+                )
         approval = ServiceApproval(
             service_request_id=service.id,
             observation_id=latest_observation.id if latest_observation else None,
@@ -2250,8 +2522,42 @@ def service_approval(
     _log_status(db, service, action="Service Approved" if body.decision == "Approve" else "Service Rejected", user=user, old_status=old_status, new_status=service.status, remarks=body.remarks)
     db.commit()
     db.refresh(service)
-    after_service_approval(background_tasks, db, service, decision=body.decision, remarks=body.remarks)
-    return _hydrate_service(db, service)
+    # A unit_id means this went through the per-serial recommend/approve/reject loop — one unit's
+    # recommendation was rejected, not the whole job, so the other units, engineer assignment, and
+    # customer documents must not be wiped.
+    after_service_approval(background_tasks, db, service, decision=body.decision, remarks=body.remarks, full_reset=body.unit_id is None)
+    return _hydrate_service(db, service, user=user)
+
+
+@router.post("/{service_id}/approval/recommend", response_model=ServiceOut)
+def service_approval_recommend(
+    service_id: int,
+    body: ServiceRecommendIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Service Manager's only action on a unit over their ₹2500 cap — it stays Pending Service Approval
+    (Admin/Sub Admin already see it there, same screen, same modal) but logs that the Service Manager
+    has reviewed and endorses it, so Admin isn't deciding blind."""
+    service = _load_visible_service(db, service_id, user)
+    role = canonical_role_key(user.role)
+    if role not in SERVICE_MANAGER_ROLES:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only the Service Manager needs to recommend — Admin or Sub Admin can approve this directly")
+    unit = db.get(ServiceRequestUnit, body.unit_id)
+    if unit is None or unit.service_request_id != service.id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Unit not found")
+    if unit.unit_status != "Pending Service Approval":
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "This unit is not pending approval")
+    if not _has_claim_for_unit(db, service.id, unit.serial_no):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Raise a claim for this unit before it can be recommended")
+    _log_status(
+        db, service, action="Recommended to Admin", user=user,
+        old_status=service.status, new_status=service.status,
+        remarks=body.remarks, metadata={"unit_id": unit.id},
+    )
+    db.commit()
+    db.refresh(service)
+    return _hydrate_service(db, service, user=user)
 
 
 @router.post("/{service_id}/approval/bulk", response_model=ServiceOut)
@@ -2260,16 +2566,22 @@ def service_approval_bulk(
     body: ServiceBulkApprovalIn,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
+    pdb: Session = Depends(get_parts_db),
     user: User = Depends(get_current_user),
 ):
     service = _load_visible_service(db, service_id, user)
-    if not _is_service_team(user):
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only Indcool Service can approve service")
+    if not can_user_approve_at_all(user):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only the Service Manager or Admin can decide this — your role can recommend, not approve")
     if body.decision == "Reject" and not body.remarks:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Remarks are mandatory when rejecting")
 
     old_status = service.status
     approved = bulk_approve_units(db, service, user, body.decision, body.remarks, body.unit_ids)
+    approved_units = {u.id: u for u in list_work_units(db, service.id)}
+    for row in approved:
+        unit = approved_units.get(row.service_request_unit_id)
+        if unit is not None:
+            _sync_linked_part_requests(pdb, service, unit.serial_no, user, body.decision, body.remarks)
     _log_status(
         db,
         service,
@@ -2282,8 +2594,10 @@ def service_approval_bulk(
     )
     db.commit()
     db.refresh(service)
-    after_service_approval(background_tasks, db, service, decision=body.decision, remarks=body.remarks)
-    return _hydrate_service(db, service)
+    # Bulk approval always acts on specific units, never "the whole job" — same reasoning as the
+    # single-unit path above.
+    after_service_approval(background_tasks, db, service, decision=body.decision, remarks=body.remarks, full_reset=False)
+    return _hydrate_service(db, service, user=user)
 
 
 @router.post("/{service_id}/approval/cancel", response_model=ServiceOut)
@@ -2310,7 +2624,7 @@ def cancel_service_approval(service_id: int, db: Session = Depends(get_db), user
     _log_status(db, service, action="Approval Cancelled", user=user, old_status=old_status, new_status=service.status)
     db.commit()
     db.refresh(service)
-    return _hydrate_service(db, service)
+    return _hydrate_service(db, service, user=user)
 
 
 @router.post("/{service_id}/completion", response_model=ServiceOut)
@@ -2431,7 +2745,7 @@ async def complete_service(
     db.commit()
     db.refresh(service)
     after_service_status_change(background_tasks, db, service, old_status=old_status, remarks=completion_remarks)
-    return _hydrate_service(db, service)
+    return _hydrate_service(db, service, user=user)
 
 
 @router.post("/{service_id}/completion/cancel", response_model=ServiceOut)
@@ -2470,7 +2784,7 @@ def cancel_service_completion(service_id: int, db: Session = Depends(get_db), us
     _log_status(db, service, action="Completion Cancelled", user=user, old_status=old_status, new_status=service.status)
     db.commit()
     db.refresh(service)
-    return _hydrate_service(db, service)
+    return _hydrate_service(db, service, user=user)
 
 
 @router.post("/{service_id}/completion-approval", response_model=ServiceOut)
@@ -2519,7 +2833,7 @@ def review_completion(
     _log_status(db, service, action=action, user=user, old_status=old_status, new_status=service.status, remarks=remarks, metadata={"unit_id": unit_id})
     db.commit()
     db.refresh(service)
-    return _hydrate_service(db, service)
+    return _hydrate_service(db, service, user=user)
 
 
 @router.post("/{service_id}/payment-request", response_model=ServiceOut)
@@ -2552,7 +2866,7 @@ async def raise_payment_request(
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "QR Code is required when payment type is UPI")
     qr_path = None
     if qr_code is not None and qr_code.filename:
-        qr_path = await save_upload(qr_code, module="services")
+        qr_path = await save_upload(qr_code, module="services", reencode_images=False)
     old_status = service.status
     requested_by_type = "service_team" if _is_service_team(user) else "engineer" if _is_engineer(user) else "vendor"
     has_unit_workflow = bool(list_work_units(db, service.id))
@@ -2642,7 +2956,7 @@ async def raise_payment_request(
     )
     db.commit()
     db.refresh(service)
-    return _hydrate_service(db, service)
+    return _hydrate_service(db, service, user=user)
 
 
 @router.post("/{service_id}/payment-request/cancel", response_model=ServiceOut)
@@ -2764,7 +3078,7 @@ def cancel_payment_request(
     )
     db.commit()
     db.refresh(service)
-    return _hydrate_service(db, service)
+    return _hydrate_service(db, service, user=user)
 
 
 @router.post("/{service_id}/payment-approval", response_model=ServiceOut)
@@ -2873,7 +3187,7 @@ async def approve_service_payment(
         db.commit()
         db.refresh(service)
         after_service_status_change(background_tasks, db, service, old_status=old_status, remarks=body.remarks)
-        return _hydrate_service(db, service)
+        return _hydrate_service(db, service, user=user)
 
     record_payment_approval(
         db,
@@ -2922,7 +3236,7 @@ async def approve_service_payment(
         )
         db.commit()
         db.refresh(service)
-        return _hydrate_service(db, service)
+        return _hydrate_service(db, service, user=user)
 
     payment_type = body.payment_type or latest_payment.payment_type or "Cash"
     if payment_type == "UPI" and not latest_payment.payment_qr_code_path:
@@ -3000,7 +3314,7 @@ async def approve_service_payment(
     db.commit()
     db.refresh(service)
     after_service_status_change(background_tasks, db, service, old_status=old_status, remarks=body.remarks)
-    return _hydrate_service(db, service)
+    return _hydrate_service(db, service, user=user)
 
 
 @router.patch("/{service_id}/payment-amount", response_model=ServiceOut)
@@ -3061,7 +3375,7 @@ def admin_update_service_payment_amount(
             transaction.payment_type = data["payment_type"]
     db.commit()
     db.refresh(service)
-    return _hydrate_service(db, service)
+    return _hydrate_service(db, service, user=user)
 
 
 @router.post("/{service_id}/close", response_model=ServiceOut)
@@ -3099,7 +3413,7 @@ def close_service_request(
     db.commit()
     db.refresh(service)
     after_service_status_change(background_tasks, db, service, old_status=old_status, remarks=remarks)
-    return _hydrate_service(db, service)
+    return _hydrate_service(db, service, user=user)
 
 
 @router.post("/{service_id}/reopen-to-engineer", response_model=ServiceOut)
@@ -3133,7 +3447,7 @@ def reopen_service_for_engineer(
     db.commit()
     db.refresh(service)
     after_service_status_change(background_tasks, db, service, old_status=old_status, remarks=remarks)
-    return _hydrate_service(db, service)
+    return _hydrate_service(db, service, user=user)
 
 
 @router.post("/{service_id}/status", response_model=ServiceOut)
@@ -3175,7 +3489,7 @@ def update_service_status(
     db.commit()
     db.refresh(service)
     after_service_status_change(background_tasks, db, service, old_status=old_status, remarks=remarks)
-    return _hydrate_service(db, service)
+    return _hydrate_service(db, service, user=user)
 
 
 @router.get("/{service_id}/history", response_model=list[ServiceHistoryEntry])
@@ -3231,7 +3545,7 @@ async def upload_document(
     _log_status(db, service, action="Document Uploaded", user=user, old_status=service.status, new_status=service.status, metadata={"document_type": document_type, "file_path": path})
     db.commit()
     db.refresh(service)
-    return _hydrate_service(db, service)
+    return _hydrate_service(db, service, user=user)
 
 
 @router.post("/{service_id}/documents/{document_id}/review", response_model=ServiceOut)
@@ -3267,7 +3581,7 @@ def review_document(service_id: int, document_id: int, body: ServiceDocumentRevi
     )
     db.commit()
     db.refresh(service)
-    return _hydrate_service(db, service)
+    return _hydrate_service(db, service, user=user)
 
 
 def _document_link_out(db: Session, service: ServiceRequest) -> ServiceDocumentLinkOut:
@@ -3320,7 +3634,8 @@ def resend_document_upload_link(
         service.document_request_sent_at = _now()
     upload_url = build_public_upload_url(service.document_access_token)
     required_documents = _customer_document_types(db, service)
-    background_tasks.add_task(_send_document_link_email, service, upload_url, required_documents)
+    order = db.get(Order, service.order_id) if service.order_id else None
+    background_tasks.add_task(_send_document_link_email, service, upload_url, required_documents, order.customer_email if order else None)
     _log_status(
         db,
         service,
@@ -3356,7 +3671,8 @@ def request_documents(
     service.document_request_sent_at = _now()
     upload_url = build_public_upload_url(service.document_access_token)
     required_documents = _customer_document_types(db, service)
-    background_tasks.add_task(_send_document_link_email, service, upload_url, required_documents)
+    order = db.get(Order, service.order_id) if service.order_id else None
+    background_tasks.add_task(_send_document_link_email, service, upload_url, required_documents, order.customer_email if order else None)
     _log_status(
         db,
         service,

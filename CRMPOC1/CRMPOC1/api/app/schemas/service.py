@@ -161,6 +161,7 @@ class ServiceRequestUnitOut(BaseModel):
     observation_text: str | None = None
     recommended_action: str | None = None
     parts_required: list[str] = []
+    misc_required: list[str] = []
     estimated_service_charge: float | None = None
     estimated_parts_charge: float | None = None
     observation_remarks: str | None = None
@@ -189,6 +190,11 @@ class ServiceRequestUnitOut(BaseModel):
     payment_approval_step: int | None = None
     payment_approval_total_steps: int | None = None
     payment_next_approver_role: str | None = None
+    requested_total: float | None = None
+    requires_admin_approval: bool = False
+    approval_cap_amount: float | None = None
+    can_approve: bool = True
+    can_forward: bool = True
 
 
 class ServiceSerialVerifyIn(BaseModel):
@@ -223,6 +229,7 @@ class ServiceObservationIn(BaseModel):
     observation: str | None = None
     recommended_action: str | None = None
     parts_required: list[str] = []
+    misc_required: list[str] = []
     estimated_service_charge: float | None = None
     estimated_parts_charge: float | None = None
     remarks: str | None = None
@@ -258,8 +265,27 @@ class ServiceApprovalIn(BaseModel):
     unit_id: int | None = None
 
 
+class ServiceRecommendIn(BaseModel):
+    """Service Manager endorsing an over-cap unit for Admin/Sub Admin to decide — a courtesy note, not
+    a decision; the unit stays Pending Service Approval exactly as it already does."""
+    unit_id: int
+    remarks: str | None = None
+
+
 class ServiceBulkApprovalIn(BaseModel):
     decision: Literal["Approve", "Reject"]
+    remarks: str | None = None
+    unit_ids: list[int] | None = None
+
+
+class ServiceForwardIn(BaseModel):
+    decision: Literal["Forward", "Reject"]
+    remarks: str | None = None
+    unit_id: int | None = None
+
+
+class ServiceBulkForwardIn(BaseModel):
+    decision: Literal["Forward", "Reject"]
     remarks: str | None = None
     unit_ids: list[int] | None = None
 
@@ -356,6 +382,7 @@ class ServiceObservationOut(BaseModel):
     observation: str | None
     recommended_action: str | None
     parts_required: list[str] = []
+    misc_required: list[str] = []
     estimated_service_charge: float | None
     estimated_parts_charge: float | None
     remarks: str | None
@@ -544,6 +571,9 @@ class ServiceOut(BaseModel):
     customer_documents_approved: bool = False
     email_bounced: bool = False
     email_bounce_reason: str | None = None
+    order_email: str | None = None
+    order_email_bounced: bool = False
+    order_email_bounce_reason: str | None = None
 
 
 class ServiceListItem(BaseModel):

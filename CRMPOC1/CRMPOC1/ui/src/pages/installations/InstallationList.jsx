@@ -3,7 +3,7 @@ import { hasPermission } from "../../utils/permissions.js";
 import DateRangeFilter, { DateRangeTag } from "../../components/DateRangeFilter.jsx";
 import RegisteredCell from "../../components/RegisteredCell.jsx";
 import { Fragment, useEffect, useMemo, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 
 import Modal from "../../components/Modal.jsx";
 import Pagination from "../../components/Pagination.jsx";
@@ -14,9 +14,13 @@ import { isOperationsAdminRole } from "../../utils/roles.js";
 import BulkAssignModal from "./BulkAssignModal.jsx";
 import BulkInstallationEditModal from "./BulkInstallationEditModal.jsx";
 import { isBulkWorkflowEligibleRow } from "../../utils/installationWorkflowSteps.js";
+import InstallationStageChips from "../../components/installations/InstallationStageChips.jsx";
+import { INSTALLATION_STAGES, stageLabel } from "../../utils/installationStages.js";
 
 const STATUSES = ["Pending", "Submitted", "Assigned", "In Progress", "Serial Pending Verification", "Completion Pending Approval", "Installation Completed", "Payment Pending", "Completed", "Settlement Pending", "Settlement Approved", "Returned", "Rejected"];
 const BULK_ASSIGNABLE_STATUSES = new Set(["Submitted", "Assigned"]);
+// the group row shows a count for each of these stages; the chips above also cover Payment and Returned or rejected
+const STAGE_COLUMNS = INSTALLATION_STAGES.filter((s) => ["na", "as", "ip", "in", "done"].includes(s.key));
 
 function fmtDate(value) {
   if (!value) return "-";
@@ -54,6 +58,7 @@ export default function InstallationList() {
   const { user: permUser } = useAuth();
   const canDeletePerm = hasPermission(permUser, "installations", "can_delete");
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { user } = useAuth();
   const isEngineer = canonicalRoleKey(user?.role) === "engineer";
   const isAdminLike = isOperationsAdminRole(user?.role);
@@ -62,6 +67,7 @@ export default function InstallationList() {
   const [err, setErr] = useState("");
   const [filters, setFilters] = useState({
     status: "",
+    stage: INSTALLATION_STAGES.some((s) => s.key === searchParams.get("stage")) ? searchParams.get("stage") : "", // the dashboard links here with ?stage=
     search: "",
     date_from: "",
     date_to: "",
@@ -80,6 +86,7 @@ export default function InstallationList() {
     page,
     per_page: perPage,
     status: filters.status || undefined,
+    stage: filters.stage || undefined,
     search: filters.search || undefined,
     date_from: filters.date_from || undefined,
     date_to: filters.date_to || undefined,
@@ -165,6 +172,7 @@ export default function InstallationList() {
         current.pendingCount = inst.group_pending_count ?? current.pendingCount + (isCompletedStatus(inst.status) ? 0 : 1);
         current.completedCount = inst.group_completed_count ?? current.completedCount + (isCompletedStatus(inst.status) ? 1 : 0);
         current.assignedEngineerName = summarizeGroupValue(current.requests, "assigned_engineer_name");
+        current.stageCounts = inst.group_stage_counts || current.stageCounts;
         continue;
       }
       groups.set(key, {
@@ -176,6 +184,7 @@ export default function InstallationList() {
         assignedEngineerName: summarizeGroupValue([inst], "assigned_engineer_name"),
         pendingCount: inst.group_pending_count ?? (isCompletedStatus(inst.status) ? 0 : 1),
         completedCount: inst.group_completed_count ?? (isCompletedStatus(inst.status) ? 1 : 0),
+        stageCounts: inst.group_stage_counts || null,
         requests: [inst],
       });
     }
@@ -305,6 +314,9 @@ export default function InstallationList() {
           </select>
           <DateRangeFilter from={filters.date_from} to={filters.date_to} onChange={(a, b) => applyFilter({ date_from: a, date_to: b })} />
         </div>
+        <div className="mt-3">
+          <InstallationStageChips counts={data.stage_counts} value={filters.stage} onChange={(stage) => applyFilter({ stage })} />
+        </div>
       </div>
 
       {err && <div className="rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-700">{err}</div>}
@@ -387,19 +399,18 @@ export default function InstallationList() {
               <th className="px-3 py-2">Item Name</th>
               <th className="px-3 py-2">Order No</th>
               <th className="px-3 py-2">Vendor Name</th>
-              <th className="px-3 py-2">Total Pending Requests</th>
-              <th className="px-3 py-2">Total Completed Requests</th>
+              {STAGE_COLUMNS.map((s) => <th key={s.key} className="px-3 py-2">{s.label}</th>)}
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
             {loading && (
               <tr>
-                <td colSpan={7} className="px-3 py-6 text-center text-slate-500">Loading...</td>
+                <td colSpan={5 + STAGE_COLUMNS.length} className="px-3 py-6 text-center text-slate-500">Loading...</td>
               </tr>
             )}
             {!loading && groupedRows.length === 0 && (
               <tr>
-                <td colSpan={7} className="px-3 py-6 text-center text-slate-500">No installation requests found.</td>
+                <td colSpan={5 + STAGE_COLUMNS.length} className="px-3 py-6 text-center text-slate-500">{filters.stage ? `No requests in "${stageLabel(filters.stage)}".` : "No installation requests found."}</td>
               </tr>
             )}
             {!loading && groupedRows.map((group) => {
@@ -413,12 +424,14 @@ export default function InstallationList() {
                     <td className="px-3 py-2 font-medium text-slate-800">{group.itemName}</td>
                     <td className="px-3 py-2 font-mono text-xs text-slate-700">{group.orderNo}</td>
                     <td className="px-3 py-2 text-slate-700">{group.vendorName}</td>
-                    <td className="px-3 py-2 font-semibold text-amber-700">{group.pendingCount}</td>
-                    <td className="px-3 py-2 font-semibold text-emerald-700">{group.completedCount}</td>
+                    {STAGE_COLUMNS.map((s) => {
+                      const n = group.stageCounts ? group.stageCounts[s.key] ?? 0 : s.key === "done" ? group.completedCount : s.key === "na" ? group.pendingCount : 0;
+                      return <td key={s.key} className={`px-3 py-2 font-semibold ${n ? s.text : "text-slate-300"}`}>{n}</td>;
+                    })}
                   </tr>
                   {expanded && (
                     <tr className="bg-slate-50/70">
-                      <td colSpan={7} className="px-3 py-3">
+                      <td colSpan={5 + STAGE_COLUMNS.length} className="px-3 py-3">
                         <div className="mb-3 flex items-center justify-between rounded-md bg-brand-50 px-3 py-2">
                           <span className="text-sm font-medium text-brand-700">
                             {selectedGroupKey === group.key && selectedIds.size > 0

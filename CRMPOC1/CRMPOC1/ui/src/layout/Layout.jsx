@@ -3,6 +3,7 @@ import { Outlet, useLocation } from "react-router-dom";
 
 import { fetchPendingActions, markPendingActionsRead } from "../api/pendingActions.js";
 import { useAuth } from "../auth/AuthContext.jsx";
+import ApprovalAlerts from "../components/approvals/ApprovalAlerts.jsx";
 import PendingActionsModal from "../components/PendingActionsModal.jsx";
 import CallcenterGuard from "./CallcenterGuard.jsx";
 import MobileNav, { mobileNavItems } from "./MobileNav.jsx";
@@ -132,6 +133,7 @@ export default function Layout() {
         </main>
       </div>
       <MobileNav onMore={() => setMobileSidebarOpen(true)} />
+      <ApprovalAlerts />
       <PendingActionsModal
         open={modalOpen}
         onClose={() => setModalOpen(false)}

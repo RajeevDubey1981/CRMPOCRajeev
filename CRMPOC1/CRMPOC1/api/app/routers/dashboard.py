@@ -26,6 +26,8 @@ from app.services.engineer_service_scope import (
     engineer_visible_service_filter,
 )
 from app.services.complaint_access import apply_complaint_assignment_scope
+from app.services.installation_stages import stage_counts
+from app.services.service_access import is_service_desk_user
 from app.services.permissions import sub_module_scope
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
@@ -86,7 +88,16 @@ def installation_summary(db: Session = Depends(get_db), user: User = Depends(get
     gt7 = db.scalar(base.where(InstallationRequest.request_date < now - timedelta(days=7))) or 0
     gt15 = db.scalar(base.where(InstallationRequest.request_date < now - timedelta(days=15))) or 0
     gt30 = db.scalar(base.where(InstallationRequest.request_date < now - timedelta(days=30))) or 0
-    return InstallationSummary(total_pending=total, gt7days=gt7, gt15days=gt15, gt30days=gt30)
+    # every stage, for the same people who see the list: engineers their own, service users theirs, call-center requests only once an engineer has them
+    scope = select(InstallationRequest.status, func.count(InstallationRequest.id)).group_by(InstallationRequest.status)
+    if canonical_role_key(user.role) == "engineer":
+        scope = scope.where(InstallationRequest.assigned_engineer == user.id)
+    else:
+        scope = scope.where(or_(func.lower(InstallationRequest.source) != "callcenter", InstallationRequest.assigned_engineer.is_not(None)))
+        if is_service_desk_user(user):
+            scope = scope.where(InstallationRequest.assigned_service_user_id == user.id)
+    stages = stage_counts({s: n for s, n in db.execute(scope).all()})
+    return InstallationSummary(total_pending=total, gt7days=gt7, gt15days=gt15, gt30days=gt30, stages=stages)
 
 
 @router.get("/orders-summary", response_model=OrdersSummary)

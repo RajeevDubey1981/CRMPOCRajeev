@@ -37,12 +37,16 @@ def _pointer(sdb: Session, key: str) -> int | None:
 def _complaint_data(c) -> dict:
     place = ", ".join(x for x in (c.district, c.state) if x) or (c.customer_address or "")[:120]
     src = "Website form" if (c.source or "").lower() == "public" else "Call-centre desk" if (c.source or "").lower() == "callcenter" else (c.source or "CRM").title()
-    return {
+    data = {
         "name": c.customer_name, "phone": c.customer_mobile, "email": c.customer_email, "item": c.model_details or (c.problem_description or "")[:200],
         "message": c.problem_description, "place": place, "state": c.state, "district": c.district, "pincode": c.pincode,
-        "source": src, "channel": "website" if (c.source or "").lower() == "public" else "desk",
+        "source": src, "channel": "website" if (c.source or "").lower() in ("public", "website") else "desk",
         "crm_kind": "complaint", "crm_ref": c.comp_no, "crm_id": c.id,
     }
+    if crm_link.is_partner_enquiry(c):
+        # someone who chose "Partner" on the website: a dealer lead for the Sales Manager to give (the form's own words go in the details)
+        data.update({"lead_type": "dealer", "item": "Wants to become a partner", "details": (c.remark or "").strip() or None, "channel": "partner"})
+    return data
 
 
 def _partner_data(r) -> dict | None:

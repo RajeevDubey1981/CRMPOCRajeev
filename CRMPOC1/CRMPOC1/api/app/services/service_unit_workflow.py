@@ -12,6 +12,7 @@ from sqlalchemy import desc, func, select
 from sqlalchemy.orm import Session
 
 from app.models.field_photo import FieldPhoto
+from app.models.item_master import ItemMaster
 from app.models.order import OrderItem
 from app.models.service import (
     ServiceApproval,
@@ -27,6 +28,7 @@ UNIT_STATUS_ASSIGNED = "Assigned"
 UNIT_STATUS_ENGINEER_VISIT = "Engineer Visit"
 UNIT_STATUS_SERIAL_PENDING = "Serial Verification Pending"
 UNIT_STATUS_SERIAL_VERIFIED = "Serial Verified"
+UNIT_STATUS_PENDING_TEAM_REVIEW = "Pending Service Team Review"
 UNIT_STATUS_PENDING_APPROVAL = "Pending Service Approval"
 UNIT_STATUS_APPROVED = "Approved for Service"
 UNIT_STATUS_REJECTED = "Rejected"
@@ -167,8 +169,8 @@ def sync_aggregate_service_status(db: Session, service: ServiceRequest) -> None:
             status for status in statuses
             if status in (UNIT_STATUS_WAITING_PART, UNIT_STATUS_CUSTOMER_UNAVAILABLE)
         )
-    elif any(status == UNIT_STATUS_PENDING_APPROVAL for status in statuses):
-        if all(status in (UNIT_STATUS_PENDING_APPROVAL, UNIT_STATUS_REJECTED) for status in statuses):
+    elif any(status in (UNIT_STATUS_PENDING_APPROVAL, UNIT_STATUS_PENDING_TEAM_REVIEW) for status in statuses):
+        if all(status in (UNIT_STATUS_PENDING_APPROVAL, UNIT_STATUS_PENDING_TEAM_REVIEW, UNIT_STATUS_REJECTED) for status in statuses):
             service.status = "Pending Service Approval"
         else:
             service.status = "Service In Progress"
@@ -254,6 +256,35 @@ def units_without_observation(
 MIN_FIELD_PHOTOS = 1  # an engineer must photograph the machine before a serial can be verified
 
 
+_NO_SERIAL = {"0", "-", "--", "na", "n/a", "nil", "none", "null", "no"}
+
+
+def clean_serial(value: str | None) -> str | None:
+    """A typed placeholder (0, -, NA ...) is not a serial number: treat it as nothing entered."""
+    text = (value or "").strip()
+    return None if not text or text.lower() in _NO_SERIAL else text
+
+
+def product_serial_count(db: Session, order_item: OrderItem | None, fallback: int = 1) -> int:
+    """How many serials this product carries by default: one for a refrigerator or window AC, two for a split AC
+    (indoor and outdoor). It is the product's own setting in the item master, not whatever the screen happened to ask."""
+    master = db.get(ItemMaster, order_item.item_id) if order_item is not None and order_item.item_id else None
+    return int(master.serial_count) if master is not None and master.serial_count else fallback
+
+
+def apply_serial_rule(db: Session, order_item: OrderItem | None, serial_no_2: str | None, fallback: int = 1) -> str | None:
+    """The second serial for a unit of this product: none for a one-serial product, required for a two-serial one."""
+    second = clean_serial(serial_no_2)
+    count = product_serial_count(db, order_item, fallback)
+    if count < 2:
+        return None
+    if not second and order_item is not None:
+        second = clean_serial(order_item.serial_no_2)
+    if not second:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"This product has {count} serial numbers. Enter both serials.")
+    return second
+
+
 def verify_unit_serial(
     db: Session,
     service: ServiceRequest,
@@ -273,7 +304,7 @@ def verify_unit_serial(
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Serial verification is awaiting admin review")
 
     resolved_serial = (serial_no or "").strip() or unit_primary_serial(unit)
-    resolved_serial_2 = (serial_no_2 or "").strip() or None
+    resolved_serial_2 = clean_serial(serial_no_2)
     if not resolved_serial:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Serial number is required for this unit")
 
@@ -317,7 +348,7 @@ def verify_unit_serial(
         db.flush()
 
     unit.serial_no = resolved_serial
-    unit.serial_no_2 = resolved_serial_2 or lookup_item.serial_no_2
+    unit.serial_no_2 = apply_serial_rule(db, lookup_item, resolved_serial_2)
     unit.order_item_id = lookup_item.id
     unit.warranty_status = context["warranty_status"]
     unit.service_type = context["service_type"]
@@ -362,6 +393,19 @@ def bulk_verify_units(
     return verified
 
 
+def ensure_machine_photo_before_observation(db: Session, unit: ServiceRequestUnit, user: User) -> None:
+    """The engineer proves the visit with at least one photo of the machine; without it the observation is not accepted."""
+    if canonical_role_key(user.role) != "engineer":
+        return
+    photo_count = db.scalar(select(func.count(FieldPhoto.id)).where(FieldPhoto.service_request_unit_id == unit.id)) or 0
+    if photo_count < MIN_FIELD_PHOTOS:
+        serial = unit_primary_serial(unit) or f"unit #{unit.id}"
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            f"Add at least {MIN_FIELD_PHOTOS} photo of the machine (serial {serial}) before submitting the observation. Tap Photos on that serial.",
+        )
+
+
 def submit_unit_observation(
     db: Session,
     service: ServiceRequest,
@@ -382,18 +426,30 @@ def submit_unit_observation(
         )
     )
     if existing is not None:
-        if canonical_role_key(user.role) != "engineer" or unit.unit_status not in {UNIT_STATUS_PENDING_APPROVAL, UNIT_STATUS_REJECTED}:
+        role = canonical_role_key(user.role)
+        is_editor_engineer = role == "engineer"
+        # Service Team/Manager/Admin may also correct the recommendation while it's still in review --
+        # the frontend already shows them this form, so the backend has to actually honor it.
+        is_reviewer_editor = can_user_forward_at_all(user) or can_user_approve_at_all(user)
+        status_allowed = unit.unit_status in {UNIT_STATUS_PENDING_TEAM_REVIEW, UNIT_STATUS_PENDING_APPROVAL, UNIT_STATUS_REJECTED}
+        if not status_allowed or not (is_editor_engineer or is_reviewer_editor):
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Observation already submitted for this serial")
         existing.problem_found = body.problem_found
         existing.observation = body.observation
         existing.recommended_action = body.recommended_action
         existing.parts_required_json = json_dump(body.parts_required)
+        existing.misc_required_json = json_dump(body.misc_required)
         existing.estimated_service_charge = body.estimated_service_charge
         existing.estimated_parts_charge = body.estimated_parts_charge
         existing.remarks = body.remarks
         existing.submitted_at = _now()
+        # Only the engineer re-editing restarts the review chain; a reviewer's own correction
+        # while handling it doesn't send their own in-progress item back a stage.
+        if is_editor_engineer:
+            unit.unit_status = UNIT_STATUS_PENDING_TEAM_REVIEW
         return existing
 
+    ensure_machine_photo_before_observation(db, unit, user)
     observation = ServiceObservation(
         service_request_id=service.id,
         service_request_unit_id=unit.id,
@@ -405,13 +461,14 @@ def submit_unit_observation(
         observation=body.observation,
         recommended_action=body.recommended_action,
         parts_required_json=json_dump(body.parts_required),
+        misc_required_json=json_dump(body.misc_required),
         estimated_service_charge=body.estimated_service_charge,
         estimated_parts_charge=body.estimated_parts_charge,
         remarks=body.remarks,
         submitted_at=_now(),
     )
     db.add(observation)
-    unit.unit_status = UNIT_STATUS_PENDING_APPROVAL
+    unit.unit_status = UNIT_STATUS_PENDING_TEAM_REVIEW
 
     engineer_id = user.id if canonical_role_key(user.role) == "engineer" else unit.assigned_engineer_id
     sync_service_request_from_units(db, service, engineer_id=engineer_id if engineer_id else None)
@@ -451,6 +508,7 @@ def bulk_submit_observations(
                 status.HTTP_400_BAD_REQUEST,
                 f"Observation already submitted for unit {item.unit_id}",
             )
+        ensure_machine_photo_before_observation(db, unit, user)
         observation = ServiceObservation(
             service_request_id=service.id,
             service_request_unit_id=unit.id,
@@ -462,13 +520,14 @@ def bulk_submit_observations(
             observation=item.observation,
             recommended_action=item.recommended_action,
             parts_required_json=json_dump(item.parts_required),
+            misc_required_json=json_dump(item.misc_required),
             estimated_service_charge=item.estimated_service_charge,
             estimated_parts_charge=item.estimated_parts_charge,
             remarks=item.remarks,
             submitted_at=_now(),
         )
         db.add(observation)
-        unit.unit_status = UNIT_STATUS_PENDING_APPROVAL
+        unit.unit_status = UNIT_STATUS_PENDING_TEAM_REVIEW
         created.append(observation)
 
     db.flush()
@@ -499,6 +558,66 @@ def backfill_unit_verification_from_service(db: Session, service: ServiceRequest
             unit.unit_status = UNIT_STATUS_SERIAL_VERIFIED
 
 
+# The chain: Engineer recommends -> Service Team reviews and forwards -> Service Manager approves
+# (capped) -> Admin/Sub Admin/Incool decide above the cap, and can override any stage at any amount.
+# Service-desk roles can forward but never approve/reject outright: that's Service Manager/Admin's call.
+APPROVAL_CAP_AMOUNT = 2500
+ADMIN_OVERRIDE_ROLES = frozenset({"admin", "incool", "sub_admin"})
+SERVICE_MANAGER_ROLES = frozenset({"service_manager"})
+SERVICE_DESK_ROLES = frozenset({"service", "indcool_service", "indcool"})
+UNIT_APPROVAL_ROLES = ADMIN_OVERRIDE_ROLES | SERVICE_MANAGER_ROLES
+UNIT_FORWARD_ROLES = ADMIN_OVERRIDE_ROLES | SERVICE_DESK_ROLES
+
+
+def unit_requested_amount(observation: ServiceObservation | None) -> float:
+    if observation is None:
+        return 0.0
+    service_amt = float(observation.estimated_service_charge or 0)
+    parts_amt = float(observation.estimated_parts_charge or 0)
+    return service_amt + parts_amt
+
+
+def requires_admin_approval(amount: float) -> bool:
+    return amount > APPROVAL_CAP_AMOUNT
+
+
+def can_user_approve_at_all(user: User) -> bool:
+    return canonical_role_key(user.role) in UNIT_APPROVAL_ROLES
+
+
+def can_user_approve_amount(user: User, amount: float) -> bool:
+    role = canonical_role_key(user.role)
+    if role in ADMIN_OVERRIDE_ROLES:
+        return True
+    if role in SERVICE_MANAGER_ROLES:
+        return not requires_admin_approval(amount)
+    return False
+
+
+def can_user_forward_at_all(user: User) -> bool:
+    return canonical_role_key(user.role) in UNIT_FORWARD_ROLES
+
+
+def forward_unit_to_manager(
+    db: Session,
+    service: ServiceRequest,
+    unit: ServiceRequestUnit,
+    user: User,
+    decision: str,
+    remarks: str | None,
+) -> None:
+    """Service Team's review step between the engineer's recommendation and Service Manager's decision.
+    "Forward" moves it on; "Send back" returns it to the engineer, same as a rejection at that stage."""
+    if unit.unit_status != UNIT_STATUS_PENDING_TEAM_REVIEW:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "This unit is not pending service team review")
+    if not can_user_forward_at_all(user):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only the Service Team or Admin can review this before it reaches the Service Manager")
+    if decision == "Forward":
+        unit.unit_status = UNIT_STATUS_PENDING_APPROVAL
+    else:
+        unit.unit_status = UNIT_STATUS_REJECTED
+
+
 def approve_unit(
     db: Session,
     service: ServiceRequest,
@@ -510,6 +629,16 @@ def approve_unit(
 ) -> ServiceApproval:
     if unit.unit_status != UNIT_STATUS_PENDING_APPROVAL:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "This unit is not pending service approval")
+    if not can_user_approve_at_all(user):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only the Service Manager or Admin can decide this — your role can recommend, not approve")
+    if decision == "Approve":
+        amount = unit_requested_amount(observation)
+        if not can_user_approve_amount(user, amount):
+            raise HTTPException(
+                status.HTTP_403_FORBIDDEN,
+                f"This needs Admin approval — the engineer's recommended work (₹{amount:,.0f}) is over the "
+                f"₹{APPROVAL_CAP_AMOUNT:,.0f} Service Manager limit.",
+            )
     approval = ServiceApproval(
         service_request_id=service.id,
         service_request_unit_id=unit.id,
@@ -520,11 +649,34 @@ def approve_unit(
         approved_at=_now(),
     )
     db.add(approval)
-    unit.unit_status = UNIT_STATUS_APPROVED if decision == "Approve" else UNIT_STATUS_REJECTED
+    # A Service Manager rejection goes back to Service Team, not straight to a dead end — they decide
+    # whether to forward it again (e.g. after a correction) or send it back to the engineer themselves.
+    unit.unit_status = UNIT_STATUS_APPROVED if decision == "Approve" else UNIT_STATUS_PENDING_TEAM_REVIEW
     if decision == "Approve":
         service.approved_at = _now()
     sync_aggregate_service_status(db, service)
     return approval
+
+
+def bulk_forward_units(
+    db: Session,
+    service: ServiceRequest,
+    user: User,
+    decision: str,
+    remarks: str | None,
+    unit_ids: list[int] | None = None,
+) -> list[ServiceRequestUnit]:
+    units = list_work_units(db, service.id)
+    pending = [unit for unit in units if unit.unit_status == UNIT_STATUS_PENDING_TEAM_REVIEW]
+    if unit_ids:
+        allowed = set(unit_ids)
+        pending = [unit for unit in pending if unit.id in allowed]
+    if not pending:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "No units pending service team review")
+    for unit in pending:
+        forward_unit_to_manager(db, service, unit, user, decision, remarks)
+    sync_aggregate_service_status(db, service)
+    return pending
 
 
 def bulk_approve_units(
@@ -814,7 +966,7 @@ def backfill_unit_statuses(db: Session, service: ServiceRequest) -> None:
                 UNIT_STATUS_APPROVED if approvals[unit.id].decision == "Approve" else UNIT_STATUS_REJECTED
             )
         elif unit.id in observations:
-            unit.unit_status = UNIT_STATUS_PENDING_APPROVAL
+            unit.unit_status = UNIT_STATUS_PENDING_TEAM_REVIEW
         elif unit.serial_verified_at:
             unit.unit_status = UNIT_STATUS_SERIAL_VERIFIED
         else:

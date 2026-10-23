@@ -22,6 +22,8 @@ function fmtMrp(v) {
 export default function ItemMasterList() {
   const { user: permUser } = useAuth();
   const canDeletePerm = hasPermission(permUser, "items", "can_delete");
+  const canEditPerm = hasPermission(permUser, "items", "can_edit");
+  const canCreatePerm = hasPermission(permUser, "items", "can_create");
   const navigate = useNavigate();
   const [data, setData] = useState({ items: [], total: 0 });
   const [loading, setLoading] = useState(false);
@@ -114,12 +116,14 @@ export default function ItemMasterList() {
           >
             Export CSV
           </button>
+          {canCreatePerm && (
           <Link
             to="/items/new"
             className="rounded-md bg-brand-600 px-3 py-2 text-sm font-medium text-white hover:bg-brand-700"
           >
             + New Item
           </Link>
+          )}
         </div>
       </div>
 
@@ -209,11 +213,13 @@ export default function ItemMasterList() {
                       onClick={() => navigate(`/items/${item.id}`)}
                       className="rounded p-1 text-slate-600 hover:bg-slate-100"
                     >👁</button>
+                    {canEditPerm && (
                     <button
                       title="Edit"
                       onClick={() => navigate(`/items/${item.id}`)}
                       className="rounded p-1 text-slate-600 hover:bg-slate-100"
                     >✏️</button>
+                    )}
 {canDeletePerm && (
                     <button
                       title="Delete"

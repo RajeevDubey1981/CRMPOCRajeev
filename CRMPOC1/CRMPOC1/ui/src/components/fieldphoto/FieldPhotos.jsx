@@ -86,6 +86,7 @@ export default function FieldPhotos({ kind, id, serialNo, canAdd, count, onChang
   const [err, setErr] = useState("");
   const [big, setBig] = useState(null);
   const input = useRef(null);
+  const uploadInput = useRef(null);
   const jobSeq = useRef(0); // each photo gets a number, so an old banner timer never wipes out the next photo
 
   const busy = !!job && job.stage !== "failed";
@@ -256,6 +257,14 @@ export default function FieldPhotos({ kind, id, serialNo, canAdd, count, onChang
                 >
                   {full ? "4 photos taken" : busy ? "Saving…" : "Take photo"}
                 </button>
+                <button
+                  type="button"
+                  disabled={busy || locating || !pos || full || (job && job.stage === "failed")}
+                  onClick={() => uploadInput.current?.click()}
+                  className="min-h-[44px] rounded-md border border-brand-600 bg-white px-4 py-2 text-sm font-medium text-brand-700 hover:bg-brand-50 disabled:opacity-50"
+                >
+                  Upload photo
+                </button>
                 {!locating && !pos && (
                   <button type="button" onClick={locate} className="min-h-[44px] rounded-md border border-slate-300 bg-white px-4 py-2 text-sm hover:bg-slate-50">
                     Try location again
@@ -263,11 +272,14 @@ export default function FieldPhotos({ kind, id, serialNo, canAdd, count, onChang
                 )}
               </div>
               <input ref={input} type="file" accept="image/*" capture="environment" className="hidden" onChange={onPicked} />
+              <input ref={uploadInput} type="file" accept="image/*" className="hidden" onChange={onPicked} />
 
               {job && (
                 <div className="mt-3 rounded-md border border-slate-200 bg-white p-2">
+                  {job.preview && (
+                    <img src={job.preview} alt="Selected photo preview" className="mb-2 max-h-56 w-full rounded object-contain bg-slate-100" />
+                  )}
                   <div className="flex gap-3">
-                    {job.preview && <img src={job.preview} alt="Photo just taken" className="h-16 w-16 shrink-0 rounded object-cover" />}
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center justify-between text-xs font-medium text-slate-700">
                         <span>{job.stage === "failed" ? "Not saved yet" : STAGE_TEXT[job.stage]}{job.stage === "uploading" ? `… ${job.percent}%` : ""}</span>

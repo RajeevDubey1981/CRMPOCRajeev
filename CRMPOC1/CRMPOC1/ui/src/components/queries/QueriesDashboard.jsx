@@ -1,6 +1,11 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 
+import { partsApi } from "../../api/parts.js";
+import { useAuth } from "../../auth/AuthContext.jsx";
 import { CountUp } from "../../pages/sales/salesUi.jsx";
+
+const APPROVAL_ROLES = new Set(["admin", "incool", "sub_admin", "service_manager", "service", "indcool", "indcool service", "indcool_service"]);
 
 // The tiles above the Queries list. A tile filters the list; the cards below filter it by kind or by person.
 export const TILES = [
@@ -36,13 +41,28 @@ function Week({ week }) {
 
 export default function QueriesDashboard({ data, tile, onTile, kind, onKind, holder, onHolder }) {
   const [grow, setGrow] = useState(false);
+  const [approvalsCount, setApprovalsCount] = useState(null);
+  const navigate = useNavigate();
+  const { user } = useAuth();
+  const canSeeApprovals = APPROVAL_ROLES.has((user?.role || "").trim().toLowerCase());
+
   useEffect(() => { const t = setTimeout(() => setGrow(true), 150); return () => clearTimeout(t); }, []);
+  useEffect(() => {
+    if (!canSeeApprovals) return;
+    let live = true;
+    partsApi.requests({ mine: true }).then((rows) => {
+      if (!live) return;
+      setApprovalsCount(rows.filter((r) => r.stage === "svm" || r.stage === "sub").length);
+    }).catch(() => { if (live) setApprovalsCount(null); });
+    return () => { live = false; };
+  }, [canSeeApprovals]);
+
   if (!data) return <div className="h-24 rounded-lg bg-white/60 shadow-sm" aria-hidden="true" />;
   const t = data.tiles;
   const kmax = Math.max(1, ...data.by_kind.map((r) => r.count));
   return (
     <div className="space-y-3">
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
+      <div className={`grid grid-cols-2 gap-3 sm:grid-cols-3 ${canSeeApprovals ? "xl:grid-cols-7" : "xl:grid-cols-6"}`}>
         {TILES.map((x, i) => {
           const n = t[x.count] ?? 0;
           const alarm = x.key === "late" && n > 0;
@@ -65,6 +85,24 @@ export default function QueriesDashboard({ data, tile, onTile, kind, onKind, hol
             </button>
           );
         })}
+        {canSeeApprovals && (
+          <button
+            type="button"
+            onClick={() => navigate("/approvals?tab=parts")}
+            style={{ "--i": TILES.length, "--c": "#7c3aed", borderColor: "transparent" }}
+            className="s-rise s-lift s-press relative overflow-hidden rounded-xl border-2 bg-white p-3.5 text-left shadow-sm q-approvals-pulse"
+          >
+            <span style={{ "--i": TILES.length, background: "#7c3aed" }} className="s-grow absolute inset-x-0 top-0 h-1.5" />
+            <span className="absolute right-3 top-4 grid h-7 w-7 place-items-center rounded-full" style={{ background: "#7c3aed22", color: "#7c3aed" }}>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
+              </svg>
+            </span>
+            <div className="mt-1 text-[30px] font-extrabold leading-tight tabular-nums text-violet-700"><CountUp value={approvalsCount ?? 0} /></div>
+            <div className="text-sm font-bold text-slate-800">Approvals</div>
+            <div className="text-[11px] text-slate-500">Parts waiting on a decision</div>
+          </button>
+        )}
       </div>
 
       <div className="grid gap-3 lg:grid-cols-[1.3fr_1fr_1fr]">

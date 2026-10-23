@@ -30,6 +30,7 @@ function Field({ label, value, mono = false, full = false }) {
 export default function ItemMasterDetail() {
   const { user: permUser } = useAuth();
   const canDeletePerm = hasPermission(permUser, "items", "can_delete");
+  const canEditPerm = hasPermission(permUser, "items", "can_edit");
   const navigate = useNavigate();
   const { id } = useParams();
   const [item, setItem] = useState(null);
@@ -129,12 +130,14 @@ export default function ItemMasterDetail() {
           </h1>
         </div>
         <div className="flex gap-2">
+          {canEditPerm && (
           <button
             onClick={openEdit}
             className="rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700"
           >
             ✏️ Edit
           </button>
+          )}
 {canDeletePerm && (
           <button
             onClick={() => setConfirmDelete(true)}

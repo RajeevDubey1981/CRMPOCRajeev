@@ -2,7 +2,7 @@ import { roleKey as canonicalRoleKey } from "../utils/roles.js";
 import { useState } from "react";
 import { useAuth } from "../auth/AuthContext.jsx";
 import { NavLink } from "react-router-dom";
-import { isIndcoolServiceRole, isOperationsAdminRole, isSystemAdminRole } from "../utils/roles.js";
+import { canApproveServiceUnits, canForwardServiceUnits, isIndcoolServiceRole, isOperationsAdminRole, isSystemAdminRole } from "../utils/roles.js";
 import useQuerySummary from "../components/queries/useQuerySummary.js";
 
 /** w-64 (16rem) reduced by 40% → 9.6rem */
@@ -25,6 +25,8 @@ const NAV = [
   { to: "/services", label: "Service Requests", module: "services" },
   { to: "/partner-registrations", label: "Partner Registrations", module: "partner_registrations" },
   { to: "/services/my-units", label: "My Assigned Units", engineerOnly: true },
+  { to: "/items/my-requests", label: "My Part Requests", engineerOnly: true },
+  { to: "/approvals", label: "Approvals", reviewerOnly: true },
   { to: "/items", label: "Item Masters", module: "items" },
   { to: "/couriers", label: "Courier Masters", module: "couriers" },
   { to: "/orders", label: "Order List", module: "orders" },
@@ -120,6 +122,7 @@ export default function Sidebar({ collapsed, mobileOpen = false, onNavigate }) {
   const isCallcenter = role === "callcenter";
   const isIndcoolService = isIndcoolServiceRole(role);
   const isCourierAdmin = isOperationsAdminRole(role);
+  const isServiceReviewer = canForwardServiceUnits(role) || canApproveServiceUnits(role);
 
   const isSystemAdmin = isSystemAdminRole(user?.role);
 
@@ -140,6 +143,7 @@ export default function Sidebar({ collapsed, mobileOpen = false, onNavigate }) {
     if (item.everyone) return true;
     if (item.vendorOnly) return isVendor;
     if (item.engineerOnly) return isEngineer;
+    if (item.reviewerOnly) return isServiceReviewer;
     if (item.operationsOnly) return isCourierAdmin;
     if (item.systemAdminOnly) return isSystemAdmin;
     if (item.adminOnly) return isSystemAdmin;

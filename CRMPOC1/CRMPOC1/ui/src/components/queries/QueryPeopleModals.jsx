@@ -90,14 +90,14 @@ export function ForwardModal({ open, onClose, thread, onDone }) {
 }
 
 /** Add a person to the conversation as a member (can write) or in CC (reads, can comment, is not asked to answer). */
-export function AddPeopleModal({ open, onClose, thread, onDone }) {
+export function AddPeopleModal({ open, onClose, thread, onDone, initialKind = "member" }) {
   const { people, err: loadErr } = usePeople(open);
   const [who, setWho] = useState("");
   const [kind, setKind] = useState("member");
   const [history, setHistory] = useState(true);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
-  useEffect(() => { if (open) { setWho(""); setKind("member"); setHistory(true); setErr(""); } }, [open]);
+  useEffect(() => { if (open) { setWho(""); setKind(initialKind); setHistory(true); setErr(""); } }, [open, initialKind]);
   const inside = thread.members.filter((m) => m.active).map((m) => m.user_id);
   const out = thread.members.filter((m) => !m.active);
 

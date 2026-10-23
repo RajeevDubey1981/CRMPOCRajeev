@@ -141,6 +141,8 @@ class ComplaintListItem(BaseModel):
     service_request_id: int | None = None
     service_request_no: str | None = None
     service_request_status: str | None = None
+    service_owner_id: int | None = None
+    service_owner_name: str | None = None
     installation_request_id: int | None = None
     installation_request_status: str | None = None
     email_bounced: bool = False

@@ -279,6 +279,79 @@ def answered(q: UserQuery) -> None:
     q.awaiting_since = None
 
 
+# ---------------- clean-up: a conversation is deleted for good six months after it was closed ----------------
+RETENTION = timedelta(days=180)
+
+
+def delete_on(q: UserQuery):
+    """When a closed conversation will be deleted, or None while it is open."""
+    return aware(q.closed_at) + RETENTION if q.status == "Closed" and q.closed_at else None
+
+
+def _remove_uploaded_file(public_path: str) -> None:
+    """Delete one attached file from the uploads folder; never anything outside the queries folder."""
+    from pathlib import Path
+
+    from app.config import settings
+
+    base = (settings.resolved_upload_dir / "queries").resolve()
+    raw = (public_path or "").replace("\\", "/")
+    rel = raw.split("/uploads/", 1)[1] if "/uploads/" in raw else raw
+    candidate = Path(rel) if Path(rel).is_absolute() else settings.resolved_upload_dir / rel
+    try:
+        full = candidate.resolve()
+        if base in full.parents and full.is_file():
+            full.unlink()
+    except OSError:
+        pass
+
+
+def purge_closed(db: Session, retention: timedelta = RETENTION) -> int:
+    """Delete every conversation closed longer ago than the retention (6 months): its messages, pictures and files,
+    members, history and reminders. Only a bare record (number, dates, counts) stays. Returns how many went."""
+    from app.models.pending_action import UserPendingAction
+    from app.models.user_query import (
+        UserQueryAttachment, UserQueryEvent, UserQueryMember, UserQueryMessage, UserQueryPurge, UserQueryRead,
+    )
+
+    cutoff = now() - retention
+    gone: list[int] = []
+    for q in db.scalars(select(UserQuery).where(UserQuery.status == "Closed", UserQuery.closed_at.isnot(None))).all():
+        if aware(q.closed_at) > cutoff:
+            continue
+        msg_ids = list(db.scalars(select(UserQueryMessage.id).where(UserQueryMessage.query_id == q.id)))
+        files = list(db.scalars(select(UserQueryAttachment).where(UserQueryAttachment.message_id.in_(msg_ids)))) if msg_ids else []
+        db.add(UserQueryPurge(query_no=f"QRY-{q.id:04d}", closed_at=q.closed_at, message_count=len(msg_ids), attachment_count=len(files)))
+        paths = [f.file_path for f in files]
+        for f in files:
+            db.delete(f)
+        db.flush()
+        for model in (UserQueryMessage, UserQueryRead, UserQueryMember, UserQueryEvent):
+            for row in db.scalars(select(model).where(model.query_id == q.id)).all():
+                db.delete(row)
+        for card in db.scalars(select(UserPendingAction).where(UserPendingAction.module == MODULE, UserPendingAction.entity_id == q.id)).all():
+            db.delete(card)
+        db.flush()
+        db.delete(q)
+        db.commit()
+        for p in paths:
+            _remove_uploaded_file(p)
+        gone.append(q.id)
+    if gone:
+        try:  # a Parts "discuss" thread that went: the request no longer points at it
+            from sqlalchemy import update
+
+            from app.parts.db import new_parts_session
+            from app.parts.models import ItemRequest
+
+            with new_parts_session() as pdb:
+                pdb.execute(update(ItemRequest).where(ItemRequest.crm_query_id.in_(gone)).values(crm_query_id=None))
+                pdb.commit()
+        except Exception:
+            pass
+    return len(gone)
+
+
 # ---------------- the runner: rings the alarm of queries that waited 24 hours ----------------
 _started = False
 
@@ -291,12 +364,22 @@ def _loop() -> None:
 
     log = logging.getLogger("queries")
     time.sleep(45)
+    tick = 0
     while True:
         try:
             with SessionLocal() as db:
                 sweep_overdue(db)
         except Exception:
             log.exception("Query alarm sweep failed")
+        if tick % 6 == 0:  # about once an hour
+            try:
+                with SessionLocal() as db:
+                    removed = purge_closed(db)
+                if removed:
+                    log.info("Deleted %s conversation(s) closed more than 6 months ago", removed)
+            except Exception:
+                log.exception("Query clean-up failed")
+        tick += 1
         time.sleep(600)
 
 

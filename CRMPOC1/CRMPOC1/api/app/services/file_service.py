@@ -5,8 +5,12 @@ from io import BytesIO
 from datetime import datetime
 
 from fastapi import HTTPException, UploadFile, status
+from PIL import Image, ImageOps, UnidentifiedImageError
 
 from app.config import settings
+
+MAX_IMAGE_DIM = 1920  # longest side after re-encoding, in pixels
+JPEG_QUALITY = 85
 
 ALLOWED_MIME = {
     "application/pdf",
@@ -65,6 +69,34 @@ def _validate_file_signature(contents: bytes, extension: str) -> None:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid Office document")
 
 
+def _reencode_image(contents: bytes, extension: str) -> bytes:
+    """Decode every uploaded photo and re-save it through Pillow instead of storing the bytes as given.
+    This is the real defense against a payload smuggled inside something that merely looks like a photo
+    (its magic bytes already matched in _validate_file_signature): only genuine decoded pixel data
+    survives the round trip, so a polyglot file or anything appended past the image data is dropped.
+    It also strips EXIF/metadata and shrinks oversized photos, so every upload — from any user, any
+    device — ends up compressed the same way, regardless of what originally sent it."""
+    try:
+        with Image.open(BytesIO(contents)) as img:
+            img.load()
+            img = ImageOps.exif_transpose(img)  # honor the phone's rotation before EXIF is stripped
+            is_jpeg = extension in (".jpg", ".jpeg")
+            if is_jpeg and img.mode not in ("RGB", "L"):
+                img = img.convert("RGB")
+            if max(img.size) > MAX_IMAGE_DIM:
+                img.thumbnail((MAX_IMAGE_DIM, MAX_IMAGE_DIM), Image.LANCZOS)
+            out = BytesIO()
+            if is_jpeg:
+                img.save(out, format="JPEG", quality=JPEG_QUALITY, optimize=True)
+            else:
+                img.save(out, format="PNG", optimize=True)
+            return out.getvalue()
+    except Image.DecompressionBombError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Image is too large to process") from exc
+    except (UnidentifiedImageError, OSError, ValueError) as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid image file") from exc
+
+
 def _validate_upload(
     file: UploadFile,
     allowed_ext: set[str] | None = None,
@@ -83,6 +115,7 @@ async def save_upload(
     allowed_ext: set[str] | None = None,
     allowed_mime: set[str] | None = None,
     max_bytes: int = MAX_BYTES,
+    reencode_images: bool = True,
 ) -> str:
     """Validate and persist an uploaded file under /uploads/{module}/{YYYY}/{MM}/.
 
@@ -101,6 +134,8 @@ async def save_upload(
     os.makedirs(sub, exist_ok=True)
 
     _validate_file_signature(contents, extension)
+    if reencode_images and extension in {".jpg", ".jpeg", ".png"}:
+        contents = _reencode_image(contents, extension)
     ext = extension
     name = f"{uuid.uuid4().hex}{ext}"
     full_path = sub / name
@@ -114,6 +149,7 @@ async def read_upload_bytes(
     allowed_ext: set[str] | None = None,
     allowed_mime: set[str] | None = None,
     max_bytes: int = MAX_BYTES,
+    reencode_images: bool = True,
 ) -> tuple[bytes, str, str, int]:
     extension = _validate_upload(file, allowed_ext=allowed_ext, allowed_mime=allowed_mime)
 
@@ -123,6 +159,8 @@ async def read_upload_bytes(
     if not contents:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Empty file")
     _validate_file_signature(contents, extension)
+    if reencode_images and extension in {".jpg", ".jpeg", ".png"}:
+        contents = _reencode_image(contents, extension)
 
     original = os.path.basename((file.filename or "").replace("\\", "/"))
     safe_name = original or f"upload{extension}"

@@ -27,6 +27,7 @@ import { isOperationsAdminRole } from "../utils/roles.js";
 import ComplaintEdit from "./complaints/ComplaintEdit.jsx";
 import QueriesPanel from "../components/queries/QueriesPanel.jsx";
 import { getComplaintOpenPath } from "../utils/complaintLinks.js";
+import { INSTALLATION_STAGES } from "../utils/installationStages.js";
 import {
   getComplaintWorkflowAction,
   getComplaintWorkflowStatus,
@@ -817,6 +818,21 @@ export default function Dashboard() {
               <p className="text-xs text-slate-500">{label}</p>
               <p className={`mt-1 text-2xl font-bold ${color}`}>{val ?? "—"}</p>
             </div>
+          ))}
+        </div>
+        <p className="mb-2 mt-4 text-xs text-slate-500">By stage (click one to open the list on it)</p>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7">
+          {INSTALLATION_STAGES.map((s) => (
+            <button
+              key={s.key}
+              type="button"
+              onClick={() => navigate(`/installations?stage=${s.key}`)}
+              className="rounded border border-slate-200 bg-white px-3 py-2 text-left hover:bg-slate-50"
+              style={{ borderTopWidth: 3, borderTopColor: s.color }}
+            >
+              <span className="block text-xl font-semibold text-slate-800">{installs?.stages?.[s.key] ?? "—"}</span>
+              <span className="text-[11px] text-slate-500">{s.label}</span>
+            </button>
           ))}
         </div>
       </div>

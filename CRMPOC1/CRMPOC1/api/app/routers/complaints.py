@@ -57,6 +57,7 @@ from app.services.file_service import save_upload, to_public_upload_path
 from app.services.complaint_access import apply_complaint_assignment_scope
 from app.services.permissions import can_act_on, sub_module_scope
 from app.services.role_access import is_operations_admin
+from app.services.service_access import can_assign_service_desk_user
 from app.services.installation_workflow import (
     CUSTOMER_DOCUMENT_OPTIONS,
     PRE_ORDER_VERIFIED_STATUSES,
@@ -255,7 +256,8 @@ def _sync_installation_order_from_complaint(
         inst.serial_no = complaint.serial_no or item.serial_no or item.serial_no_2 or inst.serial_no
     inst.customer_name = order.customer_name or inst.customer_name
     inst.contact_number = order.customer_contact or inst.contact_number
-    inst.customer_email = order.customer_email or inst.customer_email
+    # Keep the complaint-registration email as primary — fill in from the order only when empty.
+    inst.customer_email = inst.customer_email or order.customer_email
     inst.address = order.customer_address or inst.address
     inst.order_verified_at = now_utc()
     inst.order_verified_by = user.id
@@ -332,6 +334,12 @@ def _with_bounce_flags(db: Session, items: list[ComplaintListItem]) -> list[Comp
         reason = flagged.get((i.customer_email or "").strip().lower())
         i.email_bounced = reason is not None
         i.email_bounce_reason = reason
+    return items
+
+
+def _with_owners(owners: dict, items: list[ComplaintListItem]) -> list[ComplaintListItem]:
+    for i in items:
+        i.service_owner_id, i.service_owner_name = owners.get(i.id, (None, None))
     return items
 
 
@@ -547,6 +555,18 @@ def _linked_service_map(db: Session, complaint_ids: list[int]) -> dict[int, tupl
     return {row.complaint_id: (row.id, row.request_no, row.status) for row in rows}
 
 
+def _service_owner_map(db: Session, complaint_ids: list[int]) -> dict[int, tuple[int, str | None]]:
+    """The service team member each complaint's service request is assigned to (its owner), for the list."""
+    if not complaint_ids:
+        return {}
+    rows = db.execute(
+        select(ServiceRequest.complaint_id, User.id, User.name)
+        .join(User, User.id == ServiceRequest.assigned_service_user_id)
+        .where(ServiceRequest.complaint_id.in_(complaint_ids), ServiceRequest.deleted_at.is_(None))
+    ).all()
+    return {row.complaint_id: (row.id, row.name) for row in rows}
+
+
 def _find_linked_installation_request(db: Session, complaint: Complaint) -> InstallationRequest | None:
     inst = db.scalar(
         select(InstallationRequest)
@@ -699,30 +719,66 @@ def _ensure_service_request_for_complaint(db: Session, complaint: Complaint, use
     return service
 
 
+def _send_document_link_to_complaint(background_tasks: BackgroundTasks, to_emails: list[str], *args) -> None:
+    """Queues send_document_upload_link_email(to, *args) once per address in to_emails (already deduped)."""
+    for email in to_emails:
+        background_tasks.add_task(send_document_upload_link_email, email, *args)
+
+
+def _complaint_recipient_emails(db: Session, complaint: Complaint) -> list[str]:
+    """The complaint's own email plus the linked order's buyer email, deduped — never just one or the other."""
+    seen = set()
+    out = []
+    for email in [complaint.customer_email, _complaint_order_email(db, complaint)]:
+        email = (email or "").strip()
+        if email and email.lower() not in seen:
+            seen.add(email.lower())
+            out.append(email)
+    return out
+
+
+def _complaint_order_email(db: Session, complaint: Complaint) -> str | None:
+    """The buyer email on the order this complaint is linked to, if any — kept separate from the
+    complaint's own email so neither one silently overwrites the other (see _sync_installation_order_from_complaint)."""
+    if not complaint.order_id:
+        return None
+    order = db.get(Order, complaint.order_id)
+    return order.customer_email if order else None
+
+
 def _queue_complaint_confirmation_email(
     background_tasks: BackgroundTasks,
     complaint: Complaint,
     service: ServiceRequest | None = None,
+    extra_email: str | None = None,
 ) -> None:
-    if not complaint.customer_email:
+    emails = []
+    seen = set()
+    for e in [complaint.customer_email, extra_email]:
+        e = (e or "").strip()
+        if e and e.lower() not in seen:
+            seen.add(e.lower())
+            emails.append(e)
+    if not emails:
         return
-    if service is not None and (complaint.query_type or "").lower() == "service":
+    for email in emails:
+        if service is not None and (complaint.query_type or "").lower() == "service":
+            background_tasks.add_task(
+                send_service_request_acknowledgment_email,
+                email,
+                complaint.comp_no,
+            )
+            continue
         background_tasks.add_task(
-            send_service_request_acknowledgment_email,
-            complaint.customer_email,
+            send_complaint_created_email,
+            email,
+            complaint.customer_name,
             complaint.comp_no,
+            complaint.query_type,
+            complaint.status,
+            complaint.customer_mobile,
+            complaint.problem_description,
         )
-        return
-    background_tasks.add_task(
-        send_complaint_created_email,
-        complaint.customer_email,
-        complaint.customer_name,
-        complaint.comp_no,
-        complaint.query_type,
-        complaint.status,
-        complaint.customer_mobile,
-        complaint.problem_description,
-    )
 
 
 @router.get("", response_model=ComplaintListResponse)
@@ -738,6 +794,7 @@ def list_complaints(
     priority: Literal["Normal", "High"] | None = None,
     date_from: date | None = None,
     date_to: date | None = None,
+    owner: str | None = None,
     sort: str = "-created_at",
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
@@ -768,6 +825,13 @@ def list_complaints(
         )
     if source:
         stmt = stmt.where(Complaint.source == source)
+    if owner and can_assign_service_desk_user(user):
+        # The service team member a complaint's service request is given to; "none" = has a service request nobody owns yet.
+        linked = select(ServiceRequest.complaint_id).where(ServiceRequest.complaint_id.is_not(None), ServiceRequest.deleted_at.is_(None))
+        if owner == "none":
+            stmt = stmt.where(Complaint.id.in_(linked.where(ServiceRequest.assigned_service_user_id.is_(None))))
+        elif owner.isdigit():
+            stmt = stmt.where(Complaint.id.in_(linked.where(ServiceRequest.assigned_service_user_id == int(owner))))
     if date_from:
         stmt = stmt.where(Complaint.comp_date >= date_from)
     if date_to:
@@ -829,9 +893,10 @@ def list_complaints(
         documents_received = _customer_documents_received_map(db, complaint_ids)
         linked_services = _linked_service_map(db, complaint_ids)
         linked_installations = _linked_installation_map(db, rows)
+    owners = _service_owner_map(db, complaint_ids)
 
     return ComplaintListResponse(
-        items=_with_bounce_flags(db, [
+        items=_with_owners(owners, _with_bounce_flags(db, [
             _list_row(
                 db, c,
                 call_counts.get(c.id, 0),
@@ -843,7 +908,7 @@ def list_complaints(
                 *(linked_installations.get(c.id) or (None, None)),
             )
             for c in rows
-        ]),
+        ])),
         total=total,
         page=page,
         per_page=per_page,
@@ -903,7 +968,7 @@ def create_complaint(
     sync_complaint_pending_actions(db, complaint)
     db.commit()
     db.refresh(complaint)
-    _queue_complaint_confirmation_email(background_tasks, complaint, linked_service)
+    _queue_complaint_confirmation_email(background_tasks, complaint, linked_service, extra_email=_complaint_order_email(db, complaint))
     # NOTE: spec mentions firing an SMS here when send_sms is true.
     # SMS provider integration is Sprint 6 — wire-up point lives in this code path.
     return ComplaintOut(**_hydrate(db, complaint))
@@ -922,7 +987,7 @@ def resend_complaint_confirmation_email(
     if not complaint.customer_email:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Customer email is required")
     linked_service = _find_linked_service_request(db, complaint.id)
-    _queue_complaint_confirmation_email(background_tasks, complaint, linked_service)
+    _queue_complaint_confirmation_email(background_tasks, complaint, linked_service, extra_email=_complaint_order_email(db, complaint))
     ticket_id = linked_service.request_no if linked_service else complaint.comp_no
     return {"sent": True, "to": complaint.customer_email, "ticket_id": ticket_id}
 
@@ -1147,7 +1212,9 @@ def link_complaint_customer(
         c.order_id = order.id
         c.customer_name = order.customer_name or c.customer_name
         c.customer_mobile = order.customer_contact or c.customer_mobile
-        c.customer_email = order.customer_email or c.customer_email
+        # Keep the number the customer originally registered with — fill in from the order only when empty,
+        # so we never lose it to the order's own email, which is also sent to separately when it differs.
+        c.customer_email = c.customer_email or order.customer_email
         c.customer_address = order.customer_address or c.customer_address
     if any([body.customer_name, body.customer_mobile, body.customer_email, body.customer_address]):
         if body.customer_name:
@@ -1291,9 +1358,9 @@ def request_installation_customer_documents(
     )
     db.commit()
     db.refresh(inst)
-    background_tasks.add_task(
-        send_document_upload_link_email,
-        complaint.customer_email or "",
+    _send_document_link_to_complaint(
+        background_tasks,
+        _complaint_recipient_emails(db, complaint),
         complaint.customer_name,
         complaint.comp_no,
         upload_url,
@@ -1418,9 +1485,9 @@ def request_customer_documents(
     db.commit()
     db.refresh(service)
     upload_url = build_public_upload_url(service.document_access_token)
-    background_tasks.add_task(
-        send_document_upload_link_email,
-        complaint.customer_email or "",
+    _send_document_link_to_complaint(
+        background_tasks,
+        _complaint_recipient_emails(db, complaint),
         complaint.customer_name,
         complaint.comp_no or service.request_no,
         upload_url,

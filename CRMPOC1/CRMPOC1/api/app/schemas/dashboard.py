@@ -14,6 +14,7 @@ class InstallationSummary(BaseModel):
     gt7days: int
     gt15days: int
     gt30days: int
+    stages: dict[str, int] = {}  # installation requests in each stage
 
 
 class ComplaintChartPoint(BaseModel):

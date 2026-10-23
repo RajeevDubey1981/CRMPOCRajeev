@@ -7,9 +7,10 @@ from fastapi.staticfiles import StaticFiles
 from app.config import settings
 from app.release_build import RELEASE_BUILD
 from app.services.input_security import sanitize_json
-from app.routers import auth, bids, calls, field_photos, claims, complaints, couriers, dashboard, email_send_logs, historical_installations, installation_callcenter, installations, item_master, market, orders, partner_agreements_public, partner_registrations, partner_registrations_public, pending_actions, projects, queries, roles, serials, services, users
+from app.routers import auth, bids, calls, field_photos, claims, complaints, couriers, dashboard, email_send_logs, historical_installations, installation_callcenter, installations, item_master, market, orders, partner_agreements_public, partner_registrations, partner_registrations_public, pending_actions, projects, queries, roles, serials, services, shortage_claims, users
 from app.routers import places, sarvam_api
 from app.marketing.router import router as marketing_router
+from app.parts.router import router as parts_router
 from app.sales.router import router as sales_router
 from app.sales.router_ext import router as sales_ext_router
 from app.routers import site_api
@@ -56,6 +57,7 @@ app.include_router(item_master.router)
 app.include_router(couriers.router)
 app.include_router(orders.router)
 app.include_router(claims.router)
+app.include_router(shortage_claims.router)
 app.include_router(market.router)
 app.include_router(services.router)
 app.include_router(pending_actions.router)
@@ -70,9 +72,25 @@ app.include_router(queries.router)
 app.include_router(sales_router)
 app.include_router(sales_ext_router)
 app.include_router(marketing_router)
+app.include_router(parts_router)
 app.include_router(sarvam_api.router)
 app.include_router(site_api.router)
-app.mount("/uploads", StaticFiles(directory=str(settings.resolved_upload_dir)), name="uploads")
+class PublicUploads(StaticFiles):
+    """The uploads folder, except the files attached to conversations: those are only given to the people in them."""
+
+    async def get_response(self, path: str, scope):
+        if path.replace("\\", "/").lstrip("/").startswith("queries/"):
+            from fastapi import HTTPException
+
+            raise HTTPException(404)
+        response = await super().get_response(path, scope)
+        # Every upload is already content-signature-checked and re-saved through Pillow before it's
+        # stored, but this stops a browser from ever second-guessing the Content-Type we gave it.
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        return response
+
+
+app.mount("/uploads", PublicUploads(directory=str(settings.resolved_upload_dir)), name="uploads")
 
 
 @app.on_event("startup")

@@ -25,9 +25,12 @@ table {
   width: 100%;
 }
 
+/* A table cell never breaks a word letter by letter (overflow-wrap:anywhere did this even on desktop, squeezing
+   columns to a few pixels whenever a cell held one long unbroken string). It still wraps at a word boundary,
+   and only breaks a single word if that word alone is wider than the cell. */
 td,
 th {
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
 }
 
 @media (max-width: 640px) {
@@ -56,13 +59,9 @@ th {
   }
 }
 
-/* Phones: a table cell never breaks a word letter by letter. The table keeps the width its words need and its
-   box scrolls sideways (overflow-wrap:anywhere used to squeeze every column to a few pixels). */
+/* Phones: a table's header labels stay on one line (just the body cells wrap, per the base rule above), and any
+   table not already inside a scrolling box gets its own sideways scroll so its columns keep the width they need. */
 @media (max-width: 767px) {
-  td,
-  th {
-    overflow-wrap: break-word;
-  }
   th {
     white-space: nowrap;
   }
@@ -263,3 +262,7 @@ html[data-s-motion="off"] :is(button, [role="button"]):active { transform: none 
 .q-bell svg { transform-origin: 50% 0; animation: q-ring 1.3s ease-in-out infinite; }
 .q-bell::after { content: ""; position: absolute; inset: -5px; border-radius: 50%; border: 2px solid currentColor; animation: q-wave 1.7s ease-out infinite; }
 html[data-s-motion="off"] :is(.q-alarm, .q-bell svg, .q-bell::after) { animation: none !important; }
+@keyframes q-approvals-glow { 0%, 100% { box-shadow: 0 0 0 0 rgba(124, 58, 237, .35); } 50% { box-shadow: 0 0 0 5px rgba(124, 58, 237, 0); } }
+.q-approvals-pulse { animation: q-approvals-glow 2.6s ease-in-out infinite; }
+.q-approvals-pulse:hover { animation: none; }
+html[data-s-motion="off"] .q-approvals-pulse { animation: none !important; }

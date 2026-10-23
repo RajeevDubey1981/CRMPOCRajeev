@@ -81,6 +81,7 @@ class InstallationListItem(BaseModel):
     complaint_no: str | None = None
     group_pending_count: int | None = None
     group_completed_count: int | None = None
+    group_stage_counts: dict[str, int] | None = None  # how many requests of this item code and order are in each stage
 
 
 class InstallationListResponse(BaseModel):
@@ -88,6 +89,7 @@ class InstallationListResponse(BaseModel):
     total: int
     page: int
     per_page: int
+    stage_counts: dict[str, int] = {}  # per stage, for the filters in force except the stage itself
 
 
 class InstallationPaymentHistoryItem(BaseModel):
