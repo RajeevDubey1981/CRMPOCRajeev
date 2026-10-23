@@ -276,8 +276,10 @@ export default function FieldPhotos({ kind, id, serialNo, canAdd, count, onChang
 
               {job && (
                 <div className="mt-3 rounded-md border border-slate-200 bg-white p-2">
+                  {job.preview && (
+                    <img src={job.preview} alt="Selected photo preview" className="mb-2 max-h-56 w-full rounded object-contain bg-slate-100" />
+                  )}
                   <div className="flex gap-3">
-                    {job.preview && <img src={job.preview} alt="Photo just taken" className="h-16 w-16 shrink-0 rounded object-cover" />}
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center justify-between text-xs font-medium text-slate-700">
                         <span>{job.stage === "failed" ? "Not saved yet" : STAGE_TEXT[job.stage]}{job.stage === "uploading" ? `… ${job.percent}%` : ""}</span>
