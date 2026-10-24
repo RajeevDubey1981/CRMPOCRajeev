@@ -8,6 +8,7 @@ Config: scripts/deploy.env (copy from scripts/deploy.env.example)
 from __future__ import annotations
 
 import os
+import shlex
 import shutil
 import socket
 import subprocess
@@ -262,6 +263,8 @@ def ensure_api_venv() -> Path:
         return result.returncode == 0 and _python_version(str(api_python)) in SUPPORTED_PYTHONS
 
     if venv_works():
+        # Existing environments still need dependencies added since the last startup.
+        run_local([str(api_python), "-m", "pip", "install", "-r", str(requirements)], cwd=API_DIR)
         return api_python
 
     print(f"API virtual environment is missing or broken: {api_python}")
@@ -762,6 +765,13 @@ def deploy_production(config: dict[str, str]) -> None:
     sftp = client.open_sftp()
     try:
         deploy_api_remote(sftp, client, remote_api)
+        print("\n=== Install production API dependencies ===")
+        print(ssh_run(
+            client,
+            f"sudo {shlex.quote(remote_api + '/venv/bin/python')} -m pip install "
+            f"-r {shlex.quote(remote_api + '/requirements.txt')}",
+            timeout=1200,
+        ))
         deploy_ui_remote(sftp, client, remote_ui)
         deploy_database_remote(client, remote_api, seed_demo_data=seed_demo_data)
         restart_production_services(client)

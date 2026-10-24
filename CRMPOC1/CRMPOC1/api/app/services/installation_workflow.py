@@ -16,6 +16,7 @@ from app.models.complaint import Complaint
 from app.models.installation import InstallationDocument, InstallationEngineerSerial, InstallationRequest, InstallationStatusLog
 from app.models.item_master import ItemMaster
 from app.models.order import Order, OrderItem
+from app.services.order_installation_policy import require_order_installation
 from app.models.serial_history import SerialHistoryEvent
 from app.models.user import User
 from app.services.file_service import save_upload, to_public_upload_path
@@ -212,6 +213,9 @@ def associate_serial_with_order(
     actor: User,
     inst: InstallationRequest,
 ) -> OrderItem:
+    order = db.get(Order, order_id)
+    if order is not None:
+        require_order_installation(order)
     existing = find_order_item_by_serial_on_order(db, order_id, serial_no, serial_no_2)
     if existing is not None:
         return existing
@@ -241,6 +245,7 @@ def associate_serial_with_order(
     template = items[0]
     new_item = OrderItem(
         order_id=order_id,
+        consignee_address_id=template.consignee_address_id if template.order_id == order_id else None,
         item_id=template.item_id,
         item_code=template.item_code,
         serial_no=serial_no.strip(),
@@ -290,6 +295,7 @@ def _clone_order_item_row(
 ) -> OrderItem:
     return OrderItem(
         order_id=source.order_id,
+        consignee_address_id=source.consignee_address_id,
         item_id=source.item_id,
         item_code=source.item_code,
         serial_no=serial_no,
@@ -408,6 +414,9 @@ def lock_order_item_for_verified_serial(
     inst: InstallationRequest,
 ) -> OrderItem:
     """Lock verified serial(s) on the order at slot level, matching vendor submit behaviour."""
+    order = db.get(Order, order_id)
+    if order is not None:
+        require_order_installation(order)
     serial = serial_no.strip()
     serial2 = (serial_no_2 or "").strip() or None
     if not serial:

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 
 import Modal from "../../components/Modal.jsx";
+import ConsigneeAddressesEditor from "../../components/orders/ConsigneeAddressesEditor.jsx";
 import ScanSerialsModal from "../../components/orders/ScanSerialsModal.jsx";
 import { BarcodeIcon } from "../../components/scan/ScanInput.jsx";
 import { unlockAudio } from "../../components/scan/scanFeedback.js";
@@ -13,7 +14,7 @@ import VendorOrderLineItemsEditor, {
 import { ordersApi } from "../../api/orders.js";
 import { installationsApi } from "../../api/installations.js";
 import { useAuth } from "../../auth/AuthContext.jsx";
-import { isOperationsAdminRole } from "../../utils/roles.js";
+import { isOperationsAdminRole, isSystemAdminRole, isSubAdminRole } from "../../utils/roles.js";
 import {
   buildOrderItemCsvColumns,
   parseOrderItemCsvHeader,
@@ -43,6 +44,7 @@ const BLANK_CONSIGNEE = {
 
 function mapConsigneesFromOrder(rows) {
   return (rows || []).map((row) => ({
+    id: row.id,
     consignee_name: row.consignee_name || "",
     contact: row.contact || "",
     email: row.email || "",
@@ -54,8 +56,9 @@ function mapConsigneesFromOrder(rows) {
 
 function serializeConsigneesForApi(rows) {
   return (rows || [])
-    .filter((row) => Object.values(row).some((value) => (value || "").trim()))
+    .filter((row) => row.id || Object.values(row).some((value) => typeof value === "string" && value.trim()))
     .map((row) => ({
+      ...(row.id ? { id: row.id } : {}),
       consignee_name: (row.consignee_name || "").trim() || null,
       contact: (row.contact || "").trim() || null,
       email: (row.email || "").trim() || null,
@@ -68,11 +71,11 @@ function serializeConsigneesForApi(rows) {
 function validateConsigneesForSave(rows) {
   for (let idx = 0; idx < (rows || []).length; idx += 1) {
     const row = rows[idx];
-    const hasContent = Object.values(row).some((value) => (value || "").trim());
-    if (!hasContent) continue;
     const label = rows.length > 1 ? `Consignee address ${idx + 1}` : "Consignee address";
     if (!(row.consignee_name || "").trim()) return `${label}: Consignee name is required.`;
     if (!(row.address || "").trim()) return `${label}: Address is required.`;
+    if (!row.contact) return `${label}: Mobile number is required.`;
+    if (!/^[0-9]{10}$/.test(row.contact)) return `${label}: Mobile number must contain exactly 10 digits (0-9).`;
   }
   return null;
 }
@@ -250,6 +253,64 @@ export default function OrderDetail() {
   const [itemOptions, setItemOptions] = useState([]);
   const [editLineItems, setEditLineItems] = useState([]);
   const [editConsignees, setEditConsignees] = useState([]);
+  const canManageConsignees = isVendor || isOperationsAdminRole(role);
+  const [consigneeEditing, setConsigneeEditing] = useState(false);
+  const [consigneeDrafts, setConsigneeDrafts] = useState([]);
+  const [consigneeBusy, setConsigneeBusy] = useState(false);
+  const [consigneeError, setConsigneeError] = useState("");
+  const [consigneeMessage, setConsigneeMessage] = useState("");
+  const [installationPolicyBusy, setInstallationPolicyBusy] = useState(false);
+  const [installationPolicyError, setInstallationPolicyError] = useState("");
+  const [installationPolicyMessage, setInstallationPolicyMessage] = useState("");
+  const isInstallationPolicyAdmin = isSystemAdminRole(role) || isSubAdminRole(role);
+  const canEditInstallationPolicy = canManageConsignees && (isInstallationPolicyAdmin
+    || ["Pending", "Shipped", "In Transit"].includes(order?.status));
+
+  async function setInstallationNotRequired(checked) {
+    setInstallationPolicyBusy(true);
+    setInstallationPolicyError("");
+    setInstallationPolicyMessage("");
+    try {
+      setOrder(await ordersApi.updateInstallationRequirement(id, !checked));
+      setSelectedSerials(new Set());
+      setInstallationPolicyMessage("Installation preference saved.");
+    } catch (e) {
+      setInstallationPolicyError(e.response?.data?.detail || "Could not save installation preference.");
+    } finally {
+      setInstallationPolicyBusy(false);
+    }
+  }
+
+  async function selectConsignee(itemId, value) {
+    setConsigneeError("");
+    setConsigneeMessage("");
+    setConsigneeBusy(true);
+    try {
+      setOrder(await ordersApi.updateItemConsignee(id, itemId, value ? Number(value) : null));
+      setConsigneeMessage("Consignee selection saved.");
+    } catch (e) {
+      setConsigneeError(e.response?.data?.detail || "Could not save consignee selection.");
+    } finally {
+      setConsigneeBusy(false);
+    }
+  }
+
+  async function saveConsignees(e) {
+    e.preventDefault();
+    const error = validateConsigneesForSave(consigneeDrafts);
+    if (error) { setConsigneeError(error); return; }
+    setConsigneeError("");
+    setConsigneeBusy(true);
+    try {
+      setOrder(await ordersApi.updateConsignees(id, serializeConsigneesForApi(consigneeDrafts)));
+      setConsigneeEditing(false);
+      setConsigneeMessage("Consignee addresses saved.");
+    } catch (e) {
+      setConsigneeError(e.response?.data?.detail || "Could not save consignee addresses.");
+    } finally {
+      setConsigneeBusy(false);
+    }
+  }
 
   async function load() {
     setErr("");
@@ -377,7 +438,7 @@ export default function OrderDetail() {
       const result = await installationsApi.bulkAssign(assignments);
       setSelectedInstIds(new Set());
       setBulkEngineerPick("");
-      await loadInstallations();
+      await Promise.all([loadInstallations(), load()]);
       setInstMsg(`${result.assigned.length} row(s) assigned`);
     } catch (e) {
       setInstErr(e.response?.data?.detail || "Failed to assign engineer");
@@ -703,6 +764,7 @@ export default function OrderDetail() {
   }
 
   function installationStatusLabel(item, inst) {
+    if (item.installation_auto_completed) return "Installed";
     if (inst) return inst.status;
     if (item.installation_status === "Submitted") return "Locked (Submitted)";
     return item.installation_status;
@@ -710,7 +772,7 @@ export default function OrderDetail() {
 
   function installationStatusClass(item, inst) {
     const label = installationStatusLabel(item, inst);
-    if (label === "Installed" || inst?.status === "Completed") {
+    if (label === "Installed" || label === "Completed" || inst?.status === "Completed") {
       return "bg-green-100 text-green-700";
     }
     if (label === "Not Requested") {
@@ -1026,7 +1088,9 @@ export default function OrderDetail() {
   const previewHasRows = (importPreview?.rows?.length || 0) > 0;
   // API allows vendors to submit serials on their own orders (_can_submit_serials) without orders.can_edit.
   const canSubmitInstallationRequest = Boolean(
-    (canUpdateOrder || isVendor)
+    order?.installation_required !== false
+    && !installationPolicyBusy
+    && (canUpdateOrder || isVendor)
     && order?.status === "Delivered"
     && (order?.oem_bill_no || "").trim(),
   );
@@ -1065,6 +1129,18 @@ export default function OrderDetail() {
         <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-slate-700">
           Order Details
         </h2>
+        <div className="mb-4 rounded-md border border-sky-100 bg-sky-50/40 p-3">
+          <label className="flex items-center gap-2 text-sm font-medium text-slate-800">
+            <input type="checkbox" checked={order.installation_required === false}
+              disabled={!canEditInstallationPolicy || installationPolicyBusy || editing || bulkBusy || submitting}
+              onChange={(e) => setInstallationNotRequired(e.target.checked)} className="h-4 w-4" />
+            Installation not required
+          </label>
+          <p className="mt-1 text-xs text-slate-600">When this order is Delivered, all its line items are automatically marked Installed.</p>
+          <p className="mt-1 text-xs text-slate-500">{isInstallationPolicyAdmin ? "Admin can change this setting at any order status, including after delivery." : "This setting can be changed while the order is Pending, Shipped or In Transit."}</p>
+          {installationPolicyError && <p role="alert" className="mt-2 text-sm text-rose-600">{installationPolicyError}</p>}
+          {installationPolicyMessage && <p role="status" className="mt-2 text-sm text-green-700">{installationPolicyMessage}</p>}
+        </div>
         <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
           <Field label="Order Date" value={fmtDate(order.order_date)} />
           <Field label="OEM Bill No" value={order.oem_bill_no} />
@@ -1125,6 +1201,16 @@ export default function OrderDetail() {
       </section>
 
       <section className="rounded-lg bg-white p-6 shadow-sm" id="order-consignee-addresses">
+        {canManageConsignees && (
+          <button type="button" disabled={consigneeBusy || editing} onClick={() => {
+            setConsigneeDrafts(mapConsigneesFromOrder(order.consignee_addresses));
+            setConsigneeError("");
+            setConsigneeMessage("");
+            setConsigneeEditing(true);
+          }} className="float-right rounded-md border border-slate-300 px-3 py-2 text-sm disabled:opacity-50">
+            Manage consignees
+          </button>
+        )}
         <h2 className="mb-1 text-sm font-semibold uppercase tracking-wide text-sky-900">
           Consignee addresses
         </h2>
@@ -1133,7 +1219,7 @@ export default function OrderDetail() {
         </p>
         {(order.consignee_addresses || []).length === 0 ? (
           <p className="text-sm text-slate-500">
-            No consignee addresses on this order yet. Use <strong>Edit Order</strong> to add ship-to locations.
+            No consignee addresses on this order yet. {canManageConsignees && <>Use <strong>Manage consignees</strong> to add ship-to locations.</>}
           </p>
         ) : (
           <div className="space-y-6">
@@ -1161,6 +1247,8 @@ export default function OrderDetail() {
       </section>
 
       <section className="rounded-lg bg-white p-6 shadow-sm">
+        {consigneeError && !consigneeEditing && <p role="alert" className="mb-3 text-sm text-rose-600">{consigneeError}</p>}
+        {consigneeMessage && <p role="status" className="mb-3 text-sm text-green-700">{consigneeMessage}</p>}
         <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
           <div>
             <div className="flex items-center gap-2">
@@ -1292,6 +1380,7 @@ export default function OrderDetail() {
                         <th className="px-3 py-2">#</th>
                         <th className="px-3 py-2">Item Name</th>
                         <th className="px-3 py-2">Item Code</th>
+                        <th className="px-3 py-2">Consignee Address</th>
                         <th className="px-3 py-2">
                           {canSubmitInstallationRequest && serialSelectionKeysForGroup(group, "serial1").length > 0 ? (
                             <div className="flex items-center gap-2">
@@ -1360,6 +1449,20 @@ export default function OrderDetail() {
                       </td>
                       <td className="px-3 py-2 text-slate-600">
                         {item.item_code || <span className="text-slate-400">-</span>}
+                      </td>
+                      <td className="min-w-[240px] px-3 py-2 align-top">
+                        {canManageConsignees ? (
+                          <select aria-label={`Consignee for line item ${item.id}`} value={item.consignee_address_id ?? ""}
+                            disabled={item.consignee_locked || Boolean(inst?.assigned_engineer) || bulkBusy || consigneeBusy || editing || !(order.consignee_addresses || []).length}
+                            title={item.consignee_locked || inst?.assigned_engineer ? "Consignee is locked after engineer assignment" : "Select consignee"}
+                            onChange={(e) => selectConsignee(item.id, e.target.value)}
+                            className="w-full rounded-md border border-slate-300 bg-white px-2 py-2 text-sm disabled:bg-slate-50">
+                            <option value="">Select consignee</option>
+                            {(order.consignee_addresses || []).map((consignee) => (
+                              <option key={consignee.id} value={consignee.id}>{consignee.consignee_name}</option>
+                            ))}
+                          </select>
+                        ) : <span>{item.consignee?.consignee_name || "Not selected"}</span>}
                       </td>
                       <td className="px-3 py-2">
                         <div className="flex items-center gap-2">
@@ -1558,7 +1661,9 @@ export default function OrderDetail() {
         )}
         {!canSubmitInstallationRequest && (
           <div className="mt-4 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800">
-            {order.status !== "Delivered"
+            {order.installation_required === false
+              ? "Installation is not required for this order. Items are automatically marked Installed when the order is Delivered."
+              : order.status !== "Delivered"
               ? `Installation requests can be raised only when the order is Delivered (current status: ${order.status}).`
               : !(order.oem_bill_no || "").trim()
                 ? "OEM Bill No must be entered on this order before installation requests can be raised (typically set by INDcool/admin)."
@@ -1566,6 +1671,18 @@ export default function OrderDetail() {
           </div>
         )}
       </section>
+
+      <Modal open={consigneeEditing} onClose={() => { if (!consigneeBusy) setConsigneeEditing(false); }} title="Manage consignee addresses" maxWidth="max-w-2xl">
+        <form onSubmit={saveConsignees} noValidate className="space-y-4">
+          <p className="text-sm text-slate-600">Each consignee needs a name, address and a mobile number containing exactly 10 digits. Choose a consignee separately for each line item.</p>
+          {consigneeError && <p role="alert" className="text-sm text-rose-600">{consigneeError}</p>}
+          <ConsigneeAddressesEditor rows={consigneeDrafts} onChange={setConsigneeDrafts} items={order.items} disabled={consigneeBusy} />
+          <div className="flex justify-end gap-2">
+            <button type="button" disabled={consigneeBusy} onClick={() => setConsigneeEditing(false)} className="rounded-md border px-3 py-2 text-sm">Cancel</button>
+            <button type="submit" disabled={consigneeBusy} className="rounded-md bg-brand-600 px-3 py-2 text-sm text-white disabled:opacity-50">{consigneeBusy ? "Saving..." : "Save consignees"}</button>
+          </div>
+        </form>
+      </Modal>
 
       <Modal
         open={editing}
@@ -1760,15 +1877,20 @@ export default function OrderDetail() {
                     </div>
                     <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                       <input
-                        placeholder="Consignee name"
+                        placeholder="Consignee name (required)"
                         value={row.consignee_name}
                         onChange={(e) => setEditConsignees((prev) => prev.map((r, i) => (i === idx ? { ...r, consignee_name: e.target.value } : r)))}
                         className={fieldClass}
                       />
                       <input
-                        placeholder="Contact"
+                        placeholder="Mobile number (required, 10 digits)"
+                        aria-label={`Consignee ${idx + 1} mobile number`}
+                        type="tel"
+                        inputMode="numeric"
+                        pattern="[0-9]{10}"
+                        maxLength={10}
                         value={row.contact}
-                        onChange={(e) => setEditConsignees((prev) => prev.map((r, i) => (i === idx ? { ...r, contact: e.target.value } : r)))}
+                        onChange={(e) => setEditConsignees((prev) => prev.map((r, i) => (i === idx ? { ...r, contact: e.target.value.replace(/[^0-9]/g, "") } : r)))}
                         className={fieldClass}
                       />
                       <input

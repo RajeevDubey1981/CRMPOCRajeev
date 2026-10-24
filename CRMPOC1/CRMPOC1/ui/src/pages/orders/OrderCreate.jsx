@@ -139,10 +139,11 @@ export default function OrderCreate() {
 
   function validateConsignees() {
     for (const [idx, row] of consignees.entries()) {
-      if (!consigneeRowHasContent(row)) continue;
       const label = consignees.length > 1 ? `Consignee address ${idx + 1}` : "Consignee address";
       if (!(row.consignee_name || "").trim()) return `${label}: Consignee name is required.`;
       if (!(row.address || "").trim()) return `${label}: Address is required.`;
+      if (!row.contact) return `${label}: Mobile number is required.`;
+      if (!/^[0-9]{10}$/.test(row.contact)) return `${label}: Mobile number must contain exactly 10 digits (0-9).`;
     }
     return "";
   }
@@ -452,7 +453,7 @@ export default function OrderCreate() {
             </div>
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div>
-                <label className={labelClass}>Consignee name</label>
+                <RequiredLabel>Consignee name</RequiredLabel>
                 <input
                   value={row.consignee_name}
                   onChange={(e) => setConsignee(idx, "consignee_name", e.target.value)}
@@ -460,10 +461,14 @@ export default function OrderCreate() {
                 />
               </div>
               <div>
-                <label className={labelClass}>Contact</label>
+                <RequiredLabel>Mobile number (10 digits)</RequiredLabel>
                 <input
+                  type="tel"
+                  inputMode="numeric"
+                  pattern="[0-9]{10}"
+                  maxLength={10}
                   value={row.contact}
-                  onChange={(e) => setConsignee(idx, "contact", e.target.value)}
+                  onChange={(e) => setConsignee(idx, "contact", e.target.value.replace(/[^0-9]/g, ""))}
                   className={fieldClass}
                 />
               </div>
@@ -494,7 +499,7 @@ export default function OrderCreate() {
                 />
               </div>
               <div className="md:col-span-2">
-                <label className={labelClass}>Consignee address</label>
+                <RequiredLabel>Consignee address</RequiredLabel>
                 <textarea
                   rows={3}
                   value={row.address}

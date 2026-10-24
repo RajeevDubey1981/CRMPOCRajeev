@@ -461,6 +461,20 @@ export default function InstallationDetail() {
         )}
       </section>
 
+      {installation.consignee && (
+        <section className="rounded-lg bg-white p-6 shadow-sm">
+          <h2 className="mb-4 text-sm font-medium text-slate-700">Consignee Details</h2>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <Field label="Consignee Name" value={installation.consignee.consignee_name} />
+            <Field label="Mobile Number" value={installation.consignee.contact} mono />
+            <Field label="Address" value={installation.consignee.address} full />
+            {installation.consignee.city && <Field label="City" value={installation.consignee.city} />}
+            {installation.consignee.state && <Field label="State" value={installation.consignee.state} />}
+            {installation.consignee.email && <Field label="Email" value={installation.consignee.email} />}
+          </div>
+        </section>
+      )}
+
       <div ref={workflowRef}>
         {isEngineer && (installation.source || "vendor").toLowerCase() !== "callcenter" && (
           <EngineerOrderSerialEditor

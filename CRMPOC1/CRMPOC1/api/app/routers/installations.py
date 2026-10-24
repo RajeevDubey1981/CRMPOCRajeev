@@ -11,7 +11,8 @@ from app.database import get_db
 from app.deps import get_current_user
 from app.models.installation import InstallationEngineerSerial, InstallationRequest
 from app.models.complaint import Complaint
-from app.models.order import Order, OrderItem
+from app.models.order import Order, OrderConsigneeAddress, OrderItem
+from app.services.order_installation_policy import require_order_installation
 from app.models.item_master import ItemMaster
 from app.models.payment import PaymentTransaction
 from app.models.payment_approval import PaymentApprovalLog
@@ -131,6 +132,7 @@ def _validate_installation_request_allowed(db: Session, order_item_id: int | Non
     order = db.get(Order, item.order_id)
     if order is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Order not found")
+    require_order_installation(order)
     if order.status != "Delivered":
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST,
@@ -295,6 +297,12 @@ def _hydrate(db: Session, inst: InstallationRequest) -> dict:
     )
 
     order_item = db.get(OrderItem, inst.order_item_id) if inst.order_item_id else None
+    consignee = None
+    if order_item and order_item.consignee_address_id:
+        consignee = db.scalar(select(OrderConsigneeAddress).where(
+            OrderConsigneeAddress.id == order_item.consignee_address_id,
+            OrderConsigneeAddress.order_id == order_item.order_id,
+        ))
     item_code = _canonical_order_item_code(db, order_item)
     item_serial_count = resolve_order_item_serial_count(db, order_item)
     completion_proofs = build_installation_completion_proofs(db, inst)
@@ -308,6 +316,7 @@ def _hydrate(db: Session, inst: InstallationRequest) -> dict:
         .order_by(desc(PaymentApprovalLog.created_at))
     ).all()
     return {
+        "consignee": consignee,
         **{k: getattr(inst, k) for k in (
             "id", "source", "customer_name", "contact_number", "customer_email", "address", "pincode", "state", "district",
             "order_id", "order_item_id", "product_name",
@@ -862,6 +871,8 @@ def create_installation(
         order = db.get(Order, body.order_id) if body.order_id else None
         if body.order_id and (order is None or order.deleted_at is not None):
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Order not found")
+        if order is not None:
+            require_order_installation(order)
         inst = InstallationRequest(
             source="callcenter",
             created_by=user.id,
@@ -1045,13 +1056,14 @@ def bulk_assign(
 
 def _cancel_one(db: Session, inst: InstallationRequest) -> None:
     """Revert a single InstallationRequest to its pre-submission state: delete the request
-    and unlock its linked OrderItem back to "Not Requested" so the vendor can re-select it.
+    and reset its linked OrderItem to "Not Requested" with no consignee selection.
     Caller must have already validated inst.status is Submitted or Assigned.
     """
     if inst.order_item_id is not None:
         item = db.get(OrderItem, inst.order_item_id)
         if item is not None:
             item.installation_status = "Not Requested"
+            item.consignee_address_id = None
     db.delete(inst)
 
 

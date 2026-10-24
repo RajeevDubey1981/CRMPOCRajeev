@@ -1,5 +1,6 @@
 import csv
 import io
+import re
 from datetime import date, datetime, timezone
 from typing import Literal
 
@@ -16,6 +17,7 @@ from app.models.claim import Claim
 from app.models.complaint import Complaint
 from app.models.courier import Courier
 from app.models.item_master import ItemMaster
+from app.models.installation import InstallationRequest
 from app.models.order import Order, OrderConsigneeAddress, OrderItem
 from app.models.serial_history import SerialHistoryEvent
 from app.models.vendor import Vendor
@@ -25,10 +27,13 @@ from app.schemas.order import (
     OrderAutocompleteSuggestion,
     OrderConsigneeAddressCreate,
     OrderConsigneeAddressOut,
+    OrderConsigneeAddressesUpdate,
     OrderCreate,
     OrderItemCreate,
     OrderItemQuantitySummary,
     OrderItemOut,
+    OrderItemConsigneeUpdate,
+    OrderInstallationRequirementUpdate,
     OrderItemUpdate,
     OrderListItem,
     OrderListResponse,
@@ -38,7 +43,8 @@ from app.schemas.order import (
 )
 from app.services.file_service import save_upload
 from app.services.permissions import can_act_on
-from app.services.role_access import is_operations_admin
+from app.services.order_installation_policy import require_order_installation, sync_order_installation_policy
+from app.services.role_access import is_operations_admin, is_system_admin, is_sub_admin
 from app.services.serial_history import EVENT_TYPES, create_serial_history_event
 from app.services.workflow_notifications import (
     notify_customer_order_delivered,
@@ -256,7 +262,31 @@ def _validate_serial_fields_for_item(
         )
 
 
+def _consignee_locked_item_ids(db: Session, order_id: int) -> set[int]:
+    items = db.execute(select(OrderItem.id, OrderItem.serial_no, OrderItem.serial_no_2).where(OrderItem.order_id == order_id)).all()
+    item_ids = {item.id for item in items}
+    assignments = db.execute(select(
+        InstallationRequest.order_item_id, InstallationRequest.serial_no, InstallationRequest.serial_no_2,
+    ).where(
+        InstallationRequest.assigned_engineer.is_not(None),
+        or_(InstallationRequest.order_id == order_id, InstallationRequest.order_item_id.in_(item_ids)),
+    )).all()
+    locked = {row.order_item_id for row in assignments if row.order_item_id in item_ids}
+    # Older requests may refer to the order and serials without a line-item ID.
+    legacy_serials = {
+        _normalize_serial(serial)
+        for row in assignments if row.order_item_id is None
+        for serial in (row.serial_no, row.serial_no_2) if _normalize_serial(serial)
+    }
+    for item in items:
+        if any(_normalize_serial(serial) in legacy_serials for serial in (item.serial_no, item.serial_no_2) if serial):
+            locked.add(item.id)
+    return locked
+
+
 def _hydrate_items(db: Session, order: Order) -> list[OrderItemOut]:
+    consignees = {row.id: row for row in _load_consignee_addresses(db, order.id)}
+    consignee_locked_ids = _consignee_locked_item_ids(db, order.id)
     rows = db.scalars(
         select(OrderItem)
         .where(OrderItem.order_id == order.id)
@@ -269,6 +299,10 @@ def _hydrate_items(db: Session, order: Order) -> list[OrderItemOut]:
     for row in rows:
         out.append(OrderItemOut(
             id=row.id,
+            installation_auto_completed=row.installation_auto_completed,
+            consignee_address_id=row.consignee_address_id,
+            consignee_locked=row.id in consignee_locked_ids,
+            consignee=consignees.get(row.consignee_address_id),
             item_id=row.item_id,
             item_code=_resolve_item_code(db, row.item_id, row.item_code),
             item_name=_resolve_item_name(db, row.item_id),
@@ -288,20 +322,6 @@ def _hydrate_items(db: Session, order: Order) -> list[OrderItemOut]:
     return out
 
 
-def _consignee_row_has_content(row: OrderConsigneeAddressCreate) -> bool:
-    return any(
-        (value or "").strip()
-        for value in (
-            row.consignee_name,
-            row.contact,
-            row.email,
-            row.city,
-            row.state,
-            row.address,
-        )
-    )
-
-
 def _coerce_consignee_row(row: OrderConsigneeAddressCreate | dict) -> OrderConsigneeAddressCreate:
     if isinstance(row, OrderConsigneeAddressCreate):
         return row
@@ -314,8 +334,6 @@ def _validate_consignee_rows(
     validated: list[OrderConsigneeAddressCreate] = []
     for idx, raw in enumerate(rows, start=1):
         row = _coerce_consignee_row(raw)
-        if not _consignee_row_has_content(row):
-            continue
         name = (row.consignee_name or "").strip()
         address = (row.address or "").strip()
         if not name:
@@ -328,6 +346,10 @@ def _validate_consignee_rows(
                 status.HTTP_400_BAD_REQUEST,
                 f"Consignee address {idx}: Address is required.",
             )
+        if not row.contact:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Consignee address {idx}: Mobile number is required.")
+        if not re.fullmatch(r"[0-9]{10}", row.contact):
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Consignee address {idx}: Mobile number must contain exactly 10 digits (0-9).")
         validated.append(row)
     return validated
 
@@ -337,25 +359,25 @@ def _replace_consignee_addresses(
     order_id: int,
     rows: list[OrderConsigneeAddressCreate],
 ) -> None:
-    existing = db.scalars(
+    db.execute(select(Order.id).where(Order.id == order_id).with_for_update()).scalar_one()
+    existing = {row.id: row for row in db.scalars(
         select(OrderConsigneeAddress).where(OrderConsigneeAddress.order_id == order_id)
-    ).all()
-    for row in existing:
-        db.delete(row)
-    db.flush()
+    ).all()}
+    retained = [row.id for row in rows if row.id is not None]
+    if len(retained) != len(set(retained)) or any(row_id not in existing for row_id in retained):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid or duplicate consignee address for this order")
+    removed = set(existing) - set(retained)
+    if removed and db.scalar(select(OrderItem.id).where(OrderItem.consignee_address_id.in_(removed)).limit(1)):
+        raise HTTPException(status.HTTP_409_CONFLICT, "A selected consignee cannot be removed. Clear or change its line item selections first.")
+    for row_id in removed:
+        db.delete(existing[row_id])
     for sort_order, row in enumerate(rows):
-        db.add(
-            OrderConsigneeAddress(
-                order_id=order_id,
-                consignee_name=(row.consignee_name or "").strip() or None,
-                contact=(row.contact or "").strip() or None,
-                email=(str(row.email).strip() if row.email else None) or None,
-                city=(row.city or "").strip() or None,
-                state=(row.state or "").strip() or None,
-                address=(row.address or "").strip() or None,
-                sort_order=sort_order,
-            )
-        )
+        target = existing[row.id] if row.id is not None else OrderConsigneeAddress(order_id=order_id)
+        for field in ("consignee_name", "contact", "email", "city", "state", "address"):
+            setattr(target, field, (getattr(row, field) or "").strip() or None)
+        target.sort_order = sort_order
+        db.add(target)
+    db.flush()
 
 
 def _load_consignee_addresses(db: Session, order_id: int) -> list[OrderConsigneeAddressOut]:
@@ -370,6 +392,7 @@ def _load_consignee_addresses(db: Session, order_id: int) -> list[OrderConsignee
 def _hydrate_order(db: Session, order: Order) -> OrderOut:
     return OrderOut(
         id=order.id,
+        installation_required=order.installation_required,
         order_no=order.order_no,
         order_date=order.order_date,
         oem_bill_no=order.oem_bill_no,
@@ -410,6 +433,77 @@ def _load_order(db: Session, user: User, order_id: int) -> Order:
         if order.vendor_id not in _vendor_ids_for_user(db, user):
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Order not found")
     return order
+
+
+def _load_order_operations_edit(db: Session, user: User, order_id: int) -> Order:
+    order = _load_order(db, user, order_id)
+    if not is_operations_admin(user) and not (user.role == "vendor" and order.vendor_id in _vendor_ids_for_user(db, user)):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Your role cannot change this order")
+    # Serialize selection and address-list changes for this order.
+    db.refresh(order, with_for_update=True)
+    return order
+
+
+def _validate_item_consignee(db: Session, order_id: int, consignee_id: int | None) -> None:
+    if consignee_id is None:
+        return
+    consignee = db.scalar(select(OrderConsigneeAddress).where(
+        OrderConsigneeAddress.id == consignee_id,
+        OrderConsigneeAddress.order_id == order_id,
+    ))
+    if consignee is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Select a consignee belonging to this order")
+    _validate_consignee_rows([OrderConsigneeAddressCreate.model_validate(consignee, from_attributes=True)])
+
+
+@router.put("/{order_id}/consignee-addresses", response_model=OrderOut)
+def update_consignee_addresses(
+    order_id: int,
+    body: OrderConsigneeAddressesUpdate,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    order = _load_order_operations_edit(db, user, order_id)
+    _replace_consignee_addresses(db, order.id, _validate_consignee_rows(body.consignee_addresses))
+    db.commit()
+    return _hydrate_order(db, order)
+
+
+@router.patch("/{order_id}/items/{item_id}/consignee", response_model=OrderOut)
+def update_item_consignee(
+    order_id: int,
+    item_id: int,
+    body: OrderItemConsigneeUpdate,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    order = _load_order_operations_edit(db, user, order_id)
+    item = db.scalar(select(OrderItem).where(OrderItem.id == item_id, OrderItem.order_id == order.id))
+    if item is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Order line item not found")
+    if body.consignee_address_id != item.consignee_address_id and item.id in _consignee_locked_item_ids(db, order.id):
+        raise HTTPException(status.HTTP_409_CONFLICT, "Consignee is locked because an engineer has been assigned to this line item")
+    _validate_item_consignee(db, order.id, body.consignee_address_id)
+    item.consignee_address_id = body.consignee_address_id
+    db.commit()
+    return _hydrate_order(db, order)
+
+
+@router.put("/{order_id}/installation-requirement", response_model=OrderOut)
+def update_installation_requirement(
+    order_id: int,
+    body: OrderInstallationRequirementUpdate,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    order = _load_order_operations_edit(db, user, order_id)
+    admin = is_system_admin(user) or is_sub_admin(user)
+    if not admin and order.status not in {"Pending", "Shipped", "In Transit"}:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Vendor and Service users can change installation requirements only while Pending, Shipped or In Transit")
+    order.installation_required = body.installation_required
+    sync_order_installation_policy(db, order)
+    db.commit()
+    return _hydrate_order(db, order)
 
 
 def _can_submit_serials(db: Session, user: User, order: Order) -> bool:
@@ -557,6 +651,7 @@ def _serialize_order_item_csv_row(
 def _clone_order_item_for_serial_row(source: OrderItem) -> OrderItem:
     return OrderItem(
         order_id=source.order_id,
+        consignee_address_id=source.consignee_address_id,
         item_id=source.item_id,
         item_code=source.item_code,
         serial_no=None,
@@ -1079,9 +1174,11 @@ async def create_order(
 
     for item_data in body.items:
         resolved_item_code = _resolve_item_code(db, item_data.item_id, item_data.item_code)
+        _validate_item_consignee(db, order.id, item_data.consignee_address_id)
         for unit_idx in range(item_data.item_qty):
             order_item = OrderItem(
                 order_id=order.id,
+                consignee_address_id=item_data.consignee_address_id,
                 item_id=item_data.item_id,
                 item_code=resolved_item_code,
                 serial_no=item_data.serial_no if unit_idx == 0 else None,
@@ -1387,6 +1484,7 @@ async def import_order_items_csv(
                         f"Row {row_idx}: duplicate serial '{serial_value}' already exists in another order",
                     )
 
+    sync_order_installation_policy(db, order)
     db.commit()
     db.refresh(order)
     hydrated = _hydrate_order(db, order)
@@ -1405,6 +1503,7 @@ def _add_items_to_order(
 ) -> None:
     _validate_order_item_serials(db, items, require_serials=require_serials)
     for item_data in items:
+        _validate_item_consignee(db, order.id, item_data.consignee_address_id)
         if item_data.free_service_count > 4:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Free service count cannot exceed 4")
         resolved_item_code = _resolve_item_code(db, item_data.item_id, item_data.item_code)
@@ -1413,6 +1512,7 @@ def _add_items_to_order(
         for unit_idx in range(item_data.item_qty):
             order_item = OrderItem(
                 order_id=order.id,
+                consignee_address_id=item_data.consignee_address_id,
                 item_id=item_data.item_id,
                 item_code=resolved_item_code,
                 serial_no=item_data.serial_no if unit_idx == 0 else None,
@@ -1501,6 +1601,7 @@ def replace_vendor_pending_line_items(
         db.delete(item)
     db.flush()
     _add_items_to_order(db, order, body.items, user=user, require_serials=False)
+    sync_order_installation_policy(db, order)
     db.commit()
     db.refresh(order)
     return _hydrate_order(db, order)
@@ -1515,6 +1616,7 @@ def update_order(
     user: User = Depends(get_current_user),
 ):
     order = _load_order(db, user, order_id)
+    db.refresh(order, with_for_update=True)
     can_edit_order = can_act_on(db, user, "orders", "can_edit", None)
     can_vendor_pending = _can_vendor_edit_pending_line_items(db, user, order)
     can_vendor_shipped = _can_vendor_edit_shipped_fields(db, user, order)
@@ -1685,6 +1787,7 @@ def update_order(
 
     from app.services.pending_action_sync import sync_order_pending_actions
 
+    sync_order_installation_policy(db, order)
     sync_order_pending_actions(db, order)
     db.commit()
     db.refresh(order)
@@ -1762,6 +1865,7 @@ def submit_serials_for_assignment(
     if not _can_submit_serials(db, user, order):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Your role cannot edit this order")
 
+    require_order_installation(order)
     if order.status != "Delivered":
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST,
@@ -1843,8 +1947,16 @@ def submit_serials_for_assignment(
             "skipped_already_submitted": skipped_already_submitted,
         }
 
+    def consignee_chunks(values):
+        # Never combine serials for two delivery locations into a single new row.
+        grouped = {}
+        for value in values:
+            grouped.setdefault(value[0].consignee_address_id, []).append(value)
+        for group in grouped.values():
+            yield from _chunk_by_size(group, chunk_size)
+
     if serial_count >= 2:
-        selected_chunks = _chunk_by_size(resolved, chunk_size)
+        selected_chunks = list(consignee_chunks(resolved))
         incomplete_pair = any(len(chunk) != chunk_size for chunk in selected_chunks)
         mismatched_pair = any(
             {slot for _, slot, _ in chunk} != {"serial1", "serial2"}
@@ -1854,7 +1966,7 @@ def submit_serials_for_assignment(
         if incomplete_pair or mismatched_pair:
             raise HTTPException(
                 status.HTTP_400_BAD_REQUEST,
-                "Select one Serial 1 and one Serial 2 for each installation unit",
+                "Select one Serial 1 and one Serial 2 for each installation unit with the same consignee",
             )
 
     global_conflicts = _find_global_serial_conflicts(
@@ -1913,6 +2025,7 @@ def submit_serials_for_assignment(
             new_serial_no_2 = values[1] if len(values) > 1 and serial_count >= 2 else None
 
         new_item = OrderItem(
+            consignee_address_id=source_item.consignee_address_id,
             order_id=order_id,
             item_id=source_item.item_id,
             item_code=source_item.item_code,
@@ -1948,12 +2061,12 @@ def submit_serials_for_assignment(
         return new_item
 
     submitted_ids: list[int] = []
-    for chunk_values in _chunk_by_size(resolved, chunk_size):
+    for chunk_values in consignee_chunks(resolved):
         new_item = _make_row(list(chunk_values), locked=True)
         submitted_ids.append(new_item.id)
 
     repaired_ids: list[int] = []
-    for chunk_values in _chunk_by_size(leftover, chunk_size):
+    for chunk_values in consignee_chunks(leftover):
         new_item = _make_row(list(chunk_values), locked=False)
         repaired_ids.append(new_item.id)
 

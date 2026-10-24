@@ -13,6 +13,9 @@ export const ordersApi = {
       .then((r) => r.data);
   },
   update: (id, body) => api.put(`/api/orders/${id}`, body).then((r) => r.data),
+  updateInstallationRequirement: (id, installation_required) => api.put(`/api/orders/${id}/installation-requirement`, { installation_required }).then((r) => r.data),
+  updateConsignees: (id, consignee_addresses) => api.put(`/api/orders/${id}/consignee-addresses`, { consignee_addresses }).then((r) => r.data),
+  updateItemConsignee: (id, itemId, consignee_address_id) => api.patch(`/api/orders/${id}/items/${itemId}/consignee`, { consignee_address_id }).then((r) => r.data),
   replaceVendorLineItems: (id, body) => api.put(`/api/orders/${id}/vendor-line-items`, body).then((r) => r.data),
   remove: (id) => api.delete(`/api/orders/${id}`),
   submitSerials: (id, body) => api.post(`/api/orders/${id}/submit-serials`, body).then((r) => r.data),

@@ -2,6 +2,7 @@ from datetime import datetime
 from pydantic import BaseModel, Field
 
 from app.schemas.place import PlaceIn
+from app.schemas.order import OrderConsigneeAddressOut
 
 
 class InstallationCreate(PlaceIn):
@@ -192,6 +193,7 @@ class InstallationEngineerSerialOut(BaseModel):
 
 class InstallationOut(BaseModel):
     id: int
+    consignee: OrderConsigneeAddressOut | None = None
     source: str = "vendor"
     customer_name: str
     contact_number: str

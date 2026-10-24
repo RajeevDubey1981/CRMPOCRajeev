@@ -7,6 +7,7 @@ ORDER_STATUSES = ("Pending", "Shipped", "In Transit", "Delivered", "Returned", "
 
 
 class OrderConsigneeAddressCreate(BaseModel):
+    id: int | None = Field(default=None, gt=0)
     consignee_name: str | None = None
     contact: str | None = None
     email: str | None = None
@@ -30,6 +31,7 @@ class OrderConsigneeAddressOut(BaseModel):
 
 
 class OrderItemCreate(BaseModel):
+    consignee_address_id: int | None = Field(default=None, gt=0)
     item_id: int | None = None
     item_code: str | None = None
     serial_no: str | None = None
@@ -45,6 +47,10 @@ class OrderItemCreate(BaseModel):
 
 class OrderItemOut(BaseModel):
     id: int
+    installation_auto_completed: bool = False
+    consignee_address_id: int | None = None
+    consignee_locked: bool = False
+    consignee: OrderConsigneeAddressOut | None = None
     item_id: int | None
     item_code: str | None = None
     item_name: str | None = None  # resolved from item_masters
@@ -105,6 +111,24 @@ class OrderVendorLineItemsReplace(BaseModel):
     items: list[OrderItemCreate]
 
 
+class OrderItemConsigneeUpdate(BaseModel):
+    consignee_address_id: int | None = Field(gt=0)
+
+    model_config = {"extra": "forbid"}
+
+
+class OrderConsigneeAddressesUpdate(BaseModel):
+    consignee_addresses: list[OrderConsigneeAddressCreate]
+
+    model_config = {"extra": "forbid"}
+
+
+class OrderInstallationRequirementUpdate(BaseModel):
+    installation_required: bool
+
+    model_config = {"extra": "forbid"}
+
+
 class OrderUpdate(BaseModel):
     order_no: str | None = None
     order_date: date | None = None
@@ -129,6 +153,7 @@ class OrderUpdate(BaseModel):
 
 class OrderOut(BaseModel):
     id: int
+    installation_required: bool = True
     order_no: str | None
     order_date: date
     oem_bill_no: str | None
