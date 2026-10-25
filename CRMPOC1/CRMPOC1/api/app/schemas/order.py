@@ -50,6 +50,8 @@ class OrderItemOut(BaseModel):
     installation_auto_completed: bool = False
     consignee_address_id: int | None = None
     consignee_locked: bool = False
+    returned_installation_id: int | None = None
+    return_reason: str | None = None
     consignee: OrderConsigneeAddressOut | None = None
     item_id: int | None
     item_code: str | None = None

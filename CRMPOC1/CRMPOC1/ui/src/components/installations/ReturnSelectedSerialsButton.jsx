@@ -1,0 +1,41 @@
+import { useEffect, useRef, useState } from "react";
+import { api } from "../../api/client.js";
+import { formatApiError } from "../../utils/apiError.js";
+
+export const canReturnSerialRow = row => ["Assigned", "In Progress", "Serial Pending Verification", "Returned", "Rejected"].includes(row.status) && Boolean(row.serial_no);
+
+export default function ReturnSelectedSerialsButton({ rows, onUpdated, disabled = false }) {
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const reasonField = useRef(null);
+  const hasSelection = rows.length > 0;
+  useEffect(() => {
+    if (!hasSelection) { setReason(""); setError(""); }
+  }, [hasSelection]);
+
+  async function submit() {
+    if (disabled || busy || !rows.length) return;
+    if (reason.trim().length < 2) {
+      setError("Enter a return reason of at least 2 characters before submitting.");
+      reasonField.current?.focus();
+      return;
+    }
+    setBusy(true); setError("");
+    try {
+      await api.post("/api/installation-returns", { installation_ids: rows.map(row => row.id), reason: reason.trim() });
+      setReason(""); await onUpdated?.();
+    } catch (e) { setError(formatApiError(e, "Unable to return selected serial rows")); }
+    finally { setBusy(false); }
+  }
+
+  return <div className="contents">
+    {hasSelection && <label className="order-first block w-full basis-full text-sm font-medium text-slate-700">
+      Return reason <span className="text-rose-600">*</span>
+      <textarea ref={reasonField} required minLength={2} rows={3} value={reason} onChange={e => { setReason(e.target.value); setError(""); }} className="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 font-normal" placeholder="Explain why the selected products are not available at the installation location" disabled={disabled || busy} />
+      <span className="mt-1 block text-xs font-normal text-slate-500">Required before sending the selected serial rows for return approval. Other rows will continue unchanged.</span>
+    </label>}
+    <button type="button" disabled={disabled || busy || !hasSelection} onClick={submit} className="rounded-md border border-amber-500 bg-amber-50 px-4 py-2 text-sm font-medium text-amber-900 disabled:opacity-50">{busy ? "Submitting..." : `Return selected (${rows.length})`}</button>
+    {error && <p role="alert" className="w-full basis-full text-sm text-rose-700">{error}</p>}
+  </div>;
+}

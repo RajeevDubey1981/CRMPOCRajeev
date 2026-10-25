@@ -1,3 +1,4 @@
+import InstallationReturns from "../../components/installations/InstallationReturns.jsx";
 import { roleKey as canonicalRoleKey } from "../../utils/roles.js";
 import { hasPermission } from "../../utils/permissions.js";
 import { useEffect, useRef, useState } from "react";
@@ -230,12 +231,13 @@ export default function InstallationDetail() {
 
   const isCallcenter = (installation.source || "").toLowerCase() === "callcenter";
   const usesStructuredWorkflow = usesStructuredInstallationWorkflow(installation);
-  const canEditWorkflow = (isAdminLike || isServiceTeam) && usesStructuredWorkflow;
+  const canEditWorkflow = (isAdminLike || isServiceTeam) && usesStructuredWorkflow && !["Pending Return Approval", "Returned - Location Not Verified", "Return Location Verified", "Return Approved - Closed"].includes(installation.status);
   const workflowStepOptions = canEditWorkflow ? getInstallationWorkflowStepOptions(installation) : [];
   const showInlineStatusEdit = (editing || wantsEdit)
     && !usesStructuredWorkflow
     && (!isCallcenter || isAdminLike);
-  const canEdit = !(isEngineer && installation.status === "Completed");
+  const returnHeld = ["Pending Return Approval", "Returned - Location Not Verified", "Return Location Verified", "Return Approved - Closed"].includes(installation.status);
+  const canEdit = !returnHeld && !(isEngineer && installation.status === "Completed");
 
   function handleEditClick() {
     if (usesStructuredWorkflow && !isAdminLike) {
@@ -252,6 +254,8 @@ export default function InstallationDetail() {
 
   return (
     <div className="space-y-5">
+      <InstallationReturns rows={[installation]} installationId={installation.id} onUpdated={load} />
+
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
@@ -280,7 +284,7 @@ export default function InstallationDetail() {
               {usesStructuredWorkflow && !isAdminLike ? "Go to workflow" : isCallcenter ? "Go to workflow" : "Edit"}
             </button>
           )}
-          {isAdminLike && installation.status !== "Rejected" && installation.status !== "Returned" && (
+          {isAdminLike && !returnHeld && installation.status !== "Rejected" && installation.status !== "Returned" && (
             <button
               onClick={rejectInstallation}
               disabled={busy}
@@ -289,7 +293,7 @@ export default function InstallationDetail() {
               {usesStructuredWorkflow && installation.assigned_engineer ? "Return to engineer" : "Reject"}
             </button>
           )}
-          {isAdminLike && canDeletePerm && (
+          {isAdminLike && !returnHeld && canDeletePerm && (
             <button
               onClick={() => setConfirmDelete(true)}
               disabled={busy}

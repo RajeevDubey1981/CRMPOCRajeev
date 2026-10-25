@@ -340,7 +340,7 @@ def _assert_order_item_can_be_rearranged(
         )
     blocking_installation_stmt = select(InstallationRequest.id).where(
         InstallationRequest.order_item_id == item_id,
-        InstallationRequest.status.notin_(("Rejected", "Completed")),
+        InstallationRequest.status.notin_(("Rejected", "Completed", "Returned - Location Not Verified", "Return Location Verified", "Return Approved - Closed")),
     )
     if exclude_installation_id is not None:
         blocking_installation_stmt = blocking_installation_stmt.where(

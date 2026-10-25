@@ -73,7 +73,7 @@ export default function InstallationList() {
     date_to: "",
   });
   const [page, setPage] = useState(1);
-  const [perPage, setPerPage] = useState(20);
+  const [perPage, setPerPage] = useState(50);
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [cancelBusyId, setCancelBusyId] = useState(null);
   const [expandedGroups, setExpandedGroups] = useState(new Set());
@@ -487,7 +487,7 @@ export default function InstallationList() {
                                         {row.complaint_no || `#${row.complaint_id}`}
                                       </Link>
                                     ) : (
-                                      <span className="text-slate-400">—</span>
+                                      <span className="text-slate-400">-</span>
                                     )}
                                   </td>
                                   {!isEngineer && <td className="px-3 py-2">{row.vendor_name || "-"}</td>}
@@ -578,6 +578,7 @@ export default function InstallationList() {
       </div>
 
       <Pagination
+        pageSizeOptions={[50, 100, 500]}
         page={page}
         perPage={perPage}
         total={data.total}

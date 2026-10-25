@@ -1,3 +1,4 @@
+import InstallationReturns from "../../components/installations/InstallationReturns.jsx";
 import { useEffect, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 
@@ -724,6 +725,7 @@ export default function OrderDetail() {
 
   function installationForItem(item) {
     const chooseCurrentInstallation = (matches) => {
+      matches = matches.filter(row => !["Return Approved - Closed", "Returned - Location Not Verified", "Return Location Verified"].includes(row.status));
       if (!matches.length) return null;
       const statusRank = {
         "Completed": 90,
@@ -764,7 +766,9 @@ export default function OrderDetail() {
   }
 
   function installationStatusLabel(item, inst) {
+    if (item.returned_installation_id) return "Returned - Ready for new request";
     if (item.installation_auto_completed) return "Installed";
+    if (item.installation_status === "Returned - Location Not Verified") return item.installation_status;
     if (inst) return inst.status;
     if (item.installation_status === "Submitted") return "Locked (Submitted)";
     return item.installation_status;
@@ -772,13 +776,15 @@ export default function OrderDetail() {
 
   function installationStatusClass(item, inst) {
     const label = installationStatusLabel(item, inst);
+    if (item.returned_installation_id) return "font-bold text-red-900";
+    if (label === "Returned - Location Not Verified") return "font-semibold text-amber-900";
     if (label === "Installed" || label === "Completed" || inst?.status === "Completed") {
-      return "bg-green-100 text-green-700";
+      return "font-semibold text-green-700";
     }
     if (label === "Not Requested") {
-      return "bg-slate-100 text-slate-600";
+      return "text-slate-600";
     }
-    return "bg-amber-100 text-amber-700";
+    return "font-semibold text-amber-700";
   }
 
   function toggleSerial(item, serialType) {
@@ -1105,6 +1111,7 @@ export default function OrderDetail() {
 
   return (
     <div className="space-y-5">
+      <InstallationReturns orderId={Number(id)} />
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <Link to="/orders" className="text-sm text-brand-600 hover:underline">
@@ -1430,7 +1437,7 @@ export default function OrderDetail() {
                   const selectable = inst && (inst.status === "Submitted" || inst.status === "Assigned");
                   const canProgress = inst && (inst.status === "Assigned" || WORK_STARTED_STATUSES.has(inst.status));
                   return (
-                    <tr key={item.id} className="hover:bg-slate-50">
+                    <tr key={item.id} className={item.returned_installation_id ? "bg-red-200 hover:bg-red-300" : "hover:bg-slate-50"}>
                       {!isVendor && (
                         <td className="px-3 py-2">
                           {selectable && (
@@ -1516,17 +1523,18 @@ export default function OrderDetail() {
                         {inst && canViewInstallationRequest ? (
                           <Link
                             to={`/installations/${inst.id}?edit=1`}
-                            className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium underline-offset-2 hover:underline ${installationStatusClass(item, inst)}`}
+                            className={`inline-block min-w-[11rem] text-sm leading-5 underline-offset-2 hover:underline ${installationStatusClass(item, inst)}`}
                           >
                             {installationStatusLabel(item, inst)}
                           </Link>
                         ) : (
                           <span
-                            className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${installationStatusClass(item, inst)}`}
+                            className={`inline-block min-w-[11rem] text-sm leading-5 ${installationStatusClass(item, inst)}`}
                           >
                             {installationStatusLabel(item, inst)}
                           </span>
                         )}
+                        {item.returned_installation_id && <div className="mt-1 max-w-xs text-xs font-semibold text-red-900">Return #{item.returned_installation_id}: {item.return_reason || "Return approved"}</div>}
                       </td>
                       {!isVendor && (
                         <td className="px-3 py-2">

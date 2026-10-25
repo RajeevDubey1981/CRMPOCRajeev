@@ -269,6 +269,7 @@ def _consignee_locked_item_ids(db: Session, order_id: int) -> set[int]:
         InstallationRequest.order_item_id, InstallationRequest.serial_no, InstallationRequest.serial_no_2,
     ).where(
         InstallationRequest.assigned_engineer.is_not(None),
+        InstallationRequest.status.notin_(("Returned - Location Not Verified", "Return Location Verified", "Return Approved - Closed")),
         or_(InstallationRequest.order_id == order_id, InstallationRequest.order_item_id.in_(item_ids)),
     )).all()
     locked = {row.order_item_id for row in assignments if row.order_item_id in item_ids}
@@ -295,13 +296,23 @@ def _hydrate_items(db: Session, order: Order) -> list[OrderItemOut]:
             func.coalesce(OrderItem.id, 0),
         )
     ).all()
+    from app.models.installation import InstallationStatusLog
+    returned = {}
+    for inst in db.scalars(select(InstallationRequest).where(InstallationRequest.order_item_id.in_([r.id for r in rows]), InstallationRequest.status == "Return Approved - Closed").order_by(InstallationRequest.id.desc())).all():
+        returned.setdefault(inst.order_item_id, inst.id)
+    reasons = {}
+    for entry in db.scalars(select(InstallationStatusLog).where(InstallationStatusLog.installation_request_id.in_(list(returned.values())), InstallationStatusLog.action == "Location Return Requested").order_by(InstallationStatusLog.id.desc())).all():
+        reasons.setdefault(entry.installation_request_id, entry.remarks)
     out = []
     for row in rows:
+        returned_id = returned.get(row.id) if row.installation_status == "Not Requested" else None
         out.append(OrderItemOut(
             id=row.id,
             installation_auto_completed=row.installation_auto_completed,
             consignee_address_id=row.consignee_address_id,
             consignee_locked=row.id in consignee_locked_ids,
+            returned_installation_id=returned_id,
+            return_reason=reasons.get(returned_id),
             consignee=consignees.get(row.consignee_address_id),
             item_id=row.item_id,
             item_code=_resolve_item_code(db, row.item_id, row.item_code),
@@ -1228,7 +1239,7 @@ async def create_order(
 
 
 # ---------------------------------------------------------------------------
-# Single-item endpoints — MUST come after fixed-path routes
+# Single-item endpoints â€” MUST come after fixed-path routes
 # ---------------------------------------------------------------------------
 
 @router.get("/{order_id}", response_model=OrderOut)
@@ -2008,8 +2019,20 @@ def submit_serials_for_assignment(
                 continue
             leftover.append((item, slot, serial_value))
 
+    archived_item_ids = set(db.scalars(select(InstallationRequest.order_item_id).where(InstallationRequest.order_item_id.in_(list(touched_items)), InstallationRequest.status == "Return Approved - Closed")).all())
+    reused_ids = set()
+
     def _make_row(chunk: list[tuple[OrderItem, str, str]], locked: bool) -> OrderItem:
         source_item = chunk[0][0]
+        if any(item.id in archived_item_ids for item, _, _ in chunk):
+            actual = {(item.id, slot) for item, slot, _ in chunk}
+            expected = {(source_item.id, slot) for slot, value in (("serial1", source_item.serial_no), ("serial2", source_item.serial_no_2)) if value}
+            if actual != expected or not locked:
+                raise HTTPException(409, "Select the original returned serial pair together; its audit row cannot be split or rearranged")
+            source_item.installation_status = "Submitted"
+            reused_ids.add(source_item.id)
+            db.add(InstallationRequest(source="vendor", customer_name=order.customer_name or "Unknown", contact_number=order.customer_contact or "", customer_email=order.customer_email, address=order.customer_address or order.customer_city or "", order_id=order.id, order_item_id=source_item.id, product_name=_resolve_item_name(db, source_item.item_id), serial_no=source_item.serial_no, serial_no_2=source_item.serial_no_2, request_date=datetime.now(timezone.utc), status="Submitted"))
+            return source_item
         # Preserve each serial's original slot (serial1 -> serial_no, serial2 -> serial_no_2)
         # rather than assigning by chunk position, so a "Serial 2" origin never lands in the
         # new row's "Serial 1" column.
@@ -2070,7 +2093,7 @@ def submit_serials_for_assignment(
         new_item = _make_row(list(chunk_values), locked=False)
         repaired_ids.append(new_item.id)
 
-    consumed_ids = list(touched_items.keys())
+    consumed_ids = [item_id for item_id in touched_items if item_id not in reused_ids]
     blocking_claim = db.scalar(
         select(Claim.id).where(Claim.order_item_id.in_(consumed_ids)).limit(1)
     )
@@ -2101,7 +2124,8 @@ def submit_serials_for_assignment(
     )
 
     for item in touched_items.values():
-        db.delete(item)
+        if item.id not in reused_ids:
+            db.delete(item)
 
     try:
         db.commit()

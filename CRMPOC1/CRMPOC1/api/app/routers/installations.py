@@ -519,7 +519,7 @@ def _sync_order_completion_state(db: Session, inst: InstallationRequest) -> None
 @router.get("", response_model=InstallationListResponse)
 def list_installations(
     page: int = Query(1, ge=1),
-    per_page: int = Query(20, ge=1, le=200),
+    per_page: int = Query(50, ge=1, le=500),
     status_filter: str | None = Query(None, alias="status"),
     stage: str | None = None,
     search: str | None = None,
@@ -532,7 +532,7 @@ def list_installations(
     if not can_act_on(db, user, "installations", "can_view", None):
         return InstallationListResponse(items=[], total=0, page=page, per_page=per_page)
 
-    stmt = select(InstallationRequest)
+    stmt = select(InstallationRequest).where(InstallationRequest.status.notin_(("Returned - Location Not Verified", "Return Location Verified", "Return Approved - Closed")))
 
     # Call-center requests stay on the complaint workflow until an engineer is assigned.
     if canonical_role_key(user.role) != "engineer":

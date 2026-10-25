@@ -27,12 +27,13 @@ ROOT_ENV_FILE = ROOT / ".env"
 API_SKIP_DIRS = {"venv", "__pycache__", ".pytest_cache", ".mypy_cache", "uploads", ".git"}
 API_SKIP_FILES = {".env", ".env.local", "uvicorn.stdout.log"}
 API_SKIP_SUFFIXES = {".log", ".pyc", ".pyo"}
-API_DEPLOY_DIRS = {"app", "alembic", "sales_alembic", "marketing_alembic", "templates"}
+API_DEPLOY_DIRS = {"app", "alembic", "sales_alembic", "marketing_alembic", "parts_alembic", "templates"}
 API_DEPLOY_FILES = {
     "requirements.txt",
     "alembic.ini",
     "alembic_sales.ini",
     "alembic_marketing.ini",
+    "alembic_parts.ini",
 }
 
 
