@@ -13,6 +13,7 @@ SERVICE_VIEW_ALL_ROLES = frozenset({
     "incool",
     "indcool",
     "indcool service",
+    "indcool_service",
     "service_manager",
     "sub_admin",
 })
@@ -29,7 +30,12 @@ LEGACY_SERVICE_OPS_ROLES = frozenset({
 
 
 def is_service_desk_user(user: User) -> bool:
-    return role_key(user.role) in SERVICE_DESK_ROLES
+    # A role that's also full-ops (SERVICE_VIEW_ALL_ROLES) is never narrowed to "desk" visibility, even if
+    # it's historically been tagged as a desk role too — full-ops wins. This is what keeps an
+    # "indcool_service" user (seeded as "full operations access") from being silently restricted to only
+    # the service requests explicitly assigned to them, the way a genuine desk-only "service" role is.
+    key = role_key(user.role)
+    return key in SERVICE_DESK_ROLES and key not in SERVICE_VIEW_ALL_ROLES
 
 
 def is_service_manager(user: User) -> bool:
