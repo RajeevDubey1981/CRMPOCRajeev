@@ -1906,7 +1906,7 @@ export default function EngineerUnitWorkflowPanel({
             onChanged={reloadServiceClaims}
             isServiceManager={isServiceManager}
           />
-          {!hasClaim && (
+          {canApproveUnits && !hasClaim && (
             <RaiseClaimPanel
               flow="service"
               triggerLabel="Found something that was never delivered with this unit"

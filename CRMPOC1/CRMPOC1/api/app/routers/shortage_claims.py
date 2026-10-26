@@ -276,12 +276,12 @@ def raise_claim(body: ClaimIn, db: Session = Depends(get_db), user: User = Depen
         )
         if already:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "A claim has already been raised for this unit")
-    if body.flow == "parts":
-        # Only whoever can act on a parts request's approval (Service Team, Service Manager, Admin/Sub Admin)
-        # may claim it out from there — never the engineer who raised the request.
+    if body.flow in ("parts", "service"):
+        # Only whoever can act on the approval (Service Team, Service Manager, Admin/Sub Admin) may claim
+        # it out — never the engineer, whether it's a parts request or a service unit's recommendation.
         role = role_key(user.role)
         if role not in SERVICE_MANAGER_ROLES and role not in SERVICE_TEAM_ROLES and role not in SECOND_STAGE_ROLES:
-            raise HTTPException(status.HTTP_403_FORBIDDEN, "Your role cannot claim out a parts request")
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "Your role cannot raise this claim")
     if body.flow != "service" and not body.items:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Pick what's missing")
     if body.flow in ("parts", "service") and not body.responsible_type:
