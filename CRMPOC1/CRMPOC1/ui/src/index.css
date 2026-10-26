@@ -266,3 +266,13 @@ html[data-s-motion="off"] :is(.q-alarm, .q-bell svg, .q-bell::after) { animation
 .q-approvals-pulse { animation: q-approvals-glow 2.6s ease-in-out infinite; }
 .q-approvals-pulse:hover { animation: none; }
 html[data-s-motion="off"] .q-approvals-pulse { animation: none !important; }
+
+/* Highlight pending installation returns without fading text or approval controls. */
+@keyframes installation-return-pulse {
+  0%, 100% { border-color: #ef4444; background-color: #fef2f2; }
+  50% { border-color: #b91c1c; background-color: #fee2e2; }
+}
+.installation-return-alert { animation: installation-return-pulse 2s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .installation-return-alert { animation: none; }
+}

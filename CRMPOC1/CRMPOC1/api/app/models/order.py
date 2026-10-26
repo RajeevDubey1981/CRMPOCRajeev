@@ -1,6 +1,6 @@
 from datetime import date
 
-from sqlalchemy import String, Date, Integer, ForeignKey, Text
+from sqlalchemy import Boolean, String, Date, Integer, ForeignKey, Text, true, false
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -11,6 +11,7 @@ class Order(Base, TimestampMixin, SoftDeleteMixin):
     __tablename__ = "orders"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    installation_required: Mapped[bool] = mapped_column(Boolean, default=True, server_default=true(), nullable=False)
     order_no: Mapped[str | None] = mapped_column(String(255), unique=True, nullable=True, index=True)
     order_date: Mapped[date] = mapped_column(Date, nullable=False)
     oem_bill_no: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
@@ -56,7 +57,11 @@ class OrderItem(Base, TimestampMixin):
     __tablename__ = "order_items"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    installation_auto_completed: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false(), nullable=False)
     order_id: Mapped[int] = mapped_column(ForeignKey("orders.id", ondelete="CASCADE"), nullable=False)
+    consignee_address_id: Mapped[int | None] = mapped_column(
+        ForeignKey("order_consignee_addresses.id"), nullable=True, index=True,
+    )
     item_id: Mapped[int | None] = mapped_column(ForeignKey("item_masters.id"), nullable=True)
     item_code: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
     serial_no: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)

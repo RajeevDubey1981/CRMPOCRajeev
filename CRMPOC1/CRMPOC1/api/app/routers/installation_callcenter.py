@@ -33,6 +33,7 @@ from app.schemas.installation import (
 from app.services.email_service import send_document_upload_link_email
 from app.services.file_service import read_upload_bytes, save_upload, to_public_upload_path
 from app.services.role_access import is_operations_admin
+from app.services.order_installation_policy import require_order_installation
 from app.services.installation_workflow import (
     BILLING_TYPES,
     CUSTOMER_DOCUMENT_OPTIONS,
@@ -372,6 +373,7 @@ def verify_order(
     if order is None or order.deleted_at is not None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Order not found")
     old_status = inst.status
+    require_order_installation(order)
     inst.order_id = order.id
     inst.order_verified_at = now_utc()
     inst.order_verified_by = user.id

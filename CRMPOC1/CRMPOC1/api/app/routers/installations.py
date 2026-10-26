@@ -11,7 +11,9 @@ from app.database import get_db
 from app.deps import get_current_user
 from app.models.installation import InstallationEngineerSerial, InstallationRequest
 from app.models.complaint import Complaint
-from app.models.order import Order, OrderItem
+from app.models.order import Order, OrderConsigneeAddress, OrderItem
+from app.services.order_installation_policy import require_order_installation
+from app.models.item_master import ItemMaster
 from app.models.payment import PaymentTransaction
 from app.models.payment_approval import PaymentApprovalLog
 from app.models.service import ServicePaymentRequest, ServiceRequest
@@ -90,6 +92,16 @@ SUCCESS_ASSIGNMENT_STATUSES = ("Completed", "Settlement Approved")
 UNSUCCESS_ASSIGNMENT_STATUSES = ("Returned", "Rejected")
 
 
+def _canonical_order_item_code(db: Session, order_item: OrderItem | None) -> str | None:
+    if order_item is None:
+        return None
+    if order_item.item_id:
+        master = db.get(ItemMaster, order_item.item_id)
+        if master and master.item_code:
+            return master.item_code
+    return order_item.item_code
+
+
 def _split_total_amount(total_amount: str, count: int) -> list[Decimal]:
     if count < 1:
         return []
@@ -120,6 +132,7 @@ def _validate_installation_request_allowed(db: Session, order_item_id: int | Non
     order = db.get(Order, item.order_id)
     if order is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Order not found")
+    require_order_installation(order)
     if order.status != "Delivered":
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST,
@@ -199,8 +212,9 @@ def _list_row(
         order = (orders_by_id or {}).get(inst.order_id)
     order_no = order.order_no if order else None
     vendor_name = vendor_map.get(order.vendor_id) if order and order.vendor_id else None
+    item_code = _canonical_order_item_code(db, order_item)
     group_key = (
-        order_item.item_code if order_item and order_item.item_code else "-",
+        item_code or "-",
         order_no or "-",
         vendor_name or "-",
     )
@@ -214,7 +228,7 @@ def _list_row(
         id=inst.id,
         source=inst.source or "vendor",
         order_item_id=inst.order_item_id,
-        item_code=order_item.item_code if order_item else None,
+        item_code=item_code,
         customer_name=inst.customer_name,
         contact_number=inst.contact_number,
         product_name=inst.product_name,
@@ -283,7 +297,13 @@ def _hydrate(db: Session, inst: InstallationRequest) -> dict:
     )
 
     order_item = db.get(OrderItem, inst.order_item_id) if inst.order_item_id else None
-    item_code = order_item.item_code if order_item else None
+    consignee = None
+    if order_item and order_item.consignee_address_id:
+        consignee = db.scalar(select(OrderConsigneeAddress).where(
+            OrderConsigneeAddress.id == order_item.consignee_address_id,
+            OrderConsigneeAddress.order_id == order_item.order_id,
+        ))
+    item_code = _canonical_order_item_code(db, order_item)
     item_serial_count = resolve_order_item_serial_count(db, order_item)
     completion_proofs = build_installation_completion_proofs(db, inst)
     work_report_file_path_2 = next(
@@ -296,6 +316,7 @@ def _hydrate(db: Session, inst: InstallationRequest) -> dict:
         .order_by(desc(PaymentApprovalLog.created_at))
     ).all()
     return {
+        "consignee": consignee,
         **{k: getattr(inst, k) for k in (
             "id", "source", "customer_name", "contact_number", "customer_email", "address", "pincode", "state", "district",
             "order_id", "order_item_id", "product_name",
@@ -498,7 +519,7 @@ def _sync_order_completion_state(db: Session, inst: InstallationRequest) -> None
 @router.get("", response_model=InstallationListResponse)
 def list_installations(
     page: int = Query(1, ge=1),
-    per_page: int = Query(20, ge=1, le=200),
+    per_page: int = Query(50, ge=1, le=500),
     status_filter: str | None = Query(None, alias="status"),
     stage: str | None = None,
     search: str | None = None,
@@ -511,7 +532,7 @@ def list_installations(
     if not can_act_on(db, user, "installations", "can_view", None):
         return InstallationListResponse(items=[], total=0, page=page, per_page=per_page)
 
-    stmt = select(InstallationRequest)
+    stmt = select(InstallationRequest).where(InstallationRequest.status.notin_(("Returned - Location Not Verified", "Return Location Verified", "Return Approved - Closed")))
 
     # Call-center requests stay on the complaint workflow until an engineer is assigned.
     if canonical_role_key(user.role) != "engineer":
@@ -617,7 +638,7 @@ def list_installations(
     group_counts: dict[tuple[str, str, str], tuple[int, int]] = {}
     group_rows = db.execute(
         select(
-            func.coalesce(OrderItem.item_code, "-"),
+            func.coalesce(ItemMaster.item_code, OrderItem.item_code, "-"),
             func.coalesce(Order.order_no, "-"),
             func.coalesce(Vendor.name_of_firm, "-"),
             func.sum(case((InstallationRequest.status == "Completed", 0), else_=1)),
@@ -626,10 +647,11 @@ def list_installations(
         .select_from(InstallationRequest)
         .join(filtered_ids_subq, filtered_ids_subq.c.id == InstallationRequest.id)
         .outerjoin(OrderItem, OrderItem.id == InstallationRequest.order_item_id)
+        .outerjoin(ItemMaster, ItemMaster.id == OrderItem.item_id)
         .outerjoin(Order, Order.id == func.coalesce(OrderItem.order_id, InstallationRequest.order_id))
         .outerjoin(Vendor, Vendor.id == Order.vendor_id)
         .group_by(
-            func.coalesce(OrderItem.item_code, "-"),
+            func.coalesce(ItemMaster.item_code, OrderItem.item_code, "-"),
             func.coalesce(Order.order_no, "-"),
             func.coalesce(Vendor.name_of_firm, "-"),
         )
@@ -752,7 +774,7 @@ def payment_history(
                 id=inst.id,
                 source_type="installation",
                 order_no=order.order_no if order else None,
-                item_code=order_item.item_code if order_item else None,
+                item_code=_canonical_order_item_code(db, order_item),
                 customer_name=inst.customer_name,
                 installation_date=inst.installation_date,
                 requested_amount=float(inst.payment_amount_requested) if inst.payment_amount_requested is not None else None,
@@ -849,6 +871,8 @@ def create_installation(
         order = db.get(Order, body.order_id) if body.order_id else None
         if body.order_id and (order is None or order.deleted_at is not None):
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Order not found")
+        if order is not None:
+            require_order_installation(order)
         inst = InstallationRequest(
             source="callcenter",
             created_by=user.id,
@@ -1032,13 +1056,14 @@ def bulk_assign(
 
 def _cancel_one(db: Session, inst: InstallationRequest) -> None:
     """Revert a single InstallationRequest to its pre-submission state: delete the request
-    and unlock its linked OrderItem back to "Not Requested" so the vendor can re-select it.
+    and reset its linked OrderItem to "Not Requested" with no consignee selection.
     Caller must have already validated inst.status is Submitted or Assigned.
     """
     if inst.order_item_id is not None:
         item = db.get(OrderItem, inst.order_item_id)
         if item is not None:
             item.installation_status = "Not Requested"
+            item.consignee_address_id = None
     db.delete(inst)
 
 
@@ -1647,7 +1672,8 @@ async def bulk_update_status(
 
     rows = [_load_visible(db, user, installation_id) for installation_id in parsed_ids]
     item_codes = {
-        ((db.get(OrderItem, row.order_item_id).item_code if row.order_item_id else None) or "").strip() or "UNASSIGNED"
+        ((_canonical_order_item_code(db, db.get(OrderItem, row.order_item_id)) if row.order_item_id else None) or "").strip()
+        or "UNASSIGNED"
         for row in rows
     }
     if len(item_codes) > 1:

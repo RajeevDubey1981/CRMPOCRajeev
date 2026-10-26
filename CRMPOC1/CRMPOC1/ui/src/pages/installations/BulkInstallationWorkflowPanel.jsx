@@ -1,3 +1,4 @@
+import ReturnSelectedSerialsButton, { canReturnSerialRow } from "../../components/installations/ReturnSelectedSerialsButton.jsx";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 
@@ -77,6 +78,7 @@ export default function BulkInstallationWorkflowPanel({ rows, onSaved, showClose
   const { user } = useAuth();
   const isAdminLike = isOperationsAdminRole(user?.role);
   const isEngineer = roleKey(user?.role) === "engineer";
+  const [returnIds, setReturnIds] = useState([]);
   const [workflowRows, setWorkflowRows] = useState(rows);
   const [rowForms, setRowForms] = useState({});
   const [busy, setBusy] = useState(false);
@@ -90,6 +92,7 @@ export default function BulkInstallationWorkflowPanel({ rows, onSaved, showClose
   });
 
   useEffect(() => {
+    setReturnIds([]);
     setWorkflowRows(rows);
     setRowForms((current) => {
       const next = {};
@@ -121,8 +124,8 @@ export default function BulkInstallationWorkflowPanel({ rows, onSaved, showClose
     [eligibleRows],
   );
   const selectedCompletionRows = useMemo(
-    () => completionRows.filter((row) => rowForms[row.id]?.selectedForCompletion),
-    [completionRows, rowForms],
+    () => completionRows.filter((row) => !returnIds.includes(row.id) && rowForms[row.id]?.selectedForCompletion),
+    [completionRows, rowForms, returnIds],
   );
   const showCompletionSelection = !isAdminLike && completionRows.length > 0;
   const paymentRows = useMemo(
@@ -130,8 +133,8 @@ export default function BulkInstallationWorkflowPanel({ rows, onSaved, showClose
     [eligibleRows],
   );
   const selectedPaymentRows = useMemo(
-    () => paymentRows.filter((row) => rowForms[row.id]?.selectedForPayment),
-    [paymentRows, rowForms],
+    () => paymentRows.filter((row) => !returnIds.includes(row.id) && rowForms[row.id]?.selectedForPayment),
+    [paymentRows, rowForms, returnIds],
   );
   const adminReviewRows = useMemo(
     () => eligibleRows.filter((row) => [
@@ -344,10 +347,15 @@ export default function BulkInstallationWorkflowPanel({ rows, onSaved, showClose
           : "Complete selected installation requests together while keeping proof, payment, observation, and history per serial."}
       </p>
 
+      {isEngineer && <div className="flex flex-wrap items-center justify-between gap-3">
+        <h3 className="text-sm font-semibold text-slate-800">Update order serial numbers</h3>
+        <ReturnSelectedSerialsButton rows={eligibleRows.filter(row => returnIds.includes(row.id) && canReturnSerialRow(row))} disabled={busy} onUpdated={async () => { setReturnIds([]); await onSaved?.(); }} />
+      </div>}
       <div className="overflow-x-auto rounded-md border border-slate-200">
         <table className="min-w-full text-sm">
           <thead className="bg-slate-100 text-left text-slate-700">
             <tr>
+              {isEngineer && <th className="w-12 px-2 py-2">Return</th>}
               {showCompletionSelection && <th className="w-12 px-2 py-2">Complete</th>}
               <th className="px-3 py-2">Request</th>
               <th className="px-3 py-2">Serial 1</th>
@@ -366,13 +374,14 @@ export default function BulkInstallationWorkflowPanel({ rows, onSaved, showClose
               const completeReady = canCompleteRow(row);
               return (
                 <tr key={row.id} className="align-top hover:bg-slate-50">
+                  {isEngineer && <td className="px-2 py-2"><input type="checkbox" aria-label={`Select serial row ${row.serial_no || row.id} to return`} checked={returnIds.includes(row.id)} disabled={busy || !canReturnSerialRow(row)} onChange={e => { const checked = e.target.checked; setReturnIds(ids => checked ? [...ids, row.id] : ids.filter(id => id !== row.id)); if (checked) updateRowForm(row.id, { selectedForCompletion: false, selectedForPayment: false }); }} className="h-4 w-4" /></td>}
                   {showCompletionSelection && (
                     <td className="px-2 py-2">
                       <input
                         type="checkbox"
                         checked={Boolean(form.selectedForCompletion)}
                         onChange={(e) => updateRowForm(row.id, { selectedForCompletion: e.target.checked })}
-                        disabled={!completeReady}
+                        disabled={busy || !completeReady || returnIds.includes(row.id)}
                         className="h-4 w-4 disabled:opacity-40"
                       />
                     </td>
@@ -503,7 +512,7 @@ export default function BulkInstallationWorkflowPanel({ rows, onSaved, showClose
                           <input
                             type="checkbox"
                             checked={Boolean(form.selectedForPayment)}
-                            onChange={(e) => updateRowForm(row.id, { selectedForPayment: e.target.checked })}
+                            onChange={(e) => { if (!returnIds.includes(row.id)) updateRowForm(row.id, { selectedForPayment: e.target.checked }); }}
                             className="h-4 w-4"
                           />
                           Include

@@ -37,6 +37,7 @@ export function collapseOrderItemsToLineItems(items) {
   for (const item of items) {
     const signature = [
       item.item_id,
+      item.consignee_address_id,
       item.pcb_warranty_years,
       item.component_warranty_years,
       item.machine_warranty_years,
@@ -46,6 +47,7 @@ export function collapseOrderItemsToLineItems(items) {
     if (!current || current.signature !== signature) {
       current = {
         signature,
+        consignee_address_id: item.consignee_address_id ?? null,
         item_id: String(item.item_id || ""),
         serial_no: item.serial_no || "",
         serial_no_2: item.serial_no_2 || "",
@@ -86,6 +88,7 @@ export function validateVendorLineItems(lineItems) {
 
 export function serializeVendorLineItems(lineItems) {
   return lineItems.map((row) => ({
+    consignee_address_id: row.consignee_address_id ?? null,
     item_id: row.item_id ? Number(row.item_id) : null,
     serial_no: (row.serial_no || "").trim() || null,
     serial_no_2: (row.serial_no_2 || "").trim() || null,

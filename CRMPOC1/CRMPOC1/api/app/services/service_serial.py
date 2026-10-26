@@ -203,6 +203,8 @@ def associate_serial_with_service_order(
     template = template_item or items[0]
     new_item = OrderItem(
         order_id=order_id,
+        consignee_address_id=template.consignee_address_id if template.order_id == order_id else None,
+        installation_auto_completed=template.installation_auto_completed if template.order_id == order_id else False,
         item_id=template.item_id,
         item_code=template.item_code,
         serial_no=serial_no.strip(),

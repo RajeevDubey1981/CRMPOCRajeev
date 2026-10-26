@@ -1,6 +1,6 @@
 import json
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
@@ -13,9 +13,11 @@ from app.marketing.router import router as marketing_router
 from app.parts.router import router as parts_router
 from app.sales.router import router as sales_router
 from app.sales.router_ext import router as sales_ext_router
-from app.routers import site_api
+from app.routers import site_api, installation_returns
 
-app = FastAPI(title="Indcool CRM API", version="0.1.0")
+from app.services.installation_return_guard import guard_installation_returns
+
+app = FastAPI(dependencies=[Depends(guard_installation_returns)], title="Indcool CRM API", version="0.1.0")
 settings.resolved_upload_dir.mkdir(parents=True, exist_ok=True)
 
 app.add_middleware(
@@ -48,6 +50,7 @@ app.include_router(roles.router)
 app.include_router(dashboard.router)
 app.include_router(complaints.router)
 app.include_router(installations.router)
+app.include_router(installation_returns.router)
 app.include_router(installation_callcenter.router, prefix="/api/installations")
 app.include_router(calls.router)
 app.include_router(serials.router)

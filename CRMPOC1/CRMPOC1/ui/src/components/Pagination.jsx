@@ -1,4 +1,4 @@
-export default function Pagination({ page, perPage, total, onPageChange, onPerPageChange }) {
+export default function Pagination({ page, perPage, total, onPageChange, onPerPageChange, pageSizeOptions = [10, 20, 30, 50, 100] }) {
   const totalPages = Math.max(1, Math.ceil(total / perPage));
   return (
     <div className="flex flex-col items-center justify-between gap-3 sm:flex-row">
@@ -12,7 +12,7 @@ export default function Pagination({ page, perPage, total, onPageChange, onPerPa
           onChange={(e) => onPerPageChange?.(Number(e.target.value))}
           className="rounded-md border border-slate-300 px-2 py-1 text-base sm:text-sm"
         >
-          {[10, 20, 30, 50, 100].map((n) => (
+          {pageSizeOptions.map((n) => (
             <option key={n} value={n}>{n}</option>
           ))}
         </select>

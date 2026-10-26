@@ -1,3 +1,4 @@
+import ReturnSelectedSerialsButton, { canReturnSerialRow } from "./ReturnSelectedSerialsButton.jsx";
 import { useEffect, useState } from "react";
 
 import { installationsApi } from "../../api/installations.js";
@@ -8,9 +9,12 @@ import ScanInput from "../scan/ScanInput.jsx";
 export default function EngineerOrderSerialEditor({ installation, userId, onUpdated, onError, onBusy }) {
   const [serialNo, setSerialNo] = useState(installation.serial_no || "");
   const [serialNo2, setSerialNo2] = useState(installation.serial_no_2 || "");
+  const [selectedForReturn, setSelectedForReturn] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [popupError, setPopupError] = useState("");
 
   useEffect(() => {
+    setSelectedForReturn(false);
     setSerialNo(installation.serial_no || "");
     setSerialNo2(installation.serial_no_2 || "");
   }, [installation.id, installation.serial_no, installation.serial_no_2]);
@@ -20,6 +24,7 @@ export default function EngineerOrderSerialEditor({ installation, userId, onUpda
   async function save() {
     onError?.("");
     setPopupError("");
+    setSaving(true);
     onBusy?.(true);
     try {
       await installationsApi.updateEngineerOrderSerials(installation.id, {
@@ -30,6 +35,7 @@ export default function EngineerOrderSerialEditor({ installation, userId, onUpda
     } catch (error) {
       setPopupError(formatApiError(error, "Unable to update serial numbers"));
     } finally {
+      setSaving(false);
       onBusy?.(false);
     }
   }
@@ -42,7 +48,9 @@ export default function EngineerOrderSerialEditor({ installation, userId, onUpda
       <p className="mt-1 text-xs text-slate-600">
         Scan or enter both serial numbers. Every entered serial must belong to order {installation.order_no || `#${installation.order_id}`}.
       </p>
-      <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
+      <div className="mt-3 flex items-start gap-3">
+        <input type="checkbox" aria-label="Select serial row to return" checked={selectedForReturn} onChange={e => setSelectedForReturn(e.target.checked)} disabled={saving || !canReturnSerialRow(installation)} className="mt-8 h-4 w-4 shrink-0" />
+        <div className="grid min-w-0 flex-1 grid-cols-1 gap-3 md:grid-cols-2">
         <div>
           <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-500">Serial number 1 *</label>
           <ScanInput value={serialNo} onValue={setSerialNo} placeholder="Scan serial number 1" className={inputClass} />
@@ -52,14 +60,18 @@ export default function EngineerOrderSerialEditor({ installation, userId, onUpda
           <ScanInput value={serialNo2} onValue={setSerialNo2} placeholder="Scan serial number 2" className={inputClass} />
         </div>
       </div>
+      </div>
+      <div className="mt-3 flex flex-wrap items-center gap-3">
       <button
         type="button"
         onClick={save}
-        disabled={!serialNo.trim()}
-        className="mt-3 rounded-md bg-sky-700 px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
+        disabled={saving || !serialNo.trim()}
+        className="rounded-md bg-sky-700 px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
       >
         Update serial numbers
       </button>
+      <ReturnSelectedSerialsButton rows={selectedForReturn && canReturnSerialRow(installation) ? [installation] : []} disabled={saving} onUpdated={async () => { setSelectedForReturn(false); await onUpdated?.(); }} />
+      </div>
     </section>
     <Modal open={Boolean(popupError)} onClose={() => setPopupError("")} title="Serial numbers not updated">
       <div className="space-y-4">
