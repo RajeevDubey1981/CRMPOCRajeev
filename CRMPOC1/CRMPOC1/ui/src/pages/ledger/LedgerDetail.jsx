@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 
 import { accountLedgerApi } from "../../api/accountLedger.js";
+import { ordersApi } from "../../api/orders.js";
+import { useAuth } from "../../auth/AuthContext.jsx";
 
 function inputClass() {
   return "mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-100 disabled:text-slate-500";
@@ -20,6 +22,80 @@ function fmtDate(d) {
 // in the UI on purpose -- Sales/Service aren't accountants, so the page says "Owed"/"Paid", not Dr/Cr.
 const ENTRY_LABEL = { credit: "Owed", debit: "Paid" };
 const ENTRY_STYLE = { credit: "bg-rose-100 text-rose-700", debit: "bg-emerald-100 text-emerald-700" };
+
+function canEditOrders(user) {
+  return (Array.isArray(user?.permissions) ? user.permissions : []).some((p) => p.module === "orders" && p.can_edit);
+}
+
+/** Sales/Service raise an extra delivery/installation expense for this vendor to approve on their own
+ * portal -- the same action as the one on an Order's own page, but reachable straight from the vendor's
+ * ledger so you don't have to already know which order to open first. */
+function VendorExpenseRaisePanel({ vendorId }) {
+  const { user } = useAuth();
+  const [orders, setOrders] = useState([]);
+  const [expenses, setExpenses] = useState([]);
+  const [orderId, setOrderId] = useState("");
+  const [amount, setAmount] = useState("");
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+
+  useEffect(() => {
+    ordersApi.list({ vendor_id: vendorId, per_page: 100 }).then((r) => setOrders(r.items || [])).catch(() => {});
+    accountLedgerApi.listVendorExpenses({ vendor_id: vendorId }).then(setExpenses).catch(() => {});
+  }, [vendorId]);
+
+  if (!canEditOrders(user)) return null;
+
+  async function raise() {
+    if (!orderId || !amount || !reason.trim()) { setErr("Pick an order, an amount, and a reason"); return; }
+    setBusy(true); setErr("");
+    try {
+      const created = await accountLedgerApi.raiseVendorExpense({ order_id: Number(orderId), amount: Number(amount), reason: reason.trim() });
+      setExpenses((prev) => [created, ...prev]);
+      setOrderId(""); setAmount(""); setReason("");
+    } catch (e) {
+      setErr(e.response?.data?.detail || "Failed to raise this");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="mt-5 rounded-md border border-slate-200 bg-slate-50 p-3">
+      <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">Raise an extra delivery/installation expense for this vendor</p>
+      <p className="mt-0.5 text-xs text-slate-500">Nothing debits the vendor until they approve this themselves, on their own portal.</p>
+      {err && <p className="mt-2 text-xs text-rose-700">{err}</p>}
+      <div className="mt-2 grid gap-2 sm:grid-cols-4">
+        <select value={orderId} onChange={(e) => setOrderId(e.target.value)} className={`${inputClass()} sm:col-span-1`}>
+          <option value="">Order…</option>
+          {orders.map((o) => <option key={o.id} value={o.id}>{o.order_no || `#${o.id}`} ({o.status})</option>)}
+        </select>
+        <input type="number" placeholder="Amount (₹)" value={amount} onChange={(e) => setAmount(e.target.value)} className={inputClass()} />
+        <input placeholder="Reason" value={reason} onChange={(e) => setReason(e.target.value)} className={`${inputClass()} sm:col-span-2`} />
+      </div>
+      <div className="mt-2 flex justify-end">
+        <button type="button" disabled={busy} onClick={raise} className="rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-50">
+          {busy ? "Sending…" : "Send to vendor for approval"}
+        </button>
+      </div>
+      {expenses.length > 0 && (
+        <ul className="mt-3 space-y-1 border-t border-slate-200 pt-2 text-xs">
+          {expenses.map((exp) => (
+            <li key={exp.id} className="flex items-center justify-between">
+              <span>{exp.order_no || `#${exp.order_id}`} — {exp.reason} — {fmtMoney(exp.amount)}</span>
+              <span className={
+                exp.status === "Approved" ? "font-semibold text-emerald-700"
+                : exp.status === "Rejected" ? "font-semibold text-rose-700"
+                : "font-semibold text-amber-700"
+              }>{exp.status}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
 
 export default function LedgerDetail() {
   const { partyType, id } = useParams();
@@ -182,6 +258,8 @@ export default function LedgerDetail() {
             </div>
           </>
         )}
+
+        {partyType === "vendor" && <VendorExpenseRaisePanel vendorId={partyId} />}
 
         <p className="mt-6 text-xs font-semibold uppercase tracking-wide text-slate-500">Ledger</p>
         <div className="mt-2 overflow-x-auto">

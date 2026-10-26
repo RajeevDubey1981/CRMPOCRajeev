@@ -1014,6 +1014,7 @@ def list_orders(
     per_page: int = Query(20, ge=1, le=200),
     status_filter: Literal[ORDER_STATUSES] | None = Query(None, alias="status"),  # type: ignore[valid-type]
     search: str | None = None,
+    vendor_id: int | None = None,
     date_from: date | None = None,
     date_to: date | None = None,
     db: Session = Depends(get_db),
@@ -1032,6 +1033,8 @@ def list_orders(
     stmt = _apply_order_visibility(stmt, user, vendor_ids)
     if user.role == "vendor" and not vendor_ids:
         return OrderListResponse(items=[], total=0, page=page, per_page=per_page, total_item_quantity=0, item_quantity_summary=[])
+    if vendor_id:
+        stmt = stmt.where(Order.vendor_id == vendor_id)
     if status_filter:
         stmt = stmt.where(Order.status == status_filter)
     stmt = _apply_order_search_filter(stmt, search)
