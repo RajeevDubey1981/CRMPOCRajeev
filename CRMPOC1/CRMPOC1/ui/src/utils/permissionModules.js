@@ -10,6 +10,8 @@ export const MODULE_LABELS = {
   historical_installations: "Historical Installations",
   users: "Users (a Sub Admin: normal users only)",
   bids: "Bids (vendors only: the bid team is set by the tick on the user)",
+  vendor_ledger: "Vendor Account (Dr/Cr ledger, bank statements)",
+  engineer_ledger: "Engineer Account (Dr/Cr ledger)",
 };
 
 export function normalizePermissionModules(modules = []) {
