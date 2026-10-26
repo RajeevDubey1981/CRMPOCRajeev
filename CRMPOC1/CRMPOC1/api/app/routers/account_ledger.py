@@ -97,6 +97,16 @@ def _detail(db: Session, party_type: PartyType, party_id: int, party, can_edit: 
     }
 
 
+def _can_coordinate_with_vendor(db: Session, user: User) -> bool:
+    """Who may confirm a return's material receipt or raise a vendor-approval expense: Sales, Service,
+    Accounts, or any internal role with at least view access to Orders -- never the vendor or engineer
+    accounts themselves, since the whole point is that the VENDOR is the one being asked. Orders
+    can_edit is too narrow here: Sales typically only has can_view on Orders in this CRM."""
+    if role_key(user.role) in ("vendor", "engineer"):
+        return False
+    return can_act_on(db, user, "orders", "can_view", None)
+
+
 def _order_unit_count(db: Session, order_id: int) -> int:
     total = db.scalar(select(func.sum(OrderItem.item_qty)).where(OrderItem.order_id == order_id))
     return int(total) if total else 1
@@ -136,7 +146,7 @@ def list_pending_returns(db: Session = Depends(get_db), user: User = Depends(get
 def confirm_material_receipt(order_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     """Sales or the Service Team tick this once the returned goods are physically back in hand. Accounts
     cannot debit the vendor for a return until this is done."""
-    if not can_act_on(db, user, "orders", "can_edit", None):
+    if not _can_coordinate_with_vendor(db, user):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Your role cannot do this")
     order = db.get(Order, order_id)
     if order is None or order.deleted_at is not None:
@@ -221,7 +231,7 @@ def raise_vendor_expense(
 ):
     """Sales or the Service Team raises an extra delivery/installation expense against an order, for
     the order's own vendor to approve on their own portal. Nothing debits until the vendor approves."""
-    if not can_act_on(db, user, "orders", "can_edit", None):
+    if not _can_coordinate_with_vendor(db, user):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Your role cannot raise this")
     order = db.get(Order, body.order_id)
     if order is None or order.deleted_at is not None:

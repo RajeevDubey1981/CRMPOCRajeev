@@ -7,8 +7,10 @@ function fmtMoney(n) {
   return `₹${Number(n || 0).toLocaleString("en-IN")}`;
 }
 
-function canEditOrders(user) {
-  return (Array.isArray(user?.permissions) ? user.permissions : []).some((p) => p.module === "orders" && p.can_edit);
+function canCoordinateWithVendor(user) {
+  const role = (user?.role || "").toLowerCase();
+  if (role === "vendor" || role === "engineer") return false;
+  return (Array.isArray(user?.permissions) ? user.permissions : []).some((p) => p.module === "orders" && p.can_view);
 }
 
 /** Sales/Service actions tied to an order's vendor: confirming a return's material receipt, and raising
@@ -23,7 +25,7 @@ export default function OrderVendorActions({ order, onOrderChanged }) {
   const [err, setErr] = useState("");
   const [confirming, setConfirming] = useState(false);
 
-  const canAct = canEditOrders(user);
+  const canAct = canCoordinateWithVendor(user);
 
   useEffect(() => {
     if (!order?.vendor_id) return;

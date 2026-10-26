@@ -23,8 +23,10 @@ function fmtDate(d) {
 const ENTRY_LABEL = { credit: "Owed", debit: "Paid" };
 const ENTRY_STYLE = { credit: "bg-rose-100 text-rose-700", debit: "bg-emerald-100 text-emerald-700" };
 
-function canEditOrders(user) {
-  return (Array.isArray(user?.permissions) ? user.permissions : []).some((p) => p.module === "orders" && p.can_edit);
+function canCoordinateWithVendor(user) {
+  const role = (user?.role || "").toLowerCase();
+  if (role === "vendor" || role === "engineer") return false;
+  return (Array.isArray(user?.permissions) ? user.permissions : []).some((p) => p.module === "orders" && p.can_view);
 }
 
 /** Sales/Service raise an extra delivery/installation expense for this vendor to approve on their own
@@ -45,7 +47,7 @@ function VendorExpenseRaisePanel({ vendorId }) {
     accountLedgerApi.listVendorExpenses({ vendor_id: vendorId }).then(setExpenses).catch(() => {});
   }, [vendorId]);
 
-  if (!canEditOrders(user)) return null;
+  if (!canCoordinateWithVendor(user)) return null;
 
   async function raise() {
     if (!orderId || !amount || !reason.trim()) { setErr("Pick an order, an amount, and a reason"); return; }
