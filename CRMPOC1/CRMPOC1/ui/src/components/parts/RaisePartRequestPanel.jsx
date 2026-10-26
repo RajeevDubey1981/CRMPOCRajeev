@@ -69,9 +69,9 @@ export default function RaisePartRequestPanel({
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="mt-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-900 hover:bg-amber-100"
+        className="mt-3 rounded-md border border-sky-300 bg-sky-50 px-3 py-2 text-sm font-medium text-sky-900 hover:bg-sky-100"
       >
-        ⚠ {triggerLabel}
+        🔧 {triggerLabel}
       </button>
     );
   }
