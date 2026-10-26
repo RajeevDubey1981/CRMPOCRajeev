@@ -48,6 +48,8 @@ import SerialHistory from "./pages/serials/SerialHistory.jsx";
 import HistoricalInstallation from "./pages/serials/HistoricalInstallation.jsx";
 import ServiceRequestList from "./pages/services/ServiceRequestList.jsx";
 import ApprovalsPage from "./pages/approvals/ApprovalsPage.jsx";
+import LedgerPage from "./pages/ledger/LedgerPage.jsx";
+import LedgerDetail from "./pages/ledger/LedgerDetail.jsx";
 import ServiceRequestCreate from "./pages/services/ServiceRequestCreate.jsx";
 import ServiceRequestDetail from "./pages/services/ServiceRequestDetail.jsx";
 import EngineerAssignedUnits from "./pages/services/EngineerAssignedUnits.jsx";
@@ -178,6 +180,8 @@ export default function App() {
         <Route path="/partner-registrations/:id/review" element={<PermissionRoute module="partner_registrations"><PartnerRegistrationReview /></PermissionRoute>} />
         <Route path="/services/my-units" element={<EngineerAssignedUnits />} />
         <Route path="/approvals" element={<ApprovalsPage />} />
+        <Route path="/ledger" element={<LedgerPage />} />
+        <Route path="/ledger/:partyType/:id" element={<LedgerDetail />} />
         <Route path="/services/new" element={<PermissionRoute module="services" action="can_create"><ServiceRequestCreate /></PermissionRoute>} />
         <Route path="/services/:id" element={<PermissionRoute module="services"><ServiceRequestDetail /></PermissionRoute>} />
         <Route path="/items" element={<PermissionRoute module="items"><ItemMastersPage /></PermissionRoute>} />

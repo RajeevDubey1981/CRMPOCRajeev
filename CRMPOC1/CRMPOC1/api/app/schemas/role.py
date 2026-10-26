@@ -23,6 +23,8 @@ MODULES = (
     "sales",        # Sales menu (the ticks inside Sales are kept in the Sales database)
     "marketing",    # Marketing menu: Admin, Sub Admin, the marketing role and users with the tick
     "historical_installations",  # Controlled completion of legacy GeM installations
+    "vendor_ledger",    # Vendor Dr/Cr account: can_view sees balance+ledger, can_edit can enter/upload payments
+    "engineer_ledger",  # Engineer Dr/Cr account: can_view sees balance+ledger, can_edit can enter/upload payments
 )
 
 # Modules with sub-module scoping. A sub_module=None permission row means

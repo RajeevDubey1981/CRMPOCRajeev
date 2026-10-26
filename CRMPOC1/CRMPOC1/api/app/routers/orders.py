@@ -66,6 +66,36 @@ def _resolve_vendor_name(db: Session, vendor_id: int | None) -> str | None:
     return v.name_of_firm if v else None
 
 
+def _sync_oem_bill_ledger_entry(db: Session, order: Order) -> None:
+    """Keeps the vendor's ledger (AccountLedgerEntry) in step with the order's OEM Bill Amount: one
+    Credit entry per order, created the first time an amount is set, updated in place (never
+    duplicated) if it's edited again, and removed if the amount or the vendor is cleared."""
+    from app.models.account_ledger import AccountLedgerEntry
+
+    existing = db.scalar(
+        select(AccountLedgerEntry).where(
+            AccountLedgerEntry.party_type == "vendor",
+            AccountLedgerEntry.source_type == "oem_bill",
+            AccountLedgerEntry.source_id == order.id,
+        )
+    )
+    if order.vendor_id is None or order.oem_bill_amount is None:
+        if existing:
+            db.delete(existing)
+        return
+    description = f"OEM Bill {order.oem_bill_no or '—'} — Order {order.order_no or order.id}"
+    if existing:
+        existing.party_id = order.vendor_id
+        existing.amount = order.oem_bill_amount
+        existing.description = description
+    else:
+        db.add(AccountLedgerEntry(
+            party_type="vendor", party_id=order.vendor_id, entry_type="credit", amount=order.oem_bill_amount,
+            description=description, source_type="oem_bill", source_id=order.id,
+            entry_date=order.order_date, created_by_user_id=order.created_by,
+        ))
+
+
 def _vendors_for_user(db: Session, user: User) -> list[Vendor]:
     if user.role != "vendor":
         return []
@@ -407,6 +437,7 @@ def _hydrate_order(db: Session, order: Order) -> OrderOut:
         order_no=order.order_no,
         order_date=order.order_date,
         oem_bill_no=order.oem_bill_no,
+        oem_bill_amount=float(order.oem_bill_amount) if order.oem_bill_amount is not None else None,
         vendor_id=order.vendor_id,
         vendor_name=_resolve_vendor_name(db, order.vendor_id),
         customer_name=order.customer_name,
@@ -1800,6 +1831,8 @@ def update_order(
 
     sync_order_installation_policy(db, order)
     sync_order_pending_actions(db, order)
+    if "oem_bill_amount" in data:
+        _sync_oem_bill_ledger_entry(db, order)
     db.commit()
     db.refresh(order)
     if old_status != order.status and order.status == "Delivered":

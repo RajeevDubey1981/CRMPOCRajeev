@@ -25,3 +25,5 @@ class Vendor(Base, TimestampMixin, SoftDeleteMixin):
     latitude: Mapped[Decimal | None] = mapped_column(Numeric(10, 8), nullable=True)
     longitude: Mapped[Decimal | None] = mapped_column(Numeric(11, 8), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    # How many days this vendor is paid within, of each bill. Null = no cycle set, never shows Overdue.
+    payment_cycle_days: Mapped[int | None] = mapped_column(nullable=True)

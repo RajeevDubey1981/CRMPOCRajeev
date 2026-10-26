@@ -27,6 +27,7 @@ const NAV = [
   { to: "/services/my-units", label: "My Assigned Units", engineerOnly: true },
   { to: "/items/my-requests", label: "My Part Requests", engineerOnly: true },
   { to: "/approvals", label: "Approvals", reviewerOnly: true },
+  { to: "/ledger", label: "Accounts", ledgerAccess: true },
   { to: "/items", label: "Item Masters", module: "items" },
   { to: "/couriers", label: "Courier Masters", module: "couriers" },
   { to: "/orders", label: "Order List", module: "orders" },
@@ -144,6 +145,7 @@ export default function Sidebar({ collapsed, mobileOpen = false, onNavigate }) {
     if (item.vendorOnly) return isVendor;
     if (item.engineerOnly) return isEngineer;
     if (item.reviewerOnly) return isServiceReviewer;
+    if (item.ledgerAccess) return canView("vendor_ledger") || canView("engineer_ledger");
     if (item.operationsOnly) return isCourierAdmin;
     if (item.systemAdminOnly) return isSystemAdmin;
     if (item.adminOnly) return isSystemAdmin;

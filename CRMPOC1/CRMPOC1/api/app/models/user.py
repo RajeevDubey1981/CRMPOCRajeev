@@ -24,6 +24,8 @@ class User(Base, TimestampMixin, SoftDeleteMixin):
     skills: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON list of item categories the engineer works on; empty = any
     can_manage_bids: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
     can_manage_marketing: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
+    # How many days this engineer is paid within, of each amount credited to them. Null = no cycle set.
+    payment_cycle_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
     id_proof_blob: Mapped[bytes | None] = mapped_column(LargeBinary().with_variant(LargeBinary(length=(2**32) - 1), "mysql"), nullable=True)
     id_proof_filename: Mapped[str | None] = mapped_column(String(255), nullable=True)
     id_proof_content_type: Mapped[str | None] = mapped_column(String(100), nullable=True)

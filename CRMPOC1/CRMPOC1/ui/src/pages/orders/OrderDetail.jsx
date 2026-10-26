@@ -472,6 +472,7 @@ export default function OrderDetail() {
       order_no: order.order_no || "",
       order_date: order.order_date || "",
       oem_bill_no: order.oem_bill_no || "",
+      oem_bill_amount: order.oem_bill_amount ?? "",
       vendor_id: order.vendor_id ?? "",
       customer_name: order.customer_name || "",
       customer_contact: order.customer_contact || "",
@@ -941,6 +942,7 @@ export default function OrderDetail() {
           }
         : {
             oem_bill_no: editForm.oem_bill_no || null,
+            oem_bill_amount: editForm.oem_bill_amount === "" ? null : Number(editForm.oem_bill_amount),
             vendor_id: editForm.vendor_id !== "" ? Number(editForm.vendor_id) : null,
             customer_name: editForm.customer_name || null,
             customer_contact: editForm.customer_contact || null,
@@ -1160,6 +1162,12 @@ export default function OrderDetail() {
           <Field label="Vendor Bill Date" value={fmtDate(order.vendor_bill_date)} />
           <Field label="Expected Delivery" value={fmtDate(order.expected_delivery_date)} />
           <Field label="Actual Delivery" value={fmtDate(order.actual_delivery_date)} />
+          {order.vendor_id && (Array.isArray(user?.permissions) ? user.permissions : []).some((p) => p.module === "vendor_ledger" && p.can_view) && (
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Vendor Account</p>
+              <Link to={`/ledger/vendor/${order.vendor_id}`} className="mt-1 inline-block text-sm text-brand-700 hover:underline">View full ledger →</Link>
+            </div>
+          )}
           <Field label="Created At" value={fmtDateTime(order.created_at)} />
           <Field label="Updated At" value={fmtDateTime(order.updated_at)} />
         </div>
@@ -1765,6 +1773,19 @@ export default function OrderDetail() {
                 <p className="mt-1 text-xs text-slate-400">OEM bill updates are restricted to admin or incool users.</p>
               )}
             </div>
+            {!isVendor && (
+              <div>
+                <label className={labelClass}>Bill Amount (₹)</label>
+                <input
+                  type="number" min="0" step="0.01"
+                  value={editForm.oem_bill_amount}
+                  onChange={(e) => setEF("oem_bill_amount", e.target.value)}
+                  disabled={!canManageOemBill}
+                  className={fieldClass}
+                />
+                <p className="mt-1 text-xs text-slate-400">Saving this credits the vendor's account automatically.</p>
+              </div>
+            )}
 
             <div>
               <label className={labelClass}>Vendor</label>
