@@ -1,6 +1,6 @@
-from datetime import date
+from datetime import date, datetime
 
-from sqlalchemy import Boolean, String, Date, Integer, ForeignKey, Numeric, Text, true, false
+from sqlalchemy import Boolean, String, Date, DateTime, Integer, ForeignKey, Numeric, Text, true, false
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -34,6 +34,11 @@ class Order(Base, TimestampMixin, SoftDeleteMixin):
     actual_delivery_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     order_file_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
     created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    # Sales/Service tick this once the returned goods are physically back in hand, before Accounts can
+    # debit the vendor for the return (see routers/account_ledger.py's process_return).
+    material_receipt_confirmed_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    material_receipt_confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    accounts_return_processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class OrderConsigneeAddress(Base, TimestampMixin):

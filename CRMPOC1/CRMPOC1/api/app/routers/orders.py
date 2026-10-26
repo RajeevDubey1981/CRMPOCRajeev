@@ -66,6 +66,13 @@ def _resolve_vendor_name(db: Session, vendor_id: int | None) -> str | None:
     return v.name_of_firm if v else None
 
 
+def _resolve_user_name(db: Session, user_id: int | None) -> str | None:
+    if user_id is None:
+        return None
+    u = db.get(User, user_id)
+    return u.name if u else None
+
+
 def _sync_oem_bill_ledger_entry(db: Session, order: Order) -> None:
     """Keeps the vendor's ledger (AccountLedgerEntry) in step with the order's OEM Bill Amount: one
     Credit entry per order, created the first time an amount is set, updated in place (never
@@ -438,6 +445,9 @@ def _hydrate_order(db: Session, order: Order) -> OrderOut:
         order_date=order.order_date,
         oem_bill_no=order.oem_bill_no,
         oem_bill_amount=float(order.oem_bill_amount) if order.oem_bill_amount is not None else None,
+        material_receipt_confirmed_at=order.material_receipt_confirmed_at,
+        material_receipt_confirmed_by=_resolve_user_name(db, order.material_receipt_confirmed_by_user_id),
+        accounts_return_processed_at=order.accounts_return_processed_at,
         vendor_id=order.vendor_id,
         vendor_name=_resolve_vendor_name(db, order.vendor_id),
         customer_name=order.customer_name,

@@ -47,6 +47,14 @@ def _safe_ext(filename: str, allowed_ext: set[str] | None = None) -> str:
 
 
 def _validate_file_signature(contents: bytes, extension: str) -> None:
+    if extension == ".csv":
+        if b"\x00" in contents:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "File content does not match its extension")
+        try:
+            contents.decode("utf-8-sig")
+        except UnicodeDecodeError:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "CSV must be UTF-8 text")
+        return
     signatures = {
         ".pdf": contents.startswith(b"%PDF-"),
         ".jpg": contents.startswith(b"\xff\xd8\xff"),
@@ -97,7 +105,7 @@ def _reencode_image(contents: bytes, extension: str) -> bytes:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid image file") from exc
 
 
-def _validate_upload(
+def validate_upload(
     file: UploadFile,
     allowed_ext: set[str] | None = None,
     allowed_mime: set[str] | None = None,
@@ -121,7 +129,7 @@ async def save_upload(
 
     Returns the public URL path under /uploads/.
     """
-    extension = _validate_upload(file, allowed_ext=allowed_ext, allowed_mime=allowed_mime)
+    extension = validate_upload(file, allowed_ext=allowed_ext, allowed_mime=allowed_mime)
 
     contents = await file.read()
     if len(contents) > max_bytes:
@@ -129,15 +137,19 @@ async def save_upload(
     if not contents:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Empty file")
 
-    now = datetime.utcnow()
-    sub = settings.resolved_upload_dir / module / f"{now.year:04d}" / f"{now.month:02d}"
-    os.makedirs(sub, exist_ok=True)
+    return persist_upload(contents, extension, module, reencode_images=reencode_images)
 
+
+def persist_upload(contents: bytes, extension: str, module: str, reencode_images: bool = True) -> str:
+    """The write half of save_upload, for a caller that already has the validated bytes in hand (for
+    example because it also needs to parse them) and so can't read an UploadFile's stream twice."""
     _validate_file_signature(contents, extension)
     if reencode_images and extension in {".jpg", ".jpeg", ".png"}:
         contents = _reencode_image(contents, extension)
-    ext = extension
-    name = f"{uuid.uuid4().hex}{ext}"
+    now = datetime.utcnow()
+    sub = settings.resolved_upload_dir / module / f"{now.year:04d}" / f"{now.month:02d}"
+    os.makedirs(sub, exist_ok=True)
+    name = f"{uuid.uuid4().hex}{extension}"
     full_path = sub / name
     with open(full_path, "wb") as f:
         f.write(contents)
@@ -151,7 +163,7 @@ async def read_upload_bytes(
     max_bytes: int = MAX_BYTES,
     reencode_images: bool = True,
 ) -> tuple[bytes, str, str, int]:
-    extension = _validate_upload(file, allowed_ext=allowed_ext, allowed_mime=allowed_mime)
+    extension = validate_upload(file, allowed_ext=allowed_ext, allowed_mime=allowed_mime)
 
     contents = await file.read()
     if len(contents) > max_bytes:

@@ -190,6 +190,7 @@ from app.services.payment_approval_workflow import (
     resolve_payment_stage_actions,
 )
 from app.services.pending_action_sync import sync_service_pending_actions
+from app.services.ledger_events import post_job_payout
 
 router = APIRouter(prefix="/api/services", tags=["services"])
 
@@ -3254,6 +3255,13 @@ async def approve_service_payment(
     )
     db.add(transaction)
     db.flush()
+    post_job_payout(
+        db,
+        engineer_user_id=transaction.engineer_user_id,
+        amount=float(transaction.total_amount),
+        description=f"Service {service.request_no} — job payout",
+        source_id=transaction.id,
+    )
 
     latest_payment.status = "Processed"
     latest_payment.approval_status = "Approved"

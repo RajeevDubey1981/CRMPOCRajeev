@@ -9,6 +9,7 @@ import { api } from "../api/client.js";
 import { useAuth } from "../auth/AuthContext.jsx";
 import { BidStatCard, useVendorBids } from "../components/bids/VendorBidsPanel.jsx";
 import QueriesPanel from "../components/queries/QueriesPanel.jsx";
+import VendorExpenseApprovalsPanel from "../components/vendor/VendorExpenseApprovalsPanel.jsx";
 
 const ORDER_STATUSES = ["Pending", "In Transit", "Delivered", "Returned"];
 
@@ -255,6 +256,8 @@ export default function VendorDashboard() {
           <span>Vendor-dashboards</span>
         </nav>
       </div>
+
+      <VendorExpenseApprovalsPanel />
 
       <QueriesPanel />
 

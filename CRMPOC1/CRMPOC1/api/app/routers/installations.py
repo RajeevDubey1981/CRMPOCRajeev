@@ -66,6 +66,7 @@ from app.services.workflow_notifications import (
     notify_customer_installation_update,
     notify_engineer_installation_assigned,
 )
+from app.services.ledger_events import post_job_payout
 from app.services.payment_approval_workflow import (
     approval_stage_payload,
     ensure_current_stage_approver,
@@ -490,6 +491,13 @@ def _create_payment_transaction(
     db.flush()
     for row in rows:
         row.payment_transaction_id = transaction.id
+    post_job_payout(
+        db,
+        engineer_user_id=transaction.engineer_user_id,
+        amount=float(transaction.total_amount),
+        description=f"Installation payout ({len(rows)} unit(s))",
+        source_id=transaction.id,
+    )
     return transaction
 
 

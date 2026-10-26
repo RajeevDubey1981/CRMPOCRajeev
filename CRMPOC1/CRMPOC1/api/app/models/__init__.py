@@ -42,6 +42,9 @@ from app.models.market import (
     MarketOrderItem,
     MarketUser,
 )
+from app.models.account_ledger import AccountLedgerEntry
+from app.models.vendor_expense_approval import VendorExpenseApproval
+from app.models.bank_statement import BankStatementImport, BankStatementLine
 
 __all__ = [
     "UserQuery", "UserQueryMessage", "UserQueryRead",

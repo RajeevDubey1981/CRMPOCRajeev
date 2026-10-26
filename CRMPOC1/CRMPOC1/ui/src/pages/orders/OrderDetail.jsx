@@ -1,4 +1,5 @@
 import InstallationReturns from "../../components/installations/InstallationReturns.jsx";
+import OrderVendorActions from "../../components/orders/OrderVendorActions.jsx";
 import { useEffect, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 
@@ -1171,6 +1172,7 @@ export default function OrderDetail() {
           <Field label="Created At" value={fmtDateTime(order.created_at)} />
           <Field label="Updated At" value={fmtDateTime(order.updated_at)} />
         </div>
+        <OrderVendorActions order={order} onOrderChanged={load} />
       </section>
 
       <section className="rounded-lg bg-white p-6 shadow-sm">
