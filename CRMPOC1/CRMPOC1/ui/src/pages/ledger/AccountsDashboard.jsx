@@ -19,6 +19,146 @@ function monthLabel(ym) {
   } catch { return ym; }
 }
 
+function fmtDateTime(d) {
+  if (!d) return "—";
+  try { return new Date(d).toLocaleString("en-IN", { day: "2-digit", month: "short", hour: "numeric", minute: "2-digit" }); } catch { return d; }
+}
+
+function isThisMonth(d) {
+  if (!d) return false;
+  const dt = new Date(d);
+  const now = new Date();
+  return dt.getFullYear() === now.getFullYear() && dt.getMonth() === now.getMonth();
+}
+
+function median(nums) {
+  if (nums.length === 0) return null;
+  const sorted = [...nums].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+}
+
+const STATUS_PILL = {
+  Pending: "bg-amber-100 text-amber-800 border border-amber-300",
+  Approved: "bg-emerald-100 text-emerald-700 border border-emerald-300",
+  Rejected: "bg-rose-100 text-rose-700 border border-rose-300",
+};
+
+/** Every vendor-expense request across every vendor -- Pending, Approved and Rejected -- for Accounts
+ * to audit. Nothing here posts to a ledger; approving already does that automatically elsewhere. */
+function VendorApprovalHistoryPanel() {
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+  const [vendorFilter, setVendorFilter] = useState("");
+  const [raisedByFilter, setRaisedByFilter] = useState("");
+
+  useEffect(() => {
+    accountLedgerApi.listVendorExpenses({})
+      .then(setRows)
+      .catch((e) => setErr(e.response?.data?.detail || "Failed to load approval history"))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const vendorOptions = [...new Map(rows.map((r) => [r.vendor_id, r.vendor_name])).entries()];
+
+  const pendingCount = rows.filter((r) => r.status === "Pending").length;
+  const approvedThisMonth = rows.filter((r) => r.status === "Approved" && isThisMonth(r.decided_at));
+  const approvedThisMonthSum = approvedThisMonth.reduce((sum, r) => sum + r.amount, 0);
+  const rejectedThisMonthCount = rows.filter((r) => r.status === "Rejected" && isThisMonth(r.decided_at)).length;
+  const responseHours = rows
+    .filter((r) => r.decided_at)
+    .map((r) => (new Date(r.decided_at) - new Date(r.created_at)) / 36e5);
+  const medianHours = median(responseHours);
+
+  const filtered = rows.filter((r) =>
+    (!statusFilter || r.status === statusFilter) &&
+    (!vendorFilter || String(r.vendor_id) === vendorFilter) &&
+    (!raisedByFilter || r.raised_by_type === raisedByFilter)
+  );
+
+  return (
+    <div className="rounded-lg bg-white p-4 shadow-sm">
+      <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">Vendor Approval History — every request, every vendor</p>
+      <p className="mt-0.5 text-xs text-slate-500">What Sales/Service raised, and what each vendor decided. Approving debits the vendor automatically; nothing here does.</p>
+      {err && <p className="mt-2 text-xs text-rose-700">{err}</p>}
+
+      <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+          <div className="text-[10px] uppercase tracking-wide text-amber-700">Pending</div>
+          <div className="text-xl font-bold text-amber-700">{pendingCount}</div>
+        </div>
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3">
+          <div className="text-[10px] uppercase tracking-wide text-emerald-700">Approved this month</div>
+          <div className="text-xl font-bold text-emerald-700">{fmtMoney(approvedThisMonthSum)}</div>
+        </div>
+        <div className="rounded-lg border border-rose-200 bg-rose-50 p-3">
+          <div className="text-[10px] uppercase tracking-wide text-rose-700">Rejected this month</div>
+          <div className="text-xl font-bold text-rose-700">{rejectedThisMonthCount}</div>
+        </div>
+        <div className="rounded-lg border border-slate-200 p-3">
+          <div className="text-[10px] uppercase tracking-wide text-slate-500">Median response time</div>
+          <div className="text-xl font-bold">{medianHours == null ? "—" : medianHours < 48 ? `${medianHours.toFixed(1)} hrs` : `${(medianHours / 24).toFixed(1)} days`}</div>
+        </div>
+      </div>
+
+      <div className="mt-4 flex flex-wrap gap-2">
+        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="rounded-md border border-slate-300 px-2 py-1.5 text-xs">
+          <option value="">All statuses</option>
+          <option value="Pending">Pending</option>
+          <option value="Approved">Approved</option>
+          <option value="Rejected">Rejected</option>
+        </select>
+        <select value={vendorFilter} onChange={(e) => setVendorFilter(e.target.value)} className="rounded-md border border-slate-300 px-2 py-1.5 text-xs">
+          <option value="">All vendors</option>
+          {vendorOptions.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
+        </select>
+        <select value={raisedByFilter} onChange={(e) => setRaisedByFilter(e.target.value)} className="rounded-md border border-slate-300 px-2 py-1.5 text-xs">
+          <option value="">Raised by: anyone</option>
+          <option value="sales">Sales</option>
+          <option value="service_team">Service Team</option>
+        </select>
+      </div>
+
+      <div className="mt-3 overflow-x-auto">
+        <table className="min-w-full text-sm">
+          <thead className="bg-slate-100 text-left text-slate-600">
+            <tr>
+              <th className="px-3 py-2">Order</th>
+              <th className="px-3 py-2">Vendor</th>
+              <th className="px-3 py-2">Reason</th>
+              <th className="px-3 py-2">Raised by</th>
+              <th className="px-3 py-2">Raised on</th>
+              <th className="px-3 py-2 text-right">Amount</th>
+              <th className="px-3 py-2">Status</th>
+              <th className="px-3 py-2">Decided</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {loading ? (
+              <tr><td colSpan={8} className="px-3 py-6 text-center text-slate-500">Loading…</td></tr>
+            ) : filtered.length === 0 ? (
+              <tr><td colSpan={8} className="px-3 py-6 text-center text-slate-500">No requests match this filter.</td></tr>
+            ) : filtered.map((r) => (
+              <tr key={r.id} title={r.decision_note || ""}>
+                <td className="px-3 py-2 font-mono text-xs">{r.order_no || `#${r.order_id}`}</td>
+                <td className="px-3 py-2">{r.vendor_name || "—"}</td>
+                <td className="px-3 py-2">{r.reason}</td>
+                <td className="px-3 py-2 text-xs">{r.raised_by_name || "—"} <span className="text-slate-400">({r.raised_by_type === "service_team" ? "Service" : "Sales"})</span></td>
+                <td className="px-3 py-2 text-xs text-slate-500">{fmtDateTime(r.created_at)}</td>
+                <td className="px-3 py-2 text-right font-mono">{fmtMoney(r.amount)}</td>
+                <td className="px-3 py-2"><span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-bold ${STATUS_PILL[r.status]}`}>{r.status}</span></td>
+                <td className="px-3 py-2 text-xs text-slate-500">{fmtDateTime(r.decided_at)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 function ReturnsPanel() {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -354,6 +494,7 @@ export default function AccountsDashboard() {
 
       <ReturnsPanel />
       <StatementUploadPanel />
+      <VendorApprovalHistoryPanel />
     </div>
   );
 }

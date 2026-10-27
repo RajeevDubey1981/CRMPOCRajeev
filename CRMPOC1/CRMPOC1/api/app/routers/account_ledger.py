@@ -208,11 +208,12 @@ def process_return(
     return _return_pending_out(db, order)
 
 
-def _vendor_expense_out(approval: VendorExpenseApproval, order: Order | None, vendor: Vendor | None) -> dict:
+def _vendor_expense_out(approval: VendorExpenseApproval, order: Order | None, vendor: Vendor | None, raised_by: User | None = None) -> dict:
     return {
         "id": approval.id, "order_id": approval.order_id, "order_no": order.order_no if order else None,
         "vendor_id": approval.vendor_id, "vendor_name": vendor.name_of_firm if vendor else None,
         "amount": float(approval.amount), "reason": approval.reason, "raised_by_type": approval.raised_by_type,
+        "raised_by_name": raised_by.name if raised_by else None,
         "status": approval.status, "created_at": approval.created_at, "decided_at": approval.decided_at,
         "decision_note": approval.decision_note,
     }
@@ -269,7 +270,7 @@ def raise_vendor_expense(
         )
         background_tasks.add_task(send_email, vendor.email, subject, html_body, text_body)
 
-    return _vendor_expense_out(approval, order, vendor)
+    return _vendor_expense_out(approval, order, vendor, user)
 
 
 @router.get("/vendor-expenses")
@@ -297,9 +298,14 @@ def list_vendor_expenses(
 
     order_ids = {r.order_id for r in rows} or {0}
     vendor_ids = {r.vendor_id for r in rows} or {0}
+    raiser_ids = {r.raised_by_user_id for r in rows if r.raised_by_user_id} or {0}
     orders = {o.id: o for o in db.scalars(select(Order).where(Order.id.in_(order_ids)))}
     vendors = {v.id: v for v in db.scalars(select(Vendor).where(Vendor.id.in_(vendor_ids)))}
-    return [_vendor_expense_out(r, orders.get(r.order_id), vendors.get(r.vendor_id)) for r in rows]
+    raisers = {u.id: u for u in db.scalars(select(User).where(User.id.in_(raiser_ids)))}
+    return [
+        _vendor_expense_out(r, orders.get(r.order_id), vendors.get(r.vendor_id), raisers.get(r.raised_by_user_id))
+        for r in rows
+    ]
 
 
 class VendorExpenseDecideIn(BaseModel):
@@ -336,7 +342,8 @@ def decide_vendor_expense(
             entry_date=datetime.now(timezone.utc).date(), created_by_user_id=user.id,
         ))
     db.commit()
-    return _vendor_expense_out(approval, order, vendor)
+    raiser = db.get(User, approval.raised_by_user_id) if approval.raised_by_user_id else None
+    return _vendor_expense_out(approval, order, vendor, raiser)
 
 
 def _statement_import_out(imp: BankStatementImport, lines: list[BankStatementLine]) -> dict:
