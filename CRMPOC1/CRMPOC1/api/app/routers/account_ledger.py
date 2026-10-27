@@ -384,6 +384,7 @@ def raise_vendor_expense(
 def list_vendor_expenses(
     vendor_id: Optional[int] = None, order_id: Optional[int] = None,
     status_filter: Optional[str] = Query(None, alias="status"),
+    mine: bool = False,
     db: Session = Depends(get_db), user: User = Depends(get_current_user),
 ):
     if role_key(user.role) == "vendor":
@@ -391,10 +392,14 @@ def list_vendor_expenses(
         if own_vendor is None:
             return []
         vendor_id = own_vendor.id
+    elif mine:
+        pass  # "what I raised" needs no module permission beyond being able to raise one in the first place
     elif not (can_act_on(db, user, "vendor_ledger", "can_view", None) or can_act_on(db, user, "orders", "can_view", None)):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Your role cannot view this")
 
     stmt = select(VendorExpenseApproval).order_by(VendorExpenseApproval.created_at.desc())
+    if mine:
+        stmt = stmt.where(VendorExpenseApproval.raised_by_user_id == user.id)
     if vendor_id:
         stmt = stmt.where(VendorExpenseApproval.vendor_id == vendor_id)
     if order_id:

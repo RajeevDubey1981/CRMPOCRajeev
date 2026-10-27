@@ -6,6 +6,7 @@ import { isSystemAdminRole } from "../../utils/roles.js";
 import AccountsDashboard from "./AccountsDashboard.jsx";
 import AuditQueue from "./AuditQueue.jsx";
 import LedgerSearch from "./LedgerSearch.jsx";
+import MyVendorExpenseRequests from "./MyVendorExpenseRequests.jsx";
 
 /** One landing spot for the vendor/engineer account system. Which tabs show depend on the
  * vendor_ledger/engineer_ledger permissions (Admin -> Roles) -- Accounts/Admin/Sub Admin get all three,
@@ -20,14 +21,18 @@ export default function LedgerPage() {
   const canSeeEngineers = has("engineer_ledger", "can_view");
   const canSeeDashboard = has("vendor_ledger", "can_edit") || has("engineer_ledger", "can_edit");
   const canSeeAudit = has("ledger_audit", "can_view");
+  // Anyone who can raise a vendor-expense approval (Sales, Service Team) gets a "My Requests" tab --
+  // same check the backend uses (orders can_view, never a vendor/engineer account itself).
+  const role = (user?.role || "").toLowerCase();
+  const canSeeMyRequests = role !== "vendor" && role !== "engineer" && has("orders", "can_view");
 
   const [searchParams] = useSearchParams();
   const requested = searchParams.get("tab");
-  const defaultTab = canSeeDashboard ? "dashboard" : canSeeVendors ? "vendors" : canSeeEngineers ? "engineers" : "audit";
-  const initialTab = ["dashboard", "vendors", "engineers", "audit"].includes(requested) ? requested : defaultTab;
+  const defaultTab = canSeeDashboard ? "dashboard" : canSeeVendors ? "vendors" : canSeeEngineers ? "engineers" : canSeeAudit ? "audit" : "mine";
+  const initialTab = ["dashboard", "vendors", "engineers", "audit", "mine"].includes(requested) ? requested : defaultTab;
   const [tab, setTab] = useState(initialTab);
 
-  if (!canSeeVendors && !canSeeEngineers && !canSeeDashboard && !canSeeAudit) {
+  if (!canSeeVendors && !canSeeEngineers && !canSeeDashboard && !canSeeAudit && !canSeeMyRequests) {
     return <Navigate to="/dashboard" replace />;
   }
 
@@ -36,6 +41,7 @@ export default function LedgerPage() {
     ...(canSeeVendors ? [["vendors", "Vendors"]] : []),
     ...(canSeeEngineers ? [["engineers", "Engineers"]] : []),
     ...(canSeeAudit ? [["audit", "Audit"]] : []),
+    ...(canSeeMyRequests ? [["mine", "My Requests"]] : []),
   ];
   const activeTab = tabs.some(([k]) => k === tab) ? tab : tabs[0]?.[0];
 
@@ -61,6 +67,7 @@ export default function LedgerPage() {
       {activeTab === "vendors" && canSeeVendors && <LedgerSearch partyType="vendor" />}
       {activeTab === "engineers" && canSeeEngineers && <LedgerSearch partyType="engineer" />}
       {activeTab === "audit" && canSeeAudit && <AuditQueue />}
+      {activeTab === "mine" && canSeeMyRequests && <MyVendorExpenseRequests />}
     </div>
   );
 }
