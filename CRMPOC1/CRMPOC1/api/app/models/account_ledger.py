@@ -40,7 +40,10 @@ class AccountLedgerEntry(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     # Set on the handful of debit entries that go through Audit (manual entries, returns, bank statement
     # confirmations): which PendingLedgerPayment Audit approved to produce this row.
-    pending_payment_id: Mapped[Optional[int]] = mapped_column(ForeignKey("pending_ledger_payments.id"), nullable=True)
+    # Unique (not just indexed): a second entry for the same approved pending payment would mean it got
+    # posted twice -- the row-level locks in account_ledger.py are the primary defense against that race,
+    # this constraint is the backstop that makes it impossible even if a lock is ever missed.
+    pending_payment_id: Mapped[Optional[int]] = mapped_column(ForeignKey("pending_ledger_payments.id"), nullable=True, unique=True)
     # True only when an Admin posted one of those same debit kinds directly, skipping Audit. Never set
     # for credits or for flows Audit was never part of (OEM bill, job payout, vendor-approved expense).
     audit_bypassed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")

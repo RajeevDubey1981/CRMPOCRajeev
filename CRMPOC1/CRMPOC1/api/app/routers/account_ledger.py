@@ -197,6 +197,22 @@ def _detail(db: Session, party_type: PartyType, party_id: int, party, can_edit: 
     }
 
 
+def _enforce_self_scope(db: Session, user: User, party_type: PartyType, party_id: int) -> None:
+    """A vendor or engineer account only ever gets their OWN party record here, never another's, no
+    matter how the vendor_ledger/engineer_ledger can_view/can_edit flags on their role happen to be
+    ticked -- those flags mean "sees the ledger module at all" (e.g. a vendor seeing their own raised
+    expenses), not "sees every party's balance". Mirrors the self-scope check orders.py already does in
+    _load_order (security review, 2026-10-27)."""
+    role = role_key(user.role)
+    if role == "vendor":
+        vendor = db.scalar(select(Vendor).where(Vendor.email == user.email))
+        if party_type != "vendor" or vendor is None or vendor.id != party_id:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "You can only view your own ledger")
+    elif role == "engineer":
+        if party_type != "engineer" or party_id != user.id:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "You can only view your own ledger")
+
+
 def _can_coordinate_with_vendor(db: Session, user: User) -> bool:
     """Who may confirm a return's material receipt or raise a vendor-approval expense: Sales, Service,
     Accounts, or any internal role with at least view access to Orders -- never the vendor or engineer
@@ -248,7 +264,7 @@ def confirm_material_receipt(order_id: int, db: Session = Depends(get_db), user:
     cannot debit the vendor for a return until this is done."""
     if not _can_coordinate_with_vendor(db, user):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Your role cannot do this")
-    order = db.get(Order, order_id)
+    order = db.scalar(select(Order).where(Order.id == order_id).with_for_update())
     if order is None or order.deleted_at is not None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Order not found")
     if order.status not in ("Returned", "Cancelled"):
@@ -275,7 +291,11 @@ def process_return(
     charges post as two separate debits, never combined into one figure, per how this was designed."""
     if not can_act_on(db, user, "vendor_ledger", "can_edit", None):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Your role cannot do this")
-    order = db.get(Order, order_id)
+    # Locked for the rest of this request: two near-simultaneous "process this return" clicks (a
+    # double-click, a retried request) both used to pass the accounts_return_processed_at check below
+    # before either had committed, posting the same debit twice. The lock makes the second request wait
+    # for the first to commit, so it sees the flag already set (security review, 2026-10-27).
+    order = db.scalar(select(Order).where(Order.id == order_id).with_for_update())
     if order is None or order.deleted_at is not None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Order not found")
     if order.status not in ("Returned", "Cancelled"):
@@ -430,7 +450,9 @@ def decide_vendor_expense(
     approval_id: int, body: VendorExpenseDecideIn,
     db: Session = Depends(get_db), user: User = Depends(get_current_user),
 ):
-    approval = db.get(VendorExpenseApproval, approval_id)
+    # Locked so two concurrent decide calls on the same approval can't both pass the status=="Pending"
+    # check below and both post a debit (security review, 2026-10-27).
+    approval = db.scalar(select(VendorExpenseApproval).where(VendorExpenseApproval.id == approval_id).with_for_update())
     if approval is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found")
     if role_key(user.role) != "vendor":
@@ -545,7 +567,13 @@ def confirm_statement_line(
     db: Session = Depends(get_db), user: User = Depends(get_current_user),
 ):
     _require(db, user, body.party_type, "can_edit")
-    line = db.scalar(select(BankStatementLine).where(BankStatementLine.id == line_id, BankStatementLine.import_id == import_id))
+    # Locked for the same reason as process_return above: two concurrent confirms on the same line must
+    # not both pass the status check and both post/queue a debit.
+    line = db.scalar(
+        select(BankStatementLine)
+        .where(BankStatementLine.id == line_id, BankStatementLine.import_id == import_id)
+        .with_for_update()
+    )
     if line is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Statement line not found")
     if line.status in ("posted", "pending_audit"):
@@ -621,7 +649,10 @@ def decide_pending_payments(
     if body.decision == "Rejected" and not (body.note or "").strip():
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "A note is required when rejecting")
 
-    rows = db.scalars(select(PendingLedgerPayment).where(PendingLedgerPayment.id.in_(body.ids))).all()
+    # Locked: a double-click or a retried request on the same batch must not both pass the "still
+    # Pending" check below -- confirmed exploitable before this lock, doubling the posted debit
+    # (security review, 2026-10-27).
+    rows = db.scalars(select(PendingLedgerPayment).where(PendingLedgerPayment.id.in_(body.ids)).with_for_update()).all()
     found = {r.id for r in rows}
     missing = set(body.ids) - found
     if missing:
@@ -728,6 +759,7 @@ def list_engineers(
 @router.get("/{party_type}/{party_id}")
 def get_ledger(party_type: PartyType, party_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     _require(db, user, party_type, "can_view")
+    _enforce_self_scope(db, user, party_type, party_id)
     party = _load_party(db, party_type, party_id)
     can_edit = can_act_on(db, user, MODULE_FOR[party_type], "can_edit", None)
     return _detail(db, party_type, party_id, party, can_edit)
@@ -745,6 +777,7 @@ def set_opening_balance(
     db: Session = Depends(get_db), user: User = Depends(get_current_user),
 ):
     _require(db, user, party_type, "can_edit")
+    _enforce_self_scope(db, user, party_type, party_id)
     party = _load_party(db, party_type, party_id)
     existing = db.scalar(
         select(AccountLedgerEntry).where(
@@ -778,6 +811,7 @@ def set_cycle(
     db: Session = Depends(get_db), user: User = Depends(get_current_user),
 ):
     _require(db, user, party_type, "can_edit")
+    _enforce_self_scope(db, user, party_type, party_id)
     party = _load_party(db, party_type, party_id)
     party.payment_cycle_days = body.payment_cycle_days
     db.commit()
@@ -799,6 +833,7 @@ def add_entry(
     db: Session = Depends(get_db), user: User = Depends(get_current_user),
 ):
     _require(db, user, party_type, "can_edit")
+    _enforce_self_scope(db, user, party_type, party_id)
     party = _load_party(db, party_type, party_id)
     entry_date = body.entry_date or datetime.now(timezone.utc).date()
     if body.entry_type == "debit" and not is_system_admin(user):
