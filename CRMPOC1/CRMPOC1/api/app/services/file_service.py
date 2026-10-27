@@ -14,13 +14,16 @@ JPEG_QUALITY = 85
 
 ALLOWED_MIME = {
     "application/pdf",
-    "application/msword",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     "image/jpeg",
     "image/png",
     "image/jpg",
 }
-ALLOWED_EXT = {".pdf", ".doc", ".docx", ".jpg", ".jpeg", ".png"}
+# No .doc (legacy OLE2 Word format): unlike .docx, its internal streams can't be scanned for an embedded
+# macro project the way _validate_file_signature does below, so a macro-laden .doc would sail straight
+# through as a plausible "proof document"/"agreement" upload (security review, 2026-10-27). .docx covers
+# the same use case and is checked.
+ALLOWED_EXT = {".pdf", ".docx", ".jpg", ".jpeg", ".png"}
 MAX_BYTES = 2 * 1024 * 1024  # 2 MB
 
 
