@@ -13,8 +13,8 @@ class Settings(BaseSettings):
     )
 
     database_backend: str = "mysql"
-    sqlserver_database_url: str = "Server=DESKTOP-N7O68K8\\MYSQL,1433;Database=indcool;User Id=api_user;Password=test123;Encrypt=no;TrustServerCertificate=yes;Driver=ODBC Driver 17 for SQL Server;"
-    mysql_database_url: str = "mysql+mysqlconnector://root:Sandhya%231981@host.docker.internal:3306/indcool"
+    sqlserver_database_url: str = "Server=localhost\\MYSQL,1433;Database=indcool;User Id=api_user;Password=change-me;Encrypt=no;TrustServerCertificate=yes;Driver=ODBC Driver 17 for SQL Server;"
+    mysql_database_url: str = "mysql+mysqlconnector://root:change-me@host.docker.internal:3306/indcool"
     # Sales module: its own database, linked to the CRM only by reference numbers. Empty = Sales is switched off
     # and the CRM works exactly as before.
     sales_database_url: str = ""
@@ -35,6 +35,10 @@ class Settings(BaseSettings):
     jwt_secret: str = "change-me"
     jwt_algorithm: str = "HS256"
     jwt_expire_minutes: int = 480
+    # /docs, /redoc and /openapi.json hand out a complete, unauthenticated map of every route, param and
+    # model in the API. Handy in dev, free recon for an attacker in prod -- set API_DOCS_ENABLED=false on
+    # the live server (security review, 2026-10-27).
+    api_docs_enabled: bool = True
     upload_dir: str = "/app/uploads"
     cors_origins: str = "http://localhost:5173"
     app_public_url: str = ""
