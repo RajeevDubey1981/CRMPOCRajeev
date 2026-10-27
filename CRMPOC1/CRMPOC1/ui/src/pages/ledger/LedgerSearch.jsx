@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { accountLedgerApi } from "../../api/accountLedger.js";
+import { INDIAN_STATES } from "../../constants/indianStates.js";
 
 function inputClass() {
   return "block w-full rounded-md border border-slate-300 px-3 py-2 text-sm";
@@ -10,8 +11,6 @@ function inputClass() {
 function fmtMoney(n) {
   return `₹${Number(n || 0).toLocaleString("en-IN")}`;
 }
-
-const STATES = ["Rajasthan", "Maharashtra", "Uttar Pradesh", "Gujarat", "Delhi", "Haryana", "Punjab", "Karnataka", "Tamil Nadu", "West Bengal"];
 
 /** One lookup screen, reused for both Sales (vendors only) and Service Team/Manager (engineers only) —
  * which party type it searches is fixed by the `partyType` prop, never a user choice. */
@@ -55,7 +54,7 @@ export default function LedgerSearch({ partyType }) {
             <label className="text-xs uppercase tracking-wide text-slate-500">State</label>
             <select value={filters.state} onChange={(e) => patch("state", e.target.value)} className={`${inputClass()} mt-1`}>
               <option value="">All states</option>
-              {STATES.map((s) => <option key={s} value={s}>{s}</option>)}
+              {INDIAN_STATES.map((s) => <option key={s} value={s}>{s}</option>)}
             </select>
           </div>
           <div>
