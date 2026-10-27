@@ -23,7 +23,7 @@ import { complaintsApi } from "../api/complaints.js";
 import { partnerRegistrationsApi } from "../api/partnerRegistrations.js";
 import { servicesApi } from "../api/services.js";
 import { useAuth } from "../auth/AuthContext.jsx";
-import { isOperationsAdminRole } from "../utils/roles.js";
+import { isOperationsAdminRole, isSystemAdminRole } from "../utils/roles.js";
 import ComplaintEdit from "./complaints/ComplaintEdit.jsx";
 import QueriesPanel from "../components/queries/QueriesPanel.jsx";
 import { getComplaintOpenPath } from "../utils/complaintLinks.js";
@@ -50,12 +50,12 @@ const CHART_FILL = {
 };
 
 const QUICK_LINKS = [
-  { to: "/complaints",       label: "📋 Complaints",    bg: "bg-amber-400 hover:bg-amber-500"     },
-  { to: "/services",         label: "🛠 Service Requests", bg: "bg-cyan-600 hover:bg-cyan-700"    },
-  { to: "/installations",    label: "🔧 Installations", bg: "bg-sky-400 hover:bg-sky-500"         },
-  { to: "/vendor-dashboard", label: "📦 Vendor Orders", bg: "bg-emerald-600 hover:bg-emerald-700" },
-  { to: "/orders",           label: "🗒 Order List",   bg: "bg-blue-500 hover:bg-blue-600"       },
-  { to: "/claims",           label: "📄 Claims",        bg: "bg-purple-500 hover:bg-purple-600"   },
+  { to: "/complaints",       label: "📋 Complaints",    bg: "bg-amber-400 hover:bg-amber-500",     module: "complaints"    },
+  { to: "/services",         label: "🛠 Service Requests", bg: "bg-cyan-600 hover:bg-cyan-700",    module: "services"      },
+  { to: "/installations",    label: "🔧 Installations", bg: "bg-sky-400 hover:bg-sky-500",         module: "installations" },
+  { to: "/vendor-dashboard", label: "📦 Vendor Orders", bg: "bg-emerald-600 hover:bg-emerald-700", module: "orders"        },
+  { to: "/orders",           label: "🗒 Order List",   bg: "bg-blue-500 hover:bg-blue-600",       module: "orders"        },
+  { to: "/claims",           label: "📄 Claims",        bg: "bg-purple-500 hover:bg-purple-600",   module: "claims"        },
 ];
 
 const STATUSES   = ["Pending", "Under Process", "In Process", "Resolved", "Rejected"];
@@ -156,6 +156,15 @@ export default function Dashboard() {
   const isSales = role === "sales";
   // Only operations/admin-like roles can delete complaints from dashboard
   const isAdminLike = isOperationsAdminRole(role) && !isSales;
+  // Whether this role can see a given module at all (any ticked row, any sub-scope) -- same check
+  // Sidebar.jsx uses for nav visibility, so a dashboard section never shows a page this role can't open.
+  const isSystemAdmin = isSystemAdminRole(role);
+  const permissions = Array.isArray(user?.permissions) ? user.permissions : [];
+  function canViewModule(module) {
+    if (isSystemAdmin) return true;
+    return permissions.some((p) => p.module === module && p.can_view);
+  }
+  const canViewInstallations = canViewModule("installations");
 
   // summary / chart
   const [summary, setSummary]   = useState(null);
@@ -253,11 +262,11 @@ export default function Dashboard() {
   useEffect(() => {
     Promise.all([
       api.get("/api/dashboard/complaints-summary", { params: { date_from: filters.date_from || undefined, date_to: filters.date_to || undefined } }),
-      api.get("/api/dashboard/installation-summary"),
+      canViewInstallations ? api.get("/api/dashboard/installation-summary") : Promise.resolve(null),
     ])
-      .then(([s, i]) => { setSummary(s.data); setInstalls(i.data); })
+      .then(([s, i]) => { setSummary(s.data); if (i) setInstalls(i.data); })
       .catch((e) => setDashErr(e.response?.data?.detail || "Failed to load summary"));
-  }, [filters.date_from, filters.date_to]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [filters.date_from, filters.date_to, canViewInstallations]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* load complaint grid */
   const params = useMemo(() => {
@@ -644,7 +653,7 @@ export default function Dashboard() {
                   Send onboarding invite
                  </button>
                )}
-              {QUICK_LINKS.map(ql => (
+              {QUICK_LINKS.filter((ql) => canViewModule(ql.module)).map(ql => (
                 <Link key={ql.to} to={ql.to}
                   className={`rounded px-4 py-2 text-sm font-medium text-white transition-colors ${ql.bg}`}>
                   {ql.label}
@@ -802,7 +811,8 @@ export default function Dashboard() {
         onPerPageChange={n => { setPerPage(n); setPage(1); }}
       />
 
-      {/* Installation Pending */}
+      {/* Installation Pending -- only for roles that can actually open the Installations page */}
+      {canViewInstallations && (
       <div className="rounded bg-white p-5 shadow-sm">
         <h3 className="mb-4 border-b border-slate-100 pb-2 text-base font-semibold text-slate-700">
           Installation Pending
@@ -836,6 +846,7 @@ export default function Dashboard() {
           ))}
         </div>
       </div>
+      )}
 
       {/* Complaint Status Chart */}
       {!isEngineer && (

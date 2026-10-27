@@ -28,7 +28,7 @@ from app.services.engineer_service_scope import (
 from app.services.complaint_access import apply_complaint_assignment_scope
 from app.services.installation_stages import stage_counts
 from app.services.service_access import is_service_desk_user
-from app.services.permissions import sub_module_scope
+from app.services.permissions import can_act_on, sub_module_scope
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 
@@ -78,6 +78,9 @@ def complaints_summary(date_from: date | None = None, date_to: date | None = Non
 
 @router.get("/installation-summary", response_model=InstallationSummary)
 def installation_summary(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    is_engineer = canonical_role_key(user.role) == "engineer"
+    if not is_engineer and not can_act_on(db, user, "installations", "can_view", None):
+        return InstallationSummary(total_pending=0, gt7days=0, gt15days=0, gt30days=0, stages=stage_counts({}))
     now = datetime.now(timezone.utc)
     base = select(func.count(InstallationRequest.id)).where(
         InstallationRequest.status.in_(["Pending", "Assigned", "In Progress", "Settlement Pending"])
