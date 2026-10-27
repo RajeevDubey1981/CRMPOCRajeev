@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.deps import get_current_user, require_roles
 from app.services.permissions import can_act_on
-from app.services.role_access import PROTECTED_USER_ROLES, is_sub_admin, role_key
+from app.services.role_access import PROTECTED_USER_ROLES, is_system_admin, role_key
 from app.models.user import User
 from app.schemas.user import BankDetailsOut, ResetPasswordRequest, UserCreate, UserOut, UserUpdate
 from app.security import hash_password
@@ -31,13 +31,16 @@ PROFILE_MIME_TYPES = {"image/jpeg", "image/jpg", "image/png"}
 
 
 def user_manager(flag: str):
-    """Admin may manage every user. A Sub Admin may manage users only when the role table gives it
-    users.<flag>, and never Admin / Sub Admin accounts (see _guard_protected)."""
+    """Admin may manage every user. Any other role may too, but only once Admin > Roles has actually
+    ticked users.<flag> for it -- this used to hardcode "must be Sub Admin", so a role like Accounts
+    Manager could have users.can_edit ticked on its card and still get 403 every time, which failed
+    closed (not a security hole) but was a real glitch (security review, 2026-10-27). Never Admin / Sub
+    Admin accounts themselves (see _guard_protected)."""
 
     def checker(db: Session = Depends(get_db), user: User = Depends(get_current_user)) -> User:
-        if user.role == "admin":
+        if is_system_admin(user):
             return user
-        if is_sub_admin(user) and can_act_on(db, user, "users", flag, None):
+        if can_act_on(db, user, "users", flag, None):
             return user
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Insufficient permissions")
 
@@ -166,8 +169,15 @@ def list_users(
     vendor_type: str | None = Query(None, description="A vendor type, for example GeM"),
     category: str | None = Query(None, description="An item category the person works on or supplies"),
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    user: User = Depends(get_current_user),
 ):
+    # Every internal staff role needs this for the engineer/person pickers scattered across the app
+    # (assigning a complaint, an installation, a service...), so it stays open to them without a
+    # dedicated "users" permission. A vendor or engineer portal account has no such need and could
+    # otherwise enumerate every other engineer's and every staff member's name/email/phone/home address --
+    # that's real PII with no legitimate use from an external party's own login (security review, 2026-10-27).
+    if role_key(user.role) in ("vendor", "engineer"):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Your role cannot do this")
     stmt = select(User).where(User.deleted_at.is_(None))
     if role:
         stmt = stmt.where(User.role == role)
@@ -201,8 +211,10 @@ def list_users(
 def get_user(
     user_id: int,
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    caller: User = Depends(get_current_user),
 ):
+    if role_key(caller.role) in ("vendor", "engineer"):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Your role cannot do this")
     user = db.get(User, user_id)
     if user is None or user.deleted_at is not None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
