@@ -21,6 +21,7 @@ from app.deps import get_current_user
 from app.models.account_ledger import AccountLedgerEntry
 from app.models.bank_statement import BankStatementImport, BankStatementLine
 from app.models.order import Order, OrderItem
+from app.models.pending_ledger_payment import PendingLedgerPayment
 from app.models.user import User
 from app.models.vendor import Vendor
 from app.models.vendor_expense_approval import VendorExpenseApproval
@@ -30,7 +31,7 @@ from app.services.bank_statement_parser import parse_csv
 from app.services.email_service import send_email
 from app.services.file_service import persist_upload, validate_upload
 from app.services.permissions import can_act_on
-from app.services.role_access import is_service_team, role_key
+from app.services.role_access import is_service_team, is_system_admin, role_key
 
 router = APIRouter(prefix="/api/ledger", tags=["account-ledger"])
 
@@ -59,6 +60,82 @@ def _party_name(party, party_type: PartyType) -> str:
     return party.name_of_firm if party_type == "vendor" else party.name
 
 
+def _party_name_safe(db: Session, party_type: str, party_id: int) -> str | None:
+    if party_type == "vendor":
+        v = db.get(Vendor, party_id)
+        return v.name_of_firm if v else None
+    u = db.get(User, party_id)
+    return u.name if u else None
+
+
+def _create_pending_payment(
+    db: Session, *, party_type: str, party_id: int, amount: float, description: str,
+    source_type: str, source_id: int | None, entry_date: date, raised_by_user_id: int,
+) -> PendingLedgerPayment:
+    """A debit Accounts/Accounts Manager just generated, held for Audit instead of posted straight away.
+    Admin bypasses this (see is_system_admin checks at each call site) and still posts directly."""
+    pending = PendingLedgerPayment(
+        party_type=party_type, party_id=party_id, amount=amount, description=description,
+        source_type=source_type, source_id=source_id, entry_date=entry_date,
+        raised_by_user_id=raised_by_user_id, status="Pending",
+    )
+    db.add(pending)
+    db.flush()
+    return pending
+
+
+def _post_pending_payment(db: Session, pending: PendingLedgerPayment) -> AccountLedgerEntry:
+    """Audit approved it: write the real ledger debit now, and sync back to whatever raised it."""
+    entry = AccountLedgerEntry(
+        party_type=pending.party_type, party_id=pending.party_id, entry_type="debit", amount=pending.amount,
+        description=pending.description, source_type=pending.source_type, source_id=pending.source_id,
+        entry_date=pending.entry_date, created_by_user_id=pending.raised_by_user_id,
+    )
+    entry.pending_payment_id = pending.id
+    db.add(entry)
+    db.flush()
+    pending.posted_entry_id = entry.id
+    if pending.source_type == "bank_statement" and pending.source_id:
+        line = db.get(BankStatementLine, pending.source_id)
+        if line is not None and line.pending_payment_id == pending.id:
+            line.status = "posted"
+            line.ledger_entry_id = entry.id
+    return entry
+
+
+def _pending_payment_out(db: Session, p: PendingLedgerPayment) -> dict:
+    raiser = db.get(User, p.raised_by_user_id) if p.raised_by_user_id else None
+    decider = db.get(User, p.decided_by_user_id) if p.decided_by_user_id else None
+    return {
+        "id": p.id, "party_type": p.party_type, "party_id": p.party_id,
+        "party_name": _party_name_safe(db, p.party_type, p.party_id),
+        "amount": float(p.amount), "description": p.description,
+        "source_type": p.source_type, "source_id": p.source_id, "entry_date": p.entry_date,
+        "raised_by_name": raiser.name if raiser else None,
+        "status": p.status,
+        "decided_by_name": decider.name if decider else None,
+        "decided_at": p.decided_at, "decision_note": p.decision_note,
+        "created_at": p.created_at,
+    }
+
+
+def _payment_status_for(db: Session, source_type: str, source_id: int) -> str | None:
+    """Whether a would-be debit from this source has actually posted. None means either posted directly
+    (Admin bypassed Audit) or no payment was ever raised for it."""
+    pending = db.scalar(
+        select(PendingLedgerPayment)
+        .where(PendingLedgerPayment.source_type == source_type, PendingLedgerPayment.source_id == source_id)
+        .order_by(PendingLedgerPayment.id.desc())
+    )
+    if pending is None:
+        return None
+    if pending.status == "Pending":
+        return "Pending audit"
+    if pending.status == "Approved":
+        return "Posted"
+    return "Rejected by audit"
+
+
 def _entries(db: Session, party_type: PartyType, party_id: int) -> list[AccountLedgerEntry]:
     return list(db.scalars(
         select(AccountLedgerEntry)
@@ -72,6 +149,7 @@ def _entry_out(e: AccountLedgerEntry) -> dict:
         "id": e.id, "entry_date": e.entry_date, "entry_type": e.entry_type,
         "amount": float(e.amount), "description": e.description,
         "source_type": e.source_type, "source_id": e.source_id,
+        "audited": bool(e.pending_payment_id), "audit_bypassed": bool(e.audit_bypassed),
     }
 
 
@@ -105,6 +183,17 @@ def _detail(db: Session, party_type: PartyType, party_id: int, party, can_edit: 
         "bank_details": bank_details,
         "has_bank_details": bool(party.bank_account_number) if party_type == "engineer" else None,
         "entries": [_entry_out(e) for e in entries],
+        "pending_payments": [
+            _pending_payment_out(db, p) for p in db.scalars(
+                select(PendingLedgerPayment)
+                .where(
+                    PendingLedgerPayment.party_type == party_type,
+                    PendingLedgerPayment.party_id == party_id,
+                    PendingLedgerPayment.status == "Pending",
+                )
+                .order_by(PendingLedgerPayment.created_at.desc())
+            )
+        ] if can_edit else [],
     }
 
 
@@ -202,18 +291,25 @@ def process_return(
 
     entry_date = body.entry_date or datetime.now(timezone.utc).date()
     ref = order.order_no or str(order.id)
+    bypass = is_system_admin(user)
+
+    def _post_or_queue(amount: float, description: str) -> None:
+        if bypass:
+            db.add(AccountLedgerEntry(
+                party_type="vendor", party_id=order.vendor_id, entry_type="debit", amount=amount,
+                description=description, source_type="return", source_id=order.id,
+                entry_date=entry_date, created_by_user_id=user.id, audit_bypassed=True,
+            ))
+        else:
+            _create_pending_payment(
+                db, party_type="vendor", party_id=order.vendor_id, amount=amount, description=description,
+                source_type="return", source_id=order.id, entry_date=entry_date, raised_by_user_id=user.id,
+            )
+
     if body.return_amount > 0:
-        db.add(AccountLedgerEntry(
-            party_type="vendor", party_id=order.vendor_id, entry_type="debit", amount=body.return_amount,
-            description=f"Order {ref} -- return amount. {body.note}",
-            source_type="return", source_id=order.id, entry_date=entry_date, created_by_user_id=user.id,
-        ))
+        _post_or_queue(body.return_amount, f"Order {ref} -- return amount. {body.note}")
     if body.return_charges_amount > 0:
-        db.add(AccountLedgerEntry(
-            party_type="vendor", party_id=order.vendor_id, entry_type="debit", amount=body.return_charges_amount,
-            description=f"Order {ref} -- return/courier charges. {body.note}",
-            source_type="return", source_id=order.id, entry_date=entry_date, created_by_user_id=user.id,
-        ))
+        _post_or_queue(body.return_charges_amount, f"Order {ref} -- return/courier charges. {body.note}")
     order.accounts_return_processed_at = datetime.now(timezone.utc)
     db.commit()
     return _return_pending_out(db, order)
@@ -371,6 +467,7 @@ def _statement_line_out(line: BankStatementLine) -> dict:
         "matched_party_type": line.matched_party_type, "matched_party_id": line.matched_party_id,
         "match_confidence": float(line.match_confidence) if line.match_confidence is not None else None,
         "match_reason": line.match_reason, "status": line.status,
+        "pending_payment_id": line.pending_payment_id,
     }
 
 
@@ -446,22 +543,31 @@ def confirm_statement_line(
     line = db.scalar(select(BankStatementLine).where(BankStatementLine.id == line_id, BankStatementLine.import_id == import_id))
     if line is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Statement line not found")
-    if line.status == "posted":
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "This line has already been posted")
+    if line.status in ("posted", "pending_audit"):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "This line has already been posted or submitted for audit")
     party = _load_party(db, body.party_type, body.party_id)
     amount = body.amount if body.amount is not None else float(line.amount)
+    description = f"Bank statement: {line.description}"
 
-    entry = AccountLedgerEntry(
-        party_type=body.party_type, party_id=body.party_id, entry_type="debit", amount=amount,
-        description=f"Bank statement: {line.description}",
-        source_type="bank_statement", source_id=line.id, entry_date=line.line_date, created_by_user_id=user.id,
-    )
-    db.add(entry)
-    db.flush()
     line.matched_party_type = body.party_type
     line.matched_party_id = body.party_id
-    line.status = "posted"
-    line.ledger_entry_id = entry.id
+    if is_system_admin(user):
+        entry = AccountLedgerEntry(
+            party_type=body.party_type, party_id=body.party_id, entry_type="debit", amount=amount,
+            description=description, source_type="bank_statement", source_id=line.id,
+            entry_date=line.line_date, created_by_user_id=user.id, audit_bypassed=True,
+        )
+        db.add(entry)
+        db.flush()
+        line.status = "posted"
+        line.ledger_entry_id = entry.id
+    else:
+        pending = _create_pending_payment(
+            db, party_type=body.party_type, party_id=body.party_id, amount=amount, description=description,
+            source_type="bank_statement", source_id=line.id, entry_date=line.line_date, raised_by_user_id=user.id,
+        )
+        line.status = "pending_audit"
+        line.pending_payment_id = pending.id
     db.commit()
     return _statement_line_out(line)
 
@@ -473,11 +579,85 @@ def ignore_statement_line(import_id: int, line_id: int, db: Session = Depends(ge
     line = db.scalar(select(BankStatementLine).where(BankStatementLine.id == line_id, BankStatementLine.import_id == import_id))
     if line is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Statement line not found")
-    if line.status == "posted":
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "This line has already been posted")
+    if line.status in ("posted", "pending_audit"):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "This line has already been posted or submitted for audit")
     line.status = "ignored"
     db.commit()
     return _statement_line_out(line)
+
+
+@router.get("/audit/pending")
+def list_pending_payments(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Audit's queue: every debit Accounts/Accounts Manager generated (a manual entry, a return, a
+    confirmed bank statement line) that hasn't posted yet. Admin bypasses this queue entirely -- its
+    rows never show up here, they post straight away with audit_bypassed=True on the ledger entry."""
+    if not can_act_on(db, user, "ledger_audit", "can_view", None):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Your role cannot view this")
+    rows = db.scalars(
+        select(PendingLedgerPayment).where(PendingLedgerPayment.status == "Pending").order_by(PendingLedgerPayment.created_at)
+    ).all()
+    return [_pending_payment_out(db, p) for p in rows]
+
+
+class AuditDecideIn(BaseModel):
+    ids: list[int] = Field(min_length=1, max_length=200)
+    decision: Literal["Approved", "Rejected"]
+    note: Optional[str] = None
+
+
+@router.post("/audit/decide")
+def decide_pending_payments(
+    body: AuditDecideIn, db: Session = Depends(get_db), user: User = Depends(get_current_user),
+):
+    """Approve or reject one or several pending payments in one call -- the "batch" option: Audit
+    multi-selects a day's worth of items and decides them together."""
+    if not can_act_on(db, user, "ledger_audit", "can_edit", None):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Your role cannot do this")
+    if body.decision == "Rejected" and not (body.note or "").strip():
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "A note is required when rejecting")
+
+    rows = db.scalars(select(PendingLedgerPayment).where(PendingLedgerPayment.id.in_(body.ids))).all()
+    found = {r.id for r in rows}
+    missing = set(body.ids) - found
+    if missing:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, f"Not found: {sorted(missing)}")
+    not_pending = [r.id for r in rows if r.status != "Pending"]
+    if not_pending:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Already decided: {sorted(not_pending)}")
+
+    for p in rows:
+        p.status = body.decision
+        p.decided_by_user_id = user.id
+        p.decided_at = datetime.now(timezone.utc)
+        p.decision_note = body.note
+        if body.decision == "Approved":
+            _post_pending_payment(db, p)
+        else:
+            if p.source_type == "bank_statement" and p.source_id:
+                line = db.get(BankStatementLine, p.source_id)
+                if line is not None and line.pending_payment_id == p.id:
+                    line.status = "matched"  # back to reviewable -- not ignored, Accounts can re-confirm
+                    line.pending_payment_id = None
+            if p.source_type == "return" and p.source_id:
+                order = db.get(Order, p.source_id)
+                # Only reopen the order if nothing from this return ever actually posted or is still
+                # pending elsewhere -- a partially-approved return (one leg posted) stays "processed".
+                still_active = db.scalar(
+                    select(func.count()).select_from(PendingLedgerPayment).where(
+                        PendingLedgerPayment.source_type == "return", PendingLedgerPayment.source_id == p.source_id,
+                        PendingLedgerPayment.status == "Pending", PendingLedgerPayment.id != p.id,
+                    )
+                ) or 0
+                already_posted = db.scalar(
+                    select(func.count()).select_from(AccountLedgerEntry).where(
+                        AccountLedgerEntry.source_type == "return", AccountLedgerEntry.source_id == p.source_id,
+                    )
+                ) or 0
+                if order is not None and not still_active and not already_posted:
+                    order.accounts_return_processed_at = None
+    db.commit()
+    return [_pending_payment_out(db, p) for p in rows]
+
 
 @router.get("/vendors")
 def list_vendors(
@@ -615,12 +795,19 @@ def add_entry(
 ):
     _require(db, user, party_type, "can_edit")
     party = _load_party(db, party_type, party_id)
-    db.add(AccountLedgerEntry(
-        party_type=party_type, party_id=party_id, entry_type=body.entry_type, amount=body.amount,
-        description=body.description, source_type=body.source_type, source_id=body.source_id,
-        entry_date=body.entry_date or datetime.now(timezone.utc).date(),
-        created_by_user_id=user.id,
-    ))
+    entry_date = body.entry_date or datetime.now(timezone.utc).date()
+    if body.entry_type == "debit" and not is_system_admin(user):
+        _create_pending_payment(
+            db, party_type=party_type, party_id=party_id, amount=body.amount, description=body.description,
+            source_type=body.source_type, source_id=body.source_id, entry_date=entry_date, raised_by_user_id=user.id,
+        )
+    else:
+        db.add(AccountLedgerEntry(
+            party_type=party_type, party_id=party_id, entry_type=body.entry_type, amount=body.amount,
+            description=body.description, source_type=body.source_type, source_id=body.source_id,
+            entry_date=entry_date, created_by_user_id=user.id,
+            audit_bypassed=body.entry_type == "debit",
+        ))
     db.commit()
     return _detail(db, party_type, party_id, party, True)
 

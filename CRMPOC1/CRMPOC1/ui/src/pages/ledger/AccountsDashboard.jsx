@@ -374,7 +374,7 @@ function StatementUploadPanel() {
                     <span className="text-slate-400">No match found</span>
                   )}
                 </td>
-                <td className="px-3 py-2 text-xs capitalize">{line.status}</td>
+                <td className="px-3 py-2 text-xs">{line.status === "pending_audit" ? "Pending audit" : line.status.charAt(0).toUpperCase() + line.status.slice(1)}</td>
                 <td className="px-3 py-2 text-right">
                   {line.status === "unmatched" || line.status === "matched" ? (
                     <div className="flex justify-end gap-1">

@@ -33,4 +33,8 @@ export const accountLedgerApi = {
     api.post(`/api/ledger/statements/${importId}/lines/${lineId}/confirm`, body).then((r) => r.data),
   ignoreStatementLine: (importId, lineId) =>
     api.post(`/api/ledger/statements/${importId}/lines/${lineId}/ignore`).then((r) => r.data),
+
+  // Audit: the maker-checker queue -- every debit Accounts/Accounts Manager raised, waiting to post
+  auditPending: () => api.get("/api/ledger/audit/pending").then((r) => r.data),
+  auditDecide: (body) => api.post("/api/ledger/audit/decide", body).then((r) => r.data),
 };

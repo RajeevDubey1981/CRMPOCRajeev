@@ -12,6 +12,7 @@ export const MODULE_LABELS = {
   bids: "Bids (vendors only: the bid team is set by the tick on the user)",
   vendor_ledger: "Vendor Account (Dr/Cr ledger, bank statements)",
   engineer_ledger: "Engineer Account (Dr/Cr ledger)",
+  ledger_audit: "Audit (approves every ledger payment before it posts)",
 };
 
 export function normalizePermissionModules(modules = []) {

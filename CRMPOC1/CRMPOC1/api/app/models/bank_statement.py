@@ -13,7 +13,7 @@ from sqlalchemy.sql import func
 from app.models._mixins import TimestampMixin
 from app.database import Base
 
-LINE_STATUSES = ("unmatched", "matched", "posted", "ignored")
+LINE_STATUSES = ("unmatched", "matched", "pending_audit", "posted", "ignored")
 
 
 class BankStatementImport(Base, TimestampMixin):
@@ -39,4 +39,5 @@ class BankStatementLine(Base):
     match_reason: Mapped[str | None] = mapped_column(String(255), nullable=True)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="unmatched", index=True)
     ledger_entry_id: Mapped[int | None] = mapped_column(ForeignKey("account_ledger_entries.id"), nullable=True)
+    pending_payment_id: Mapped[int | None] = mapped_column(ForeignKey("pending_ledger_payments.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)

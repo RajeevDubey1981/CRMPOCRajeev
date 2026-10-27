@@ -7,7 +7,7 @@ still owes the party.
 from datetime import date, datetime
 from typing import Optional
 
-from sqlalchemy import Date, DateTime, ForeignKey, Numeric, String, Text
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Numeric, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 
@@ -38,3 +38,9 @@ class AccountLedgerEntry(Base):
     entry_date: Mapped[date] = mapped_column(Date, nullable=False)
     created_by_user_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    # Set on the handful of debit entries that go through Audit (manual entries, returns, bank statement
+    # confirmations): which PendingLedgerPayment Audit approved to produce this row.
+    pending_payment_id: Mapped[Optional[int]] = mapped_column(ForeignKey("pending_ledger_payments.id"), nullable=True)
+    # True only when an Admin posted one of those same debit kinds directly, skipping Audit. Never set
+    # for credits or for flows Audit was never part of (OEM bill, job payout, vendor-approved expense).
+    audit_bypassed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")

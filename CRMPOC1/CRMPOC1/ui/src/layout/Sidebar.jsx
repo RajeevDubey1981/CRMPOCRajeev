@@ -145,7 +145,7 @@ export default function Sidebar({ collapsed, mobileOpen = false, onNavigate }) {
     if (item.vendorOnly) return isVendor;
     if (item.engineerOnly) return isEngineer;
     if (item.reviewerOnly) return isServiceReviewer;
-    if (item.ledgerAccess) return canView("vendor_ledger") || canView("engineer_ledger");
+    if (item.ledgerAccess) return canView("vendor_ledger") || canView("engineer_ledger") || canView("ledger_audit");
     if (item.operationsOnly) return isCourierAdmin;
     if (item.systemAdminOnly) return isSystemAdmin;
     if (item.adminOnly) return isSystemAdmin;

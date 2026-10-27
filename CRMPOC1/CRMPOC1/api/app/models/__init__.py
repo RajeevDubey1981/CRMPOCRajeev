@@ -45,6 +45,7 @@ from app.models.market import (
 from app.models.account_ledger import AccountLedgerEntry
 from app.models.vendor_expense_approval import VendorExpenseApproval
 from app.models.bank_statement import BankStatementImport, BankStatementLine
+from app.models.pending_ledger_payment import PendingLedgerPayment
 
 __all__ = [
     "UserQuery", "UserQueryMessage", "UserQueryRead",

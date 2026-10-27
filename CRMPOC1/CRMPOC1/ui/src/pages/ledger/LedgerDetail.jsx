@@ -309,6 +309,21 @@ export default function LedgerDetail() {
 
         {partyType === "vendor" && <VendorExpenseRaisePanel vendorId={partyId} />}
 
+        {canEdit && data.pending_payments?.length > 0 && (
+          <div className="mt-5 rounded-md border border-amber-200 bg-amber-50 p-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-amber-800">Pending audit — not yet posted</p>
+            <p className="mt-0.5 text-xs text-amber-700">Waiting on the Audit role to approve. Nothing here affects the balance above until it does.</p>
+            <ul className="mt-2 space-y-1 text-sm">
+              {data.pending_payments.map((p) => (
+                <li key={p.id} className="flex items-center justify-between">
+                  <span>{p.description}</span>
+                  <span className="font-mono">{fmtMoney(p.amount)}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
         <p className="mt-6 text-xs font-semibold uppercase tracking-wide text-slate-500">Ledger</p>
         <div className="mt-2 overflow-x-auto">
           <table className="min-w-full text-sm">
@@ -331,6 +346,11 @@ export default function LedgerDetail() {
                   <td className="px-3 py-2 text-xs text-slate-500">{e.source_type.replace(/_/g, " ")}</td>
                   <td className="px-3 py-2">
                     <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${ENTRY_STYLE[e.entry_type]}`}>{ENTRY_LABEL[e.entry_type]}</span>
+                    {e.audit_bypassed && (
+                      <span className="ml-1 inline-flex rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-xs font-bold text-amber-700" title="An Admin posted this directly, skipping the Audit queue">
+                        ⚠ Unaudited
+                      </span>
+                    )}
                   </td>
                   <td className="px-3 py-2 text-right font-mono">{fmtMoney(e.amount)}</td>
                 </tr>

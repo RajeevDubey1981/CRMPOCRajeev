@@ -25,6 +25,7 @@ MODULES = (
     "historical_installations",  # Controlled completion of legacy GeM installations
     "vendor_ledger",    # Vendor Dr/Cr account: can_view sees balance+ledger, can_edit can enter/upload payments
     "engineer_ledger",  # Engineer Dr/Cr account: can_view sees balance+ledger, can_edit can enter/upload payments
+    "ledger_audit",     # Audit role: can_view sees the pending-payment queue, can_edit approves/rejects it
 )
 
 # Modules with sub-module scoping. A sub_module=None permission row means
