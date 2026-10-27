@@ -212,6 +212,52 @@ export default function LedgerDetail() {
           </div>
         </div>
 
+        {partyType === "engineer" && (data.bank_details || data.has_bank_details != null) && (
+          <div className="mt-4 rounded-md border border-slate-200 bg-slate-50 p-4">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">Bank account on file</p>
+              {data.bank_details && (
+                <button
+                  type="button"
+                  onClick={async () => {
+                    try { await navigator.clipboard.writeText(data.bank_details.bank_account_number || ""); } catch { /* ignore */ }
+                  }}
+                  className="text-xs font-semibold text-brand-700 hover:underline"
+                >
+                  Copy account no.
+                </button>
+              )}
+            </div>
+            {data.bank_details ? (
+              <>
+                <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-4">
+                  <div>
+                    <div className="text-[10px] uppercase text-slate-500">Holder</div>
+                    <div className="font-medium">{data.bank_details.bank_account_holder_name || "—"}</div>
+                  </div>
+                  <div>
+                    <div className="text-[10px] uppercase text-slate-500">Bank</div>
+                    <div className="font-medium">{data.bank_details.bank_name || "—"}</div>
+                  </div>
+                  <div>
+                    <div className="text-[10px] uppercase text-slate-500">Account no.</div>
+                    <div className="font-mono font-medium">{data.bank_details.bank_account_number || "—"}</div>
+                  </div>
+                  <div>
+                    <div className="text-[10px] uppercase text-slate-500">IFSC</div>
+                    <div className="font-mono font-medium">{data.bank_details.bank_ifsc || "—"}</div>
+                  </div>
+                </div>
+                {data.bank_details.bank_branch && <p className="mt-2 text-xs text-slate-500">Branch: {data.bank_details.bank_branch}</p>}
+              </>
+            ) : (
+              <p className="mt-1 text-xs text-slate-500">
+                {data.has_bank_details ? "Bank details are on file — only Accounts/Admin can see the account number." : "No bank details on file yet."}
+              </p>
+            )}
+          </div>
+        )}
+
         {canEdit && (
           <>
             <div className="mt-5 flex flex-wrap items-end gap-2">

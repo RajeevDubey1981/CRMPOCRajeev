@@ -34,3 +34,11 @@ class User(Base, TimestampMixin, SoftDeleteMixin):
     profile_picture_filename: Mapped[str | None] = mapped_column(String(255), nullable=True)
     profile_picture_content_type: Mapped[str | None] = mapped_column(String(100), nullable=True)
     profile_picture_size_bytes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Bank account to pay this engineer (GST or Non-GST -- both are just a role string, not a separate
+    # field). Never serialized on the general UserOut; see GET /api/users/{id}/bank-details and the
+    # ledger's own can_edit-gated detail endpoint for the only two places these are read back out.
+    bank_account_holder_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    bank_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    bank_account_number: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    bank_ifsc: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    bank_branch: Mapped[str | None] = mapped_column(String(255), nullable=True)

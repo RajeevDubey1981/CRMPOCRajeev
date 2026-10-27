@@ -11,7 +11,7 @@ from app.deps import get_current_user, require_roles
 from app.services.permissions import can_act_on
 from app.services.role_access import PROTECTED_USER_ROLES, is_sub_admin, role_key
 from app.models.user import User
-from app.schemas.user import ResetPasswordRequest, UserCreate, UserOut, UserUpdate
+from app.schemas.user import BankDetailsOut, ResetPasswordRequest, UserCreate, UserOut, UserUpdate
 from app.security import hash_password
 from app.services import coverage as coverage_service
 from app.services.geo import canonical_state, split_pincodes
@@ -93,6 +93,7 @@ def _user_out(db: Session, user: User) -> UserOut:
         id_proof_filename=user.id_proof_filename,
         has_profile_picture=user.profile_picture_blob is not None,
         profile_picture_filename=user.profile_picture_filename,
+        has_bank_details=bool(user.bank_account_number),
     )
 
 
@@ -239,6 +240,11 @@ async def create_user(
         coverage=json.dumps(body.coverage) if body.coverage else None,
         skills=json.dumps(body.skills) if body.skills else None,
         vendor_types=json.dumps(body.vendor_types) if body.vendor_types else None,
+        bank_account_holder_name=body.bank_account_holder_name,
+        bank_name=body.bank_name,
+        bank_account_number=body.bank_account_number,
+        bank_ifsc=body.bank_ifsc,
+        bank_branch=body.bank_branch,
     )
     id_data, profile_data = await _read_user_files(id_proof, profile_picture)
     _assign_user_files(user, id_data, profile_data)
@@ -339,6 +345,27 @@ def get_profile_picture(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
     _guard_protected(actor, user.role)
     return _file_response(user.profile_picture_blob, user.profile_picture_content_type, user.profile_picture_filename)
+
+
+@router.get("/{user_id}/bank-details", response_model=BankDetailsOut)
+def get_bank_details(
+    user_id: int,
+    db: Session = Depends(get_db),
+    actor: User = Depends(user_manager("can_view")),
+):
+    """The actual account number/IFSC, for prefilling the Edit User form -- never part of UserOut, which
+    any logged-in user can read (GET /api/users has no permission gate beyond being signed in)."""
+    user = db.get(User, user_id)
+    if user is None or user.deleted_at is not None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
+    _guard_protected(actor, user.role)
+    return BankDetailsOut(
+        bank_account_holder_name=user.bank_account_holder_name,
+        bank_name=user.bank_name,
+        bank_account_number=user.bank_account_number,
+        bank_ifsc=user.bank_ifsc,
+        bank_branch=user.bank_branch,
+    )
 
 
 @router.put("/{user_id}/reset-password", status_code=status.HTTP_204_NO_CONTENT)

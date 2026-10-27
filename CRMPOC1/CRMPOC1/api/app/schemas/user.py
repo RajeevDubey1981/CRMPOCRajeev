@@ -36,7 +36,20 @@ class _Place(PlaceIn):
         return out
 
 
-class UserCreate(_Place):
+class _BankDetails(BaseModel):
+    bank_account_holder_name: str | None = Field(default=None, max_length=255)
+    bank_name: str | None = Field(default=None, max_length=255)
+    bank_account_number: str | None = Field(default=None, max_length=40)
+    bank_ifsc: str | None = Field(default=None, max_length=20)
+    bank_branch: str | None = Field(default=None, max_length=255)
+
+    @field_validator("bank_ifsc", mode="before")
+    @classmethod
+    def _upper_ifsc(cls, value):
+        return value.strip().upper() if isinstance(value, str) and value.strip() else (None if value == "" else value)
+
+
+class UserCreate(_Place, _BankDetails):
     name: str = Field(min_length=1, max_length=255)
     email: EmailStr
     password: str = Field(min_length=6, max_length=128)
@@ -47,7 +60,7 @@ class UserCreate(_Place):
     can_manage_marketing: bool = False
 
 
-class UserUpdate(_Place):
+class UserUpdate(_Place, _BankDetails):
     name: str | None = None
     email: EmailStr | None = None
     role: str | None = None
@@ -55,6 +68,10 @@ class UserUpdate(_Place):
     is_active: bool | None = None
     can_manage_bids: bool | None = None
     can_manage_marketing: bool | None = None
+
+
+class BankDetailsOut(_BankDetails):
+    pass
 
 
 class ResetPasswordRequest(BaseModel):
@@ -85,6 +102,7 @@ class UserOut(BaseModel):
     id_proof_filename: str | None = None
     has_profile_picture: bool = False
     profile_picture_filename: str | None = None
+    has_bank_details: bool = False
 
     class Config:
         from_attributes = True

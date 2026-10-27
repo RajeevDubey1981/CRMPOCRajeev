@@ -82,6 +82,15 @@ def _detail(db: Session, party_type: PartyType, party_id: int, party, can_edit: 
     cycle_days = party.payment_cycle_days
     overdue_days = compute_overdue_days(oldest_unpaid, cycle_days)
     opening = next((e for e in entries if e.source_type == "opening"), None)
+    bank_details = None
+    if party_type == "engineer" and can_edit and bool(party.bank_account_number):
+        bank_details = {
+            "bank_account_holder_name": party.bank_account_holder_name,
+            "bank_name": party.bank_name,
+            "bank_account_number": party.bank_account_number,
+            "bank_ifsc": party.bank_ifsc,
+            "bank_branch": party.bank_branch,
+        }
     return {
         "party_type": party_type, "party_id": party_id, "name": _party_name(party, party_type),
         "payment_cycle_days": cycle_days,
@@ -93,6 +102,8 @@ def _detail(db: Session, party_type: PartyType, party_id: int, party, can_edit: 
         "oldest_unpaid_since": oldest_unpaid,
         "overdue_days": overdue_days,
         "can_edit": can_edit,
+        "bank_details": bank_details,
+        "has_bank_details": bool(party.bank_account_number) if party_type == "engineer" else None,
         "entries": [_entry_out(e) for e in entries],
     }
 

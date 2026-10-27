@@ -41,6 +41,11 @@ function UserForm({ initial, roles, busy, onCancel, onSubmit }) {
     vendor_types: initial?.vendor_types || [],
     other_type: "",
     coverage: (() => { const c = startCoverage(initial || {}); return { mode: c.mode, states: c.states }; })(),
+    bank_account_holder_name: "",
+    bank_name: "",
+    bank_account_number: "",
+    bank_ifsc: "",
+    bank_branch: "",
   });
   const [categories, setCategories] = useState(DEFAULT_ITEM_CATEGORIES);
   useEffect(() => {
@@ -48,6 +53,24 @@ function UserForm({ initial, roles, busy, onCancel, onSubmit }) {
     itemsApi.categories().then((list) => { if (live && Array.isArray(list)) setCategories([...new Set([...DEFAULT_ITEM_CATEGORIES, ...list])]); }).catch(() => {});
     return () => { live = false; };
   }, []);
+  useEffect(() => {
+    if (!isEdit) return;
+    let live = true;
+    usersAdminApi.bankDetails(initial.id)
+      .then((d) => {
+        if (!live) return;
+        setForm((f) => ({
+          ...f,
+          bank_account_holder_name: d.bank_account_holder_name || "",
+          bank_name: d.bank_name || "",
+          bank_account_number: d.bank_account_number || "",
+          bank_ifsc: d.bank_ifsc || "",
+          bank_branch: d.bank_branch || "",
+        }));
+      })
+      .catch(() => {});
+    return () => { live = false; };
+  }, [isEdit, initial?.id]);
   const [err, setErr] = useState("");
   const [idProof, setIdProof] = useState(null);
   const [profilePicture, setProfilePicture] = useState(null);
@@ -79,6 +102,15 @@ function UserForm({ initial, roles, busy, onCancel, onSubmit }) {
       : {};
     const typed = form.other_type.trim();
     const vendorBody = form.role === "vendor" ? { vendor_types: typed && !form.vendor_types.includes(typed) ? [...form.vendor_types, typed] : form.vendor_types, skills: form.skills } : {};
+    const bankBody = canonicalRoleKey(form.role) === "engineer"
+      ? {
+          bank_account_holder_name: form.bank_account_holder_name.trim() || null,
+          bank_name: form.bank_name.trim() || null,
+          bank_account_number: form.bank_account_number.trim() || null,
+          bank_ifsc: form.bank_ifsc.trim() || null,
+          bank_branch: form.bank_branch.trim() || null,
+        }
+      : {};
     const problem = canonicalRoleKey(form.role) === "engineer" ? coverageProblem(form.coverage) : "";
     if (problem) { setErr(problem); return; }
     if (placeBody.pincode && !/^[1-9]\d{5}$/.test(placeBody.pincode.replace(/\s+/g, ""))) {
@@ -97,6 +129,7 @@ function UserForm({ initial, roles, busy, onCancel, onSubmit }) {
             can_manage_marketing: marketingTickApplies && form.can_manage_marketing,
             ...placeBody,
             ...vendorBody,
+            ...bankBody,
           }
         : {
             name: form.name,
@@ -109,6 +142,7 @@ function UserForm({ initial, roles, busy, onCancel, onSubmit }) {
             can_manage_marketing: marketingTickApplies && form.can_manage_marketing,
             ...placeBody,
             ...vendorBody,
+            ...bankBody,
           };
       await onSubmit(body, { idProof, profilePicture });
     } catch (e) {
@@ -178,6 +212,32 @@ function UserForm({ initial, roles, busy, onCancel, onSubmit }) {
                     </button>
                   );
                 })}
+              </div>
+            </div>
+            <div className="md:col-span-3 border-t border-sky-200 pt-3">
+              <div className="text-sm font-semibold text-slate-800">Bank account details</div>
+              <p className="mb-2 text-xs text-slate-600">Shown for either GST or Non-GST engineer roles. Accounts pays this engineer against the account on file here — only Admin/Sub Admin and Accounts can see it.</p>
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                <div>
+                  <label className={labelClass}>Account holder name</label>
+                  <input value={form.bank_account_holder_name} onChange={(e) => set("bank_account_holder_name", e.target.value)} placeholder="As printed on the passbook/cheque" className={fieldClass} />
+                </div>
+                <div>
+                  <label className={labelClass}>Bank name</label>
+                  <input value={form.bank_name} onChange={(e) => set("bank_name", e.target.value)} placeholder="e.g. State Bank of India" className={fieldClass} />
+                </div>
+                <div>
+                  <label className={labelClass}>Account number</label>
+                  <input value={form.bank_account_number} onChange={(e) => set("bank_account_number", e.target.value)} className={fieldClass} />
+                </div>
+                <div>
+                  <label className={labelClass}>IFSC code</label>
+                  <input value={form.bank_ifsc} onChange={(e) => set("bank_ifsc", e.target.value.toUpperCase())} placeholder="e.g. SBIN0001234" className={fieldClass} />
+                </div>
+                <div className="md:col-span-2">
+                  <label className={labelClass}>Branch <span className="font-normal normal-case text-slate-400">(optional)</span></label>
+                  <input value={form.bank_branch} onChange={(e) => set("bank_branch", e.target.value)} placeholder="Branch name / city" className={fieldClass} />
+                </div>
               </div>
             </div>
           </div>

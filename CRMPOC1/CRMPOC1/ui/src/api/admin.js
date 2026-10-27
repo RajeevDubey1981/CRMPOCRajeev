@@ -7,6 +7,7 @@ export const usersAdminApi = {
   update: (id, body, files = {}) => userMutation("put", `/api/users/${id}`, body, files),
   idProof: (id) => api.get(`/api/users/${id}/id-proof`, { responseType: "blob" }).then((r) => r.data),
   profilePicture: (id) => api.get(`/api/users/${id}/profile-picture`, { responseType: "blob" }).then((r) => r.data),
+  bankDetails: (id) => api.get(`/api/users/${id}/bank-details`).then((r) => r.data),
   deactivate: (id) => api.delete(`/api/users/${id}`),
   resetPassword: (id, new_password) =>
     api.put(`/api/users/${id}/reset-password`, { new_password }),
