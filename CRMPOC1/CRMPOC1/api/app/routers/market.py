@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.deps import get_current_user
+from app.services.role_access import is_system_admin
 from app.models.market import (
     MarketCategory,
     MarketItem,
@@ -38,6 +39,15 @@ from app.schemas.market import (
 )
 
 router = APIRouter(prefix="/api/market", tags=["market"])
+
+
+def _require_admin(user: User = Depends(get_current_user)) -> User:
+    # Market Admin has never had a real permission card -- the Sidebar hides it from everyone but
+    # system admins client-side (systemAdminOnly), but nothing on the server ever enforced that, so any
+    # logged-in account of any role could hit these routes directly (security review, 2026-10-27).
+    if not is_system_admin(user):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Insufficient permissions")
+    return user
 
 
 # ---------------------------------------------------------------------------
@@ -106,7 +116,7 @@ def _hydrate_order(db: Session, order: MarketOrder) -> MarketOrderOut:
 @router.get("/dashboard", response_model=MarketDashboard)
 def get_dashboard(
     db: Session = Depends(get_db),
-    _user: User = Depends(get_current_user),
+    _user: User = Depends(_require_admin),
 ):
     total_users = db.scalar(select(func.count(MarketUser.id))) or 0
     active_users = db.scalar(
@@ -161,7 +171,7 @@ def get_dashboard(
 @router.get("/users/lookup", response_model=list[MarketUserLookup])
 def lookup_users(
     db: Session = Depends(get_db),
-    _user: User = Depends(get_current_user),
+    _user: User = Depends(_require_admin),
 ):
     rows = db.scalars(
         select(MarketUser).order_by(MarketUser.name)
@@ -177,7 +187,7 @@ def list_users(
     role: str | None = Query(None),
     search: str | None = Query(None),
     db: Session = Depends(get_db),
-    _user: User = Depends(get_current_user),
+    _user: User = Depends(_require_admin),
 ):
     stmt = select(MarketUser)
     if status_filter:
@@ -220,7 +230,7 @@ def list_users(
 def create_user(
     body: MarketUserCreate,
     db: Session = Depends(get_db),
-    _user: User = Depends(get_current_user),
+    _user: User = Depends(_require_admin),
 ):
     existing = db.scalar(select(MarketUser).where(MarketUser.email == body.email))
     if existing:
@@ -250,7 +260,7 @@ def create_user(
 def get_user(
     user_id: int,
     db: Session = Depends(get_db),
-    _user: User = Depends(get_current_user),
+    _user: User = Depends(_require_admin),
 ):
     mu = db.get(MarketUser, user_id)
     if mu is None:
@@ -277,7 +287,7 @@ def update_user(
     user_id: int,
     body: MarketUserUpdate,
     db: Session = Depends(get_db),
-    _user: User = Depends(get_current_user),
+    _user: User = Depends(_require_admin),
 ):
     mu = db.get(MarketUser, user_id)
     if mu is None:
@@ -307,7 +317,7 @@ def update_user(
 def delete_user(
     user_id: int,
     db: Session = Depends(get_db),
-    _user: User = Depends(get_current_user),
+    _user: User = Depends(_require_admin),
 ):
     mu = db.get(MarketUser, user_id)
     if mu is None:
@@ -323,7 +333,7 @@ def delete_user(
 @router.get("/categories", response_model=list[MarketCategoryOut])
 def list_categories(
     db: Session = Depends(get_db),
-    _user: User = Depends(get_current_user),
+    _user: User = Depends(_require_admin),
 ):
     categories = db.scalars(select(MarketCategory).order_by(MarketCategory.id)).all()
 
@@ -363,7 +373,7 @@ def list_categories(
 def create_category(
     body: MarketCategoryCreate,
     db: Session = Depends(get_db),
-    _user: User = Depends(get_current_user),
+    _user: User = Depends(_require_admin),
 ):
     cat = MarketCategory(name=body.name, parent_id=body.parent_id)
     db.add(cat)
@@ -389,7 +399,7 @@ def update_category(
     category_id: int,
     body: MarketCategoryUpdate,
     db: Session = Depends(get_db),
-    _user: User = Depends(get_current_user),
+    _user: User = Depends(_require_admin),
 ):
     cat = db.get(MarketCategory, category_id)
     if cat is None:
@@ -423,7 +433,7 @@ def update_category(
 def delete_category(
     category_id: int,
     db: Session = Depends(get_db),
-    _user: User = Depends(get_current_user),
+    _user: User = Depends(_require_admin),
 ):
     cat = db.get(MarketCategory, category_id)
     if cat is None:
@@ -444,7 +454,7 @@ def list_items(
     category_id: int | None = Query(None),
     search: str | None = Query(None),
     db: Session = Depends(get_db),
-    _user: User = Depends(get_current_user),
+    _user: User = Depends(_require_admin),
 ):
     stmt = select(MarketItem)
     if status_filter:
@@ -486,7 +496,7 @@ def list_items(
 def create_item(
     body: MarketItemCreate,
     db: Session = Depends(get_db),
-    _user: User = Depends(get_current_user),
+    _user: User = Depends(_require_admin),
 ):
     existing = db.scalar(select(MarketItem).where(MarketItem.sku == body.sku))
     if existing:
@@ -515,7 +525,7 @@ def create_item(
 def get_item(
     item_id: int,
     db: Session = Depends(get_db),
-    _user: User = Depends(get_current_user),
+    _user: User = Depends(_require_admin),
 ):
     mi = db.get(MarketItem, item_id)
     if mi is None:
@@ -541,7 +551,7 @@ def update_item(
     item_id: int,
     body: MarketItemUpdate,
     db: Session = Depends(get_db),
-    _user: User = Depends(get_current_user),
+    _user: User = Depends(_require_admin),
 ):
     mi = db.get(MarketItem, item_id)
     if mi is None:
@@ -570,7 +580,7 @@ def update_item(
 def delete_item(
     item_id: int,
     db: Session = Depends(get_db),
-    _user: User = Depends(get_current_user),
+    _user: User = Depends(_require_admin),
 ):
     mi = db.get(MarketItem, item_id)
     if mi is None:
@@ -590,7 +600,7 @@ def list_orders(
     status_filter: str | None = Query(None, alias="status"),
     search: str | None = Query(None),
     db: Session = Depends(get_db),
-    _user: User = Depends(get_current_user),
+    _user: User = Depends(_require_admin),
 ):
     stmt = select(MarketOrder)
     if status_filter:
@@ -620,7 +630,7 @@ def list_orders(
 def create_order(
     body: MarketOrderCreate,
     db: Session = Depends(get_db),
-    _user: User = Depends(get_current_user),
+    _user: User = Depends(_require_admin),
 ):
     # Compute total from items
     total = 0.0
@@ -662,7 +672,7 @@ def create_order(
 def get_order(
     order_id: int,
     db: Session = Depends(get_db),
-    _user: User = Depends(get_current_user),
+    _user: User = Depends(_require_admin),
 ):
     order = db.get(MarketOrder, order_id)
     if order is None:
@@ -675,7 +685,7 @@ def update_order(
     order_id: int,
     body: MarketOrderUpdate,
     db: Session = Depends(get_db),
-    _user: User = Depends(get_current_user),
+    _user: User = Depends(_require_admin),
 ):
     order = db.get(MarketOrder, order_id)
     if order is None:
@@ -691,7 +701,7 @@ def update_order(
 def delete_order(
     order_id: int,
     db: Session = Depends(get_db),
-    _user: User = Depends(get_current_user),
+    _user: User = Depends(_require_admin),
 ):
     order = db.get(MarketOrder, order_id)
     if order is None:
