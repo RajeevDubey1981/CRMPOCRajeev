@@ -172,6 +172,16 @@ def ensure_partner_account(db: Session, registration: PartnerRegistration) -> Ve
         user.deleted_at = None
         user.is_active = True
 
+    if role == "engineer" and registration.account_number:
+        # Accounts pays engineers against the account on file in their User profile -- carry over
+        # what the partner already gave us at onboarding (step 6, "Bank Details") instead of leaving
+        # it blank and making someone retype it. Never overwrite a value Admin already entered by hand.
+        user.bank_account_holder_name = user.bank_account_holder_name or registration.account_holder_name
+        user.bank_name = user.bank_name or registration.bank_name
+        user.bank_account_number = user.bank_account_number or registration.account_number
+        user.bank_ifsc = user.bank_ifsc or registration.ifsc_code
+        user.bank_branch = user.bank_branch or registration.bank_branch
+
     vendor = db.scalar(select(Vendor).where(Vendor.email == email))
     if vendor is None:
         vendor = Vendor(
