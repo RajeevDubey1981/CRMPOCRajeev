@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Request, Response, UploadFile, status
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -13,6 +13,7 @@ from app.schemas.partner_registration import (
     PartnerPublicSubmit,
 )
 from app.services.file_service import save_upload
+from app.services.upload_access import PARTNER_DOC_COOKIE
 from app.services.partner_registration import (
     DOCUMENT_KEYS,
     apply_step_fields,
@@ -41,13 +42,25 @@ def _get_row(db: Session, token: str):
 
 
 @router.get("/{token}", response_model=PartnerPublicContext)
-def public_registration_context(token: str, db: Session = Depends(get_db)):
+def public_registration_context(token: str, request: Request, response: Response, db: Session = Depends(get_db)):
     row = _get_row(db, token)
     if row.form_status == "Invite Sent" and row.form_started_at is None:
         row.form_started_at = datetime.now(timezone.utc)
         row.form_status = "In Progress"
         db.commit()
         db.refresh(row)
+
+    # Unlocks only the documents THIS registration already uploaded (see app/services/upload_access.py),
+    # so the partner can preview their own files on this step without any CRM login existing for them.
+    response.set_cookie(
+        PARTNER_DOC_COOKIE,
+        token,
+        httponly=True,
+        secure=request.url.scheme == "https",
+        samesite="lax",
+        max_age=60 * 60 * 24,
+        path="/uploads",
+    )
 
     hydrated = hydrate_partner(row)
     return PartnerPublicContext(

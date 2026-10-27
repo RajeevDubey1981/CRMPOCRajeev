@@ -17,7 +17,14 @@ from app.routers import site_api, installation_returns
 
 from app.services.installation_return_guard import guard_installation_returns
 
-app = FastAPI(dependencies=[Depends(guard_installation_returns)], title="Indcool CRM API", version="0.1.0")
+app = FastAPI(
+    dependencies=[Depends(guard_installation_returns)],
+    title="Indcool CRM API",
+    version="0.1.0",
+    docs_url="/docs" if settings.api_docs_enabled else None,
+    redoc_url="/redoc" if settings.api_docs_enabled else None,
+    openapi_url="/openapi.json" if settings.api_docs_enabled else None,
+)
 settings.resolved_upload_dir.mkdir(parents=True, exist_ok=True)
 
 app.add_middleware(
@@ -80,13 +87,19 @@ app.include_router(parts_router)
 app.include_router(sarvam_api.router)
 app.include_router(site_api.router)
 class PublicUploads(StaticFiles):
-    """The uploads folder, except the files attached to conversations: those are only given to the people in them."""
+    """The uploads folder, except the files attached to conversations: those are only given to the people in them.
+    Everything else needs a logged-in CRM session or, for a partner mid-onboarding, the access_token cookie
+    scoped to their own registration -- see app/services/upload_access.py for why this exists."""
 
     async def get_response(self, path: str, scope):
-        if path.replace("\\", "/").lstrip("/").startswith("queries/"):
-            from fastapi import HTTPException
+        from fastapi import HTTPException
 
+        from app.services.upload_access import is_authorized
+
+        if path.replace("\\", "/").lstrip("/").startswith("queries/"):
             raise HTTPException(404)
+        if not is_authorized(path, scope):
+            raise HTTPException(403)
         response = await super().get_response(path, scope)
         # Every upload is already content-signature-checked and re-saved through Pillow before it's
         # stored, but this stops a browser from ever second-guessing the Content-Type we gave it.

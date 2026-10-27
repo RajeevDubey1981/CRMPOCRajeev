@@ -1,4 +1,6 @@
-from sqlalchemy import Boolean, Integer, LargeBinary, String, Text
+from datetime import datetime
+
+from sqlalchemy import Boolean, DateTime, Integer, LargeBinary, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -42,3 +44,10 @@ class User(Base, TimestampMixin, SoftDeleteMixin):
     bank_account_number: Mapped[str | None] = mapped_column(String(40), nullable=True)
     bank_ifsc: Mapped[str | None] = mapped_column(String(20), nullable=True)
     bank_branch: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # Login lockout: counts consecutive wrong passwords, reset to 0 on a successful login. Once it hits
+    # the threshold (see routers/auth.py) locked_until is set and login is refused until that time passes.
+    # Naive UTC on purpose, not DateTime(timezone=True): MySQL has no concept of a stored UTC offset, so
+    # a round-tripped "timezone-aware" column comes back naive anyway -- comparing it against an aware
+    # datetime.now(timezone.utc) in Python raises TypeError. Store and compare naive UTC throughout.
+    failed_login_attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=False), nullable=True)
