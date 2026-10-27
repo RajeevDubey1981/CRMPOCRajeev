@@ -1,4 +1,6 @@
+import ipaddress
 import json
+import socket
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -22,8 +24,20 @@ from app.schemas.project import (
     TaskUpdate,
 )
 from app.services.email_service import send_rubric_request_email, send_survey_email
+from app.services.role_access import is_system_admin
 
 router = APIRouter(prefix="/api/projects", tags=["projects"])
+
+
+def _require_admin(user: User = Depends(get_current_user)) -> User:
+    # This advisor-onboarding workflow engine isn't wired into the app's permission system (no "projects"
+    # module exists in Admin > Roles) and isn't linked from the Sidebar nav -- it's unused, forgotten
+    # functionality that one of its own task types (Fetch Advisor List) can turn into an open SSRF/email
+    # relay for ANY logged-in account, vendor and engineer portals included. Until it has a real owner and
+    # a real permission card, keep it admin-only rather than open to every authenticated role.
+    if not is_system_admin(user):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Insufficient permissions")
+    return user
 
 
 def _now() -> str:
@@ -56,7 +70,7 @@ def _get_tasks(db: Session, project_id: int) -> list[WorkflowTask]:
 # ---------------------------------------------------------------------------
 
 @router.get("", response_model=list[ProjectOut])
-def list_projects(status: str | None = None, db: Session = Depends(get_db), _=Depends(get_current_user)):
+def list_projects(status: str | None = None, db: Session = Depends(get_db), _=Depends(_require_admin)):
     q = select(Project).order_by(Project.updated_at.desc())
     if status:
         q = q.where(Project.status == status)
@@ -64,7 +78,7 @@ def list_projects(status: str | None = None, db: Session = Depends(get_db), _=De
 
 
 @router.post("", response_model=ProjectOut, status_code=status.HTTP_201_CREATED)
-def create_project(body: ProjectCreate, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+def create_project(body: ProjectCreate, db: Session = Depends(get_db), user: User = Depends(_require_admin)):
     project = Project(
         title=body.title,
         description=body.description,
@@ -78,7 +92,7 @@ def create_project(body: ProjectCreate, db: Session = Depends(get_db), user: Use
 
 
 @router.get("/{project_id}", response_model=ProjectDetail)
-def get_project(project_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
+def get_project(project_id: int, db: Session = Depends(get_db), _=Depends(_require_admin)):
     project = db.get(Project, project_id)
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
@@ -90,7 +104,7 @@ def get_project(project_id: int, db: Session = Depends(get_db), _=Depends(get_cu
 
 
 @router.patch("/{project_id}", response_model=ProjectOut)
-def update_project(project_id: int, body: ProjectUpdate, db: Session = Depends(get_db), _=Depends(get_current_user)):
+def update_project(project_id: int, body: ProjectUpdate, db: Session = Depends(get_db), _=Depends(_require_admin)):
     project = db.get(Project, project_id)
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
@@ -102,7 +116,7 @@ def update_project(project_id: int, body: ProjectUpdate, db: Session = Depends(g
 
 
 @router.delete("/{project_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_project(project_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
+def delete_project(project_id: int, db: Session = Depends(get_db), _=Depends(_require_admin)):
     project = db.get(Project, project_id)
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
@@ -115,7 +129,7 @@ def delete_project(project_id: int, db: Session = Depends(get_db), _=Depends(get
 # ---------------------------------------------------------------------------
 
 @router.post("/{project_id}/tasks", response_model=TaskOut, status_code=status.HTTP_201_CREATED)
-def add_task(project_id: int, body: TaskCreate, db: Session = Depends(get_db), _=Depends(get_current_user)):
+def add_task(project_id: int, body: TaskCreate, db: Session = Depends(get_db), _=Depends(_require_admin)):
     if not db.get(Project, project_id):
         raise HTTPException(status_code=404, detail="Project not found")
     if body.task_type not in TASK_TYPES:
@@ -136,7 +150,7 @@ def add_task(project_id: int, body: TaskCreate, db: Session = Depends(get_db), _
 
 
 @router.patch("/{project_id}/tasks/{task_id}", response_model=TaskOut)
-def update_task(project_id: int, task_id: int, body: TaskUpdate, db: Session = Depends(get_db), _=Depends(get_current_user)):
+def update_task(project_id: int, task_id: int, body: TaskUpdate, db: Session = Depends(get_db), _=Depends(_require_admin)):
     task = db.get(WorkflowTask, task_id)
     if not task or task.project_id != project_id:
         raise HTTPException(status_code=404, detail="Task not found")
@@ -148,7 +162,7 @@ def update_task(project_id: int, task_id: int, body: TaskUpdate, db: Session = D
 
 
 @router.delete("/{project_id}/tasks/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_task(project_id: int, task_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
+def delete_task(project_id: int, task_id: int, db: Session = Depends(get_db), _=Depends(_require_admin)):
     task = db.get(WorkflowTask, task_id)
     if not task or task.project_id != project_id:
         raise HTTPException(status_code=404, detail="Task not found")
@@ -157,7 +171,7 @@ def delete_task(project_id: int, task_id: int, db: Session = Depends(get_db), _=
 
 
 @router.post("/{project_id}/tasks/{task_id}/reset", response_model=TaskOut)
-def reset_task(project_id: int, task_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
+def reset_task(project_id: int, task_id: int, db: Session = Depends(get_db), _=Depends(_require_admin)):
     task = db.get(WorkflowTask, task_id)
     if not task or task.project_id != project_id:
         raise HTTPException(status_code=404, detail="Task not found")
@@ -176,7 +190,7 @@ def reset_task(project_id: int, task_id: int, db: Session = Depends(get_db), _=D
 # ---------------------------------------------------------------------------
 
 @router.post("/{project_id}/run", response_model=dict)
-def run_project(project_id: int, resume: bool = False, db: Session = Depends(get_db), _=Depends(get_current_user)):
+def run_project(project_id: int, resume: bool = False, db: Session = Depends(get_db), _=Depends(_require_admin)):
     project = db.get(Project, project_id)
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
@@ -215,7 +229,7 @@ def run_project(project_id: int, resume: bool = False, db: Session = Depends(get
 
 
 @router.post("/{project_id}/tasks/{task_id}/run", response_model=dict)
-def run_task(project_id: int, task_id: int, input_override: dict | None = None, db: Session = Depends(get_db), _=Depends(get_current_user)):
+def run_task(project_id: int, task_id: int, input_override: dict | None = None, db: Session = Depends(get_db), _=Depends(_require_admin)):
     task = db.get(WorkflowTask, task_id)
     if not task or task.project_id != project_id:
         raise HTTPException(status_code=404, detail="Task not found")
@@ -253,6 +267,24 @@ def _execute_task(task: WorkflowTask, extra_context: dict, db: Session) -> dict:
         return {"task_id": task.id, "task_name": task.task_name, "status": "Failed", "error": str(e)}
 
 
+def _reject_internal_targets(url: str) -> None:
+    """SSRF guard for the one task type that makes the server fetch an arbitrary caller-supplied URL.
+    Blocks anything that isn't a plain public http(s) host: the scheme, and every IP that hostname
+    resolves to (not just the literal string, so "localhost" or a DNS-rebinding hostname can't sneak
+    past a string check)."""
+    parsed = urllib.parse.urlparse(url)
+    if parsed.scheme not in ("http", "https") or not parsed.hostname:
+        raise ValueError("api_url must be a plain http(s) URL")
+    try:
+        resolved = {info[4][0] for info in socket.getaddrinfo(parsed.hostname, None)}
+    except OSError as exc:
+        raise ValueError(f"Could not resolve api_url host: {exc}") from exc
+    for addr in resolved:
+        ip = ipaddress.ip_address(addr)
+        if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or ip.is_multicast or ip.is_unspecified:
+            raise ValueError("api_url may not point at an internal or reserved address")
+
+
 def _run_handler(task: WorkflowTask, ctx: dict) -> dict:
     t = task.task_type
 
@@ -266,6 +298,7 @@ def _run_handler(task: WorkflowTask, ctx: dict) -> dict:
         api_url = ctx.get("api_url")
         if not api_url:
             raise ValueError("api_url is required in input_data for Fetch Advisor List task")
+        _reject_internal_targets(api_url)
         query = ctx.get("query", {})
         if query:
             api_url = api_url + "?" + urllib.parse.urlencode(query)
