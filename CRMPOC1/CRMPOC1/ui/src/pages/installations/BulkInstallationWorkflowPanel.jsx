@@ -85,6 +85,8 @@ export default function BulkInstallationWorkflowPanel({ rows, onSaved, showClose
   const [err, setErr] = useState("");
   const [msg, setMsg] = useState("");
   const [serialPopupError, setSerialPopupError] = useState("");
+  const [savingSerialRowId, setSavingSerialRowId] = useState(null);
+  const [savedSerialRowIds, setSavedSerialRowIds] = useState({});
   const [paymentForm, setPaymentForm] = useState({
     payment_type: "Cash",
     work_report: "",
@@ -177,20 +179,32 @@ export default function BulkInstallationWorkflowPanel({ rows, onSaved, showClose
       return;
     }
     setBusy(true);
+    setSavingSerialRowId(row.id);
     setErr("");
-    setMsg("");
     try {
       const updated = await installationsApi.updateEngineerOrderSerials(row.id, {
         serial_no: form.serial_no.trim(),
         serial_no_2: (form.serial_no_2 || "").trim() || null,
       });
       setWorkflowRows((current) => current.map((item) => (item.id === row.id ? updated : item)));
-      setMsg(`Serial numbers updated for request #${row.id}.`);
+      // Shown right next to this row's own button -- the save can be a legitimate no-op (re-entering
+      // serials that already matched), so the screen looks identical before and after a successful
+      // click without this. The button itself stays enabled, so re-verifying is always one more click
+      // away, not a one-shot action.
+      setSavedSerialRowIds((prev) => ({ ...prev, [row.id]: true }));
+      setTimeout(() => {
+        setSavedSerialRowIds((prev) => {
+          const next = { ...prev };
+          delete next[row.id];
+          return next;
+        });
+      }, 4000);
       onSaved?.();
     } catch (error) {
       setSerialPopupError(formatApiError(error, `Failed to update request #${row.id}`));
     } finally {
       setBusy(false);
+      setSavingSerialRowId(null);
     }
   }
 
@@ -406,14 +420,17 @@ export default function BulkInstallationWorkflowPanel({ rows, onSaved, showClose
                           placeholder="Scan serial 2"
                           className="w-full rounded-md border border-slate-300 px-2 py-1 text-xs"
                         />
-                        <button
-                          type="button"
-                          onClick={() => saveRowSerials(row)}
-                          disabled={busy || !(form.serial_no || "").trim()}
-                          className="rounded-md bg-sky-700 px-2 py-1 text-xs font-semibold text-white disabled:opacity-50"
-                        >
-                          Update serials
-                        </button>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => saveRowSerials(row)}
+                            disabled={busy || !(form.serial_no || "").trim()}
+                            className="rounded-md bg-sky-700 px-2 py-1 text-xs font-semibold text-white disabled:opacity-50"
+                          >
+                            {savingSerialRowId === row.id ? "Updating…" : "Update serials"}
+                          </button>
+                          {savedSerialRowIds[row.id] && <span className="text-xs font-medium text-emerald-700">✓ Saved</span>}
+                        </div>
                       </div>
                     ) : (row.serial_no_2 || row.engineer_entered_serial_no_2 || "-")}
                   </td>
