@@ -576,15 +576,7 @@ def list_installations(
     if canonical_role_key(user.role) == "engineer":
         stmt = stmt.where(InstallationRequest.assigned_engineer == user.id)
     elif is_service_desk_user(user):
-        # A bare Service Team account sees its own queue PLUS new, still-unassigned requests -- not just
-        # what's already theirs -- so they can find and self-claim new work instead of only ever seeing
-        # a request once someone else has already handed it to them.
-        stmt = stmt.where(
-            or_(
-                InstallationRequest.assigned_service_user_id == user.id,
-                InstallationRequest.assigned_service_user_id.is_(None),
-            )
-        )
+        stmt = stmt.where(InstallationRequest.assigned_service_user_id == user.id)
 
     # Captured here, before the optional filters below narrow `stmt` further, so the "Needs Service
     # Team" chip's own count always reflects the true backlog under this role's visibility -- not
@@ -1219,7 +1211,7 @@ def _load_visible(db: Session, user: User, inst_id: int) -> InstallationRequest:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Installation request not found")
     if canonical_role_key(user.role) == "engineer" and inst.assigned_engineer != user.id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Installation request not found")
-    if is_service_desk_user(user) and inst.assigned_service_user_id not in (None, user.id):
+    if is_service_desk_user(user) and inst.assigned_service_user_id != user.id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Installation request not found")
     return inst
 

@@ -73,7 +73,11 @@ export default function InstallationList() {
   const { user } = useAuth();
   const isEngineer = canonicalRoleKey(user?.role) === "engineer";
   const isAdminLike = isOperationsAdminRole(user?.role);
-  const bulkAssignViewer = { isNarrowServiceDesk: isNarrowServiceDeskRole(user?.role), userId: user?.id };
+  const isNarrowServiceDeskViewer = isNarrowServiceDeskRole(user?.role);
+  // Service Manager (and Admin) route and assign work; a bare Service Team account only ever works
+  // what's already theirs, so the Owner filter and self-assign are a management tool, not theirs.
+  const isManagerLike = isAdminLike && !isNarrowServiceDeskViewer;
+  const bulkAssignViewer = { isNarrowServiceDesk: isNarrowServiceDeskViewer, userId: user?.id };
   const [data, setData] = useState({ items: [], total: 0 });
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
@@ -123,9 +127,9 @@ export default function InstallationList() {
   }
 
   useEffect(() => {
-    if (!isAdminLike) return;
+    if (!isManagerLike) return;
     installationsApi.serviceUsers().then(setServiceUserOptions).catch(() => setServiceUserOptions([]));
-  }, [isAdminLike]);
+  }, [isManagerLike]);
 
   async function quickAssignToMe(row) {
     setQuickAssignBusyId(row.id);
@@ -348,7 +352,7 @@ export default function InstallationList() {
             {STATUSES.map((status) => <option key={status} value={status}>{status}</option>)}
           </select>
           <DateRangeFilter from={filters.date_from} to={filters.date_to} onChange={(a, b) => applyFilter({ date_from: a, date_to: b })} />
-          {isAdminLike && (
+          {isManagerLike && (
             <select
               value={filters.service_user}
               onChange={(e) => applyFilter({ service_user: e.target.value })}
@@ -560,7 +564,7 @@ export default function InstallationList() {
                                           {row.needs_service_team
                                             ? <span className="font-semibold text-rose-700">Unassigned</span>
                                             : <span className="text-slate-400">-</span>}
-                                          {isAdminLike && !CLOSED_STATUSES.includes(row.status) && (
+                                          {isManagerLike && !CLOSED_STATUSES.includes(row.status) && (
                                             <button
                                               type="button"
                                               disabled={quickAssignBusyId === row.id}
