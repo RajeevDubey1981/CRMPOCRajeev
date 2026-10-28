@@ -472,44 +472,6 @@ def update_engineer_order_serials(
     return InstallationOut(**_hydrate(db, inst))
 
 
-@router.post("/{installation_id}/re-verify-serial", response_model=InstallationOut)
-def re_verify_engineer_order_serial(
-    installation_id: int,
-    db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
-):
-    """A vendor-order serial is auto-trusted (serial_verified_at set) the moment the engineer is
-    assigned -- it's never cleared just because the engineer later types something different via
-    Update serials. This is the explicit, separate action for "I've corrected it, please check this
-    one": clears that stale verification and puts the request back in front of admin."""
-    from app.routers.installations import _hydrate, _load_visible
-
-    inst = _load_visible(db, user, installation_id)
-    if canonical_role_key(user.role) != "engineer" or inst.assigned_engineer != user.id:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only the assigned engineer can request re-verification")
-    if not (inst.serial_no or "").strip():
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Enter a serial number before requesting re-verification")
-    if inst.status in {"Completed", "Settlement Approved", "Rejected", "Returned"}:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "This installation request is closed")
-
-    old_status = inst.status
-    inst.serial_verified_at = None
-    inst.serial_verified_by = None
-    inst.status = "Serial Pending Verification"
-    log_installation_action(
-        db,
-        inst,
-        action="Engineer Requested Re-verification",
-        user=user,
-        old_status=old_status,
-        new_status=inst.status,
-        metadata={"serial_no": inst.serial_no, "serial_no_2": inst.serial_no_2},
-    )
-    db.commit()
-    db.refresh(inst)
-    return InstallationOut(**_hydrate(db, inst))
-
-
 @router.post("/{installation_id}/engineer-serials/submit", response_model=dict)
 def submit_engineer_serials(
     installation_id: int,
