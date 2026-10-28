@@ -12,12 +12,22 @@ export default function EngineerOrderSerialEditor({ installation, userId, onUpda
   const [selectedForReturn, setSelectedForReturn] = useState(false);
   const [saving, setSaving] = useState(false);
   const [popupError, setPopupError] = useState("");
+  const [savedAt, setSavedAt] = useState(0);
 
   useEffect(() => {
     setSelectedForReturn(false);
     setSerialNo(installation.serial_no || "");
     setSerialNo2(installation.serial_no_2 || "");
   }, [installation.id, installation.serial_no, installation.serial_no_2]);
+
+  // The save can legitimately be a no-op (the engineer re-enters the same serials that already matched),
+  // so the data on screen doesn't change -- without this, a successful click looked identical to a
+  // silently failed one and engineers kept re-clicking, thinking it wasn't working.
+  useEffect(() => {
+    if (!savedAt) return undefined;
+    const timer = setTimeout(() => setSavedAt(0), 4000);
+    return () => clearTimeout(timer);
+  }, [savedAt]);
 
   if (Number(installation.assigned_engineer) !== Number(userId)) return null;
 
@@ -31,6 +41,7 @@ export default function EngineerOrderSerialEditor({ installation, userId, onUpda
         serial_no: serialNo.trim(),
         serial_no_2: serialNo2.trim() || null,
       });
+      setSavedAt(Date.now());
       onUpdated?.();
     } catch (error) {
       setPopupError(formatApiError(error, "Unable to update serial numbers"));
@@ -68,9 +79,10 @@ export default function EngineerOrderSerialEditor({ installation, userId, onUpda
         disabled={saving || !serialNo.trim()}
         className="rounded-md bg-sky-700 px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
       >
-        Update serial numbers
+        {saving ? "Updating…" : "Update serial numbers"}
       </button>
       <ReturnSelectedSerialsButton rows={selectedForReturn && canReturnSerialRow(installation) ? [installation] : []} disabled={saving} onUpdated={async () => { setSelectedForReturn(false); await onUpdated?.(); }} />
+      {savedAt > 0 && <span className="text-sm font-medium text-emerald-700">✓ Saved</span>}
       </div>
     </section>
     <Modal open={Boolean(popupError)} onClose={() => setPopupError("")} title="Serial numbers not updated">
