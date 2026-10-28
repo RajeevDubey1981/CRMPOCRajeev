@@ -15,7 +15,9 @@ export const hasSerialMismatch = row => {
   return (expected1 && actual1 && expected1 !== actual1) || (expected2 && actual2 && expected2 !== actual2);
 };
 
-export const canReturnSerialRow = row => ["Assigned", "In Progress", "Serial Pending Verification", "Returned", "Rejected"].includes(row.status) && Boolean(row.serial_no) && hasSerialMismatch(row);
+// Once admin has verified the serial it's authoritative -- an engineer can no longer flag it for
+// return even if it still reads as a mismatch, same as Service Requests (serial_verified_at gates it there too).
+export const canReturnSerialRow = row => ["Assigned", "In Progress", "Serial Pending Verification", "Returned", "Rejected"].includes(row.status) && Boolean(row.serial_no) && !row.serial_verified_at && hasSerialMismatch(row);
 
 export default function ReturnSelectedSerialsButton({ rows, onUpdated, disabled = false }) {
   const [reason, setReason] = useState("");

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import secrets
 from datetime import datetime, timezone
 
@@ -816,6 +817,24 @@ def latest_completion_proof_serial_2_path(db: Session, installation_id: int) -> 
     if row is None:
         return None
     return to_public_upload_path(row.file_path)
+
+
+def serial_io_side(serial: str | None) -> str | None:
+    """For a two-serial (split) unit, the letter right before the trailing digit run marks which
+    physical piece this is -- I for indoor, O for outdoor (e.g. IDCACEZI26063000019 vs
+    IDCACEZO26062500717). None when that letter isn't I or O, so an unfamiliar serial format is
+    never treated as a conflict."""
+    if not serial:
+        return None
+    match = re.match(r"^(.*?)(\d+)$", serial.strip().upper())
+    if not match or not match.group(1):
+        return None
+    last = match.group(1)[-1]
+    if last == "I":
+        return "indoor"
+    if last == "O":
+        return "outdoor"
+    return None
 
 
 def resolve_order_item_serial_count(db: Session, order_item: OrderItem | None) -> int:

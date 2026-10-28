@@ -56,6 +56,8 @@ from app.services.installation_workflow import (
     installation_completion_proofs_complete,
     installation_requires_second_serial_proof,
     replace_completion_proof_serial_2,
+    resolve_order_item_serial_count,
+    serial_io_side,
     sync_order_item_for_service_eligibility,
 )
 from app.services.permissions import can_act_on
@@ -431,6 +433,13 @@ def update_engineer_order_serials(
     if not serial_no:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Serial number 1 is required")
     item = _require_order_serial_pair(db, inst, serial_no, serial_no_2)
+    if serial_no_2 and resolve_order_item_serial_count(db, item) == 2:
+        side1, side2 = serial_io_side(serial_no), serial_io_side(serial_no_2)
+        if side1 and side2 and side1 == side2:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                f"Serial 1 and Serial 2 are both {side1} units. A split unit needs one indoor and one outdoor serial -- check which one is wrong.",
+            )
     before = {
         "order_item_id": inst.order_item_id,
         "serial_no": inst.serial_no,
