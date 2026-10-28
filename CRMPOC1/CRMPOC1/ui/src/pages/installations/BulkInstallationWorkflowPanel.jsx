@@ -199,7 +199,10 @@ export default function BulkInstallationWorkflowPanel({ rows, onSaved, showClose
           return next;
         });
       }, 4000);
-      onSaved?.();
+      // Deliberately not onSaved?.() here: that reloads the parent page, which unmounts and remounts
+      // this whole panel while it's loading -- wiping every bit of local state, including the "Saved"
+      // confirmation above, before it's ever visible. The row above is already updated from the
+      // server's own response, so there's nothing a parent-level reload would add for this action.
     } catch (error) {
       setSerialPopupError(formatApiError(error, `Failed to update request #${row.id}`));
     } finally {
