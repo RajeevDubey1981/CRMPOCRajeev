@@ -20,16 +20,18 @@ export default function EngineerOrderSerialEditor({ installation, userId, onUpda
     setSerialNo2(installation.serial_no_2 || "");
   }, [installation.id, installation.serial_no, installation.serial_no_2]);
 
-  // The save can legitimately be a no-op (the engineer re-enters the same serials that already matched),
-  // so the data on screen doesn't change -- without this, a successful click looked identical to a
-  // silently failed one and engineers kept re-clicking, thinking it wasn't working.
-  useEffect(() => {
-    if (!savedAt) return undefined;
-    const timer = setTimeout(() => setSavedAt(0), 4000);
-    return () => clearTimeout(timer);
-  }, [savedAt]);
-
   if (Number(installation.assigned_engineer) !== Number(userId)) return null;
+
+  // Stays on (doesn't time out) until a field is edited again, so it stays an honest reflection of
+  // "what's on screen matches what's saved" rather than quietly reverting while nothing has changed.
+  function editSerialNo(value) {
+    setSerialNo(value);
+    setSavedAt(0);
+  }
+  function editSerialNo2(value) {
+    setSerialNo2(value);
+    setSavedAt(0);
+  }
 
   async function save() {
     onError?.("");
@@ -72,11 +74,11 @@ export default function EngineerOrderSerialEditor({ installation, userId, onUpda
         <div className="grid min-w-0 flex-1 grid-cols-1 gap-3 md:grid-cols-2">
         <div>
           <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-500">Serial number 1 *</label>
-          <ScanInput value={serialNo} onValue={setSerialNo} placeholder="Scan serial number 1" className={inputClass} />
+          <ScanInput value={serialNo} onValue={editSerialNo} placeholder="Scan serial number 1" className={inputClass} />
         </div>
         <div>
           <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-500">Serial number 2</label>
-          <ScanInput value={serialNo2} onValue={setSerialNo2} placeholder="Scan serial number 2" className={inputClass} />
+          <ScanInput value={serialNo2} onValue={editSerialNo2} placeholder="Scan serial number 2" className={inputClass} />
         </div>
       </div>
       </div>

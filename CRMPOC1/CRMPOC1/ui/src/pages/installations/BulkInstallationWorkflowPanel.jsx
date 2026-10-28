@@ -165,6 +165,16 @@ export default function BulkInstallationWorkflowPanel({ rows, onSaved, showClose
         ...patch,
       },
     }));
+    // Editing a serial after a save means the screen no longer matches what's saved -- drop the
+    // "Updated" state so the button goes back to inviting a fresh save instead of lying about it.
+    if ("serial_no" in patch || "serial_no_2" in patch) {
+      setSavedSerialRowIds((prev) => {
+        if (!prev[rowId]) return prev;
+        const next = { ...prev };
+        delete next[rowId];
+        return next;
+      });
+    }
   }
 
   function canEditRowSerials(row) {
@@ -189,16 +199,10 @@ export default function BulkInstallationWorkflowPanel({ rows, onSaved, showClose
       setWorkflowRows((current) => current.map((item) => (item.id === row.id ? updated : item)));
       // Shown right next to this row's own button -- the save can be a legitimate no-op (re-entering
       // serials that already matched), so the screen looks identical before and after a successful
-      // click without this. The button itself stays enabled, so re-verifying is always one more click
-      // away, not a one-shot action.
+      // click without this. Stays on (doesn't time out) until the fields are edited again -- see
+      // updateRowForm -- so it stays an honest reflection of "what's on screen matches what's saved".
+      // The button itself stays enabled, so re-saving is always one more click away.
       setSavedSerialRowIds((prev) => ({ ...prev, [row.id]: true }));
-      setTimeout(() => {
-        setSavedSerialRowIds((prev) => {
-          const next = { ...prev };
-          delete next[row.id];
-          return next;
-        });
-      }, 4000);
       // Deliberately not onSaved?.() here: that reloads the parent page, which unmounts and remounts
       // this whole panel while it's loading -- wiping every bit of local state, including the "Saved"
       // confirmation above, before it's ever visible. The row above is already updated from the
