@@ -387,7 +387,10 @@ export default function BulkInstallationWorkflowPanel({ rows, onSaved, showClose
               const form = rowForms[row.id] || defaultRowForm(row);
               const completeReady = canCompleteRow(row);
               return (
-                <tr key={row.id} className="align-top hover:bg-slate-50">
+                <tr
+                  key={row.id}
+                  className={`align-top transition-colors duration-700 ${savedSerialRowIds[row.id] ? "bg-emerald-50" : "hover:bg-slate-50"}`}
+                >
                   {isEngineer && <td className="px-2 py-2"><input type="checkbox" aria-label={`Select serial row ${row.serial_no || row.id} to return`} checked={returnIds.includes(row.id)} disabled={busy || !canReturnSerialRow(row)} onChange={e => { const checked = e.target.checked; setReturnIds(ids => checked ? [...ids, row.id] : ids.filter(id => id !== row.id)); if (checked) updateRowForm(row.id, { selectedForCompletion: false, selectedForPayment: false }); }} className="h-4 w-4" /></td>}
                   {showCompletionSelection && (
                     <td className="px-2 py-2">
