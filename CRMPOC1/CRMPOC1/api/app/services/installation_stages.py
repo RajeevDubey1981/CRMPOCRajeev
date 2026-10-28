@@ -6,7 +6,9 @@ from __future__ import annotations
 STAGES: list[tuple[str, str, tuple[str, ...]]] = [
     ("na", "Not assigned", ("Pending", "Document Requested", "Admin Review Document", "Order Verified", "Submitted", "Service Team Review")),
     ("as", "Assigned", ("Assigned",)),
-    ("ip", "In progress", ("In Progress", "Serial Pending Verification", "Completion Pending Approval")),
+    ("ip", "In progress", ("In Progress",)),
+    ("vp", "Verification Pending", ("Serial Pending Verification",)),
+    ("ap", "Approval Pending", ("Completion Pending Approval",)),
     ("in", "Installed", ("Installation Completed",)),
     ("pay", "Payment", ("Payment Pending", "Settlement Pending", "Settlement Approved")),
     ("done", "Completed", ("Completed",)),
