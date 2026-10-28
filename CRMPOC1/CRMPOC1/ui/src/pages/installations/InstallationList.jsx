@@ -19,6 +19,8 @@ import { INSTALLATION_STAGES, stageLabel } from "../../utils/installationStages.
 
 const STATUSES = ["Pending", "Submitted", "Assigned", "In Progress", "Serial Pending Verification", "Completion Pending Approval", "Installation Completed", "Payment Pending", "Completed", "Settlement Pending", "Settlement Approved", "Returned", "Rejected"];
 const BULK_ASSIGNABLE_STATUSES = new Set(["Submitted", "Assigned"]);
+// Mirrors the backend's assign-service-user closed-status check.
+const CLOSED_STATUSES = ["Completed", "Settlement Approved", "Rejected"];
 // the group row shows a count for each of these stages; the chips above also cover Payment and Returned or rejected
 const STAGE_COLUMNS = INSTALLATION_STAGES.filter((s) => ["na", "as", "ip", "in", "done"].includes(s.key));
 
@@ -82,11 +84,14 @@ export default function InstallationList() {
     date_from: "",
     date_to: "",
     needs_service_team: false,
+    service_user: "",
   });
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState(50);
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [cancelBusyId, setCancelBusyId] = useState(null);
+  const [serviceUserOptions, setServiceUserOptions] = useState([]);
+  const [quickAssignBusyId, setQuickAssignBusyId] = useState(null);
   const [expandedGroups, setExpandedGroups] = useState(new Set());
   const [selectedGroupKey, setSelectedGroupKey] = useState(null);
   const [selectedIds, setSelectedIds] = useState(new Set());
@@ -102,6 +107,7 @@ export default function InstallationList() {
     date_from: filters.date_from || undefined,
     date_to: filters.date_to || undefined,
     needs_service_team: filters.needs_service_team || undefined,
+    service_user_id: filters.service_user !== "" ? Number(filters.service_user) : undefined,
   }), [page, perPage, filters]);
 
   async function load() {
@@ -113,6 +119,23 @@ export default function InstallationList() {
       setErr(e.response?.data?.detail || "Failed to load installations");
     } finally {
       setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    if (!isAdminLike) return;
+    installationsApi.serviceUsers().then(setServiceUserOptions).catch(() => setServiceUserOptions([]));
+  }, [isAdminLike]);
+
+  async function quickAssignToMe(row) {
+    setQuickAssignBusyId(row.id);
+    try {
+      await installationsApi.assignServiceUser(row.id, { service_user_id: user.id });
+      load();
+    } catch (e) {
+      alert(e.response?.data?.detail || "Failed to assign");
+    } finally {
+      setQuickAssignBusyId(null);
     }
   }
 
@@ -325,6 +348,21 @@ export default function InstallationList() {
             {STATUSES.map((status) => <option key={status} value={status}>{status}</option>)}
           </select>
           <DateRangeFilter from={filters.date_from} to={filters.date_to} onChange={(a, b) => applyFilter({ date_from: a, date_to: b })} />
+          {isAdminLike && (
+            <select
+              value={filters.service_user}
+              onChange={(e) => applyFilter({ service_user: e.target.value })}
+              className="rounded-md border border-violet-300 px-3 py-2 text-sm text-violet-900"
+              title="Owner (Service Team)"
+            >
+              <option value="">Owner (Service Team): all</option>
+              <option value={String(user.id)}>Me ({user.name})</option>
+              <option value="0">Unassigned</option>
+              {serviceUserOptions.filter((o) => o.id !== user.id).map((o) => (
+                <option key={o.id} value={o.id}>{o.name}</option>
+              ))}
+            </select>
+          )}
         </div>
         <div className="mt-3">
           <InstallationStageChips
@@ -517,10 +555,22 @@ export default function InstallationList() {
                                   {!isEngineer && <td className="px-3 py-2">{row.assigned_engineer_name || "-"}</td>}
                                   {!isEngineer && (
                                     <td className="px-3 py-2">
-                                      {row.assigned_service_user_name || (
-                                        row.needs_service_team
-                                          ? <span className="font-semibold text-rose-700">Unassigned</span>
-                                          : <span className="text-slate-400">-</span>
+                                      {row.assigned_service_user_name ? row.assigned_service_user_name : (
+                                        <div className="flex items-center gap-2">
+                                          {row.needs_service_team
+                                            ? <span className="font-semibold text-rose-700">Unassigned</span>
+                                            : <span className="text-slate-400">-</span>}
+                                          {isAdminLike && !CLOSED_STATUSES.includes(row.status) && (
+                                            <button
+                                              type="button"
+                                              disabled={quickAssignBusyId === row.id}
+                                              onClick={(event) => { event.stopPropagation(); quickAssignToMe(row); }}
+                                              className="rounded-full border border-violet-300 bg-violet-50 px-2 py-0.5 text-xs font-semibold text-violet-700 hover:bg-violet-100 disabled:opacity-50"
+                                            >
+                                              {quickAssignBusyId === row.id ? "Assigning…" : "Assign to me"}
+                                            </button>
+                                          )}
+                                        </div>
                                       )}
                                     </td>
                                   )}

@@ -554,6 +554,7 @@ def list_installations(
     date_to: date | None = None,
     order_id: int | None = Query(None),
     needs_service_team: bool = False,
+    service_user_id: int | None = Query(None, description="Filter by assigned Service Team member; 0 means unassigned"),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -589,6 +590,13 @@ def list_installations(
 
     if needs_service_team:
         stmt = stmt.where(*_needs_service_team_clause())
+
+    if service_user_id is not None:
+        stmt = stmt.where(
+            InstallationRequest.assigned_service_user_id.is_(None)
+            if service_user_id == 0
+            else InstallationRequest.assigned_service_user_id == service_user_id
+        )
 
     if order_id is not None:
         item_ids_subq = select(OrderItem.id).where(OrderItem.order_id == order_id)
@@ -893,7 +901,12 @@ def installation_service_user_lookup(
         )
         .order_by(User.name)
     ).all()
-    return [{"id": row.id, "name": row.name, "email": row.email, "phone": row.phone} for row in rows]
+    options = [{"id": row.id, "name": row.name, "email": row.email, "phone": row.phone} for row in rows]
+    # Admin/Service Manager can assign to themselves too, not only to a desk-role account -- add them
+    # to their own list if a bare desk role didn't already put them there.
+    if not any(o["id"] == user.id for o in options):
+        options.insert(0, {"id": user.id, "name": f"{user.name} (you)", "email": user.email, "phone": user.phone})
+    return options
 
 
 @router.post("", response_model=InstallationOut, status_code=status.HTTP_201_CREATED)
@@ -1227,7 +1240,9 @@ def assign_installation_service_user(
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Only Admin or Service Manager can assign service users")
     if inst.status in {"Completed", "Settlement Approved", "Rejected"}:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Closed installation requests cannot be assigned to a service user")
-    target = _require_active_installation_service_user(db, body.service_user_id)
+    # Whoever can assign at all (Admin/Service Manager) can always claim it for themselves, even though
+    # their own role isn't one of the desk-only roles that a *target* normally has to be.
+    target = user if body.service_user_id == user.id else _require_active_installation_service_user(db, body.service_user_id)
     old_status = inst.status
     previous_id = inst.assigned_service_user_id
     inst.assigned_service_user_id = target.id
