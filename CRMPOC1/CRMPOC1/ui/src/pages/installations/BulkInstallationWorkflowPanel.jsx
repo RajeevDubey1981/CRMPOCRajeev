@@ -456,9 +456,9 @@ export default function BulkInstallationWorkflowPanel({ rows, onSaved, showClose
                             type="button"
                             onClick={() => saveRowSerials(row)}
                             disabled={busy || !(form.serial_no || "").trim()}
-                            className="rounded-md bg-sky-700 px-2 py-1 text-xs font-semibold text-white disabled:opacity-50"
+                            className={`rounded-md px-2 py-1 text-xs font-semibold text-white transition-colors disabled:opacity-50 ${savedSerialRowIds[row.id] ? "bg-emerald-600" : "bg-sky-700"}`}
                           >
-                            {savingSerialRowId === row.id ? "Updating…" : "Update serials"}
+                            {savingSerialRowId === row.id ? "Updating…" : savedSerialRowIds[row.id] ? "Updated ✓" : "Update serials"}
                           </button>
                           <button
                             type="button"
@@ -470,7 +470,6 @@ export default function BulkInstallationWorkflowPanel({ rows, onSaved, showClose
                             {reVerifyingRowId === row.id ? "Requesting…" : "Re-verify"}
                           </button>
                         </div>
-                        {savedSerialRowIds[row.id] && <span className="text-xs font-medium text-emerald-700">✓ Saved</span>}
                         {reVerifiedRowIds[row.id] && <span className="text-xs font-medium text-violet-700">✓ Sent for re-verification</span>}
                       </div>
                     ) : (row.serial_no_2 || row.engineer_entered_serial_no_2 || "-")}

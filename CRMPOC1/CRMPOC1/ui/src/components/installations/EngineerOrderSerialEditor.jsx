@@ -117,9 +117,9 @@ export default function EngineerOrderSerialEditor({ installation, userId, onUpda
         type="button"
         onClick={save}
         disabled={saving || !serialNo.trim()}
-        className="rounded-md bg-sky-700 px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
+        className={`rounded-md px-4 py-2 text-sm font-medium text-white transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${savedAt > 0 ? "bg-emerald-600" : "bg-sky-700"}`}
       >
-        {saving ? "Updating…" : "Update serial numbers"}
+        {saving ? "Updating…" : savedAt > 0 ? "Updated ✓" : "Update serial numbers"}
       </button>
       <button
         type="button"
@@ -131,7 +131,6 @@ export default function EngineerOrderSerialEditor({ installation, userId, onUpda
         {reVerifying ? "Requesting…" : "Re-verify"}
       </button>
       <ReturnSelectedSerialsButton rows={selectedForReturn && canReturnSerialRow(installation) ? [installation] : []} disabled={saving} onUpdated={async () => { setSelectedForReturn(false); await onUpdated?.(); }} />
-      {savedAt > 0 && <span className="text-sm font-medium text-emerald-700">✓ Saved</span>}
       {reVerifiedAt > 0 && <span className="text-sm font-medium text-violet-700">✓ Sent for re-verification</span>}
       </div>
     </section>
