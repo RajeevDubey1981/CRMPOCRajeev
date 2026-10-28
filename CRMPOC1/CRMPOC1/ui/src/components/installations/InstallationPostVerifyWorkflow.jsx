@@ -660,7 +660,7 @@ export default function InstallationPostVerifyWorkflow({
           {canComplete && (
             <RaisePartRequestPanel
               allowedKinds={["part", "expense", "ondemand", "unit"]}
-              triggerLabel="Can't complete — something's wrong with the unit"
+              triggerLabel="Can't complete — request a part or swap the unit"
               context={{
                 crm_installation_request_id: installationId,
                 crm_item_code: installation.item_code,
@@ -671,7 +671,7 @@ export default function InstallationPostVerifyWorkflow({
           {canComplete && (
             <RaiseClaimPanel
               flow="installation"
-              triggerLabel="Can't complete — something's missing from the box"
+              triggerLabel="Can't complete — report something missing from the box"
               context={{
                 installation_request_id: installationId,
                 item_code: installation.item_code,
