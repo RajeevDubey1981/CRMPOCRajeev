@@ -2,7 +2,20 @@ import { useEffect, useRef, useState } from "react";
 import { api } from "../../api/client.js";
 import { formatApiError } from "../../utils/apiError.js";
 
-export const canReturnSerialRow = row => ["Assigned", "In Progress", "Serial Pending Verification", "Returned", "Rejected"].includes(row.status) && Boolean(row.serial_no);
+// The serial the engineer entered doesn't match what the vendor's order actually assigned to this
+// unit (order_item_serial_no/_2) -- the same basis Service Requests already use to tell a genuine
+// mismatch from an ordinary first-time entry. No expected serial on file (non-vendor installs, or
+// none set) means there's nothing to compare against, so it never counts as a mismatch.
+export const hasSerialMismatch = row => {
+  const expected1 = (row.order_item_serial_no || "").trim();
+  const expected2 = (row.order_item_serial_no_2 || "").trim();
+  if (!expected1 && !expected2) return false;
+  const actual1 = (row.serial_no || "").trim();
+  const actual2 = (row.serial_no_2 || "").trim();
+  return (expected1 && actual1 && expected1 !== actual1) || (expected2 && actual2 && expected2 !== actual2);
+};
+
+export const canReturnSerialRow = row => ["Assigned", "In Progress", "Serial Pending Verification", "Returned", "Rejected"].includes(row.status) && Boolean(row.serial_no) && hasSerialMismatch(row);
 
 export default function ReturnSelectedSerialsButton({ rows, onUpdated, disabled = false }) {
   const [reason, setReason] = useState("");

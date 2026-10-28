@@ -341,6 +341,12 @@ def _hydrate(db: Session, inst: InstallationRequest) -> dict:
             "parent_installation_id",
             "created_at", "updated_at",
         )},
+        # The serial(s) the vendor's order actually assigned to this unit -- distinct from serial_no/
+        # serial_no_2 above, which is what the engineer has typed/scanned. Lets the engineer-facing editor
+        # tell a genuine serial mismatch (scanned something other than what the order expects) from an
+        # ordinary first-time entry, without a separate lookup.
+        "order_item_serial_no": order_item.serial_no if order_item else None,
+        "order_item_serial_no_2": order_item.serial_no_2 if order_item else None,
         "payment_amount_requested": float(inst.payment_amount_requested) if inst.payment_amount_requested is not None else None,
         "payment_amount_paid": float(inst.payment_amount_paid) if inst.payment_amount_paid is not None else None,
         "work_report_file_path": to_public_upload_path(inst.work_report_file_path),

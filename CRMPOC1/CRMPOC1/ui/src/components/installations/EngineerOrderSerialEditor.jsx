@@ -1,4 +1,4 @@
-import ReturnSelectedSerialsButton, { canReturnSerialRow } from "./ReturnSelectedSerialsButton.jsx";
+import ReturnSelectedSerialsButton, { canReturnSerialRow, hasSerialMismatch } from "./ReturnSelectedSerialsButton.jsx";
 import { useEffect, useState } from "react";
 
 import { installationsApi } from "../../api/installations.js";
@@ -54,13 +54,21 @@ export default function EngineerOrderSerialEditor({ installation, userId, onUpda
   const inputClass = "w-full rounded-md border border-slate-300 px-3 py-2 text-sm";
   return (
     <>
-    <section className="mt-4 rounded-lg border border-sky-200 bg-white p-4 shadow-sm">
+    <section className={`mt-4 rounded-lg border p-4 shadow-sm transition-colors duration-700 ${savedAt > 0 ? "border-emerald-200 bg-emerald-50" : "border-sky-200 bg-white"}`}>
       <h3 className="text-sm font-semibold text-slate-800">Update order serial numbers</h3>
       <p className="mt-1 text-xs text-slate-600">
         Scan or enter both serial numbers. Every entered serial must belong to order {installation.order_no || `#${installation.order_id}`}.
       </p>
       <div className="mt-3 flex items-start gap-3">
-        <input type="checkbox" aria-label="Select serial row to return" checked={selectedForReturn} onChange={e => setSelectedForReturn(e.target.checked)} disabled={saving || !canReturnSerialRow(installation)} className="mt-8 h-4 w-4 shrink-0" />
+        <input
+          type="checkbox"
+          aria-label="Select serial row to return"
+          checked={selectedForReturn}
+          onChange={e => setSelectedForReturn(e.target.checked)}
+          disabled={saving || !canReturnSerialRow(installation)}
+          title={hasSerialMismatch(installation) ? "Select to return — scanned serial doesn't match the order" : "Available only when the scanned serial doesn't match what the order assigned to this unit"}
+          className="mt-8 h-4 w-4 shrink-0"
+        />
         <div className="grid min-w-0 flex-1 grid-cols-1 gap-3 md:grid-cols-2">
         <div>
           <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-500">Serial number 1 *</label>

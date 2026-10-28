@@ -215,6 +215,8 @@ class InstallationOut(BaseModel):
     vendor_name: str | None = None
     serial_no: str | None = None
     serial_no_2: str | None = None
+    order_item_serial_no: str | None = None
+    order_item_serial_no_2: str | None = None
     request_date: datetime
     assigned_engineer: int | None
     assigned_engineer_name: str | None
