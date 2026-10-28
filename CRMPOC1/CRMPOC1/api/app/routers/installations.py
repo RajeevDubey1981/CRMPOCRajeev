@@ -1062,6 +1062,9 @@ def bulk_assign(
             if not callcenter_can_assign_engineer(inst):
                 skipped_wrong_status.append({"installation_id": inst.id, "status": inst.status})
                 continue
+            if is_service_desk_user(user) and inst.assigned_service_user_id != user.id:
+                skipped_wrong_status.append({"installation_id": inst.id, "status": "not assigned to you"})
+                continue
         elif inst.status not in assignable_statuses:
             skipped_wrong_status.append({"installation_id": inst.id, "status": inst.status})
             continue

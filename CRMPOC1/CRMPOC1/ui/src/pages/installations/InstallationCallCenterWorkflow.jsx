@@ -54,6 +54,7 @@ export default function InstallationCallCenterWorkflow({
   isAdminLike,
   isPaymentAdmin = false,
   isServiceTeam = false,
+  isNarrowServiceDesk = false,
   isEngineer,
   userId,
   onUpdated,
@@ -67,6 +68,11 @@ export default function InstallationCallCenterWorkflow({
   const isVendorInitiated = isVendorInitiatedInstallation(installation);
   const isVendorAssigned = isVendorAssignedInstallation(installation);
   const canViewCustomerDocuments = isAdminLike || isServiceTeam;
+  // A bare "service" role (not Admin/Sub Admin/Service Manager/Indcool Service, who keep full access)
+  // can only verify the order and assign the engineer once the Service Manager has routed this
+  // installation to them specifically -- same assigned-only narrowing the Service Request module uses.
+  const isAssignedServiceDeskUser = Boolean(userId) && installation.assigned_service_user_id === userId;
+  const serviceDeskNotAssignedYet = isNarrowServiceDesk && !isAssignedServiceDeskUser;
   const [orderSearch, setOrderSearch] = useState("");
   const [orderOptions, setOrderOptions] = useState([]);
   const [orderSearchLoading, setOrderSearchLoading] = useState(false);
@@ -83,7 +89,7 @@ export default function InstallationCallCenterWorkflow({
   }, [installation.id, installation.status, isCallcenter]);
 
   useEffect(() => {
-    if (!isCallcenter || !isAdminLike) return undefined;
+    if (!isCallcenter || !isAdminLike || serviceDeskNotAssignedYet) return undefined;
     const query = orderSearch.trim();
     if (query.length < 2) {
       setOrderOptions([]);
@@ -105,14 +111,15 @@ export default function InstallationCallCenterWorkflow({
         .finally(() => setOrderSearchLoading(false));
     }, 300);
     return () => window.clearTimeout(timer);
-  }, [orderSearch, isCallcenter, isAdminLike]);
+  }, [orderSearch, isCallcenter, isAdminLike, serviceDeskNotAssignedYet]);
 
   useEffect(() => {
-    if (!isCallcenter || !isAdminLike || !installation.order_verified_at) return;
+    // Order verification no longer gates engineer assignment -- see Step 4 below.
+    if (!isCallcenter || !isAdminLike || serviceDeskNotAssignedYet) return;
     installationsApi.engineerAssignmentOptions(installation.address, installation)
       .then(setEngineerOptions)
       .catch(() => setEngineerOptions([]));
-  }, [isCallcenter, isAdminLike, installation.order_verified_at, installation.id, installation.address, installation.pincode, installation.state, installation.district]);
+  }, [isCallcenter, isAdminLike, serviceDeskNotAssignedYet, installation.id, installation.address, installation.pincode, installation.state, installation.district]);
 
   useEffect(() => {
     if (installation.assigned_engineer) {
@@ -121,7 +128,7 @@ export default function InstallationCallCenterWorkflow({
   }, [installation.assigned_engineer]);
 
   const workflowSteps = getInstallationWorkflowStepState(installation);
-  const canAssignEngineer = canAssignCallcenterEngineer(installation);
+  const canAssignEngineer = canAssignCallcenterEngineer(installation) && !serviceDeskNotAssignedYet;
   const isReassign = Boolean(installation.assigned_engineer);
   const showSerialWorkflow = isCallcenter
     && installation.order_verified_at
@@ -357,6 +364,12 @@ export default function InstallationCallCenterWorkflow({
           borderClass="border-violet-200"
           summary={`Order verified${installation.order_no ? `: ${installation.order_no}` : ""}.`}
         >
+          {serviceDeskNotAssignedYet ? (
+            <p className="text-xs text-amber-800">
+              Ask your Service Manager to assign this installation to you before you can verify the order.
+            </p>
+          ) : (
+          <>
           <p className="text-xs text-violet-800">
             Search by customer mobile, name, or order number. Matching orders appear below —
             click <strong>Link &amp; verify</strong> on the correct order.
@@ -399,6 +412,8 @@ export default function InstallationCallCenterWorkflow({
                 </div>
               ))}
             </div>
+          )}
+          </>
           )}
         </WorkflowStepSection>
       )}
@@ -453,7 +468,11 @@ export default function InstallationCallCenterWorkflow({
               Currently assigned to {installation.assigned_engineer_name}. Pick another engineer below to re-assign.
             </p>
           )}
-          {!canAssignEngineer && (
+          {serviceDeskNotAssignedYet ? (
+            <p className="mt-2 text-xs text-amber-700">
+              Ask your Service Manager to assign this installation to you before you can assign an engineer.
+            </p>
+          ) : !canAssignEngineer && (
             <p className="mt-2 text-xs text-amber-700">
               Engineer cannot be changed after serial numbers are verified.
             </p>

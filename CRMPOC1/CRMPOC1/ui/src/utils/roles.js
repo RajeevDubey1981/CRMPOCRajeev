@@ -62,6 +62,13 @@ export function isServiceTeamRole(role) {
   return isOperationsAdminRole(role) || isServiceDeskRole(role);
 }
 
+// The bare "service" role only, narrowed to the installation/request actually assigned to them --
+// "indcool_service" is full-ops (see isOperationsAdminRole) despite also matching isServiceDeskRole,
+// mirroring the backend's is_service_desk_user(), which excludes it the same way.
+export function isNarrowServiceDeskRole(role) {
+  return roleKey(role) === "service";
+}
+
 // Who may actually decide a per-serial service approval: Service Manager (capped at the backend's
 // ₹2500 limit) and Admin/Sub Admin/Incool (unlimited, can override). Service-desk roles and the
 // engineer can verify, observe, and recommend, but this is the one thing they can't do.

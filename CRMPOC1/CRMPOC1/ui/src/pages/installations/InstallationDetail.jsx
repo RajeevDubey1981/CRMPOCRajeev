@@ -8,7 +8,7 @@ import Modal from "../../components/Modal.jsx";
 import StatusBadge from "../../components/StatusBadge.jsx";
 import { installationsApi } from "../../api/installations.js";
 import { useAuth } from "../../auth/AuthContext.jsx";
-import { canAssignServiceDeskUser, isOperationsAdminRole, isServiceDeskRole, isServiceTeamRole, isSystemAdminRole } from "../../utils/roles.js";
+import { canAssignServiceDeskUser, isNarrowServiceDeskRole, isOperationsAdminRole, isServiceDeskRole, isServiceTeamRole, isSystemAdminRole } from "../../utils/roles.js";
 import { usesStructuredInstallationWorkflow, getInstallationWorkflowStepOptions, getCurrentInstallationWorkflowStep, isNonVendorSource } from "../../utils/installationWorkflowSteps.js";
 import InstallationStatusEdit from "./InstallationStatusEdit.jsx";
 import InstallationCallCenterWorkflow from "./InstallationCallCenterWorkflow.jsx";
@@ -68,6 +68,7 @@ export default function InstallationDetail() {
   const isPaymentAdmin = isSystemAdminRole(role);
   const isServiceTeam = isServiceTeamRole(role);
   const roleIsServiceDesk = isServiceDeskRole(role);
+  const isNarrowServiceDesk = isNarrowServiceDeskRole(role);
   const canAssignServiceDesk = canAssignServiceDeskUser(role);
   const isEngineer = canonicalRoleKey(role) === "engineer";
   const [installation, setInstallation] = useState(null);
@@ -496,6 +497,7 @@ export default function InstallationDetail() {
           isAdminLike={isAdminLike}
           isPaymentAdmin={isPaymentAdmin}
           isServiceTeam={isServiceTeam}
+          isNarrowServiceDesk={isNarrowServiceDesk}
           isEngineer={isEngineer}
           userId={user?.id}
           onUpdated={load}

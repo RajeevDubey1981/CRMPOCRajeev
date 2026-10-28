@@ -10,7 +10,7 @@ import Pagination from "../../components/Pagination.jsx";
 import StatusBadge from "../../components/StatusBadge.jsx";
 import { installationsApi } from "../../api/installations.js";
 import { useAuth } from "../../auth/AuthContext.jsx";
-import { isOperationsAdminRole } from "../../utils/roles.js";
+import { isNarrowServiceDeskRole, isOperationsAdminRole } from "../../utils/roles.js";
 import BulkAssignModal from "./BulkAssignModal.jsx";
 import BulkInstallationEditModal from "./BulkInstallationEditModal.jsx";
 import { canAssignCallcenterEngineer, isBulkWorkflowEligibleRow, isNonVendorSource } from "../../utils/installationWorkflowSteps.js";
@@ -42,11 +42,16 @@ function summarizeGroupValue(rows, key) {
   return "Mixed";
 }
 
-function canAdminBulkAssign(row) {
+function canAdminBulkAssign(row, { isNarrowServiceDesk = false, userId = null } = {}) {
   // Non-vendor installations start at "Pending" and may never reach "Submitted" (there's no order
   // to submit), so they use the same assignability rule as the engineer-select on the detail page
   // instead of the vendor-order status gate.
-  if (isNonVendorSource(row)) return canAssignCallcenterEngineer(row);
+  if (isNonVendorSource(row)) {
+    if (!canAssignCallcenterEngineer(row)) return false;
+    // A bare "service" role can only act on requests the Service Manager routed to them.
+    if (isNarrowServiceDesk) return row.assigned_service_user_id === userId;
+    return true;
+  }
   return BULK_ASSIGNABLE_STATUSES.has(row.status);
 }
 
@@ -66,6 +71,7 @@ export default function InstallationList() {
   const { user } = useAuth();
   const isEngineer = canonicalRoleKey(user?.role) === "engineer";
   const isAdminLike = isOperationsAdminRole(user?.role);
+  const bulkAssignViewer = { isNarrowServiceDesk: isNarrowServiceDeskRole(user?.role), userId: user?.id };
   const [data, setData] = useState({ items: [], total: 0 });
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
@@ -143,7 +149,7 @@ export default function InstallationList() {
 
   function isRowSelectable(groupKey, row) {
     if (selectedGroupKey && selectedGroupKey !== groupKey) return false;
-    return isEngineer ? isBulkWorkflowRowAllowed(row) : canAdminBulkAssign(row) || canAdminBulkEdit(row);
+    return isEngineer ? isBulkWorkflowRowAllowed(row) : canAdminBulkAssign(row, bulkAssignViewer) || canAdminBulkEdit(row);
   }
 
   function toggleSelected(groupKey, row) {
@@ -238,7 +244,7 @@ export default function InstallationList() {
     }
   }
 
-  const canOpenBulkAssign = selectedRows.length > 0 && selectedRows.every((row) => canAdminBulkAssign(row));
+  const canOpenBulkAssign = selectedRows.length > 0 && selectedRows.every((row) => canAdminBulkAssign(row, bulkAssignViewer));
   const canOpenBulkWorkflow = selectedRows.length > 1
     && selectedRows.every(isBulkWorkflowRowAllowed);
   const canOpenBulkEdit = !isEngineer
