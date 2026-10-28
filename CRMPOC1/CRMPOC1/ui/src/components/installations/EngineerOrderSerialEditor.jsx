@@ -11,8 +11,10 @@ export default function EngineerOrderSerialEditor({ installation, userId, onUpda
   const [serialNo2, setSerialNo2] = useState(installation.serial_no_2 || "");
   const [selectedForReturn, setSelectedForReturn] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [reVerifying, setReVerifying] = useState(false);
   const [popupError, setPopupError] = useState("");
   const [savedAt, setSavedAt] = useState(0);
+  const [reVerifiedAt, setReVerifiedAt] = useState(0);
 
   useEffect(() => {
     setSelectedForReturn(false);
@@ -29,7 +31,20 @@ export default function EngineerOrderSerialEditor({ installation, userId, onUpda
     return () => clearTimeout(timer);
   }, [savedAt]);
 
+  useEffect(() => {
+    if (!reVerifiedAt) return undefined;
+    const timer = setTimeout(() => setReVerifiedAt(0), 4000);
+    return () => clearTimeout(timer);
+  }, [reVerifiedAt]);
+
   if (Number(installation.assigned_engineer) !== Number(userId)) return null;
+
+  // A vendor-order serial is auto-trusted the moment the engineer is assigned -- it's never cleared
+  // just because they later type something different here. This is the separate, deliberate "I've
+  // corrected it, please check this one" action, open whenever there's a serial and the request is
+  // still open (not whatever triggers Return's own, narrower mismatch gate).
+  const canReVerify = Boolean((installation.serial_no || "").trim())
+    && !["Completed", "Settlement Approved", "Rejected", "Returned"].includes(installation.status);
 
   async function save() {
     onError?.("");
@@ -51,10 +66,27 @@ export default function EngineerOrderSerialEditor({ installation, userId, onUpda
     }
   }
 
+  async function reVerify() {
+    onError?.("");
+    setPopupError("");
+    setReVerifying(true);
+    onBusy?.(true);
+    try {
+      await installationsApi.reVerifyEngineerOrderSerial(installation.id);
+      setReVerifiedAt(Date.now());
+      onUpdated?.();
+    } catch (error) {
+      setPopupError(formatApiError(error, "Unable to request re-verification"));
+    } finally {
+      setReVerifying(false);
+      onBusy?.(false);
+    }
+  }
+
   const inputClass = "w-full rounded-md border border-slate-300 px-3 py-2 text-sm";
   return (
     <>
-    <section className={`mt-4 rounded-lg border p-4 shadow-sm transition-colors duration-700 ${savedAt > 0 ? "border-emerald-200 bg-emerald-50" : "border-sky-200 bg-white"}`}>
+    <section className={`mt-4 rounded-lg border p-4 shadow-sm transition-colors duration-700 ${savedAt > 0 ? "border-emerald-200 bg-emerald-50" : reVerifiedAt > 0 ? "border-violet-200 bg-violet-50" : "border-sky-200 bg-white"}`}>
       <h3 className="text-sm font-semibold text-slate-800">Update order serial numbers</h3>
       <p className="mt-1 text-xs text-slate-600">
         Scan or enter both serial numbers. Every entered serial must belong to order {installation.order_no || `#${installation.order_id}`}.
@@ -89,8 +121,18 @@ export default function EngineerOrderSerialEditor({ installation, userId, onUpda
       >
         {saving ? "Updating…" : "Update serial numbers"}
       </button>
+      <button
+        type="button"
+        onClick={reVerify}
+        disabled={reVerifying || saving || !canReVerify}
+        title="Clears the earlier auto-verification and puts this back in front of admin to check the current serial"
+        className="rounded-md border border-violet-300 bg-violet-50 px-4 py-2 text-sm font-medium text-violet-800 disabled:cursor-not-allowed disabled:opacity-50"
+      >
+        {reVerifying ? "Requesting…" : "Re-verify"}
+      </button>
       <ReturnSelectedSerialsButton rows={selectedForReturn && canReturnSerialRow(installation) ? [installation] : []} disabled={saving} onUpdated={async () => { setSelectedForReturn(false); await onUpdated?.(); }} />
       {savedAt > 0 && <span className="text-sm font-medium text-emerald-700">✓ Saved</span>}
+      {reVerifiedAt > 0 && <span className="text-sm font-medium text-violet-700">✓ Sent for re-verification</span>}
       </div>
     </section>
     <Modal open={Boolean(popupError)} onClose={() => setPopupError("")} title="Serial numbers not updated">

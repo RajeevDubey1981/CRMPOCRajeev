@@ -87,6 +87,8 @@ export default function BulkInstallationWorkflowPanel({ rows, onSaved, showClose
   const [serialPopupError, setSerialPopupError] = useState("");
   const [savingSerialRowId, setSavingSerialRowId] = useState(null);
   const [savedSerialRowIds, setSavedSerialRowIds] = useState({});
+  const [reVerifyingRowId, setReVerifyingRowId] = useState(null);
+  const [reVerifiedRowIds, setReVerifiedRowIds] = useState({});
   const [paymentForm, setPaymentForm] = useState({
     payment_type: "Cash",
     work_report: "",
@@ -208,6 +210,29 @@ export default function BulkInstallationWorkflowPanel({ rows, onSaved, showClose
     } finally {
       setBusy(false);
       setSavingSerialRowId(null);
+    }
+  }
+
+  async function reVerifySerial(row) {
+    setBusy(true);
+    setReVerifyingRowId(row.id);
+    setErr("");
+    try {
+      const updated = await installationsApi.reVerifyEngineerOrderSerial(row.id);
+      setWorkflowRows((current) => current.map((item) => (item.id === row.id ? updated : item)));
+      setReVerifiedRowIds((prev) => ({ ...prev, [row.id]: true }));
+      setTimeout(() => {
+        setReVerifiedRowIds((prev) => {
+          const next = { ...prev };
+          delete next[row.id];
+          return next;
+        });
+      }, 4000);
+    } catch (error) {
+      setSerialPopupError(formatApiError(error, `Failed to request re-verification for request #${row.id}`));
+    } finally {
+      setBusy(false);
+      setReVerifyingRowId(null);
     }
   }
 
@@ -392,7 +417,7 @@ export default function BulkInstallationWorkflowPanel({ rows, onSaved, showClose
               return (
                 <tr
                   key={row.id}
-                  className={`align-top transition-colors duration-700 ${savedSerialRowIds[row.id] ? "bg-emerald-50" : "hover:bg-slate-50"}`}
+                  className={`align-top transition-colors duration-700 ${savedSerialRowIds[row.id] ? "bg-emerald-50" : reVerifiedRowIds[row.id] ? "bg-violet-50" : "hover:bg-slate-50"}`}
                 >
                   {isEngineer && <td className="px-2 py-2"><input type="checkbox" aria-label={`Select serial row ${row.serial_no || row.id} to return`} title={hasSerialMismatch(row) ? "Select to return — scanned serial doesn't match the order" : "Available only when the scanned serial doesn't match what the order assigned to this unit"} checked={returnIds.includes(row.id)} disabled={busy || !canReturnSerialRow(row)} onChange={e => { const checked = e.target.checked; setReturnIds(ids => checked ? [...ids, row.id] : ids.filter(id => id !== row.id)); if (checked) updateRowForm(row.id, { selectedForCompletion: false, selectedForPayment: false }); }} className="h-4 w-4" /></td>}
                   {showCompletionSelection && (
@@ -435,8 +460,18 @@ export default function BulkInstallationWorkflowPanel({ rows, onSaved, showClose
                           >
                             {savingSerialRowId === row.id ? "Updating…" : "Update serials"}
                           </button>
-                          {savedSerialRowIds[row.id] && <span className="text-xs font-medium text-emerald-700">✓ Saved</span>}
+                          <button
+                            type="button"
+                            onClick={() => reVerifySerial(row)}
+                            disabled={busy || !(row.serial_no || "").trim() || ["Completed", "Settlement Approved", "Rejected", "Returned"].includes(row.status)}
+                            title="Clears the earlier auto-verification and puts this back in front of admin to check the current serial"
+                            className="rounded-md border border-violet-300 bg-violet-50 px-2 py-1 text-xs font-semibold text-violet-800 disabled:opacity-50"
+                          >
+                            {reVerifyingRowId === row.id ? "Requesting…" : "Re-verify"}
+                          </button>
                         </div>
+                        {savedSerialRowIds[row.id] && <span className="text-xs font-medium text-emerald-700">✓ Saved</span>}
+                        {reVerifiedRowIds[row.id] && <span className="text-xs font-medium text-violet-700">✓ Sent for re-verification</span>}
                       </div>
                     ) : (row.serial_no_2 || row.engineer_entered_serial_no_2 || "-")}
                   </td>
