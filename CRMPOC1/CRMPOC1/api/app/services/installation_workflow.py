@@ -68,8 +68,18 @@ def generate_access_token() -> str:
     return secrets.token_urlsafe(24)
 
 
+#: Everything that ISN'T a real vendor order fulfilled from the vendor's own login. A vendor-raised
+#: installation already has its order -- that's what raised it. None of these three do: a phone call, a
+#: walk-in/manual entry, or (once it exists) the website. All three share the exact same structured
+#: workflow -- order link is optional at creation, Step 2 lets Service Team/Manager/Admin verify or attach
+#: an order afterwards -- so despite the name, this now means "goes through that shared workflow", not
+#: literally source=="callcenter". Kept as one function (not three near-duplicates) because every caller
+#: below only ever cared about that distinction, never about which of the three it specifically was.
+NON_VENDOR_SOURCES = {"callcenter", "website", "manual"}
+
+
 def is_callcenter_source(inst: InstallationRequest) -> bool:
-    return (inst.source or "vendor").lower() == "callcenter"
+    return (inst.source or "vendor").lower() in NON_VENDOR_SOURCES
 
 
 def is_vendor_source(inst: InstallationRequest) -> bool:

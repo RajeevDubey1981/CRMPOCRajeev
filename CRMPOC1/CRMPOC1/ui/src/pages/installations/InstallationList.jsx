@@ -13,7 +13,7 @@ import { useAuth } from "../../auth/AuthContext.jsx";
 import { isOperationsAdminRole } from "../../utils/roles.js";
 import BulkAssignModal from "./BulkAssignModal.jsx";
 import BulkInstallationEditModal from "./BulkInstallationEditModal.jsx";
-import { isBulkWorkflowEligibleRow } from "../../utils/installationWorkflowSteps.js";
+import { canAssignCallcenterEngineer, isBulkWorkflowEligibleRow, isNonVendorSource } from "../../utils/installationWorkflowSteps.js";
 import InstallationStageChips from "../../components/installations/InstallationStageChips.jsx";
 import { INSTALLATION_STAGES, stageLabel } from "../../utils/installationStages.js";
 
@@ -43,6 +43,10 @@ function summarizeGroupValue(rows, key) {
 }
 
 function canAdminBulkAssign(row) {
+  // Non-vendor installations start at "Pending" and may never reach "Submitted" (there's no order
+  // to submit), so they use the same assignability rule as the engineer-select on the detail page
+  // instead of the vendor-order status gate.
+  if (isNonVendorSource(row)) return canAssignCallcenterEngineer(row);
   return BULK_ASSIGNABLE_STATUSES.has(row.status);
 }
 
@@ -71,6 +75,7 @@ export default function InstallationList() {
     search: "",
     date_from: "",
     date_to: "",
+    needs_service_team: false,
   });
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState(50);
@@ -90,6 +95,7 @@ export default function InstallationList() {
     search: filters.search || undefined,
     date_from: filters.date_from || undefined,
     date_to: filters.date_to || undefined,
+    needs_service_team: filters.needs_service_team || undefined,
   }), [page, perPage, filters]);
 
   async function load() {
@@ -315,7 +321,14 @@ export default function InstallationList() {
           <DateRangeFilter from={filters.date_from} to={filters.date_to} onChange={(a, b) => applyFilter({ date_from: a, date_to: b })} />
         </div>
         <div className="mt-3">
-          <InstallationStageChips counts={data.stage_counts} value={filters.stage} onChange={(stage) => applyFilter({ stage })} />
+          <InstallationStageChips
+            counts={data.stage_counts}
+            value={filters.stage}
+            onChange={(stage) => applyFilter({ stage })}
+            needsServiceTeamCount={data.needs_service_team_count}
+            needsServiceTeamActive={filters.needs_service_team}
+            onToggleNeedsServiceTeam={isAdminLike ? () => applyFilter({ needs_service_team: !filters.needs_service_team }) : undefined}
+          />
         </div>
       </div>
 
@@ -464,7 +477,7 @@ export default function InstallationList() {
                             </thead>
                             <tbody className="divide-y divide-slate-100">
                               {group.requests.map((row) => (
-                                <tr key={row.id} className="hover:bg-slate-50">
+                                <tr key={row.id} className={row.needs_service_team ? "bg-rose-50 hover:bg-rose-100" : "hover:bg-slate-50"}>
                                   <td className="px-3 py-2">
                                     {isRowSelectable(group.key, row) && (
                                       <input
@@ -496,7 +509,15 @@ export default function InstallationList() {
                                   <td className="px-3 py-2 font-mono text-xs">{row.serial_no_2 || "-"}</td>
                                   <td className="px-3 py-2"><StatusBadge value={row.status} /></td>
                                   {!isEngineer && <td className="px-3 py-2">{row.assigned_engineer_name || "-"}</td>}
-                                  {!isEngineer && <td className="px-3 py-2">{row.assigned_service_user_name || "-"}</td>}
+                                  {!isEngineer && (
+                                    <td className="px-3 py-2">
+                                      {row.assigned_service_user_name || (
+                                        row.needs_service_team
+                                          ? <span className="font-semibold text-rose-700">Unassigned</span>
+                                          : <span className="text-slate-400">-</span>
+                                      )}
+                                    </td>
+                                  )}
                                   <td className="px-3 py-2"><RegisteredCell at={row.request_date} /></td>
                                   <td className="px-3 py-2 text-xs">{fmtDate(row.installation_date)}</td>
                                   {!isEngineer && (

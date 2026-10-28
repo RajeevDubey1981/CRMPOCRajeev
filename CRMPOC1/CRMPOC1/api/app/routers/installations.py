@@ -49,6 +49,7 @@ from app.services.service_access import (
     is_service_desk_user,
 )
 from app.services.installation_workflow import (
+    NON_VENDOR_SOURCES,
     callcenter_can_assign_engineer,
     document_upload_url,
     is_callcenter_source,
@@ -244,6 +245,11 @@ def _list_row(
         assigned_engineer_name=engineer_name,
         assigned_service_user_id=inst.assigned_service_user_id,
         assigned_service_user_name=service_user_name,
+        needs_service_team=(
+            inst.assigned_service_user_id is None
+            and inst.engineer_entered_serial_no is not None
+            and inst.status not in CLOSED_STATUSES
+        ),
         settlement_approved_by_name=approved_by_name,
         admin_approval_remark=inst.admin_approval_remark,
         payment_amount_requested=float(inst.payment_amount_requested) if inst.payment_amount_requested is not None else None,
@@ -524,6 +530,19 @@ def _sync_order_completion_state(db: Session, inst: InstallationRequest) -> None
         order.status = "Completed"
 
 
+#: closed/dead-end statuses -- an installation in one of these is done either way, so it never counts
+#: toward "needs a Service Team member" even if nobody was ever formally assigned one.
+CLOSED_STATUSES = ("Completed", "Cancelled", "Settlement Approved", "Rejected")
+
+
+def _needs_service_team_clause():
+    return (
+        InstallationRequest.assigned_service_user_id.is_(None),
+        InstallationRequest.engineer_entered_serial_no.is_not(None),
+        InstallationRequest.status.notin_(CLOSED_STATUSES),
+    )
+
+
 @router.get("", response_model=InstallationListResponse)
 def list_installations(
     page: int = Query(1, ge=1),
@@ -534,6 +553,7 @@ def list_installations(
     date_from: date | None = None,
     date_to: date | None = None,
     order_id: int | None = Query(None),
+    needs_service_team: bool = False,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -556,6 +576,19 @@ def list_installations(
         stmt = stmt.where(InstallationRequest.assigned_engineer == user.id)
     elif is_service_desk_user(user):
         stmt = stmt.where(InstallationRequest.assigned_service_user_id == user.id)
+
+    # Captured here, before the optional filters below narrow `stmt` further, so the "Needs Service
+    # Team" chip's own count always reflects the true backlog under this role's visibility -- not
+    # collapsed to 0 by the very filter the chip itself toggles.
+    role_scoped_stmt = stmt
+    needs_service_team_count = db.scalar(
+        select(func.count()).select_from(
+            role_scoped_stmt.where(*_needs_service_team_clause()).with_only_columns(InstallationRequest.id).order_by(None).subquery()
+        )
+    ) or 0
+
+    if needs_service_team:
+        stmt = stmt.where(*_needs_service_team_clause())
 
     if order_id is not None:
         item_ids_subq = select(OrderItem.id).where(OrderItem.order_id == order_id)
@@ -681,6 +714,7 @@ def list_installations(
         page=page,
         per_page=per_page,
         stage_counts=stage_counts(status_counts),
+        needs_service_team_count=needs_service_team_count,
     )
 
 
@@ -873,16 +907,24 @@ def create_installation(
 
     role = canonical_role_key(user.role)
     requested_source = (body.source or "").lower()
-    callcenter_create = role == "callcenter" or requested_source == "callcenter"
+    # Not every installation traces back to a real vendor order -- a call-center-raised one never did,
+    # and neither does one logged by hand (Service Manager/Admin) or one that'll eventually come from the
+    # website. All three share the same shape: customer/address typed in directly, an order link optional
+    # rather than required. Only an actual role=="callcenter" caller is trusted to pick this path with no
+    # explicit source (defaults to "callcenter" for them); anyone else must say which of the three they
+    # mean, so a careless create() call can never silently land as source="vendor" again.
+    if role == "callcenter" and not requested_source:
+        requested_source = "callcenter"
+    non_vendor_create = requested_source in NON_VENDOR_SOURCES
 
-    if callcenter_create:
+    if non_vendor_create:
         order = db.get(Order, body.order_id) if body.order_id else None
         if body.order_id and (order is None or order.deleted_at is not None):
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Order not found")
         if order is not None:
             require_order_installation(order)
         inst = InstallationRequest(
-            source="callcenter",
+            source=requested_source,
             created_by=user.id,
             customer_name=body.customer_name,
             contact_number=body.contact_number,
@@ -907,10 +949,10 @@ def create_installation(
         log_installation_action(
             db,
             inst,
-            action="Call Center Request Created",
+            action=f"Installation Request Created ({requested_source.capitalize()})",
             user=user,
             new_status=inst.status,
-            metadata={"order_id": inst.order_id},
+            metadata={"order_id": inst.order_id, "source": requested_source},
         )
         db.commit()
         db.refresh(inst)

@@ -71,6 +71,7 @@ class InstallationListItem(BaseModel):
     assigned_engineer_name: str | None
     assigned_service_user_id: int | None = None
     assigned_service_user_name: str | None = None
+    needs_service_team: bool = False
     settlement_approved_by_name: str | None
     admin_approval_remark: str | None = None
     payment_amount_requested: float | None = None
@@ -91,6 +92,10 @@ class InstallationListResponse(BaseModel):
     page: int
     per_page: int
     stage_counts: dict[str, int] = {}  # per stage, for the filters in force except the stage itself
+    # Serial already verified by the engineer, but nobody on the Service Team has been assigned yet --
+    # the one gap the "Needs Service Team" chip exists to close. Not a stage (it's about
+    # assigned_service_user_id, not status), so it doesn't fit stage_counts.
+    needs_service_team_count: int = 0
 
 
 class InstallationPaymentHistoryItem(BaseModel):

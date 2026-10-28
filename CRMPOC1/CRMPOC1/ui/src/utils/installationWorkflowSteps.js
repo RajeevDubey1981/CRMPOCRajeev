@@ -1,5 +1,14 @@
 /** Call-center installation workflow step helpers (steps 2–9 on installation detail). */
 
+// Everything that isn't a real vendor order fulfilled from the vendor's own login: a phone call, a
+// manual/walk-in entry, or (once it exists) the website. All three share the same structured workflow --
+// kept in sync with NON_VENDOR_SOURCES in api/app/services/installation_workflow.py.
+export const NON_VENDOR_SOURCES = new Set(["callcenter", "website", "manual"]);
+
+export function isNonVendorSource(installation) {
+  return NON_VENDOR_SOURCES.has((installation?.source || "vendor").toLowerCase());
+}
+
 export const INSTALLATION_WORKFLOW_STEP_OPTIONS = [
   {
     step: 1,
@@ -61,8 +70,7 @@ export function isVendorAssignedInstallation(installation) {
 }
 
 export function usesStructuredInstallationWorkflow(installation) {
-  const source = (installation?.source || "vendor").toLowerCase();
-  return source === "callcenter" || isVendorInitiatedInstallation(installation);
+  return isNonVendorSource(installation) || isVendorInitiatedInstallation(installation);
 }
 
 export function isAssignedToUser(installation, userId) {
@@ -208,8 +216,10 @@ export function getInstallationWorkflowStepState(installation) {
     || status === "Completed";
   const step10Done = status === "Completed";
 
-  const activeStep = !step2Done ? 2
-    : !step4Done ? 4
+  // Order verification (step 2) is a parallel, optional check -- Service Team/Manager/Admin can do it
+  // whenever there's an order to verify, but it never blocks assigning an engineer. Only step 3
+  // (customer documents) was already independent; step 2 now matches it instead of gating step 4.
+  const activeStep = !step4Done ? 4
     : !step5Done ? 5
     : !step6Done ? 6
     : !step7Done ? 7

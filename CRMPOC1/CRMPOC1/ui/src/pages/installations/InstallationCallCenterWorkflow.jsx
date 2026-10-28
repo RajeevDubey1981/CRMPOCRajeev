@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { installationsApi } from "../../api/installations.js";
 import { formatApiError } from "../../utils/apiError.js";
 import { toDownloadUrl } from "../../utils/downloadUrl.js";
-import { canAssignCallcenterEngineer, getInstallationWorkflowStepState, installationSerialReady, isAssignedToUser, isVendorAssignedInstallation, isVendorInitiatedInstallation } from "../../utils/installationWorkflowSteps.js";
+import { canAssignCallcenterEngineer, getInstallationWorkflowStepState, installationSerialReady, isAssignedToUser, isNonVendorSource, isVendorAssignedInstallation, isVendorInitiatedInstallation } from "../../utils/installationWorkflowSteps.js";
 import InstallationEngineerSerialWorkflow from "../../components/installations/InstallationEngineerSerialWorkflow.jsx";
 import InstallationPostVerifyWorkflow from "../../components/installations/InstallationPostVerifyWorkflow.jsx";
 import WorkflowStepSection from "../../components/installations/WorkflowStepSection.jsx";
@@ -61,8 +61,9 @@ export default function InstallationCallCenterWorkflow({
   onBusy,
   onResetWorkflow,
 }) {
-  const source = (installation.source || "vendor").toLowerCase();
-  const isCallcenter = source === "callcenter";
+  // Named for history -- covers call center, manual, and (once it exists) website sources alike, since
+  // all three share this exact structured workflow.
+  const isCallcenter = isNonVendorSource(installation);
   const isVendorInitiated = isVendorInitiatedInstallation(installation);
   const isVendorAssigned = isVendorAssignedInstallation(installation);
   const canViewCustomerDocuments = isAdminLike || isServiceTeam;
@@ -434,7 +435,7 @@ export default function InstallationCallCenterWorkflow({
         </WorkflowStepSection>
       )}
 
-      {(isAdminLike || isServiceTeam) && installation.order_verified_at && (
+      {(isAdminLike || isServiceTeam) && (
         <WorkflowStepSection
           title="Step 4 — Assign engineer"
           done={workflowSteps.steps[4].done && workflowSteps.steps[4].locked}

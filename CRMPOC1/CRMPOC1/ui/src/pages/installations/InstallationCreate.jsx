@@ -22,6 +22,10 @@ export default function InstallationCreate() {
   const [orderOptions, setOrderOptions] = useState([]);
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [form, setForm] = useState({
+    // Not every installation traces back to a real vendor order -- this form is for the ones that
+    // don't. "manual" is the honest default for anyone who isn't literally the Call Center role; it used
+    // to silently become "vendor" here, which was wrong (no vendor order exists behind these).
+    source: isCallcenter ? "callcenter" : "manual",
     request_date: todayStr(),
     customer_name: "",
     contact_number: "",
@@ -32,9 +36,10 @@ export default function InstallationCreate() {
     district: "",
     product_name: "",
   });
+  const showOrderLink = ["callcenter", "website", "manual"].includes(form.source);
 
   useEffect(() => {
-    if (!isCallcenter) return undefined;
+    if (!showOrderLink) return undefined;
     const query = orderSearch.trim();
     if (query.length < 2) {
       setOrderOptions([]);
@@ -46,7 +51,7 @@ export default function InstallationCreate() {
         .catch(() => setOrderOptions([]));
     }, 300);
     return () => window.clearTimeout(timer);
-  }, [orderSearch, isCallcenter]);
+  }, [orderSearch, showOrderLink]);
 
   function set(field, value) { setForm((f) => ({ ...f, [field]: value })); }
 
@@ -84,7 +89,6 @@ export default function InstallationCreate() {
         address: form.address || null,
         customer_email: form.customer_email || null,
         product_name: form.product_name || null,
-        source: isCallcenter ? "callcenter" : undefined,
         order_id: selectedOrder?.order_id || null,
       };
       const created = await installationsApi.create(body);
@@ -107,7 +111,18 @@ export default function InstallationCreate() {
       {err && <div className="rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-700">{err}</div>}
 
       <form onSubmit={submit} className="space-y-4 rounded-lg bg-white p-6 shadow-sm">
-        {isCallcenter && (
+        {!isCallcenter && (
+          <div>
+            <label className={labelClass}>How was this raised?</label>
+            <select value={form.source} onChange={(e) => set("source", e.target.value)} className={fieldClass}>
+              <option value="manual">Manual / walk-in</option>
+              <option value="callcenter">Call Center</option>
+              <option value="website">Website</option>
+            </select>
+            <p className="mt-1 text-xs text-slate-500">No vendor order is required — Service Team or Admin can link one afterwards if there is one.</p>
+          </div>
+        )}
+        {showOrderLink && (
           <div className="rounded-md border border-sky-200 bg-sky-50 p-4 text-sm">
             <div className="font-medium text-sky-900">Identify customer order (optional)</div>
             <p className="mt-1 text-xs text-sky-800">

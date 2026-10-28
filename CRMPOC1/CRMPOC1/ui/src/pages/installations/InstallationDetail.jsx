@@ -9,7 +9,7 @@ import StatusBadge from "../../components/StatusBadge.jsx";
 import { installationsApi } from "../../api/installations.js";
 import { useAuth } from "../../auth/AuthContext.jsx";
 import { canAssignServiceDeskUser, isOperationsAdminRole, isServiceDeskRole, isServiceTeamRole, isSystemAdminRole } from "../../utils/roles.js";
-import { usesStructuredInstallationWorkflow, getInstallationWorkflowStepOptions, getCurrentInstallationWorkflowStep } from "../../utils/installationWorkflowSteps.js";
+import { usesStructuredInstallationWorkflow, getInstallationWorkflowStepOptions, getCurrentInstallationWorkflowStep, isNonVendorSource } from "../../utils/installationWorkflowSteps.js";
 import InstallationStatusEdit from "./InstallationStatusEdit.jsx";
 import InstallationCallCenterWorkflow from "./InstallationCallCenterWorkflow.jsx";
 import EngineerOrderSerialEditor from "../../components/installations/EngineerOrderSerialEditor.jsx";
@@ -229,7 +229,8 @@ export default function InstallationDetail() {
   if (err && !installation) return <div className="rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-700">{err}</div>;
   if (!installation) return <div className="text-slate-500">Loading...</div>;
 
-  const isCallcenter = (installation.source || "").toLowerCase() === "callcenter";
+  // Named for history -- covers call center, manual, and (once it exists) website sources alike.
+  const isCallcenter = isNonVendorSource(installation);
   const usesStructuredWorkflow = usesStructuredInstallationWorkflow(installation);
   const canEditWorkflow = (isAdminLike || isServiceTeam) && usesStructuredWorkflow && !["Pending Return Approval", "Returned - Location Not Verified", "Return Location Verified", "Return Approved - Closed"].includes(installation.status);
   const workflowStepOptions = canEditWorkflow ? getInstallationWorkflowStepOptions(installation) : [];
@@ -480,7 +481,7 @@ export default function InstallationDetail() {
       )}
 
       <div ref={workflowRef}>
-        {isEngineer && (installation.source || "vendor").toLowerCase() !== "callcenter" && (
+        {isEngineer && !isNonVendorSource(installation) && (
           <EngineerOrderSerialEditor
             installation={installation}
             userId={user?.id}
