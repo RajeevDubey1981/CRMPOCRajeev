@@ -44,6 +44,22 @@ function summarizeGroupValue(rows, key) {
   return "Mixed";
 }
 
+/** A thin stacked bar under a group's Item Code, proportioned across every stage in its own chip color --
+ * a shape to scan instead of reading five separate numbers across the row. */
+function GroupProgressBar({ stageCounts }) {
+  if (!stageCounts) return null;
+  const segments = INSTALLATION_STAGES.map((s) => ({ ...s, count: stageCounts[s.key] || 0 })).filter((s) => s.count > 0);
+  const total = segments.reduce((sum, s) => sum + s.count, 0);
+  if (total === 0) return null;
+  return (
+    <div className="mt-1.5 flex h-1.5 w-full overflow-hidden rounded-full bg-slate-100" title={segments.map((s) => `${s.label}: ${s.count}`).join(" · ")}>
+      {segments.map((s) => (
+        <span key={s.key} style={{ width: `${(s.count / total) * 100}%`, backgroundColor: s.color }} />
+      ))}
+    </div>
+  );
+}
+
 function canAdminBulkAssign(row, { isNarrowServiceDesk = false, userId = null } = {}) {
   // Non-vendor installations start at "Pending" and may never reach "Submitted" (there's no order
   // to submit), so they use the same assignability rule as the engineer-select on the detail page
@@ -481,7 +497,10 @@ export default function InstallationList() {
                 <Fragment key={group.key}>
                   <tr className="cursor-pointer hover:bg-slate-50" onClick={() => toggleGroup(group.key)}>
                     <td className="px-3 py-2 text-center text-slate-500">{expanded ? "-" : "+"}</td>
-                    <td className="px-3 py-2 font-mono text-xs font-semibold text-slate-700">{group.itemCode}</td>
+                    <td className="min-w-[150px] px-3 py-2 font-mono text-xs font-semibold text-slate-700">
+                      {group.itemCode}
+                      <GroupProgressBar stageCounts={group.stageCounts} />
+                    </td>
                     <td className="px-3 py-2 font-medium text-slate-800">{group.itemName}</td>
                     <td className="px-3 py-2 font-mono text-xs text-slate-700">{group.orderNo}</td>
                     <td className="px-3 py-2 text-slate-700">{group.vendorName}</td>
