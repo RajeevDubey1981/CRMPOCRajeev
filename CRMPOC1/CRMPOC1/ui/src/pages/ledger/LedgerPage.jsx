@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Navigate, useSearchParams } from "react-router-dom";
 
 import { useAuth } from "../../auth/AuthContext.jsx";
-import { canActOnInstallationPayments, isSystemAdminRole } from "../../utils/roles.js";
+import { isSystemAdminRole } from "../../utils/roles.js";
 import AccountsDashboard from "./AccountsDashboard.jsx";
 import AuditQueue from "./AuditQueue.jsx";
 import LedgerSearch from "./LedgerSearch.jsx";
@@ -26,10 +26,9 @@ export default function LedgerPage() {
   // same check the backend uses (orders can_view, never a vendor/engineer account itself).
   const role = (user?.role || "").toLowerCase();
   const canSeeMyRequests = role !== "vendor" && role !== "engineer" && has("orders", "can_view");
-  // Ready to Pay: whoever can act somewhere in the installation/service payment chains -- the same
-  // check the backend's ready-to-pay endpoint uses -- not tied to the vendor/engineer ledger
-  // permissions above, since it's a different system (order payments, not ledger accounts).
-  const canSeePayQueue = canActOnInstallationPayments(role);
+  // Ready to Pay: System Admin only -- Accounts prepares and Audit reviews, but neither of them
+  // actually releases the payment, only Admin does (same gate the backend endpoint uses).
+  const canSeePayQueue = isSystemAdmin;
 
   const [searchParams] = useSearchParams();
   const requested = searchParams.get("tab");

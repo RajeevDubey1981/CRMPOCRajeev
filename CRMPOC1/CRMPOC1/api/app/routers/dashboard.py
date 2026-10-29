@@ -29,7 +29,7 @@ from app.services.engineer_service_scope import (
 )
 from app.services.complaint_access import apply_complaint_assignment_scope
 from app.services.installation_stages import stage_counts
-from app.services.role_access import is_operations_admin
+from app.services.role_access import is_operations_admin, is_system_admin
 from app.services.service_access import is_service_desk_user
 from app.services.permissions import can_act_on, sub_module_scope
 
@@ -215,9 +215,11 @@ def ready_to_pay(
 ):
     """Everything that's cleared Audit and is sitting at the Admin stage, across both Installations
     and Service Requests -- purely a finding/prioritizing view (age since the request was first
-    raised flags urgency); actually paying still happens on that record's own detail page."""
-    role = canonical_role_key(user.role)
-    if not (is_operations_admin(user) or role in {"accounts", "audit"}):
+    raised flags urgency); actually paying still happens on that record's own detail page.
+    System Admin only -- the "admin" stage itself is already gated to is_system_admin
+    (user_can_approve_stage), and nobody else is the one actually releasing this money, Accounts
+    and Sub Admin included."""
+    if not is_system_admin(user):
         return []
 
     now = datetime.now(timezone.utc)
