@@ -2,6 +2,61 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { accountLedgerApi } from "../../api/accountLedger.js";
+import { api } from "../../api/client.js";
+
+const PAYMENT_STAGE_COLORS = {
+  service_role: "#2563c7",
+  service_manager: "#6d3fc0",
+  sub_admin: "#c23850",
+  accounts: "#0e7a8a",
+  audit: "#9a6b00",
+  admin: "#0a7a5c",
+};
+
+/** One card per stage of the installation payment chain -- not just Accounts' own queue, so
+ * urgency building up upstream (or already past them, waiting on Audit/Admin) is visible too. */
+function InstallationPaymentUrgencyStrip() {
+  const [stages, setStages] = useState(null);
+
+  useEffect(() => {
+    api.get("/api/dashboard/installation-payment-stages")
+      .then((r) => setStages(r.data))
+      .catch(() => setStages([]));
+  }, []);
+
+  if (!stages || stages.length === 0) return null;
+
+  return (
+    <div>
+      <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+        Installation payment chain — every stage at a glance
+      </p>
+      <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+        {stages.map((s) => (
+          <div
+            key={s.stage_key}
+            className={`rounded-lg bg-white p-3 shadow-sm ${s.is_mine ? "ring-2" : ""}`}
+            style={{ borderTop: `4px solid ${PAYMENT_STAGE_COLORS[s.stage_key] || "#64748b"}`, ...(s.is_mine ? { "--tw-ring-color": PAYMENT_STAGE_COLORS[s.stage_key] } : {}) }}
+          >
+            <div className="text-[11px] font-bold uppercase tracking-wide" style={{ color: PAYMENT_STAGE_COLORS[s.stage_key] || "#64748b" }}>
+              {s.stage_label}
+            </div>
+            <div className="mt-0.5 text-xl font-extrabold text-slate-800">{s.count}</div>
+            <div className="text-xs text-slate-500">{fmtMoney(s.amount)}</div>
+            {s.is_mine && (
+              <span
+                className="mt-1 inline-block rounded-full px-1.5 py-0.5 text-[10px] font-extrabold text-white"
+                style={{ background: PAYMENT_STAGE_COLORS[s.stage_key] || "#64748b" }}
+              >
+                YOUR QUEUE
+              </span>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 function fmtMoney(n) {
   return `₹${Number(n || 0).toLocaleString("en-IN")}`;
@@ -437,6 +492,8 @@ export default function AccountsDashboard() {
           <div className="mt-1 text-xl font-bold">{data.overdue_count}</div>
         </div>
       </div>
+
+      <InstallationPaymentUrgencyStrip />
 
       <div className="rounded-lg bg-white p-4 shadow-sm">
         <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">Due vs Paid — month wise</p>

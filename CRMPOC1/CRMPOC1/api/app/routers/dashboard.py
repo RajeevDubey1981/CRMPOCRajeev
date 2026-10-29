@@ -17,6 +17,7 @@ from app.schemas.dashboard import (
     ComplaintChart,
     ComplaintChartPoint,
     ComplaintsSummary,
+    InstallationPaymentStageOut,
     InstallationSummary,
     OrdersSummary,
     ServiceSummary,
@@ -27,6 +28,7 @@ from app.services.engineer_service_scope import (
 )
 from app.services.complaint_access import apply_complaint_assignment_scope
 from app.services.installation_stages import stage_counts
+from app.services.role_access import is_operations_admin
 from app.services.service_access import is_service_desk_user
 from app.services.permissions import can_act_on, sub_module_scope
 
@@ -101,6 +103,48 @@ def installation_summary(db: Session = Depends(get_db), user: User = Depends(get
             scope = scope.where(InstallationRequest.assigned_service_user_id == user.id)
     stages = stage_counts({s: n for s, n in db.execute(scope).all()})
     return InstallationSummary(total_pending=total, gt7days=gt7, gt15days=gt15, gt30days=gt30, stages=stages)
+
+
+#: Every stage the installation payment chain can sit in, in chain order -- fixed list so a
+#: stage with nothing pending still shows as a zero card instead of vanishing.
+_INSTALLATION_PAYMENT_STAGE_ORDER = [
+    ("service_role", "Service Role"),
+    ("service_manager", "Service Manager"),
+    ("sub_admin", "Sub Admin"),
+    ("accounts", "Accounts"),
+    ("audit", "Audit"),
+    ("admin", "Admin"),
+]
+
+
+@router.get("/installation-payment-stages", response_model=list[InstallationPaymentStageOut])
+def installation_payment_stages_summary(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """One card per stage of the installation payment chain -- not just the viewer's own queue,
+    so Accounts (or Audit) can see urgency building up everywhere, not only what's already
+    reached them. Restricted to roles with a real stake in this chain."""
+    role = canonical_role_key(user.role)
+    if not (is_operations_admin(user) or role in {"accounts", "audit"}):
+        return []
+    rows = db.execute(
+        select(
+            InstallationRequest.payment_approval_stage,
+            func.count(InstallationRequest.id),
+            func.coalesce(func.sum(InstallationRequest.payment_amount_requested), 0),
+        )
+        .where(InstallationRequest.status == "Payment Pending")
+        .group_by(InstallationRequest.payment_approval_stage)
+    ).all()
+    by_stage = {stage_key: (count, float(amount)) for stage_key, count, amount in rows}
+    return [
+        InstallationPaymentStageOut(
+            stage_key=key,
+            stage_label=label,
+            count=by_stage.get(key, (0, 0.0))[0],
+            amount=by_stage.get(key, (0, 0.0))[1],
+            is_mine=key == role,
+        )
+        for key, label in _INSTALLATION_PAYMENT_STAGE_ORDER
+    ]
 
 
 @router.get("/orders-summary", response_model=OrdersSummary)

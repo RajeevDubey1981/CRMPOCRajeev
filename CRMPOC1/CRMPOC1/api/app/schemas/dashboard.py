@@ -37,6 +37,14 @@ class OrdersSummary(BaseModel):
     delivered: int
 
 
+class InstallationPaymentStageOut(BaseModel):
+    stage_key: str
+    stage_label: str
+    count: int
+    amount: float
+    is_mine: bool = False
+
+
 class ServiceSummary(BaseModel):
     new_requests: int
     unassigned: int
