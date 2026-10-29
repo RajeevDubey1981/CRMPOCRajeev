@@ -15,9 +15,25 @@ export const hasSerialMismatch = row => {
   return (expected1 && actual1 && expected1 !== actual1) || (expected2 && actual2 && expected2 !== actual2);
 };
 
-// Once admin has verified the serial it's authoritative -- an engineer can no longer flag it for
-// return even if it still reads as a mismatch, same as Service Requests (serial_verified_at gates it there too).
-export const canReturnSerialRow = row => ["Assigned", "In Progress", "Serial Pending Verification", "Returned", "Rejected"].includes(row.status) && Boolean(row.serial_no) && !row.serial_verified_at && hasSerialMismatch(row);
+// The exact text the save endpoint uses when a scanned serial doesn't belong to this order at all --
+// that save is rejected outright (nothing to compare against on the saved row), so a mismatch against
+// what's on file can never be detected for it the normal way. Matched against the save's own error so a
+// rejected-as-wholly-wrong serial still unlocks Return, not just a saved one that merely differs.
+export const ORDER_MEMBERSHIP_ERROR = "Every entered serial number must belong to this order";
+
+// Status/serial-presence baseline Return always needs, regardless of which specific condition
+// (genuine mismatch vs. order-membership rejection) is the reason it's unlocked. Not gated on
+// serial_verified_at: for a vendor-order install that timestamp is auto-set the moment an engineer
+// is assigned, before they've entered anything themselves, so it would never clear and Return would
+// never be reachable. Correcting the serial to a matching one is itself what re-disables Return --
+// hasSerialMismatch/the order-rejection flag both go false once it's fixed.
+const canReturnStatusAndVerification = row => ["Assigned", "In Progress", "Serial Pending Verification", "Returned", "Rejected"].includes(row.status) && Boolean(row.serial_no);
+
+export const canReturnSerialRow = row => canReturnStatusAndVerification(row) && hasSerialMismatch(row);
+
+// Same eligibility, but for the case above: the engineer's last save attempt was rejected as not
+// belonging to this order at all, so the saved row itself never changed to reflect the mismatch.
+export const canReturnAfterOrderMembershipRejection = row => canReturnStatusAndVerification(row);
 
 export default function ReturnSelectedSerialsButton({ rows, onUpdated, disabled = false }) {
   const [reason, setReason] = useState("");

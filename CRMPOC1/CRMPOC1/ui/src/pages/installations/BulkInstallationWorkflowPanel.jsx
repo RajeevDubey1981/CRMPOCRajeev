@@ -1,4 +1,4 @@
-import ReturnSelectedSerialsButton, { canReturnSerialRow, hasSerialMismatch } from "../../components/installations/ReturnSelectedSerialsButton.jsx";
+import ReturnSelectedSerialsButton, { ORDER_MEMBERSHIP_ERROR, canReturnAfterOrderMembershipRejection, canReturnSerialRow, hasSerialMismatch } from "../../components/installations/ReturnSelectedSerialsButton.jsx";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 
@@ -89,6 +89,7 @@ export default function BulkInstallationWorkflowPanel({ rows, onSaved, showClose
   const [serialPopupError, setSerialPopupError] = useState("");
   const [savingSerialRowId, setSavingSerialRowId] = useState(null);
   const [savedSerialRowIds, setSavedSerialRowIds] = useState({});
+  const [orderRejectedRowIds, setOrderRejectedRowIds] = useState({});
   const [paymentForm, setPaymentForm] = useState({
     payment_type: "Cash",
     work_report: "",
@@ -176,6 +177,12 @@ export default function BulkInstallationWorkflowPanel({ rows, onSaved, showClose
         delete next[rowId];
         return next;
       });
+      setOrderRejectedRowIds((prev) => {
+        if (!prev[rowId]) return prev;
+        const next = { ...prev };
+        delete next[rowId];
+        return next;
+      });
     }
   }
 
@@ -205,12 +212,22 @@ export default function BulkInstallationWorkflowPanel({ rows, onSaved, showClose
       // updateRowForm -- so it stays an honest reflection of "what's on screen matches what's saved".
       // The button itself stays enabled, so re-saving is always one more click away.
       setSavedSerialRowIds((prev) => ({ ...prev, [row.id]: true }));
+      setOrderRejectedRowIds((prev) => {
+        if (!prev[row.id]) return prev;
+        const next = { ...prev };
+        delete next[row.id];
+        return next;
+      });
       // Deliberately not onSaved?.() here: that reloads the parent page, which unmounts and remounts
       // this whole panel while it's loading -- wiping every bit of local state, including the "Saved"
       // confirmation above, before it's ever visible. The row above is already updated from the
       // server's own response, so there's nothing a parent-level reload would add for this action.
     } catch (error) {
-      setSerialPopupError(formatApiError(error, `Failed to update request #${row.id}`));
+      const message = formatApiError(error, `Failed to update request #${row.id}`);
+      if (message === ORDER_MEMBERSHIP_ERROR) {
+        setOrderRejectedRowIds((prev) => ({ ...prev, [row.id]: true }));
+      }
+      setSerialPopupError(message);
     } finally {
       setBusy(false);
       setSavingSerialRowId(null);
@@ -372,7 +389,7 @@ export default function BulkInstallationWorkflowPanel({ rows, onSaved, showClose
 
       {isEngineer && <div className="flex flex-wrap items-center justify-between gap-3">
         <h3 className="text-sm font-semibold text-slate-800">Update order serial numbers</h3>
-        <ReturnSelectedSerialsButton rows={eligibleRows.filter(row => returnIds.includes(row.id) && canReturnSerialRow(row))} disabled={busy} onUpdated={async () => { setReturnIds([]); await onSaved?.(); }} />
+        <ReturnSelectedSerialsButton rows={eligibleRows.filter(row => returnIds.includes(row.id) && (canReturnSerialRow(row) || (orderRejectedRowIds[row.id] && canReturnAfterOrderMembershipRejection(row))))} disabled={busy} onUpdated={async () => { setReturnIds([]); await onSaved?.(); }} />
       </div>}
       <div className="overflow-x-auto rounded-md border border-slate-200">
         <table className="min-w-full text-sm">
@@ -400,7 +417,22 @@ export default function BulkInstallationWorkflowPanel({ rows, onSaved, showClose
                   key={row.id}
                   className={`align-top transition-colors duration-700 ${savedSerialRowIds[row.id] ? "bg-emerald-50" : "hover:bg-slate-50"}`}
                 >
-                  {isEngineer && <td className="px-2 py-2"><input type="checkbox" aria-label={`Select serial row ${row.serial_no || row.id} to return`} title={hasSerialMismatch(row) ? "Select to return — scanned serial doesn't match the order" : "Available only when the scanned serial doesn't match what the order assigned to this unit"} checked={returnIds.includes(row.id)} disabled={busy || !canReturnSerialRow(row)} onChange={e => { const checked = e.target.checked; setReturnIds(ids => checked ? [...ids, row.id] : ids.filter(id => id !== row.id)); if (checked) updateRowForm(row.id, { selectedForCompletion: false, selectedForPayment: false }); }} className="h-4 w-4" /></td>}
+                  {isEngineer && (() => {
+                    const rowCanReturn = canReturnSerialRow(row) || (orderRejectedRowIds[row.id] && canReturnAfterOrderMembershipRejection(row));
+                    return (
+                      <td className="px-2 py-2">
+                        <input
+                          type="checkbox"
+                          aria-label={`Select serial row ${row.serial_no || row.id} to return`}
+                          title={hasSerialMismatch(row) || orderRejectedRowIds[row.id] ? "Select to return — scanned serial doesn't match the order" : "Available only when the scanned serial doesn't match what the order assigned to this unit"}
+                          checked={returnIds.includes(row.id)}
+                          disabled={busy || !rowCanReturn}
+                          onChange={e => { const checked = e.target.checked; setReturnIds(ids => checked ? [...ids, row.id] : ids.filter(id => id !== row.id)); if (checked) updateRowForm(row.id, { selectedForCompletion: false, selectedForPayment: false }); }}
+                          className="h-4 w-4"
+                        />
+                      </td>
+                    );
+                  })()}
                   {showCompletionSelection && (
                     <td className="px-2 py-2">
                       <input
@@ -717,6 +749,11 @@ export default function BulkInstallationWorkflowPanel({ rows, onSaved, showClose
       <Modal open={Boolean(serialPopupError)} onClose={() => setSerialPopupError("")} title="Serial numbers not updated">
         <div className="space-y-4">
           <p className="text-sm text-rose-700">{serialPopupError}</p>
+          {serialPopupError === ORDER_MEMBERSHIP_ERROR && (
+            <p className="text-sm text-slate-600">
+              If this unit genuinely isn't on this order, tick its <strong>Return</strong> box in the table and use <strong>Return selected</strong> instead of trying to save it.
+            </p>
+          )}
           <div className="flex justify-end">
             <button type="button" onClick={() => setSerialPopupError("")} className="rounded-md bg-slate-800 px-4 py-2 text-sm font-medium text-white">
               Close
