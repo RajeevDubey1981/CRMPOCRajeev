@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from pydantic import BaseModel, Field
 
 from app.schemas.place import PlaceIn
@@ -249,6 +249,15 @@ class InstallationOut(BaseModel):
     payment_approval_total_steps: int | None = None
     payment_next_approver_role: str | None = None
     payment_approval_history: list[PaymentApprovalLogOut] = Field(default_factory=list)
+    payment_reference: str | None = None
+    payment_paid_on: date | None = None
+    # The assigned engineer's own bank details, fetched live for Admin's final payment step --
+    # only present in the response when the viewer is on a finance-adjacent stage (Accounts,
+    # Audit, Admin, Sub Admin); never stored on the installation itself.
+    engineer_bank_account_holder_name: str | None = None
+    engineer_bank_name: str | None = None
+    engineer_bank_account_number: str | None = None
+    engineer_bank_ifsc: str | None = None
     complaint_id: int | None = None
     complaint_no: str | None = None
     document_upload_url: str | None = None

@@ -20,7 +20,14 @@ class PaymentApprovalStage:
 
 SERVICE_DESK_ROLES = frozenset({"service", "indcool_service"})
 SERVICE_MANAGER_ROLES = frozenset({"service_manager"})
+SUB_ADMIN_ROLES = frozenset({"sub_admin"})
+ACCOUNTS_ROLES = frozenset({"accounts"})
+AUDIT_ROLES = frozenset({"audit"})
 ADMIN_ROLES = frozenset({"admin", "incool"})
+
+#: Installation payments over this amount route through Sub Admin (in addition to Service
+#: Manager) before Accounts, rather than going to Accounts directly.
+INSTALLATION_PAYMENT_SUB_ADMIN_THRESHOLD = 2500.0
 
 
 def role_key(role: str | None) -> str:
@@ -50,49 +57,69 @@ def payment_approval_stages() -> list[PaymentApprovalStage]:
     return stages
 
 
-def first_payment_stage() -> PaymentApprovalStage:
-    return payment_approval_stages()[0]
+def installation_payment_approval_stages(amount: float | None) -> list[PaymentApprovalStage]:
+    """Installations route every payment through Accounts (who prepares it, single or batched)
+    then Audit before Admin's final release -- a stricter, amount-branching chain than the flat
+    Service Role -> [Service Manager] -> Admin list payment_approval_stages() still uses for
+    Service Requests. Amounts over INSTALLATION_PAYMENT_SUB_ADMIN_THRESHOLD need Sub Admin's
+    sign-off ahead of Accounts; at or under it, Service Manager's approval goes straight there."""
+    stages = [
+        PaymentApprovalStage("service_role", "Service Role", SERVICE_DESK_ROLES),
+    ]
+    if configured_payment_approval_steps() == 3:
+        stages.append(PaymentApprovalStage("service_manager", "Service Manager", SERVICE_MANAGER_ROLES))
+    if amount is not None and amount > INSTALLATION_PAYMENT_SUB_ADMIN_THRESHOLD:
+        stages.append(PaymentApprovalStage("sub_admin", "Sub Admin", SUB_ADMIN_ROLES))
+    stages.append(PaymentApprovalStage("accounts", "Accounts", ACCOUNTS_ROLES))
+    stages.append(PaymentApprovalStage("audit", "Audit", AUDIT_ROLES))
+    stages.append(PaymentApprovalStage("admin", "Admin", ADMIN_ROLES))
+    return stages
 
 
-def stage_by_key(stage_key: str | None) -> PaymentApprovalStage:
-    stages = payment_approval_stages()
+def first_payment_stage(stages: list[PaymentApprovalStage] | None = None) -> PaymentApprovalStage:
+    return (stages or payment_approval_stages())[0]
+
+
+def stage_by_key(stage_key: str | None, stages: list[PaymentApprovalStage] | None = None) -> PaymentApprovalStage:
+    stages = stages or payment_approval_stages()
     for stage in stages:
         if stage.key == stage_key:
             return stage
     return stages[0]
 
 
-def stage_index(stage_key: str | None) -> int:
-    stages = payment_approval_stages()
+def stage_index(stage_key: str | None, stages: list[PaymentApprovalStage] | None = None) -> int:
+    stages = stages or payment_approval_stages()
     for idx, stage in enumerate(stages):
         if stage.key == stage_key:
             return idx
     return 0
 
 
-def is_final_stage(stage_key: str | None) -> bool:
-    return stage_index(stage_key) == len(payment_approval_stages()) - 1
+def is_final_stage(stage_key: str | None, stages: list[PaymentApprovalStage] | None = None) -> bool:
+    stages = stages or payment_approval_stages()
+    return stage_index(stage_key, stages) == len(stages) - 1
 
 
-def next_stage(stage_key: str | None) -> PaymentApprovalStage | None:
-    stages = payment_approval_stages()
-    idx = stage_index(stage_key)
+def next_stage(stage_key: str | None, stages: list[PaymentApprovalStage] | None = None) -> PaymentApprovalStage | None:
+    stages = stages or payment_approval_stages()
+    idx = stage_index(stage_key, stages)
     return stages[idx + 1] if idx + 1 < len(stages) else None
 
 
-def user_can_approve_stage(user: Any, stage_key: str | None) -> bool:
+def user_can_approve_stage(user: Any, stage_key: str | None, stages: list[PaymentApprovalStage] | None = None) -> bool:
     if is_system_admin(user):
         return True
-    stage = stage_by_key(stage_key)
+    stage = stage_by_key(stage_key, stages)
     key = role_key(user.role)
     if stage.key == "admin":
         return is_system_admin(user)
     return key in stage.roles
 
 
-def approval_stage_payload(stage_key: str | None) -> dict:
-    stages = payment_approval_stages()
-    idx = stage_index(stage_key)
+def approval_stage_payload(stage_key: str | None, stages: list[PaymentApprovalStage] | None = None) -> dict:
+    stages = stages or payment_approval_stages()
+    idx = stage_index(stage_key, stages)
     stage = stages[idx]
     return {
         "payment_approval_stage": stage.key,
@@ -103,10 +130,10 @@ def approval_stage_payload(stage_key: str | None) -> dict:
     }
 
 
-def get_users_for_stage(db: Session, stage_key: str | None) -> list[Any]:
+def get_users_for_stage(db: Session, stage_key: str | None, stages: list[PaymentApprovalStage] | None = None) -> list[Any]:
     from app.models.user import User
 
-    stage = stage_by_key(stage_key)
+    stage = stage_by_key(stage_key, stages)
     role_keys = {role_key(role) for role in stage.roles}
     return list(
         db.scalars(
@@ -129,11 +156,12 @@ def record_payment_approval(
     user: Any,
     remarks: str | None,
     service_payment_request_id: int | None = None,
+    stages: list[PaymentApprovalStage] | None = None,
 ) -> Any:
     from app.models.payment_approval import PaymentApprovalLog
 
-    stages = payment_approval_stages()
-    idx = stage_index(stage_key)
+    stages = stages or payment_approval_stages()
+    idx = stage_index(stage_key, stages)
     stage = stages[idx]
     row = PaymentApprovalLog(
         module=module,
@@ -153,9 +181,9 @@ def record_payment_approval(
     return row
 
 
-def ensure_current_stage_approver(user: Any, stage_key: str | None) -> None:
-    if not user_can_approve_stage(user, stage_key):
-        stage = stage_by_key(stage_key)
+def ensure_current_stage_approver(user: Any, stage_key: str | None, stages: list[PaymentApprovalStage] | None = None) -> None:
+    if not user_can_approve_stage(user, stage_key, stages):
+        stage = stage_by_key(stage_key, stages)
         raise HTTPException(
             status.HTTP_403_FORBIDDEN,
             f"Only {stage.label} can approve or reject this payment stage",
@@ -173,11 +201,12 @@ def notify_payment_stage(
     stage_key: str | None,
     entity_ref: str = "",
     occurred_at: datetime | None = None,
+    stages: list[PaymentApprovalStage] | None = None,
 ) -> None:
     from app.services.pending_action_service import notify_users
 
-    users = get_users_for_stage(db, stage_key)
-    stage = stage_by_key(stage_key)
+    users = get_users_for_stage(db, stage_key, stages)
+    stage = stage_by_key(stage_key, stages)
     notify_users(
         db,
         users,

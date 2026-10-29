@@ -240,6 +240,10 @@ for _module in ("services", "installations"):
     for _type in ("complete_service", "complete_installation", "raise_payment", "assign_engineer"):
         _ELIGIBLE_ROLES[(_module, _type)] = _FIELD
 _ELIGIBLE_ROLES[("installations", "verify_order")] = _OPS | {"callcenter"}
+# Accounts and Audit aren't part of OPERATIONS_ADMIN_ROLES (they don't get that role's broader
+# powers elsewhere), but they are real stages in the installation payment chain -- notify_payment_stage
+# (payment_approval_workflow.py) already only ever targets them for the stage that's actually theirs.
+_ELIGIBLE_ROLES[("installations", "approve_payment")] = _OPS | {"accounts", "audit"}
 _ELIGIBLE_ROLES[("orders", "fulfill_order")] = _FIELD
 _ELIGIBLE_ROLES[("orders", "update_shipment")] = _FIELD
 

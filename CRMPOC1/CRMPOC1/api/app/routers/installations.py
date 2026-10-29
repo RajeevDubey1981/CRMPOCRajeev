@@ -72,6 +72,7 @@ from app.services.payment_approval_workflow import (
     approval_stage_payload,
     ensure_current_stage_approver,
     first_payment_stage,
+    installation_payment_approval_stages,
     is_final_stage,
     next_stage,
     notify_payment_stage,
@@ -265,11 +266,28 @@ def _list_row(
     )
 
 
-def _hydrate(db: Session, inst: InstallationRequest) -> dict:
+#: Roles that can see the bank account details Admin pays an engineer's wages into -- payment
+#: chain stages plus the two system-admin-like roles, never the service desk/manager roles that
+#: approve earlier in the chain without needing to see where the money actually goes.
+_BANK_DETAILS_VIEWER_ROLES = {"accounts", "audit", "admin", "incool", "sub_admin"}
+
+#: Accounts and Audit aren't operations-admin-like roles (they don't get that broader power
+#: anywhere else in installations) -- but they are two real stages in the installation payment
+#: chain, so they need to reach the stage-approval branch below.
+_INSTALLATION_PAYMENT_STAGE_ROLES = {"accounts", "audit"}
+
+
+def _can_act_on_installation_payment_stage(user: User) -> bool:
+    return is_operations_admin(user) or canonical_role_key(user.role) in _INSTALLATION_PAYMENT_STAGE_ROLES
+
+
+def _hydrate(db: Session, inst: InstallationRequest, viewer: User | None = None) -> dict:
     engineer_name = None
+    engineer_user = None
     if inst.assigned_engineer:
         u = db.get(User, inst.assigned_engineer)
         engineer_name = u.name if u else None
+        engineer_user = u
     service_user_name = None
     if inst.assigned_service_user_id:
         u = db.get(User, inst.assigned_service_user_id)
@@ -322,6 +340,11 @@ def _hydrate(db: Session, inst: InstallationRequest) -> dict:
         .where(PaymentApprovalLog.module == "installations", PaymentApprovalLog.entity_id == inst.id)
         .order_by(desc(PaymentApprovalLog.created_at))
     ).all()
+    show_bank_details = (
+        engineer_user is not None
+        and viewer is not None
+        and canonical_role_key(viewer.role) in _BANK_DETAILS_VIEWER_ROLES
+    )
     return {
         "consignee": consignee,
         **{k: getattr(inst, k) for k in (
@@ -338,9 +361,13 @@ def _hydrate(db: Session, inst: InstallationRequest) -> dict:
             "engineer_entered_serial_no", "engineer_entered_serial_no_2", "serial_verified_at", "serial_review_note",
             "admin_billing_type", "admin_approval_remark", "admin_approved_at",
             "engineer_site_remarks", "engineer_serials_submitted_at",
-            "parent_installation_id",
+            "parent_installation_id", "payment_reference", "payment_paid_on",
             "created_at", "updated_at",
         )},
+        "engineer_bank_account_holder_name": engineer_user.bank_account_holder_name if show_bank_details else None,
+        "engineer_bank_name": engineer_user.bank_name if show_bank_details else None,
+        "engineer_bank_account_number": engineer_user.bank_account_number if show_bank_details else None,
+        "engineer_bank_ifsc": engineer_user.bank_ifsc if show_bank_details else None,
         # The serial(s) the vendor's order actually assigned to this unit -- distinct from serial_no/
         # serial_no_2 above, which is what the engineer has typed/scanned. Lets the engineer-facing editor
         # tell a genuine serial mismatch (scanned something other than what the order expects) from an
@@ -407,6 +434,7 @@ def _hydrate(db: Session, inst: InstallationRequest) -> dict:
 
 
 def _apply_payment_transition(
+    db: Session,
     inst: InstallationRequest,
     *,
     requested_status: str,
@@ -414,6 +442,8 @@ def _apply_payment_transition(
     installation_date: str | None,
     payment_amount: str | None = None,
     payment_type: str | None = None,
+    payment_reference: str | None = None,
+    payment_paid_on: str | None = None,
     payment_qr_code_path: str | None = None,
     payment_qr_code_blob: bytes | None = None,
     payment_qr_code_filename: str | None = None,
@@ -449,7 +479,8 @@ def _apply_payment_transition(
             inst.payment_qr_code_size_bytes = payment_qr_code_size_bytes
             inst.payment_qr_code_path = None
         inst.payment_requested_at = datetime.now(timezone.utc)
-        payload = approval_stage_payload(first_payment_stage().key)
+        request_stages = installation_payment_approval_stages(requested_amount)
+        payload = approval_stage_payload(first_payment_stage(request_stages).key, request_stages)
         inst.payment_approval_status = "Pending"
         inst.payment_approval_stage = payload["payment_approval_stage"]
         inst.payment_approval_stage_label = payload["payment_approval_stage_label"]
@@ -465,11 +496,31 @@ def _apply_payment_transition(
         effective_type = normalized_payment_type or inst.payment_type_requested
         if effective_type is None:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Payment Type is required to complete payment")
+        normalized_reference = (payment_reference or inst.payment_reference or "").strip()
+        if not normalized_reference:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Payment reference / UTR is required to complete payment")
+        effective_paid_on = payment_paid_on or (inst.payment_paid_on.isoformat() if inst.payment_paid_on else None)
+        if not effective_paid_on:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Paid on date is required to complete payment")
+        try:
+            paid_on_date = date.fromisoformat(effective_paid_on)
+        except ValueError:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Paid on date must be a valid date")
+        # The account this pays into is the engineer's own, on file in their profile -- never
+        # re-typed here. No account on file means there's nothing to pay into yet.
+        engineer = db.get(User, inst.assigned_engineer) if inst.assigned_engineer else None
+        if engineer is None or not (engineer.bank_account_number or "").strip():
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                "This engineer has no bank account details on file. Add them (Users -> Edit) before paying.",
+            )
 
         inst.payment_amount_requested = effective_amount
         inst.payment_amount_paid = effective_amount
         inst.payment_type_requested = effective_type
         inst.payment_type_paid = effective_type
+        inst.payment_reference = normalized_reference
+        inst.payment_paid_on = paid_on_date
         if payment_qr_code_blob:
             inst.payment_qr_code_blob = payment_qr_code_blob
             inst.payment_qr_code_filename = payment_qr_code_filename
@@ -975,7 +1026,7 @@ def create_installation(
         )
         db.commit()
         db.refresh(inst)
-        return InstallationOut(**_hydrate(db, inst))
+        return InstallationOut(**_hydrate(db, inst, viewer=user))
 
     _validate_installation_request_allowed(db, body.order_item_id)
     order_item = db.get(OrderItem, body.order_item_id) if body.order_item_id else None
@@ -1016,7 +1067,7 @@ def create_installation(
         )
     db.commit()
     db.refresh(inst)
-    return InstallationOut(**_hydrate(db, inst))
+    return InstallationOut(**_hydrate(db, inst, viewer=user))
 
 
 @router.post("/bulk-assign")
@@ -1265,7 +1316,7 @@ def assign_installation_service_user(
     )
     db.commit()
     db.refresh(inst)
-    return InstallationOut(**_hydrate(db, inst))
+    return InstallationOut(**_hydrate(db, inst, viewer=user))
 
 
 @router.post("/{installation_id}/return-to-service-manager", response_model=InstallationOut)
@@ -1293,7 +1344,7 @@ def return_installation_to_service_manager(
     )
     db.commit()
     db.refresh(inst)
-    return InstallationOut(**_hydrate(db, inst))
+    return InstallationOut(**_hydrate(db, inst, viewer=user))
 
 
 @router.get("/{installation_id}", response_model=InstallationOut)
@@ -1306,7 +1357,7 @@ def get_installation(
     if prepare_vendor_installation_for_engineer_workflow(db, inst, actor=user):
         db.commit()
         db.refresh(inst)
-    return InstallationOut(**_hydrate(db, inst))
+    return InstallationOut(**_hydrate(db, inst, viewer=user))
 
 
 @router.get("/{installation_id}/payment-qr")
@@ -1345,7 +1396,7 @@ def update_installation(
         setattr(inst, field, value)
     db.commit()
     db.refresh(inst)
-    return InstallationOut(**_hydrate(db, inst))
+    return InstallationOut(**_hydrate(db, inst, viewer=user))
 
 
 @router.patch("/{installation_id}/payment-amount", response_model=InstallationOut)
@@ -1392,7 +1443,7 @@ def admin_update_installation_payment_amount(
             transaction.payment_type = data["payment_type_paid"]
     db.commit()
     db.refresh(inst)
-    return InstallationOut(**_hydrate(db, inst))
+    return InstallationOut(**_hydrate(db, inst, viewer=user))
 
 
 @router.put("/{installation_id}/status", response_model=InstallationOut)
@@ -1407,6 +1458,8 @@ async def update_status(
     settlement_approved_by: int | None = Form(None),
     payment_amount: str | None = Form(None),
     payment_type: str | None = Form(None),
+    payment_reference: str | None = Form(None),
+    payment_paid_on: str | None = Form(None),
     qr_code: UploadFile | None = File(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
@@ -1426,7 +1479,7 @@ async def update_status(
         inst.assigned_engineer = None
         db.commit()
         db.refresh(inst)
-        return InstallationOut(**_hydrate(db, inst))
+        return InstallationOut(**_hydrate(db, inst, viewer=user))
 
     if new_status not in STATUSES:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid status")
@@ -1482,7 +1535,7 @@ async def update_status(
         )
         db.commit()
         db.refresh(inst)
-        return InstallationOut(**_hydrate(db, inst))
+        return InstallationOut(**_hydrate(db, inst, viewer=user))
 
     doc_path = None
     if (
@@ -1516,8 +1569,9 @@ async def update_status(
     if qr_code is not None and qr_code.filename:
         qr_blob, qr_filename, qr_content_type, qr_size_bytes = await read_upload_bytes(qr_code, reencode_images=False)
 
-    if is_operations_admin(user) and inst.status == "Payment Pending" and new_status in {"Completed", "Rejected", "Returned"}:
-        ensure_current_stage_approver(user, inst.payment_approval_stage)
+    if _can_act_on_installation_payment_stage(user) and inst.status == "Payment Pending" and new_status in {"Completed", "Rejected", "Returned"}:
+        payment_stages = installation_payment_approval_stages(float(inst.payment_amount_requested) if inst.payment_amount_requested is not None else None)
+        ensure_current_stage_approver(user, inst.payment_approval_stage, payment_stages)
         admin_bypass = is_system_admin(user)
         effective_stage_key = "admin" if admin_bypass else inst.payment_approval_stage
         resolve_payment_stage_actions(
@@ -1536,6 +1590,7 @@ async def update_status(
                 decision="Rejected",
                 user=user,
                 remarks=work_report,
+                stages=payment_stages,
             )
             inst.payment_approval_status = "Rejected"
             inst.status = return_installation_to_engineer_for_rework(inst, reject_stage="payment")
@@ -1550,7 +1605,7 @@ async def update_status(
             )
             db.commit()
             db.refresh(inst)
-            return InstallationOut(**_hydrate(db, inst))
+            return InstallationOut(**_hydrate(db, inst, viewer=user))
 
         record_payment_approval(
             db,
@@ -1560,10 +1615,11 @@ async def update_status(
             decision="Approved",
             user=user,
             remarks=work_report,
+            stages=payment_stages,
         )
-        if not admin_bypass and not is_final_stage(inst.payment_approval_stage):
-            following_stage = next_stage(inst.payment_approval_stage)
-            payload = approval_stage_payload(following_stage.key if following_stage else None)
+        if not admin_bypass and not is_final_stage(inst.payment_approval_stage, payment_stages):
+            following_stage = next_stage(inst.payment_approval_stage, payment_stages)
+            payload = approval_stage_payload(following_stage.key if following_stage else None, payment_stages)
             inst.payment_approval_status = "Pending"
             inst.payment_approval_stage = payload["payment_approval_stage"]
             inst.payment_approval_stage_label = payload["payment_approval_stage_label"]
@@ -1593,18 +1649,22 @@ async def update_status(
                 entity_status=inst.status,
                 stage_key=inst.payment_approval_stage,
                 occurred_at=datetime.now(timezone.utc),
+                stages=payment_stages,
             )
             db.commit()
             db.refresh(inst)
-            return InstallationOut(**_hydrate(db, inst))
+            return InstallationOut(**_hydrate(db, inst, viewer=user))
 
     inst.status = _apply_payment_transition(
+        db,
         inst,
         requested_status=new_status,
         actor=user,
         installation_date=installation_date,
         payment_amount=payment_amount,
         payment_type=payment_type,
+        payment_reference=payment_reference,
+        payment_paid_on=payment_paid_on,
         payment_qr_code_path=None,
         payment_qr_code_blob=qr_blob,
         payment_qr_code_filename=qr_filename,
@@ -1711,7 +1771,7 @@ async def update_status(
                 installation_ids=[inst.id],
                 order_nos=[linked_order.order_no] if linked_order and linked_order.order_no else [],
             )
-    return InstallationOut(**_hydrate(db, inst))
+    return InstallationOut(**_hydrate(db, inst, viewer=user))
 
 
 @router.post("/bulk-status-update", response_model=list[InstallationOut])
@@ -1722,6 +1782,8 @@ async def bulk_update_status(
     work_report: str | None = Form(None),
     payment_amount: str | None = Form(None),
     payment_type: str | None = Form(None),
+    payment_reference: str | None = Form(None),
+    payment_paid_on: str | None = Form(None),
     settlement_approved_by: int | None = Form(None),
     assigned_engineer: int | None = Form(None),
     service_user_id: int | None = Form(None),
@@ -1808,12 +1870,15 @@ async def bulk_update_status(
     updated: list[InstallationOut] = []
     for inst in rows:
         inst.status = _apply_payment_transition(
+            db,
             inst,
             requested_status=new_status,
             actor=user,
             installation_date=installation_date,
             payment_amount=None if inst.id in bulk_admin_paid_amounts else payment_amount,
             payment_type=payment_type,
+            payment_reference=payment_reference,
+            payment_paid_on=payment_paid_on,
             payment_qr_code_path=None,
             payment_qr_code_blob=qr_blob,
             payment_qr_code_filename=qr_filename,
@@ -1846,7 +1911,7 @@ async def bulk_update_status(
             inst.payment_qr_code_content_type = qr_content_type
             inst.payment_qr_code_size_bytes = qr_size_bytes
             inst.payment_qr_code_path = None
-        updated.append(InstallationOut(**_hydrate(db, inst)))
+        updated.append(InstallationOut(**_hydrate(db, inst, viewer=user)))
 
     if is_operations_admin(user) and new_status == "Completed":
         completed_rows = [inst for inst in rows if inst.status == "Completed" and inst.payment_recorded_at]
@@ -1864,7 +1929,7 @@ async def bulk_update_status(
     db.commit()
     for inst in rows:
         db.refresh(inst)
-    return [InstallationOut(**_hydrate(db, inst)) for inst in rows]
+    return [InstallationOut(**_hydrate(db, inst, viewer=user)) for inst in rows]
 
 
 @router.delete("/{installation_id}", status_code=status.HTTP_204_NO_CONTENT)

@@ -1,6 +1,6 @@
-from datetime import datetime
+from datetime import date, datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, LargeBinary, Numeric, String, Text
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, LargeBinary, Numeric, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 
@@ -50,6 +50,8 @@ class InstallationRequest(Base, TimestampMixin):
     payment_recorded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     payment_recorded_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     payment_transaction_id: Mapped[int | None] = mapped_column(ForeignKey("payment_transactions.id"), nullable=True)
+    payment_reference: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    payment_paid_on: Mapped[date | None] = mapped_column(Date, nullable=True)
     payment_approval_status: Mapped[str | None] = mapped_column(String(30), nullable=True)
     payment_approval_stage: Mapped[str | None] = mapped_column(String(50), nullable=True)
     payment_approval_stage_label: Mapped[str | None] = mapped_column(String(100), nullable=True)

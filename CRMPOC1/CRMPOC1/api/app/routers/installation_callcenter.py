@@ -64,7 +64,7 @@ from app.services.installation_workflow import (
     sync_order_item_for_service_eligibility,
 )
 from app.services.permissions import can_act_on
-from app.services.payment_approval_workflow import approval_stage_payload, first_payment_stage, notify_payment_stage
+from app.services.payment_approval_workflow import approval_stage_payload, first_payment_stage, installation_payment_approval_stages, notify_payment_stage
 
 router = APIRouter(tags=["installations"])
 
@@ -169,10 +169,10 @@ def _is_callcenter_user(user: User) -> bool:
     return canonical_role_key(user.role) == "callcenter"
 
 
-def _hydrate_callcenter(db: Session, inst: InstallationRequest) -> dict:
+def _hydrate_callcenter(db: Session, inst: InstallationRequest, viewer: User | None = None) -> dict:
     from app.routers.installations import _hydrate
 
-    return _hydrate(db, inst)
+    return _hydrate(db, inst, viewer=viewer)
 
 
 @router.get("/orders/search", response_model=list[InstallationOrderSearchResult])
@@ -402,7 +402,7 @@ def verify_order(
     )
     db.commit()
     db.refresh(inst)
-    return InstallationOut(**_hydrate_callcenter(db, inst))
+    return InstallationOut(**_hydrate_callcenter(db, inst, viewer=user))
 
 
 @router.get("/{installation_id}/engineer-serials", response_model=list[InstallationEngineerSerialOut])
@@ -503,7 +503,7 @@ def update_engineer_order_serials(
     )
     db.commit()
     db.refresh(inst)
-    return InstallationOut(**_hydrate(db, inst))
+    return InstallationOut(**_hydrate(db, inst, viewer=user))
 
 
 def _can_review_installation_serials(user: User, inst: InstallationRequest) -> bool:
@@ -545,7 +545,7 @@ def approve_engineer_order_serials(
     )
     db.commit()
     db.refresh(inst)
-    return InstallationOut(**_hydrate(db, inst))
+    return InstallationOut(**_hydrate(db, inst, viewer=user))
 
 
 @router.post("/{installation_id}/serial-review/return-to-engineer", response_model=InstallationOut)
@@ -581,7 +581,7 @@ def return_engineer_order_serials(
     )
     db.commit()
     db.refresh(inst)
-    return InstallationOut(**_hydrate(db, inst))
+    return InstallationOut(**_hydrate(db, inst, viewer=user))
 
 
 @router.post("/{installation_id}/engineer-serials/submit", response_model=dict)
@@ -740,7 +740,7 @@ def finalize_engineer_serials(
         )
         db.commit()
         db.refresh(inst)
-        return InstallationOut(**_hydrate_callcenter(db, inst))
+        return InstallationOut(**_hydrate_callcenter(db, inst, viewer=user))
 
     billing = (body.billing_type or "Free").strip()
     if billing not in BILLING_TYPES:
@@ -775,7 +775,7 @@ def finalize_engineer_serials(
     )
     db.commit()
     db.refresh(inst)
-    return InstallationOut(**_hydrate_callcenter(db, inst))
+    return InstallationOut(**_hydrate_callcenter(db, inst, viewer=user))
 
 
 @router.post("/{installation_id}/engineer-serial", response_model=InstallationOut)
@@ -800,7 +800,7 @@ def engineer_enter_serial(
     from app.routers.installations import _load_visible
 
     inst = _load_visible(db, user, installation_id)
-    return InstallationOut(**_hydrate_callcenter(db, inst))
+    return InstallationOut(**_hydrate_callcenter(db, inst, viewer=user))
 
 
 @router.post("/{installation_id}/verify-serial", response_model=InstallationOut)
@@ -834,7 +834,7 @@ def verify_serial(
         )
         db.commit()
         db.refresh(inst)
-        return InstallationOut(**_hydrate_callcenter(db, inst))
+        return InstallationOut(**_hydrate_callcenter(db, inst, viewer=user))
 
     serial_no = (body.serial_no or inst.engineer_entered_serial_no or "").strip()
     serial_no_2 = (body.serial_no_2 or inst.engineer_entered_serial_no_2 or "").strip() or None
@@ -912,7 +912,7 @@ def verify_serial(
     )
     db.commit()
     db.refresh(inst)
-    return InstallationOut(**_hydrate_callcenter(db, inst))
+    return InstallationOut(**_hydrate_callcenter(db, inst, viewer=user))
 
 
 def _ensure_assigned_engineer(inst: InstallationRequest, user: User) -> None:
@@ -947,7 +947,8 @@ def _prepare_engineer_payment_request(
         inst.payment_qr_code_content_type = qr_content_type
         inst.payment_qr_code_size_bytes = qr_size_bytes
         inst.payment_qr_code_path = None
-    payload = approval_stage_payload(first_payment_stage().key)
+    stages = installation_payment_approval_stages(float(payment_amount))
+    payload = approval_stage_payload(first_payment_stage(stages).key, stages)
     inst.payment_approval_status = "Pending"
     inst.payment_approval_stage = payload["payment_approval_stage"]
     inst.payment_approval_stage_label = payload["payment_approval_stage_label"]
@@ -978,6 +979,7 @@ def _prepare_engineer_payment_request(
         entity_status=inst.status,
         stage_key=inst.payment_approval_stage,
         occurred_at=inst.payment_requested_at,
+        stages=stages,
     )
 
 
@@ -1039,7 +1041,7 @@ async def complete_installation(
     )
     db.commit()
     db.refresh(inst)
-    return InstallationOut(**_hydrate_callcenter(db, inst))
+    return InstallationOut(**_hydrate_callcenter(db, inst, viewer=user))
 
 
 @router.post("/{installation_id}/completion-approval", response_model=InstallationOut)
@@ -1081,7 +1083,7 @@ def review_installation_completion(
     log_installation_action(db, inst, action=action, user=user, old_status=old_status, new_status=inst.status, remarks=remarks)
     db.commit()
     db.refresh(inst)
-    return InstallationOut(**_hydrate_callcenter(db, inst))
+    return InstallationOut(**_hydrate_callcenter(db, inst, viewer=user))
 
 
 @router.post("/{installation_id}/resume-workflow", response_model=InstallationOut)
@@ -1111,7 +1113,7 @@ def resume_installation_workflow(
     )
     db.commit()
     db.refresh(inst)
-    return InstallationOut(**_hydrate_callcenter(db, inst))
+    return InstallationOut(**_hydrate_callcenter(db, inst, viewer=user))
 
 
 @router.post("/{installation_id}/payment-request", response_model=InstallationOut)
@@ -1164,7 +1166,7 @@ async def raise_installation_payment_request(
     )
     db.commit()
     db.refresh(inst)
-    return InstallationOut(**_hydrate_callcenter(db, inst))
+    return InstallationOut(**_hydrate_callcenter(db, inst, viewer=user))
 
 
 @router.post("/bulk-payment-request", response_model=list[InstallationOut])
@@ -1249,7 +1251,7 @@ async def raise_bulk_installation_payment_request(
     db.commit()
     for inst in rows:
         db.refresh(inst)
-    return [InstallationOut(**_hydrate_callcenter(db, inst)) for inst in rows]
+    return [InstallationOut(**_hydrate_callcenter(db, inst, viewer=user)) for inst in rows]
 
 
 @router.post("/{installation_id}/send-to-service-review", response_model=InstallationOut)
@@ -1287,7 +1289,7 @@ def send_installation_to_service_review(
     )
     db.commit()
     db.refresh(inst)
-    return InstallationOut(**_hydrate_callcenter(db, inst))
+    return InstallationOut(**_hydrate_callcenter(db, inst, viewer=user))
 
 
 @router.post("/{installation_id}/service-review", response_model=InstallationOut)
@@ -1359,7 +1361,7 @@ def review_installation_service_observation(
     )
     db.commit()
     db.refresh(inst)
-    return InstallationOut(**_hydrate_callcenter(db, inst))
+    return InstallationOut(**_hydrate_callcenter(db, inst, viewer=user))
 
 
 @router.post("/{installation_id}/reset-workflow", response_model=InstallationOut)
@@ -1376,7 +1378,7 @@ def reset_installation_workflow(
     apply_installation_workflow_step(db, inst, target_step, user, remarks=remarks)
     db.commit()
     db.refresh(inst)
-    return InstallationOut(**_hydrate_callcenter(db, inst))
+    return InstallationOut(**_hydrate_callcenter(db, inst, viewer=user))
 
 
 @router.get("/{installation_id}/history", response_model=list[InstallationHistoryEntry])

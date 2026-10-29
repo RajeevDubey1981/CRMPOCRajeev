@@ -62,6 +62,22 @@ export function isServiceTeamRole(role) {
   return isOperationsAdminRole(role) || isServiceDeskRole(role);
 }
 
+// Two stages in the installation payment chain (Accounts prepares a payment, single or
+// batched, for Audit to review before Admin pays) -- not part of isOperationsAdminRole, since
+// they don't get that role's broader powers anywhere else in the app.
+export function isAccountsRole(role) {
+  return roleKey(role) === "accounts";
+}
+export function isAuditRole(role) {
+  return roleKey(role) === "audit";
+}
+
+// Who can act at some stage of the installation payment chain -- the usual admin-like roles,
+// plus Accounts and Audit, who are real stages in that chain but nowhere else.
+export function canActOnInstallationPayments(role) {
+  return isOperationsAdminRole(role) || isAccountsRole(role) || isAuditRole(role);
+}
+
 // The bare "service" role only, narrowed to the installation/request actually assigned to them --
 // "indcool_service" is full-ops (see isOperationsAdminRole) despite also matching isServiceDeskRole,
 // mirroring the backend's is_service_desk_user(), which excludes it the same way.

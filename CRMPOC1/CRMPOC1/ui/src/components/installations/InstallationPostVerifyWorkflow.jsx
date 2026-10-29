@@ -192,6 +192,7 @@ export default function InstallationPostVerifyWorkflow({
   isEngineer,
   isAdminLike,
   isPaymentAdmin = false,
+  canActOnPayments = false,
   userId,
   onUpdated,
   onError,
@@ -214,6 +215,8 @@ export default function InstallationPostVerifyWorkflow({
   const [adminForm, setAdminForm] = useState({
     payment_amount: installation.payment_amount_paid ?? installation.payment_amount_requested ?? "",
     payment_type: installation.payment_type_paid || installation.payment_type_requested || "Cash",
+    payment_reference: installation.payment_reference || "",
+    payment_paid_on: installation.payment_paid_on || toDateInputValue(new Date().toISOString()),
     proof_document: null,
   });
   const [serviceReviewRemarks, setServiceReviewRemarks] = useState("");
@@ -251,7 +254,7 @@ export default function InstallationPostVerifyWorkflow({
     : [];
   const needsSecondSerialProof = installationNeedsSecondSerialProof(installation);
   const hasSubmittedCompletionProof = Boolean(installation.work_report_file_path);
-  const canApprovePayment = isAdminLike && installation.status === "Payment Pending";
+  const canApprovePayment = canActOnPayments && installation.status === "Payment Pending";
   const isFinalPaymentApproval = installation.payment_approval_stage === "admin"
     || installation.payment_approval_stage_label === "Admin";
   const isAdminFinalApproval = isPaymentAdmin && canApprovePayment;
@@ -283,6 +286,8 @@ export default function InstallationPostVerifyWorkflow({
       ...current,
       payment_amount: installation.payment_amount_paid ?? installation.payment_amount_requested ?? "",
       payment_type: installation.payment_type_paid || installation.payment_type_requested || "Cash",
+      payment_reference: installation.payment_reference || current.payment_reference || "",
+      payment_paid_on: installation.payment_paid_on || current.payment_paid_on || toDateInputValue(new Date().toISOString()),
       proof_document: null,
     }));
   }, [
@@ -290,6 +295,8 @@ export default function InstallationPostVerifyWorkflow({
     installation.payment_amount_requested,
     installation.payment_type_paid,
     installation.payment_type_requested,
+    installation.payment_reference,
+    installation.payment_paid_on,
   ]);
 
   useEffect(() => {
@@ -320,6 +327,18 @@ export default function InstallationPostVerifyWorkflow({
       onError?.(message);
       return;
     }
+    if (isAdminFinalApproval && !(adminForm.payment_reference || "").trim()) {
+      const message = "Payment reference / UTR is required to release payment";
+      setApprovalErr(message);
+      onError?.(message);
+      return;
+    }
+    if (isAdminFinalApproval && !adminForm.payment_paid_on) {
+      const message = "Paid on date is required to release payment";
+      setApprovalErr(message);
+      onError?.(message);
+      return;
+    }
 
     setBusy(true);
     onBusy?.(true);
@@ -328,6 +347,10 @@ export default function InstallationPostVerifyWorkflow({
       fd.append("new_status", "Completed");
       fd.append("payment_amount", String(adminForm.payment_amount));
       fd.append("payment_type", adminForm.payment_type);
+      if (isAdminFinalApproval) {
+        fd.append("payment_reference", adminForm.payment_reference.trim());
+        fd.append("payment_paid_on", adminForm.payment_paid_on);
+      }
       if (adminForm.proof_document) fd.append("document", adminForm.proof_document);
       await installationsApi.updateStatus(installationId, fd);
       setSubmitMsg(isAdminFinalApproval || isFinalPaymentApproval ? "Payment approved. Installation completed." : "Payment stage approved. Forwarded to the next approver.");
@@ -772,7 +795,7 @@ export default function InstallationPostVerifyWorkflow({
         </div>
       )}
 
-      {installation.payment_proof_file_path && (isAssignedEngineer || isAdminLike) && (
+      {installation.payment_proof_file_path && (isAssignedEngineer || isAdminLike || canActOnPayments) && (
         <div className="rounded-md border border-indigo-200 bg-indigo-50 p-4 text-sm">
           <div className="font-medium text-indigo-900">Payment proof</div>
           <p className="mt-1 text-xs text-indigo-800">
@@ -883,7 +906,7 @@ export default function InstallationPostVerifyWorkflow({
         </WorkflowStepSection>
       )}
 
-      {(canApprovePayment || (step10?.done && isAdminLike)) && (
+      {(canApprovePayment || (step10?.done && (isAdminLike || canActOnPayments))) && (
         <WorkflowStepSection
           title="Step 10 — Approve payment"
           done={Boolean(step10?.done)}
@@ -935,6 +958,45 @@ export default function InstallationPostVerifyWorkflow({
                 {PAYMENT_TYPES.map((type) => <option key={type} value={type}>{type}</option>)}
               </select>
             </div>
+            {isAdminFinalApproval && (
+              <>
+                <div className="md:col-span-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
+                  <div className="text-xs uppercase tracking-wide text-slate-500">Paying into (from the engineer's own profile)</div>
+                  {installation.engineer_bank_account_number ? (
+                    <div className="mt-1 text-sm text-slate-800">
+                      {installation.engineer_bank_account_holder_name || installation.assigned_engineer_name} — {installation.engineer_bank_account_number} ({installation.engineer_bank_ifsc || "no IFSC on file"})
+                      {installation.engineer_bank_name ? `, ${installation.engineer_bank_name}` : ""}
+                    </div>
+                  ) : (
+                    <div className="mt-1 text-sm font-medium text-rose-700">
+                      No bank account on file for this engineer — add it (Users → Edit) before paying.
+                    </div>
+                  )}
+                </div>
+                <div>
+                  <label className="text-xs uppercase tracking-wide text-slate-500">
+                    Payment reference / UTR <span className="text-rose-600">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={adminForm.payment_reference}
+                    onChange={(e) => setAdminForm((current) => ({ ...current, payment_reference: e.target.value }))}
+                    className={`${fieldClass} mt-1`}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs uppercase tracking-wide text-slate-500">
+                    Paid on <span className="text-rose-600">*</span>
+                  </label>
+                  <input
+                    type="date"
+                    value={adminForm.payment_paid_on}
+                    onChange={(e) => setAdminForm((current) => ({ ...current, payment_paid_on: e.target.value }))}
+                    className={`${fieldClass} mt-1`}
+                  />
+                </div>
+              </>
+            )}
             {requiresPaymentProof && (
               <div className="md:col-span-2">
                 <label className="text-xs uppercase tracking-wide text-slate-500">
@@ -966,7 +1028,7 @@ export default function InstallationPostVerifyWorkflow({
             onClick={approvePayment}
             className="mt-3 rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {busy ? "Approving..." : isAdminFinalApproval || isFinalPaymentApproval ? "Approve payment" : "Approve stage"}
+            {busy ? "Approving..." : isAdminFinalApproval || isFinalPaymentApproval ? "Approve & Release Payment" : "Approve & Recommend for Payment"}
           </button>
           {installation.status === "Completed" && isAdminLike && (
             <button

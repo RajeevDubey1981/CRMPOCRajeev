@@ -252,6 +252,28 @@ DEFAULT_ROLES = [
             "users": NONE, "roles": NONE,
         },
     },
+    {
+        "name": "accounts",
+        "description": "Accounts — prepares approved payments (single or batched) for Audit's review",
+        "perms": {
+            "installations": (True, False, True, False, True),
+            "services": (True, False, True, False, True),
+            "dashboard": RO,
+            "complaints": NONE, "orders": NONE, "vendors": NONE, "items": NONE,
+            "couriers": NONE, "calls": NONE, "claims": NONE, "users": NONE, "roles": NONE,
+        },
+    },
+    {
+        "name": "audit",
+        "description": "Audit — reviews a payment Accounts has prepared before it reaches Admin to pay",
+        "perms": {
+            "installations": (True, False, True, False, True),
+            "services": (True, False, True, False, True),
+            "dashboard": RO,
+            "complaints": NONE, "orders": NONE, "vendors": NONE, "items": NONE,
+            "couriers": NONE, "calls": NONE, "claims": NONE, "users": NONE, "roles": NONE,
+        },
+    },
 ]
 
 

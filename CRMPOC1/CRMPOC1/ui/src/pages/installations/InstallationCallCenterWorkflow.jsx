@@ -53,6 +53,7 @@ export default function InstallationCallCenterWorkflow({
   installation,
   isAdminLike,
   isPaymentAdmin = false,
+  canActOnPayments = false,
   isServiceTeam = false,
   isNarrowServiceDesk = false,
   isEngineer,
@@ -279,7 +280,7 @@ export default function InstallationCallCenterWorkflow({
     );
   }
 
-  if (!isCallcenter && isVendorAssigned && (isAdminLike || isServiceTeam)) {
+  if (!isCallcenter && isVendorAssigned && (isAdminLike || isServiceTeam || canActOnPayments)) {
     const serialReady = installationSerialReady(installation);
     if (!serialReady) return null;
 
@@ -296,6 +297,7 @@ export default function InstallationCallCenterWorkflow({
           isEngineer={false}
           isAdminLike={isAdminLike}
           isPaymentAdmin={isPaymentAdmin}
+          canActOnPayments={canActOnPayments}
           userId={userId}
           workflowSteps={workflowSteps}
           onUpdated={onUpdated}
@@ -533,6 +535,7 @@ export default function InstallationCallCenterWorkflow({
           isEngineer={isEngineer}
           isAdminLike={isAdminLike}
           isPaymentAdmin={isPaymentAdmin}
+          canActOnPayments={canActOnPayments}
           userId={userId}
           workflowSteps={workflowSteps}
           onUpdated={onUpdated}
