@@ -851,7 +851,7 @@ def service_summary(db: Session = Depends(get_db), user: User = Depends(get_curr
     elif _is_vendor(user):
         vendor = _active_vendor_for_user(db, user)
         if vendor is None:
-            return ServiceSummary(new_requests=0, unassigned=0, assigned=0, pending_observation=0, pending_approval=0, approved=0, in_progress=0, payment_pending=0, completed=0, closed=0, unread_notifications=0)
+            return ServiceSummary(new_requests=0, unassigned=0, assigned=0, pending_observation=0, pending_approval=0, completion_pending_approval=0, approved=0, in_progress=0, payment_pending=0, completed=0, closed=0, unread_notifications=0)
         stmt = stmt.where(ServiceRequest.assigned_vendor_id == vendor.id)
     def cnt(status_value: str) -> int:
         return db.scalar(select(func.count()).select_from(stmt.where(ServiceRequest.status == status_value).subquery())) or 0
@@ -872,6 +872,7 @@ def service_summary(db: Session = Depends(get_db), user: User = Depends(get_curr
         assigned=cnt("Assigned"),
         pending_observation=cnt("Engineer Visit"),
         pending_approval=cnt("Pending Service Approval"),
+        completion_pending_approval=cnt("Completion Pending Approval"),
         approved=cnt("Approved for Service"),
         in_progress=cnt("Service In Progress"),
         payment_pending=cnt("Payment Requested"),
@@ -887,6 +888,7 @@ def list_services(
     per_page: int = Query(20, ge=1, le=200),
     search: str | None = None,
     status_filter: str | None = Query(None, alias="status"),
+    status_in: str | None = Query(None, description="Comma-separated statuses, OR'd together"),
     service_type: str | None = None,
     engineer_id: int | None = None,
     vendor_id: int | None = None,
@@ -906,6 +908,10 @@ def list_services(
         return ServiceListResponse(items=[], total=0, page=page, per_page=per_page)
     if status_filter:
         stmt = stmt.where(ServiceRequest.status == status_filter)
+    if status_in:
+        values = [s.strip() for s in status_in.split(",") if s.strip()]
+        if values:
+            stmt = stmt.where(ServiceRequest.status.in_(values))
     if service_type:
         stmt = stmt.where(ServiceRequest.service_type == service_type)
     if engineer_id:

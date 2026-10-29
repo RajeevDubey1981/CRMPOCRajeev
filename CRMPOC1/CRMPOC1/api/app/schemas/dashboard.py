@@ -43,6 +43,7 @@ class ServiceSummary(BaseModel):
     assigned: int
     pending_observation: int
     pending_approval: int
+    completion_pending_approval: int = 0
     approved: int
     in_progress: int
     payment_pending: int

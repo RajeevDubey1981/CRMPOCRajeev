@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import DateRangeFilter, { DateRangeTag } from "../../components/DateRangeFilter.jsx";
 import RegisteredCell, { registeredParts } from "../../components/RegisteredCell.jsx";
 import { BounceBadge } from "../../components/EmailBounceNotice.jsx";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 
 import Pagination from "../../components/Pagination.jsx";
 import StatusBadge from "../../components/StatusBadge.jsx";
@@ -16,6 +16,8 @@ const SUMMARY_TONES = [
   ["unassigned", "Unassigned", "bg-rose-500"],
   ["assigned", "Assigned", "bg-sky-500"],
   ["pending_approval", "Pending Approval", "bg-orange-500"],
+  ["completion_pending_approval", "Completion Approval", "bg-violet-600"],
+  ["payment_pending", "Payment Approval", "bg-amber-600"],
   ["completed", "Completed", "bg-emerald-600"],
   ["closed", "Closed", "bg-slate-600"],
 ];
@@ -30,7 +32,14 @@ export default function ServiceRequestList() {
   const [serviceUsers, setServiceUsers] = useState([]);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
-  const [filters, setFilters] = useState({ search: "", status: "", service_type: "", service_user: "", date_from: "", date_to: "" });
+  const [searchParams] = useSearchParams();
+  // The dashboard's Approvals Awaited cards link here with ?status=... or ?status_in=a,b -- read
+  // once on mount so the list opens already filtered; status_in isn't reflected in the dropdown
+  // below (it's an OR of two statuses, which a single-select can't represent), only applied to the query.
+  const [filters, setFilters] = useState({
+    search: "", status: searchParams.get("status") || "", status_in: searchParams.get("status_in") || "",
+    service_type: "", service_user: "", date_from: "", date_to: "",
+  });
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState(20);
 
@@ -49,6 +58,7 @@ export default function ServiceRequestList() {
       per_page: perPage,
       search: filters.search || undefined,
       status: filters.status || undefined,
+      status_in: filters.status_in || undefined,
       service_type: filters.service_type || undefined,
       date_from: filters.date_from || undefined,
       date_to: filters.date_to || undefined,
@@ -76,7 +86,8 @@ export default function ServiceRequestList() {
   }, [params]);
 
   function patch(field, value) {
-    setFilters((current) => ({ ...current, [field]: value }));
+    // Picking a single status by hand supersedes the dashboard's status_in deep link.
+    setFilters((current) => ({ ...current, [field]: value, ...(field === "status" ? { status_in: "" } : {}) }));
     setPage(1);
   }
 
@@ -108,7 +119,7 @@ export default function ServiceRequestList() {
           <input value={filters.search} onChange={(e) => patch("search", e.target.value)} placeholder="Request no / customer / mobile / serial" className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
           <select value={filters.status} onChange={(e) => patch("status", e.target.value)} className="rounded-md border border-slate-300 px-3 py-2 text-sm">
             <option value="">All statuses</option>
-            {["New","Service Team Review","Admin Review Document","Assigned","Engineer Visit","Serial Verified","Pending Service Approval","Approved for Service","Service In Progress","Service Completed","Payment Requested","Payment Completed","Closed","Rejected","Cancelled"].map((status) => (
+            {["New","Service Team Review","Admin Review Document","Assigned","Engineer Visit","Serial Verified","Pending Service Approval","Approved for Service","Service In Progress","Completion Pending Approval","Service Completed","Payment Requested","Payment Completed","Closed","Rejected","Cancelled"].map((status) => (
               <option key={status} value={status}>{status}</option>
             ))}
           </select>

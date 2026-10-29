@@ -165,6 +165,7 @@ export default function Dashboard() {
     return permissions.some((p) => p.module === module && p.can_view);
   }
   const canViewInstallations = canViewModule("installations");
+  const canViewServices = canViewModule("services");
 
   // summary / chart
   const [summary, setSummary]   = useState(null);
@@ -248,6 +249,15 @@ export default function Dashboard() {
       })
       .catch((e) => setServiceErr(e.response?.data?.detail || "Failed to load service requests"));
   }, [isEngineer, filters.service_type]);
+
+  // Non-engineer roles don't need the full service-request list the engineer's "next job" card
+  // reads from -- just the counts, for the Approvals Awaited cards below.
+  useEffect(() => {
+    if (isEngineer || !canViewServices) return;
+    api.get("/api/dashboard/services-summary")
+      .then((res) => setServiceSummary(res.data))
+      .catch(() => null);
+  }, [isEngineer, canViewServices]);
 
   useEffect(() => {
     if (!isSales) return;
@@ -601,6 +611,60 @@ export default function Dashboard() {
                 </div>
               ))}
             </div>
+          )}
+
+          {!isEngineer && (canViewServices || canViewInstallations) && (
+          <div className="rounded-lg bg-white p-4 shadow-sm">
+            <h3 className="mb-3 text-sm font-semibold text-slate-700">Approvals awaiting you</h3>
+            <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-4">
+              {canViewServices && (
+                <button
+                  type="button"
+                  onClick={() => navigate(`/services?status=${encodeURIComponent("Payment Requested")}`)}
+                  className="rounded-lg border-t-4 border-amber-500 bg-amber-50 px-3 py-2.5 text-left shadow-sm hover:-translate-y-0.5 hover:shadow-md transition-transform"
+                >
+                  <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Service Requests</div>
+                  <div className="mt-0.5 text-2xl font-bold text-amber-700">{serviceSummary?.payment_pending ?? "—"}</div>
+                  <div className="text-xs font-medium text-slate-600">Payment approval awaited</div>
+                </button>
+              )}
+              {canViewServices && (
+                <button
+                  type="button"
+                  onClick={() => navigate(`/services?status_in=${encodeURIComponent("Pending Service Approval,Completion Pending Approval")}`)}
+                  className="rounded-lg border-t-4 border-violet-500 bg-violet-50 px-3 py-2.5 text-left shadow-sm hover:-translate-y-0.5 hover:shadow-md transition-transform"
+                >
+                  <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Service Requests</div>
+                  <div className="mt-0.5 text-2xl font-bold text-violet-700">
+                    {(serviceSummary?.pending_approval ?? 0) + (serviceSummary?.completion_pending_approval ?? 0)}
+                  </div>
+                  <div className="text-xs font-medium text-slate-600">Work approval awaited</div>
+                </button>
+              )}
+              {canViewInstallations && (
+                <button
+                  type="button"
+                  onClick={() => navigate("/installations?stage=pay")}
+                  className="rounded-lg border-t-4 border-amber-500 bg-amber-50 px-3 py-2.5 text-left shadow-sm hover:-translate-y-0.5 hover:shadow-md transition-transform"
+                >
+                  <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Installation Requests</div>
+                  <div className="mt-0.5 text-2xl font-bold text-amber-700">{installs?.stages?.pay ?? "—"}</div>
+                  <div className="text-xs font-medium text-slate-600">Payment approval awaited</div>
+                </button>
+              )}
+              {canViewInstallations && (
+                <button
+                  type="button"
+                  onClick={() => navigate("/installations?stage=ap")}
+                  className="rounded-lg border-t-4 border-violet-500 bg-violet-50 px-3 py-2.5 text-left shadow-sm hover:-translate-y-0.5 hover:shadow-md transition-transform"
+                >
+                  <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Installation Requests</div>
+                  <div className="mt-0.5 text-2xl font-bold text-violet-700">{installs?.stages?.ap ?? "—"}</div>
+                  <div className="text-xs font-medium text-slate-600">Work approval awaited</div>
+                </button>
+              )}
+            </div>
+          </div>
           )}
 
           {!isEngineer && (

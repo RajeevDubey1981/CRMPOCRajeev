@@ -138,7 +138,7 @@ def services_summary(db: Session = Depends(get_db), user: User = Depends(get_cur
     elif role == "vendor":
         vendor = db.scalar(select(Vendor).where(Vendor.email == user.email))
         if vendor is None:
-            return ServiceSummary(new_requests=0, unassigned=0, assigned=0, pending_observation=0, pending_approval=0, approved=0, in_progress=0, payment_pending=0, completed=0, closed=0)
+            return ServiceSummary(new_requests=0, unassigned=0, assigned=0, pending_observation=0, pending_approval=0, completion_pending_approval=0, approved=0, in_progress=0, payment_pending=0, completed=0, closed=0)
         base = base.where(ServiceRequest.assigned_vendor_id == vendor.id)
 
     def cnt(status_value: str) -> int:
@@ -163,6 +163,7 @@ def services_summary(db: Session = Depends(get_db), user: User = Depends(get_cur
         assigned=cnt("Assigned"),
         pending_observation=cnt("Engineer Visit"),
         pending_approval=cnt("Pending Service Approval"),
+        completion_pending_approval=cnt("Completion Pending Approval"),
         approved=cnt("Approved for Service"),
         in_progress=cnt("Service In Progress"),
         payment_pending=cnt("Payment Requested"),
