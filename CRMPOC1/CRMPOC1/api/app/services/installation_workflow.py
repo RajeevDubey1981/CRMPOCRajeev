@@ -878,15 +878,11 @@ def _pick_installation_serial_value(
 
 
 def installation_required_serial_proof_slots(db: Session, inst: InstallationRequest) -> list[dict]:
+    # One proof photo covers the whole installation request -- both the indoor and outdoor serial on a
+    # split unit together, not one photo per physical piece. Keeps a bulk completion from needing a
+    # separate upload per serial on every unit in a large batch.
     order_item = db.get(OrderItem, inst.order_item_id) if inst.order_item_id else None
-    serial_count = resolve_order_item_serial_count(db, order_item)
-    required = max(1, serial_count)
-    if _pick_installation_serial_value(inst, order_item, 2):
-        required = max(required, 2)
-    return [
-        {"slot": slot, "serial_no": _pick_installation_serial_value(inst, order_item, slot)}
-        for slot in range(1, required + 1)
-    ]
+    return [{"slot": 1, "serial_no": _pick_installation_serial_value(inst, order_item, 1)}]
 
 
 def build_installation_completion_proofs(db: Session, inst: InstallationRequest) -> list[dict]:

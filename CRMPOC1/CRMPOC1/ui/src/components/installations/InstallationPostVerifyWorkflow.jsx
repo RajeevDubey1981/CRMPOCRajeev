@@ -102,10 +102,10 @@ function PaymentQrPreview({ path, label = "QR code" }) {
   return <UploadedFilePreview path={path} label={label} downloadLabel="Download QR code" />;
 }
 
-function installationNeedsSecondSerialProof(installation) {
-  const serialCount = Number(installation?.item_serial_count ?? 1);
-  if (serialCount >= 2) return true;
-  return Boolean((installation?.serial_no_2 || installation?.engineer_entered_serial_no_2 || "").trim());
+// One proof photo covers the whole installation request (both indoor and outdoor serial together on a
+// split unit) -- no longer one photo per physical piece.
+function installationNeedsSecondSerialProof() {
+  return false;
 }
 
 function buildCompletionProofSlots(installation) {

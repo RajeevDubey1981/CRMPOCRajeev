@@ -53,8 +53,10 @@ function shouldShowAdminRemark(row) {
     && ["Returned", "Rejected", "Service Team Review", "Assigned", "In Progress"].includes(row.status);
 }
 
-function rowNeedsSecondProof(row) {
-  return Boolean((row.serial_no_2 || row.engineer_entered_serial_no_2 || "").trim());
+// One proof photo covers the whole installation request (both indoor and outdoor serial together on a
+// split unit) -- no longer one photo per physical piece.
+function rowNeedsSecondProof() {
+  return false;
 }
 
 function defaultRowForm(row, existing = {}) {
@@ -463,14 +465,17 @@ export default function BulkInstallationWorkflowPanel({ rows, onSaved, showClose
                           className="w-full rounded-md border border-slate-300 px-2 py-1 text-xs"
                         />
                         <label className="block text-xs text-slate-700">
-                          <span className="mb-1 block font-medium">Serial 1 proof required</span>
+                          <span className="mb-1 block font-medium">Installation proof required</span>
                           <input
                             type="file"
                             accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
-                            required
+                            required={!form.proof_document}
                             onChange={(e) => updateRowForm(row.id, { proof_document: e.target.files?.[0] || null })}
                             className="block w-full text-xs"
                           />
+                          {form.proof_document && (
+                            <span className="mt-1 block text-emerald-700">✓ {form.proof_document.name}</span>
+                          )}
                         </label>
                         {rowNeedsSecondProof(row) && (
                           <label className="block text-xs text-slate-700">
@@ -621,6 +626,21 @@ export default function BulkInstallationWorkflowPanel({ rows, onSaved, showClose
           <p className="mt-1 text-xs text-emerald-800">
             Submit proof and remarks only for the checked rows. Rows sent to Service Role remain separate and do not block the rest.
           </p>
+          <label className="mt-3 block text-xs text-emerald-900">
+            <span className="mb-1 block font-medium">One photo for all checked units (e.g. a site overview) — optional, saves picking a file per row</span>
+            <input
+              type="file"
+              accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+              disabled={busy || selectedCompletionRows.length === 0}
+              onChange={(e) => {
+                const file = e.target.files?.[0] || null;
+                if (!file) return;
+                selectedCompletionRows.forEach((row) => updateRowForm(row.id, { proof_document: file }));
+                e.target.value = "";
+              }}
+              className="block w-full text-xs disabled:opacity-50"
+            />
+          </label>
           <button
             type="button"
             onClick={completeSelectedRows}
