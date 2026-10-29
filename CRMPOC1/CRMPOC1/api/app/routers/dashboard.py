@@ -10,7 +10,7 @@ from app.deps import get_current_user
 from app.models.complaint import Complaint
 from app.models.installation import InstallationRequest
 from app.models.order import Order
-from app.models.service import ServiceRequest, ServiceRequestUnit
+from app.models.service import ServicePaymentRequest, ServiceRequest, ServiceRequestUnit
 from app.models.user import User
 from app.models.vendor import Vendor
 from app.schemas.dashboard import (
@@ -144,6 +144,44 @@ def installation_payment_stages_summary(db: Session = Depends(get_db), user: Use
             is_mine=key == role,
         )
         for key, label in _INSTALLATION_PAYMENT_STAGE_ORDER
+    ]
+
+
+#: Service Requests keep the flat Service Role -> [Service Manager] -> Admin chain (no Sub
+#: Admin/Accounts/Audit) -- a separate, shorter order from the installation one above.
+_SERVICE_PAYMENT_STAGE_ORDER = [
+    ("service_role", "Service Role"),
+    ("service_manager", "Service Manager"),
+    ("admin", "Admin"),
+]
+
+
+@router.get("/service-payment-stages", response_model=list[InstallationPaymentStageOut])
+def service_payment_stages_summary(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Same idea as installation-payment-stages, for Service Requests' own (shorter) payment
+    chain -- lets Accounts/Audit/Admin see that pipeline's urgency too, not just installations'."""
+    role = canonical_role_key(user.role)
+    if not (is_operations_admin(user) or role in {"accounts", "audit"}):
+        return []
+    rows = db.execute(
+        select(
+            ServicePaymentRequest.approval_stage,
+            func.count(ServicePaymentRequest.id),
+            func.coalesce(func.sum(ServicePaymentRequest.total_requested_amount), 0),
+        )
+        .where(ServicePaymentRequest.approval_status == "Pending")
+        .group_by(ServicePaymentRequest.approval_stage)
+    ).all()
+    by_stage = {stage_key: (count, float(amount)) for stage_key, count, amount in rows}
+    return [
+        InstallationPaymentStageOut(
+            stage_key=key,
+            stage_label=label,
+            count=by_stage.get(key, (0, 0.0))[0],
+            amount=by_stage.get(key, (0, 0.0))[1],
+            is_mine=key == role,
+        )
+        for key, label in _SERVICE_PAYMENT_STAGE_ORDER
     ]
 
 

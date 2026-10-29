@@ -13,24 +13,23 @@ const PAYMENT_STAGE_COLORS = {
   admin: "#0a7a5c",
 };
 
-/** One card per stage of the installation payment chain -- not just Accounts' own queue, so
- * urgency building up upstream (or already past them, waiting on Audit/Admin) is visible too. */
-function InstallationPaymentUrgencyStrip() {
+/** One card per stage of a payment chain -- not just Accounts' own queue, so urgency building up
+ * upstream (or already past them, waiting on Audit/Admin) is visible too. Shared by Installations
+ * (six stages, including Sub Admin/Accounts/Audit) and Service Requests (the shorter, flat chain). */
+function PaymentUrgencyStrip({ endpoint, title }) {
   const [stages, setStages] = useState(null);
 
   useEffect(() => {
-    api.get("/api/dashboard/installation-payment-stages")
+    api.get(endpoint)
       .then((r) => setStages(r.data))
       .catch(() => setStages([]));
-  }, []);
+  }, [endpoint]);
 
   if (!stages || stages.length === 0) return null;
 
   return (
     <div>
-      <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">
-        Installation payment chain — every stage at a glance
-      </p>
+      <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">{title}</p>
       <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
         {stages.map((s) => (
           <div
@@ -493,7 +492,8 @@ export default function AccountsDashboard() {
         </div>
       </div>
 
-      <InstallationPaymentUrgencyStrip />
+      <PaymentUrgencyStrip endpoint="/api/dashboard/installation-payment-stages" title="Installation payment chain — every stage at a glance" />
+      <PaymentUrgencyStrip endpoint="/api/dashboard/service-payment-stages" title="Service Request payment chain — every stage at a glance" />
 
       <div className="rounded-lg bg-white p-4 shadow-sm">
         <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">Due vs Paid — month wise</p>
