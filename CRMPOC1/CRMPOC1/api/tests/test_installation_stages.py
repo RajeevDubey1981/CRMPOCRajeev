@@ -80,9 +80,9 @@ class InstallationStageTests(unittest.TestCase):
         r = self.client.get("/api/installations", headers=self.h(self.admin))
         self.assertEqual(r.status_code, 200, r.text)
         body = r.json()
-        self.assertEqual(body["stage_counts"], {"na": 2, "as": 2, "ip": 2, "in": 1, "pay": 1, "done": 2, "rr": 1})
+        self.assertEqual(body["stage_counts"], {"na": 2, "as": 2, "ip": 1, "vp": 1, "ap": 0, "in": 1, "pay": 1, "done": 2, "rr": 1})
         self.assertEqual(body["total"], 11)
-        for key, want in (("na", 2), ("as", 2), ("ip", 2), ("in", 1), ("pay", 1), ("done", 2), ("rr", 1)):
+        for key, want in (("na", 2), ("as", 2), ("ip", 1), ("vp", 1), ("in", 1), ("pay", 1), ("done", 2), ("rr", 1)):
             got = self.client.get("/api/installations", params={"stage": key}, headers=self.h(self.admin)).json()
             self.assertEqual(got["total"], want, key)
             self.assertEqual(got["stage_counts"], body["stage_counts"], "the chips keep their counts while one is picked")
@@ -94,15 +94,15 @@ class InstallationStageTests(unittest.TestCase):
 
     def test_each_group_row_carries_its_own_stage_counts(self):
         items = self.client.get("/api/installations", headers=self.h(self.admin)).json()["items"]
-        self.assertEqual(items[0]["group_stage_counts"], {"na": 2, "as": 2, "ip": 2, "in": 1, "pay": 1, "done": 2, "rr": 1})
+        self.assertEqual(items[0]["group_stage_counts"], {"na": 2, "as": 2, "ip": 1, "vp": 1, "ap": 0, "in": 1, "pay": 1, "done": 2, "rr": 1})
 
     def test_an_engineer_sees_only_the_stages_of_his_own_requests(self):
         r = self.client.get("/api/installations", headers=self.h(self.eng2)).json()
-        self.assertEqual(r["stage_counts"], {"na": 0, "as": 1, "ip": 0, "in": 0, "pay": 0, "done": 1, "rr": 0})
+        self.assertEqual(r["stage_counts"], {"na": 0, "as": 1, "ip": 0, "vp": 0, "ap": 0, "in": 0, "pay": 0, "done": 1, "rr": 0})
 
     def test_the_dashboard_summary_has_the_stages_too(self):
         r = self.client.get("/api/dashboard/installation-summary", headers=self.h(self.admin)).json()
-        self.assertEqual(r["stages"], {"na": 2, "as": 2, "ip": 2, "in": 1, "pay": 1, "done": 2, "rr": 1})
+        self.assertEqual(r["stages"], {"na": 2, "as": 2, "ip": 1, "vp": 1, "ap": 0, "in": 1, "pay": 1, "done": 2, "rr": 1})
         mine = self.client.get("/api/dashboard/installation-summary", headers=self.h(self.eng2)).json()
         self.assertEqual(mine["stages"]["as"], 1)
         self.assertEqual(mine["stages"]["na"], 0)

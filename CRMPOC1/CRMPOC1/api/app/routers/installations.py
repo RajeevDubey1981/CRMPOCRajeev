@@ -335,7 +335,7 @@ def _hydrate(db: Session, inst: InstallationRequest) -> dict:
             "payment_approval_status", "payment_approval_stage", "payment_approval_stage_label",
             "payment_approval_step", "payment_approval_total_steps", "payment_next_approver_role",
             "document_request_sent_at", "order_verified_at",
-            "engineer_entered_serial_no", "engineer_entered_serial_no_2", "serial_verified_at",
+            "engineer_entered_serial_no", "engineer_entered_serial_no_2", "serial_verified_at", "serial_review_note",
             "admin_billing_type", "admin_approval_remark", "admin_approved_at",
             "engineer_site_remarks", "engineer_serials_submitted_at",
             "parent_installation_id",
@@ -994,8 +994,6 @@ def create_installation(
         product_name=body.product_name,
         request_date=body.request_date or datetime.now(timezone.utc),
         status="Pending",
-        serial_no=order_item.serial_no if order_item else None,
-        serial_no_2=order_item.serial_no_2 if order_item else None,
     )
     db.add(inst)
     db.flush()

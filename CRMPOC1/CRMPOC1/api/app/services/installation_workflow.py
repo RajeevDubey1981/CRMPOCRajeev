@@ -106,7 +106,7 @@ def prepare_vendor_installation_for_engineer_workflow(
     *,
     actor: User | None = None,
 ) -> bool:
-    """Vendor order submissions already include order + serials — unlock engineer workflow on assign."""
+    """Vendor order submissions already include the order — unlock engineer workflow on assign. Serials stay blank until the engineer scans them on site."""
     if not is_vendor_assigned_engineer_workflow(inst):
         return False
 
@@ -121,13 +121,6 @@ def prepare_vendor_installation_for_engineer_workflow(
         inst.order_verified_at = now
         if actor is not None:
             inst.order_verified_by = actor.id
-        changed = True
-    if (inst.serial_no or "").strip() and not inst.serial_verified_at:
-        inst.serial_verified_at = now
-        if actor is not None:
-            inst.serial_verified_by = actor.id
-        if not (inst.engineer_entered_serial_no or "").strip():
-            inst.engineer_entered_serial_no = inst.serial_no
         changed = True
     if (inst.admin_billing_type or "Free").strip() != "Paid" and (inst.status or "") not in {"Completed", "Rejected"}:
         inst.admin_billing_type = "Paid"
@@ -855,6 +848,113 @@ def resolve_order_item_serial_count(db: Session, order_item: OrderItem | None) -
         if master is not None:
             return max(1, int(master.serial_count or 1))
     return 1
+
+
+#: An order item whose own installation already reached one of these statuses is done -- its serial
+#: fields are settled, paid, closed-out records. Pulling a serial out from under it to satisfy a
+#: *different* installation's on-site cross-pairing would silently corrupt a finished job, so that
+#: swap is rejected outright instead (see resolve_engineer_serial_slot below).
+SERIAL_SWAP_BLOCKED_STATUSES = {
+    "Installation Completed", "Payment Pending", "Completed", "Settlement Pending", "Settlement Approved",
+}
+
+
+def _order_item_is_closed(db: Session, order_item_id: int, *, exclude_installation_id: int | None = None) -> bool:
+    stmt = select(InstallationRequest.id).where(
+        InstallationRequest.order_item_id == order_item_id,
+        InstallationRequest.status.in_(SERIAL_SWAP_BLOCKED_STATUSES),
+    )
+    if exclude_installation_id is not None:
+        stmt = stmt.where(InstallationRequest.id != exclude_installation_id)
+    return db.scalar(stmt.limit(1)) is not None
+
+
+def _find_other_order_item_slot(
+    db: Session,
+    order_id: int,
+    value: str,
+    *,
+    exclude_item_id: int,
+) -> tuple[OrderItem, str] | None:
+    """A DIFFERENT order item on this order that already carries this exact serial, and which of
+    its two slots carries it -- the on-site cross-pairing case, where the vendor's admin paperwork
+    paired this serial with a different unit than it was physically installed next to."""
+    needle = value.strip().lower()
+    item = db.scalar(
+        select(OrderItem).where(
+            OrderItem.order_id == order_id,
+            OrderItem.id != exclude_item_id,
+            func.lower(func.trim(OrderItem.serial_no)) == needle,
+        )
+    )
+    if item is not None:
+        return item, "serial_no"
+    item = db.scalar(
+        select(OrderItem).where(
+            OrderItem.order_id == order_id,
+            OrderItem.id != exclude_item_id,
+            func.lower(func.trim(OrderItem.serial_no_2)) == needle,
+        )
+    )
+    if item is not None:
+        return item, "serial_no_2"
+    return None
+
+
+def resolve_engineer_serial_slot(
+    db: Session,
+    inst: InstallationRequest,
+    anchor_item: OrderItem,
+    value: str,
+    anchor_field: str,
+    *,
+    actor: User,
+) -> tuple[str, str | None]:
+    """Reconcile one scanned serial against the order. Three outcomes:
+
+    - It's already this item's own value for this slot (or the item had nothing here yet) -- plain
+      entry, nothing else to do.
+    - It belongs to a DIFFERENT item on this order -- the two units were physically cross-paired on
+      site. Confirmed valid members of the order, so the pairing is corrected immediately: this
+      item's slot takes the scanned value, and the other item's slot takes back whatever this item's
+      slot held before, so the order's total set of serials stays intact, just correctly paired.
+      Blocked outright (raises) if that other item's own installation is already closed -- nothing
+      is swapped or routed anywhere in that case, it's simply rejected.
+    - It isn't on this order at all -- saved as entered, flagged for Service Team/Manager review
+      instead of a hard rejection, since the engineer is standing in front of the actual unit.
+
+    Returns (value_to_save, review_flag_or_None).
+    """
+    value = value.strip()
+    own_value = (getattr(anchor_item, anchor_field) or "").strip()
+    if own_value and own_value.lower() == value.lower():
+        return value, None
+    found = _find_other_order_item_slot(db, anchor_item.order_id, value, exclude_item_id=anchor_item.id)
+    if found is None:
+        return value, f"{value} was not found anywhere on this order"
+    other_item, other_field = found
+    if _order_item_is_closed(db, other_item.id, exclude_installation_id=inst.id):
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            f"{value} belongs to a unit that's already completed and can't be reassigned. "
+            "Check the serial, or ask Admin to look into it if this is genuinely the right unit.",
+        )
+    setattr(other_item, other_field, own_value or None)
+    setattr(anchor_item, anchor_field, value)
+    log_installation_action(
+        db,
+        inst,
+        action="Serial Cross-Paired",
+        user=actor,
+        remarks=f"{value} confirmed on item #{anchor_item.id} ({anchor_field}); swapped with item #{other_item.id} ({other_field})",
+        metadata={
+            "anchor_item_id": anchor_item.id,
+            "other_item_id": other_item.id,
+            "value": value,
+            "displaced_value": own_value,
+        },
+    )
+    return value, None
 
 
 def _pick_installation_serial_value(

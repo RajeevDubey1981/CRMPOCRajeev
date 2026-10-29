@@ -73,6 +73,7 @@ class InstallationRequest(Base, TimestampMixin):
     engineer_site_remarks: Mapped[str | None] = mapped_column(Text, nullable=True)
     engineer_serials_submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     parent_installation_id: Mapped[int | None] = mapped_column(ForeignKey("installation_requests.id"), nullable=True, index=True)
+    serial_review_note: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class InstallationEngineerSerial(Base):

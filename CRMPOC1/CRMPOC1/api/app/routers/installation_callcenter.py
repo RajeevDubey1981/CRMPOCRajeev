@@ -27,13 +27,14 @@ from app.schemas.installation import (
     InstallationOrderSearchResult,
     InstallationOut,
     InstallationPublicDocumentContext,
+    InstallationServiceUserReturnIn,
     InstallationVerifyOrderRequest,
     InstallationVerifySerialRequest,
 )
 from app.services.email_service import send_document_upload_link_email
 from app.services.file_service import read_upload_bytes, save_upload, to_public_upload_path
 from app.services.role_access import is_operations_admin
-from app.services.service_access import is_service_desk_user
+from app.services.service_access import can_assign_service_desk_user, is_service_desk_user
 from app.services.order_installation_policy import require_order_installation
 from app.services.installation_workflow import (
     BILLING_TYPES,
@@ -44,7 +45,9 @@ from app.services.installation_workflow import (
     ensure_document_token,
     find_order_item_by_serial_on_order,
     is_callcenter_source,
+    is_vendor_source,
     prepare_vendor_installation_for_engineer_workflow,
+    resolve_engineer_serial_slot,
     return_installation_to_engineer_for_rework,
     supports_engineer_installation_workflow,
     log_installation_action,
@@ -432,40 +435,145 @@ def update_engineer_order_serials(
     serial_no_2 = (body.serial_no_2 or "").strip() or None
     if not serial_no:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Serial number 1 is required")
-    item = _require_order_serial_pair(db, inst, serial_no, serial_no_2)
-    if serial_no_2 and resolve_order_item_serial_count(db, item) == 2:
-        side1, side2 = serial_io_side(serial_no), serial_io_side(serial_no_2)
-        if side1 and side2 and side1 == side2:
-            raise HTTPException(
-                status.HTTP_400_BAD_REQUEST,
-                f"Serial 1 and Serial 2 are both {side1} units. A split unit needs one indoor and one outdoor serial -- check which one is wrong.",
-            )
-    before = {
-        "order_item_id": inst.order_item_id,
-        "serial_no": inst.serial_no,
-        "serial_no_2": inst.serial_no_2,
-    }
-    inst.order_id = item.order_id
-    inst.order_item_id = item.id
+
+    anchor_item = db.get(OrderItem, inst.order_item_id) if inst.order_item_id else None
+    if anchor_item is None or not is_vendor_source(inst):
+        # No anchor item to reconcile against (or not a vendor order) -- fall back to the plain
+        # whole-order membership check this always had.
+        item = _require_order_serial_pair(db, inst, serial_no, serial_no_2)
+        if serial_no_2 and resolve_order_item_serial_count(db, item) == 2:
+            side1, side2 = serial_io_side(serial_no), serial_io_side(serial_no_2)
+            if side1 and side2 and side1 == side2:
+                raise HTTPException(
+                    status.HTTP_400_BAD_REQUEST,
+                    f"Serial 1 and Serial 2 are both {side1} units. A split unit needs one indoor and one outdoor serial -- check which one is wrong.",
+                )
+        before = {"order_item_id": inst.order_item_id, "serial_no": inst.serial_no, "serial_no_2": inst.serial_no_2}
+        inst.order_id = item.order_id
+        inst.order_item_id = item.id
+        review_note = None
+    else:
+        # Engineer may have scanned the two units in either order -- sort them onto the indoor/
+        # outdoor slots by the letter on the serial itself before reconciling each one.
+        if serial_no_2 and resolve_order_item_serial_count(db, anchor_item) == 2:
+            side1, side2 = serial_io_side(serial_no), serial_io_side(serial_no_2)
+            if side1 and side2:
+                if side1 == side2:
+                    raise HTTPException(
+                        status.HTTP_400_BAD_REQUEST,
+                        f"Serial 1 and Serial 2 are both {side1} units. A split unit needs one indoor and one outdoor serial -- check which one is wrong.",
+                    )
+                if side1 == "outdoor":
+                    serial_no, serial_no_2 = serial_no_2, serial_no
+        before = {"order_item_id": inst.order_item_id, "serial_no": inst.serial_no, "serial_no_2": inst.serial_no_2}
+        serial_no, flag1 = resolve_engineer_serial_slot(db, inst, anchor_item, serial_no, "serial_no", actor=user)
+        flag2 = None
+        if serial_no_2:
+            serial_no_2, flag2 = resolve_engineer_serial_slot(db, inst, anchor_item, serial_no_2, "serial_no_2", actor=user)
+        review_note = "; ".join(f for f in (flag1, flag2) if f) or None
+
+    old_status = inst.status
     inst.serial_no = serial_no
     inst.serial_no_2 = serial_no_2
     inst.engineer_entered_serial_no = serial_no
     inst.engineer_entered_serial_no_2 = serial_no_2
+    inst.serial_review_note = review_note
+    if inst.status in {"Assigned", "In Progress", "Returned", "Rejected", "Serial Pending Verification"}:
+        inst.status = "Serial Pending Verification"
     log_installation_action(
         db,
         inst,
         action="Engineer Order Serials Updated",
         user=user,
-        old_status=inst.status,
+        old_status=old_status,
         new_status=inst.status,
         metadata={
             "before": before,
             "after": {
-                "order_item_id": item.id,
+                "order_item_id": inst.order_item_id,
                 "serial_no": serial_no,
                 "serial_no_2": serial_no_2,
+                "review_note": review_note,
             },
         },
+    )
+    db.commit()
+    db.refresh(inst)
+    return InstallationOut(**_hydrate(db, inst))
+
+
+def _can_review_installation_serials(user: User, inst: InstallationRequest) -> bool:
+    # "Service Team (if assigned)" means the specific member Jayveer this request was routed to --
+    # not any bare "service" role account. Service Manager/Sub Admin/Admin can always step in too.
+    if inst.assigned_service_user_id == user.id:
+        return True
+    return can_assign_service_desk_user(user)
+
+
+@router.post("/{installation_id}/serial-review/approve", response_model=InstallationOut)
+def approve_engineer_order_serials(
+    installation_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    from app.routers.installations import _hydrate, _load_visible
+
+    inst = _load_visible(db, user, installation_id)
+    if not _can_review_installation_serials(user, inst):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only the assigned Service Team member, Service Manager, or Admin can approve serials")
+    if (inst.serial_review_note or "").strip():
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Can't approve -- one of the entered serials isn't on this order. Return it to the engineer instead.")
+    if not (inst.engineer_entered_serial_no or inst.serial_no):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "No serial has been entered yet")
+    old_status = inst.status
+    inst.serial_verified_at = now_utc()
+    inst.serial_verified_by = user.id
+    if inst.status == "Serial Pending Verification":
+        inst.status = "Assigned"
+    log_installation_action(
+        db,
+        inst,
+        action="Serial Verification Approved",
+        user=user,
+        old_status=old_status,
+        new_status=inst.status,
+        metadata={"serial_no": inst.serial_no, "serial_no_2": inst.serial_no_2},
+    )
+    db.commit()
+    db.refresh(inst)
+    return InstallationOut(**_hydrate(db, inst))
+
+
+@router.post("/{installation_id}/serial-review/return-to-engineer", response_model=InstallationOut)
+def return_engineer_order_serials(
+    installation_id: int,
+    body: InstallationServiceUserReturnIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    from app.routers.installations import _hydrate, _load_visible
+
+    inst = _load_visible(db, user, installation_id)
+    if not _can_review_installation_serials(user, inst):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only the assigned Service Team member, Service Manager, or Admin can return serials to the engineer")
+    old_status = inst.status
+    remarks = (body.remarks or "").strip() or None
+    inst.serial_no = None
+    inst.serial_no_2 = None
+    inst.engineer_entered_serial_no = None
+    inst.engineer_entered_serial_no_2 = None
+    inst.serial_review_note = None
+    inst.serial_verified_at = None
+    inst.serial_verified_by = None
+    inst.status = "Assigned"
+    log_installation_action(
+        db,
+        inst,
+        action="Serial Returned To Engineer",
+        user=user,
+        old_status=old_status,
+        new_status=inst.status,
+        remarks=remarks,
     )
     db.commit()
     db.refresh(inst)

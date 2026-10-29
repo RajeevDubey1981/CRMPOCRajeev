@@ -257,6 +257,7 @@ class InstallationOut(BaseModel):
     engineer_entered_serial_no: str | None = None
     engineer_entered_serial_no_2: str | None = None
     serial_verified_at: datetime | None = None
+    serial_review_note: str | None = None
     admin_billing_type: str | None = None
     admin_approval_remark: str | None = None
     admin_approved_at: datetime | None = None

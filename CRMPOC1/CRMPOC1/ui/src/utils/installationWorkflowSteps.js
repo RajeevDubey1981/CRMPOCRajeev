@@ -78,9 +78,12 @@ export function isAssignedToUser(installation, userId) {
   return Number(installation.assigned_engineer) === Number(userId);
 }
 
+// Strictly gated on Service Team's review -- a vendor order's serial is only "ready" once someone
+// (Jayveer, the Service Manager, or Admin) has approved what the engineer scanned on site. An
+// entered-but-unreviewed serial_no is not enough on its own: that's exactly the state this gate
+// exists to hold back.
 export function installationSerialReady(installation) {
-  if (installation?.serial_verified_at) return true;
-  return isVendorAssignedInstallation(installation) && Boolean((installation?.serial_no || "").trim());
+  return Boolean(installation?.serial_verified_at);
 }
 
 const ENGINEER_BULK_WORKFLOW_STATUSES = new Set([

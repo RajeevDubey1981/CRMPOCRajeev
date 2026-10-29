@@ -13,6 +13,7 @@ import { usesStructuredInstallationWorkflow, getInstallationWorkflowStepOptions,
 import InstallationStatusEdit from "./InstallationStatusEdit.jsx";
 import InstallationCallCenterWorkflow from "./InstallationCallCenterWorkflow.jsx";
 import EngineerOrderSerialEditor from "../../components/installations/EngineerOrderSerialEditor.jsx";
+import SerialReviewPanel from "../../components/installations/SerialReviewPanel.jsx";
 import { toDownloadUrl } from "../../utils/downloadUrl.js";
 
 function fmt(value) {
@@ -486,6 +487,16 @@ export default function InstallationDetail() {
           <EngineerOrderSerialEditor
             installation={installation}
             userId={user?.id}
+            onUpdated={load}
+            onError={setErr}
+            onBusy={setBusy}
+          />
+        )}
+
+        {!isNonVendorSource(installation) && (
+          <SerialReviewPanel
+            installation={installation}
+            canReview={installation.assigned_service_user_id === user?.id || canAssignServiceDesk}
             onUpdated={load}
             onError={setErr}
             onBusy={setBusy}

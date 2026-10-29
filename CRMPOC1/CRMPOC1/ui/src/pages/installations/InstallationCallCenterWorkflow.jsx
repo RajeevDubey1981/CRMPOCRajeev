@@ -208,7 +208,11 @@ export default function InstallationCallCenterWorkflow({
           </button>
         )}
         {!serialReady && isAssignedEngineer && isVendorAssigned && (
-          <p className="text-sm text-amber-800">Waiting for serial details on this unit. Refresh the page or contact admin.</p>
+          <p className="text-sm text-amber-800">
+            {(installation.engineer_entered_serial_no || installation.serial_no)
+              ? "Serial submitted -- waiting for Service Team to review and approve it before you can continue."
+              : "Scan or enter the serial numbers above once you've visited the unit."}
+          </p>
         )}
         {showSerialWorkflow && installation.assigned_engineer === userId && (
           <InstallationEngineerSerialWorkflow
