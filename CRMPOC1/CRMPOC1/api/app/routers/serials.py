@@ -92,10 +92,14 @@ def search(
     db: Session = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
-    """Search for serials matching the query string."""
+    """Search for serials matching the query string -- either slot, since a split unit's
+    second (often outdoor) serial is just as findable as the first."""
     search_pattern = f"%{query}%"
     items = db.query(OrderItem).where(
-        func.lower(OrderItem.serial_no).like(func.lower(search_pattern))
+        or_(
+            func.lower(func.coalesce(OrderItem.serial_no, "")).like(func.lower(search_pattern)),
+            func.lower(func.coalesce(OrderItem.serial_no_2, "")).like(func.lower(search_pattern)),
+        )
     ).limit(10).all()
 
     suggestions = []
@@ -104,7 +108,7 @@ def search(
         order = db.get(Order, item.order_id)
 
         suggestions.append({
-            "serial_no": item.serial_no,
+            "serial_no": item.serial_no or item.serial_no_2,
             "serial_no_2": item.serial_no_2,
             "item_name": item_master.item_name if item_master else "Unknown Product",
             "item_code": item_master.item_code if item_master else None,
@@ -157,7 +161,14 @@ def lookup(
     db: Session = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
-    item = db.scalar(select(OrderItem).where(func.lower(OrderItem.serial_no) == func.lower(serial_no)))
+    item = db.scalar(
+        select(OrderItem).where(
+            or_(
+                func.lower(OrderItem.serial_no) == func.lower(serial_no),
+                func.lower(OrderItem.serial_no_2) == func.lower(serial_no),
+            )
+        )
+    )
     if item is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Serial number not found")
 
@@ -169,7 +180,7 @@ def lookup(
 
     return SerialLookup(
         order_item_id=item.id,
-        serial_no=item.serial_no,
+        serial_no=item.serial_no or item.serial_no_2,
         serial_no_2=item.serial_no_2,
         item_name=item_master.item_name if item_master else None,
         item_code=item_master.item_code if item_master else None,
