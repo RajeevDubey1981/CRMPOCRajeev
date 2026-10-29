@@ -20,6 +20,7 @@ from app.schemas.dashboard import (
     InstallationPaymentStageOut,
     InstallationSummary,
     OrdersSummary,
+    ReadyToPayItem,
     ServiceSummary,
 )
 from app.services.engineer_service_scope import (
@@ -183,6 +184,112 @@ def service_payment_stages_summary(db: Session = Depends(get_db), user: User = D
         )
         for key, label in _SERVICE_PAYMENT_STAGE_ORDER
     ]
+
+
+def _payment_urgency(days: int) -> str:
+    if days >= 7:
+        return "urgent"
+    if days >= 3:
+        return "soon"
+    return "ontime"
+
+
+def _days_waiting(requested_at: datetime | None, now: datetime) -> int:
+    if requested_at is None:
+        return 0
+    # SQLite (local preview) hands back naive datetimes even for timezone=True columns;
+    # MySQL (production) doesn't. Strip both sides so the subtraction works either way.
+    if requested_at.tzinfo is None:
+        requested_at = requested_at.replace(tzinfo=timezone.utc)
+    return max(0, (now - requested_at).days)
+
+
+@router.get("/ready-to-pay", response_model=list[ReadyToPayItem])
+def ready_to_pay(
+    search: str | None = None,
+    engineer: str | None = None,
+    vendor: str | None = None,
+    module: str | None = None,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Everything that's cleared Audit and is sitting at the Admin stage, across both Installations
+    and Service Requests -- purely a finding/prioritizing view (age since the request was first
+    raised flags urgency); actually paying still happens on that record's own detail page."""
+    role = canonical_role_key(user.role)
+    if not (is_operations_admin(user) or role in {"accounts", "audit"}):
+        return []
+
+    now = datetime.now(timezone.utc)
+    items: list[ReadyToPayItem] = []
+
+    if module in (None, "", "installation"):
+        rows = db.execute(
+            select(InstallationRequest, User.name)
+            .outerjoin(User, User.id == InstallationRequest.assigned_engineer)
+            .where(
+                InstallationRequest.status == "Payment Pending",
+                InstallationRequest.payment_approval_stage == "admin",
+            )
+        ).all()
+        for inst, engineer_name in rows:
+            requested_at = inst.payment_requested_at
+            days = _days_waiting(requested_at, now)
+            items.append(ReadyToPayItem(
+                module="installation",
+                entity_id=inst.id,
+                label=f"#{inst.id}",
+                payee_name=engineer_name,
+                payee_type="Engineer" if engineer_name else None,
+                requested_at=requested_at,
+                amount=float(inst.payment_amount_requested or 0),
+                days_waiting=days,
+                urgency=_payment_urgency(days),
+                href=f"/installations/{inst.id}",
+            ))
+
+    if module in (None, "", "service"):
+        from app.models.vendor import Vendor as VendorModel
+
+        rows = db.execute(
+            select(ServicePaymentRequest, ServiceRequest.request_no, User.name, VendorModel.name_of_firm)
+            .join(ServiceRequest, ServiceRequest.id == ServicePaymentRequest.service_request_id)
+            .outerjoin(User, User.id == ServicePaymentRequest.requested_by_user_id)
+            .outerjoin(VendorModel, VendorModel.id == ServicePaymentRequest.requested_by_vendor_id)
+            .where(
+                ServicePaymentRequest.approval_status == "Pending",
+                ServicePaymentRequest.approval_stage == "admin",
+            )
+        ).all()
+        for payment, request_no, engineer_name, vendor_name in rows:
+            requested_at = payment.created_at
+            days = _days_waiting(requested_at, now)
+            is_vendor = payment.requested_by_type == "vendor"
+            items.append(ReadyToPayItem(
+                module="service",
+                entity_id=payment.service_request_id,
+                label=request_no or f"#{payment.service_request_id}",
+                payee_name=vendor_name if is_vendor else engineer_name,
+                payee_type="Vendor" if is_vendor else ("Engineer" if engineer_name else None),
+                requested_at=requested_at,
+                amount=float(payment.total_requested_amount or 0),
+                days_waiting=days,
+                urgency=_payment_urgency(days),
+                href=f"/services/{payment.service_request_id}",
+            ))
+
+    if search:
+        needle = search.strip().lower()
+        items = [i for i in items if needle in i.label.lower() or (i.payee_name and needle in i.payee_name.lower())]
+    if engineer:
+        needle = engineer.strip().lower()
+        items = [i for i in items if i.payee_type == "Engineer" and i.payee_name and needle in i.payee_name.lower()]
+    if vendor:
+        needle = vendor.strip().lower()
+        items = [i for i in items if i.payee_type == "Vendor" and i.payee_name and needle in i.payee_name.lower()]
+
+    items.sort(key=lambda i: -i.days_waiting)
+    return items
 
 
 @router.get("/orders-summary", response_model=OrdersSummary)

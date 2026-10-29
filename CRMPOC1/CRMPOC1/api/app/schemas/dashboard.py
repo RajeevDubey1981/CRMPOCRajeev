@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from pydantic import BaseModel
 
 
@@ -35,6 +37,19 @@ class OrdersSummary(BaseModel):
     pending: int
     in_transit: int
     delivered: int
+
+
+class ReadyToPayItem(BaseModel):
+    module: str  # "installation" | "service"
+    entity_id: int
+    label: str
+    payee_name: str | None = None
+    payee_type: str | None = None  # "Engineer" | "Vendor"
+    requested_at: datetime | None = None
+    amount: float
+    days_waiting: int
+    urgency: str  # "urgent" | "soon" | "ontime"
+    href: str
 
 
 class InstallationPaymentStageOut(BaseModel):

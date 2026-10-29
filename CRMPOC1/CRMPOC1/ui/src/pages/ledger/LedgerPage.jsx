@@ -2,11 +2,12 @@ import { useState } from "react";
 import { Navigate, useSearchParams } from "react-router-dom";
 
 import { useAuth } from "../../auth/AuthContext.jsx";
-import { isSystemAdminRole } from "../../utils/roles.js";
+import { canActOnInstallationPayments, isSystemAdminRole } from "../../utils/roles.js";
 import AccountsDashboard from "./AccountsDashboard.jsx";
 import AuditQueue from "./AuditQueue.jsx";
 import LedgerSearch from "./LedgerSearch.jsx";
 import MyVendorExpenseRequests from "./MyVendorExpenseRequests.jsx";
+import ReadyToPayQueue from "./ReadyToPayQueue.jsx";
 
 /** One landing spot for the vendor/engineer account system. Which tabs show depend on the
  * vendor_ledger/engineer_ledger permissions (Admin -> Roles) -- Accounts/Admin/Sub Admin get all three,
@@ -25,19 +26,24 @@ export default function LedgerPage() {
   // same check the backend uses (orders can_view, never a vendor/engineer account itself).
   const role = (user?.role || "").toLowerCase();
   const canSeeMyRequests = role !== "vendor" && role !== "engineer" && has("orders", "can_view");
+  // Ready to Pay: whoever can act somewhere in the installation/service payment chains -- the same
+  // check the backend's ready-to-pay endpoint uses -- not tied to the vendor/engineer ledger
+  // permissions above, since it's a different system (order payments, not ledger accounts).
+  const canSeePayQueue = canActOnInstallationPayments(role);
 
   const [searchParams] = useSearchParams();
   const requested = searchParams.get("tab");
-  const defaultTab = canSeeDashboard ? "dashboard" : canSeeVendors ? "vendors" : canSeeEngineers ? "engineers" : canSeeAudit ? "audit" : "mine";
-  const initialTab = ["dashboard", "vendors", "engineers", "audit", "mine"].includes(requested) ? requested : defaultTab;
+  const defaultTab = canSeeDashboard ? "dashboard" : canSeePayQueue ? "pay" : canSeeVendors ? "vendors" : canSeeEngineers ? "engineers" : canSeeAudit ? "audit" : "mine";
+  const initialTab = ["dashboard", "pay", "vendors", "engineers", "audit", "mine"].includes(requested) ? requested : defaultTab;
   const [tab, setTab] = useState(initialTab);
 
-  if (!canSeeVendors && !canSeeEngineers && !canSeeDashboard && !canSeeAudit && !canSeeMyRequests) {
+  if (!canSeeVendors && !canSeeEngineers && !canSeeDashboard && !canSeeAudit && !canSeeMyRequests && !canSeePayQueue) {
     return <Navigate to="/dashboard" replace />;
   }
 
   const tabs = [
     ...(canSeeDashboard ? [["dashboard", "Dashboard"]] : []),
+    ...(canSeePayQueue ? [["pay", "Ready to Pay"]] : []),
     ...(canSeeVendors ? [["vendors", "Vendors"]] : []),
     ...(canSeeEngineers ? [["engineers", "Engineers"]] : []),
     ...(canSeeAudit ? [["audit", "Audit"]] : []),
@@ -64,6 +70,7 @@ export default function LedgerPage() {
         </nav>
       )}
       {activeTab === "dashboard" && canSeeDashboard && <AccountsDashboard />}
+      {activeTab === "pay" && canSeePayQueue && <ReadyToPayQueue />}
       {activeTab === "vendors" && canSeeVendors && <LedgerSearch partyType="vendor" />}
       {activeTab === "engineers" && canSeeEngineers && <LedgerSearch partyType="engineer" />}
       {activeTab === "audit" && canSeeAudit && <AuditQueue />}
