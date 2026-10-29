@@ -43,7 +43,13 @@ def to_public_upload_path(path: str | None) -> str | None:
 def _safe_ext(filename: str, allowed_ext: set[str] | None = None) -> str:
     allowed = allowed_ext or ALLOWED_EXT
     name = os.path.basename((filename or "").replace("\\", "/"))
-    if "\x00" in name or name.count(".") > 2:
+    # ".." (consecutive dots) is the actual red flag -- path-traversal-style obfuscation or a
+    # disguised double extension. A flat dot *count* isn't: ordinary filenames routinely have
+    # several (a date, a version, an abbreviation like "A.C. Bill.pdf"), and rejecting those
+    # outright blocked real customer document uploads for no security benefit -- the extension
+    # allowlist below plus the content-signature check in _validate_file_signature are what
+    # actually defend against a disguised file, not dot counting.
+    if "\x00" in name or ".." in name:
         return ""
     ext = os.path.splitext(name)[1].lower()
     return ext if ext in allowed else ""
