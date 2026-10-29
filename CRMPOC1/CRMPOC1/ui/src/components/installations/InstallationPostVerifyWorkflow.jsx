@@ -786,7 +786,11 @@ export default function InstallationPostVerifyWorkflow({
           borderClass="border-emerald-200"
           bgClass="bg-emerald-50"
           summary="Admin approved installation completion. Engineer can raise payment request."
-        />
+        >
+          {(isAssignedEngineer || isAdminLike || canActOnPayments) && (
+            <CompletionProofReview installation={installation} />
+          )}
+        </WorkflowStepSection>
       )}
 
       {installation.status === "Completion Pending Approval" && isAssignedEngineer && (
