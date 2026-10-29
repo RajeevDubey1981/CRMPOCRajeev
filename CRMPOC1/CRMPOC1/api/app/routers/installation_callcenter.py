@@ -478,6 +478,10 @@ def update_engineer_order_serials(
     inst.engineer_entered_serial_no = serial_no
     inst.engineer_entered_serial_no_2 = serial_no_2
     inst.serial_review_note = review_note
+    # Whatever was verified before (including a leftover from before this review step existed)
+    # no longer reflects what's now entered -- every save needs a fresh Approve.
+    inst.serial_verified_at = None
+    inst.serial_verified_by = None
     if inst.status in {"Assigned", "In Progress", "Returned", "Rejected", "Serial Pending Verification"}:
         inst.status = "Serial Pending Verification"
     log_installation_action(
