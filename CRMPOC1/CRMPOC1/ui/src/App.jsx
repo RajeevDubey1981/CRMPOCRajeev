@@ -70,7 +70,7 @@ import VendorRequest from "./pages/bids/VendorRequest.jsx";
 import BidCalendar from "./pages/bids/BidCalendar.jsx";
 import MarketingRoutes from "./pages/marketing/MarketingRoutes.jsx";
 import SalesRoutes from "./pages/sales/SalesRoutes.jsx";
-import { isOperationsAdminRole, isSubAdminRole, isSystemAdminRole } from "./utils/roles.js";
+import { canActOnInstallationPayments, isOperationsAdminRole, isServiceTeamRole, isSubAdminRole, isSystemAdminRole } from "./utils/roles.js";
 
 function OperationsAdminRoute({ children }) {
   const { user } = useAuth();
@@ -92,6 +92,19 @@ function SystemAdminRoute({ children }) {
 function UserAdminRoute({ children }) {
   const { user } = useAuth();
   if (!isSystemAdminRole(user?.role) && !isSubAdminRole(user?.role)) {
+    return <Navigate to="/dashboard" replace />;
+  }
+  return children;
+}
+
+// Payment Queue: the same roles the sidebar link uses (canActOnInstallationPayments covers
+// Admin/Sub Admin/Indcool Service/Service Manager/Accounts/Audit, isServiceTeamRole adds the bare
+// "service" desk role) -- deliberately NOT the general "installations" module permission, since
+// Accounts/Audit/Sub Admin act in the payment chain without necessarily having that broader,
+// separately-ticked module permission on their Role card.
+function PaymentQueueRoute({ children }) {
+  const { user } = useAuth();
+  if (!isServiceTeamRole(user?.role) && !isSubAdminRole(user?.role) && !canActOnInstallationPayments(user?.role)) {
     return <Navigate to="/dashboard" replace />;
   }
   return children;
@@ -196,7 +209,7 @@ export default function App() {
         <Route path="/orders/new" element={<PermissionRoute module="orders" action="can_create"><OrderCreate /></PermissionRoute>} />
         <Route path="/orders/:id" element={<PermissionRoute module="orders"><OrderDetail /></PermissionRoute>} />
         <Route path="/installations" element={<PermissionRoute module="installations"><InstallationList /></PermissionRoute>} />
-        <Route path="/installations/payment-queue" element={<PermissionRoute module="installations"><PaymentQueue /></PermissionRoute>} />
+        <Route path="/installations/payment-queue" element={<PaymentQueueRoute><PaymentQueue /></PaymentQueueRoute>} />
         <Route path="/installations/new" element={<PermissionRoute module="installations" action="can_create"><InstallationCreate /></PermissionRoute>} />
         <Route path="/installations/bulk-workflow" element={<PermissionRoute module="installations"><BulkInstallationWorkflowPage /></PermissionRoute>} />
         <Route path="/installations/:id" element={<PermissionRoute module="installations"><InstallationDetail /></PermissionRoute>} />
