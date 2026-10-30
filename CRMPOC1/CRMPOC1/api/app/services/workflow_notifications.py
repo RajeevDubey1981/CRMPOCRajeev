@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from html import escape
 import secrets
 from datetime import datetime, timezone
 from typing import Any
@@ -516,6 +517,38 @@ def notify_payment_credited(
             ("Payment Reference", payment_reference or "—"),
             ("Paid On", payment_paid_on.strftime("%d %b %Y") if payment_paid_on else "—"),
         ],
+    )
+
+
+def notify_pooled_payment_credited(
+    background_tasks: BackgroundTasks | None,
+    *,
+    payee_email: str | None,
+    payee_name: str | None,
+    items: list[tuple[str, float]],
+    total_amount: float,
+    payment_type: str | None = None,
+    payment_reference: str | None = None,
+    payment_paid_on=None,
+) -> None:
+    """Send one summary for the entire successful transfer, using the existing template."""
+    if not payee_email or not items or not total_amount:
+        return
+    details = [
+        ("Payment Summary", f"{len(items)} request(s) paid in one transfer"),
+        ("Payment Type", escape(payment_type or "—")),
+        ("Payment Reference", escape(payment_reference or "—")),
+        ("Paid On", payment_paid_on.strftime("%d %b %Y") if payment_paid_on else "—"),
+    ]
+    details.extend((escape(label), f"₹{amount:,.2f}") for label, amount in items)
+    details.append(("Total Paid", f"₹{total_amount:,.2f}"))
+    _queue(
+        background_tasks,
+        _send_payment_credited_email,
+        payee_email,
+        recipient_name=(payee_name or "").strip() or "Team Member",
+        amount_display=f"₹{total_amount:,.2f}",
+        details=details,
     )
 
 
