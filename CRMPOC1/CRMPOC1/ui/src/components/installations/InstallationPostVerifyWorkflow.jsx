@@ -222,6 +222,7 @@ export default function InstallationPostVerifyWorkflow({
   const [serviceReviewRemarks, setServiceReviewRemarks] = useState("");
 
   const [submitMsg, setSubmitMsg] = useState("");
+  const [submitTone, setSubmitTone] = useState("info");
   const [completeErr, setCompleteErr] = useState("");
   const [approvalErr, setApprovalErr] = useState("");
   const [busy, setBusy] = useState(false);
@@ -310,6 +311,7 @@ export default function InstallationPostVerifyWorkflow({
     setApprovalErr("");
     onError?.("");
     setSubmitMsg("");
+    setSubmitTone("info");
 
     if (!adminForm.payment_amount && adminForm.payment_amount !== 0 && adminForm.payment_amount !== "0") {
       const message = "Approved payment amount is required";
@@ -353,6 +355,7 @@ export default function InstallationPostVerifyWorkflow({
       }
       if (adminForm.proof_document) fd.append("document", adminForm.proof_document);
       await installationsApi.updateStatus(installationId, fd);
+      setSubmitTone("success");
       setSubmitMsg(isAdminFinalApproval || isFinalPaymentApproval ? "Payment approved. Installation completed." : "Payment stage approved. Forwarded to the next approver.");
       if (onUpdated) await onUpdated();
     } catch (error) {
@@ -370,6 +373,7 @@ export default function InstallationPostVerifyWorkflow({
     onBusy?.(true);
     onError?.("");
     setSubmitMsg("");
+    setSubmitTone("info");
     try {
       await action();
       if (onUpdated) await onUpdated();
@@ -402,6 +406,7 @@ export default function InstallationPostVerifyWorkflow({
       if (remarks) body.append("remarks", remarks);
       await installationsApi.reviewCompletion(installationId, body);
       setCompletionReviewRemarks("");
+      setSubmitTone(decision === "Approve" ? "success" : "info");
       setSubmitMsg(decision === "Approve" ? "Completion approved. Payment request is now available." : "Returned to engineer for correction.");
     });
   }
@@ -420,6 +425,7 @@ export default function InstallationPostVerifyWorkflow({
       if (remarks) body.append("remarks", remarks);
       await installationsApi.reviewServiceObservation(installationId, body);
       setServiceReviewRemarks("");
+      setSubmitTone(decision === "approve" ? "success" : "info");
       setSubmitMsg(decision === "approve" ? "Observation reviewed. Engineer can continue installation." : "Returned to engineer for correction.");
     });
   }
@@ -1056,7 +1062,18 @@ export default function InstallationPostVerifyWorkflow({
       )}
 
       {submitMsg && (
-        <div className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-800">
+        <div
+          className={`flex items-center gap-2 rounded-md border px-3 py-2 text-sm ${
+            submitTone === "success"
+              ? "border-emerald-300 bg-emerald-50 font-medium text-emerald-800"
+              : "border-sky-200 bg-sky-50 text-sky-800"
+          }`}
+        >
+          {submitTone === "success" && (
+            <svg className="h-4 w-4 flex-none text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+            </svg>
+          )}
           {submitMsg}
         </div>
       )}
