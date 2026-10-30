@@ -20,6 +20,7 @@ from app.schemas.dashboard import (
     InstallationPaymentStageOut,
     InstallationSummary,
     OrdersSummary,
+    PaymentQueueItem,
     ReadyToPayItem,
     ServiceSummary,
 )
@@ -29,6 +30,7 @@ from app.services.engineer_service_scope import (
 )
 from app.services.complaint_access import apply_complaint_assignment_scope
 from app.services.installation_stages import stage_counts
+from app.services.payment_approval_workflow import installation_payment_approval_stages, stage_index
 from app.services.role_access import is_operations_admin, is_system_admin
 from app.services.service_access import is_service_desk_user
 from app.services.permissions import can_act_on, sub_module_scope
@@ -202,6 +204,71 @@ def _days_waiting(requested_at: datetime | None, now: datetime) -> int:
     if requested_at.tzinfo is None:
         requested_at = requested_at.replace(tzinfo=timezone.utc)
     return max(0, (now - requested_at).days)
+
+
+#: Which role sits at which stage of the installation payment chain -- a role not in here never
+#: has a stage of its own to act on, so my_payment_queue() returns nothing for it.
+_PAYMENT_QUEUE_OWN_STAGE = {
+    "service": "service_role",
+    "indcool_service": "service_role",
+    "service_manager": "service_manager",
+    "sub_admin": "sub_admin",
+    "accounts": "accounts",
+    "audit": "audit",
+}
+
+
+@router.get("/my-payment-queue", response_model=list[PaymentQueueItem])
+def my_payment_queue(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Everything sitting at the viewer's own stage of the installation payment chain, with a
+    clear next-stop label (Service Manager's own next stop branches on amount, so this is computed
+    per row rather than hard-coded) and the same approve/return actions the record's own detail
+    page already has. System Admin sees every non-final stage at once, for oversight -- they can
+    act on any of it anyway (the admin bypass in installations.update_status)."""
+    role = canonical_role_key(user.role)
+    own_stage = _PAYMENT_QUEUE_OWN_STAGE.get(role)
+    if own_stage is None and not is_system_admin(user):
+        return []
+
+    now = datetime.now(timezone.utc)
+    stmt = select(InstallationRequest, User.name).outerjoin(User, User.id == InstallationRequest.assigned_engineer).where(
+        InstallationRequest.status == "Payment Pending",
+    )
+    if own_stage is not None:
+        stmt = stmt.where(InstallationRequest.payment_approval_stage == own_stage)
+    else:
+        stmt = stmt.where(InstallationRequest.payment_approval_stage != "admin")
+    if is_service_desk_user(user):
+        # A bare "service" user can only act once the Service Manager has routed this
+        # installation to them specifically -- same narrowing _load_visible() enforces on the
+        # actual approve/return call, so this list never shows something they'd then fail to act on.
+        stmt = stmt.where(InstallationRequest.assigned_service_user_id == user.id)
+
+    items: list[PaymentQueueItem] = []
+    for inst, engineer_name in db.execute(stmt).all():
+        amount = float(inst.payment_amount_requested) if inst.payment_amount_requested is not None else None
+        stages = installation_payment_approval_stages(amount)
+        idx = stage_index(inst.payment_approval_stage, stages)
+        next_label = stages[idx + 1].label if idx + 1 < len(stages) else None
+        requested_at = inst.payment_requested_at
+        days = _days_waiting(requested_at, now)
+        items.append(PaymentQueueItem(
+            entity_id=inst.id,
+            label=f"#{inst.id}",
+            customer_name=inst.customer_name,
+            engineer_name=engineer_name,
+            amount=amount or 0.0,
+            payment_type=inst.payment_type_requested,
+            requested_at=requested_at,
+            days_waiting=days,
+            urgency=_payment_urgency(days),
+            stage_key=inst.payment_approval_stage or "",
+            stage_label=stages[idx].label if idx < len(stages) else (inst.payment_approval_stage_label or ""),
+            next_stage_label=next_label,
+            href=f"/installations/{inst.id}",
+        ))
+    items.sort(key=lambda i: -i.days_waiting)
+    return items
 
 
 @router.get("/ready-to-pay", response_model=list[ReadyToPayItem])

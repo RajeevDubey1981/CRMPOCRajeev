@@ -2,8 +2,9 @@ import { roleKey as canonicalRoleKey } from "../utils/roles.js";
 import { useState } from "react";
 import { useAuth } from "../auth/AuthContext.jsx";
 import { NavLink } from "react-router-dom";
-import { canApproveServiceUnits, canForwardServiceUnits, isIndcoolServiceRole, isOperationsAdminRole, isSystemAdminRole } from "../utils/roles.js";
+import { canActOnInstallationPayments, canApproveServiceUnits, canForwardServiceUnits, isIndcoolServiceRole, isOperationsAdminRole, isServiceTeamRole, isSubAdminRole, isSystemAdminRole } from "../utils/roles.js";
 import useQuerySummary from "../components/queries/useQuerySummary.js";
+import usePaymentQueueCount from "../components/installations/usePaymentQueueCount.js";
 
 /** w-64 (16rem) reduced by 40% → 9.6rem */
 const SIDEBAR_WIDTH_CLASS = "w-[9.6rem] min-w-[9.6rem]";
@@ -34,6 +35,7 @@ const NAV = [
   { to: "/serials/history", label: "Serial History", operationsOnly: true },
   { to: "/serials/historical-installation", label: "Historical Installation", module: "historical_installations" },
   { to: "/installations", label: "Installation Requests", module: "installations" },
+  { to: "/installations/payment-queue", label: "Payment Queue", paymentQueueAccess: true, badge: "paymentQueue" },
   { to: "/claims", label: "Claims", module: "claims" },
   {
     label: "Bids",
@@ -126,6 +128,8 @@ export default function Sidebar({ collapsed, mobileOpen = false, onNavigate }) {
   const isServiceReviewer = canForwardServiceUnits(role) || canApproveServiceUnits(role);
 
   const isSystemAdmin = isSystemAdminRole(user?.role);
+  const canSeePaymentQueue = isServiceTeamRole(user?.role) || isSubAdminRole(user?.role) || canActOnInstallationPayments(user?.role);
+  const paymentQueueCount = usePaymentQueueCount(canSeePaymentQueue);
 
   const permissions = Array.isArray(user?.permissions) ? user.permissions : [];
   const hasPermissionPayload = permissions.length > 0;
@@ -146,6 +150,7 @@ export default function Sidebar({ collapsed, mobileOpen = false, onNavigate }) {
     if (item.engineerOnly) return isEngineer;
     if (item.reviewerOnly) return isServiceReviewer;
     if (item.ledgerAccess) return canView("vendor_ledger") || canView("engineer_ledger") || canView("ledger_audit") || (!isVendor && !isEngineer && canView("orders"));
+    if (item.paymentQueueAccess) return canSeePaymentQueue;
     if (item.operationsOnly) return isCourierAdmin;
     if (item.systemAdminOnly) return isSystemAdmin;
     if (item.adminOnly) return isSystemAdmin;
@@ -184,7 +189,14 @@ export default function Sidebar({ collapsed, mobileOpen = false, onNavigate }) {
           item.children ? (
             <Group key={item.label} label={item.label} children={item.children} onNavigate={onNavigate} />
           ) : (
-            <LeafLink key={item.label} to={item.to} label={item.label} disabled={item.disabled} onNavigate={onNavigate} badge={item.badge === "queries" ? queriesSummary?.unread : 0} />
+            <LeafLink
+              key={item.label}
+              to={item.to}
+              label={item.label}
+              disabled={item.disabled}
+              onNavigate={onNavigate}
+              badge={item.badge === "queries" ? queriesSummary?.unread : item.badge === "paymentQueue" ? paymentQueueCount : 0}
+            />
           ),
         )}
       </nav>

@@ -60,6 +60,22 @@ class InstallationPaymentStageOut(BaseModel):
     is_mine: bool = False
 
 
+class PaymentQueueItem(BaseModel):
+    entity_id: int
+    label: str
+    customer_name: str | None = None
+    engineer_name: str | None = None
+    amount: float
+    payment_type: str | None = None
+    requested_at: datetime | None = None
+    days_waiting: int
+    urgency: str  # "urgent" | "soon" | "ontime"
+    stage_key: str
+    stage_label: str
+    next_stage_label: str | None = None  # None only at the final (admin) stage
+    href: str
+
+
 class ServiceSummary(BaseModel):
     new_requests: int
     unassigned: int
