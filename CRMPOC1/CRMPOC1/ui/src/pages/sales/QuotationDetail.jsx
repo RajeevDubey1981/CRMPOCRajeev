@@ -100,6 +100,33 @@ function Paper({ q }) {
   );
 }
 
+// Mirrors the backend's calc() (app/sales/quotes.py) so the preview paper updates as the Sales
+// person types, instead of only after Save reloads the saved-on-the-server totals.
+function calcPreview(form, q) {
+  const usd = q.currency === "USD";
+  let gross = 0, disc = 0, taxable = 0, tax = 0;
+  const lines = form.items.map((it, i) => {
+    const rate = Number(it.rate) || 0;
+    const qty = Number(it.qty) || 0;
+    const discPct = Number(it.discount_pct) || 0;
+    const gstPct = usd ? 0 : (Number(it.gst_pct) || 0);
+    const g = rate * qty;
+    const dd = (g * discPct) / 100;
+    const t = g - dd;
+    const x = (t * gstPct) / 100;
+    gross += g; disc += dd; taxable += t; tax += x;
+    return { id: it.item_code ? `${it.item_code}-${i}` : `line-${i}`, item_code: it.item_code, item_name: it.item_name, hsn: it.hsn, qty, rate, discount_pct: discPct, gst_pct: gstPct, taxable: t, tax: x, amount: t + x };
+  });
+  const overallDiscPct = gross ? (disc * 100) / gross : 0;
+  return {
+    ...q,
+    party: form.party, address: form.address, state: form.state, gstin: form.gstin,
+    reference_line: form.reference_line, valid_days: Number(form.valid_days) || q.valid_days,
+    payment_terms: form.payment_terms, delivery_terms: form.delivery_terms, warranty_terms: form.warranty_terms,
+    lines, gross, discount: disc, taxable, tax, total: taxable + tax, discount_pct: overallDiscPct,
+  };
+}
+
 function ReasonModal({ title, text, onClose, onOk }) {
   const [reason, setReason] = useState("");
   return (
@@ -123,7 +150,7 @@ export default function QuotationDetail() {
   const [found, setFound] = useState([]);
 
   useEffect(() => {
-    if (q) setForm({ party: q.party, address: q.address || "", state: q.state || "", gstin: q.gstin || "", valid_days: q.valid_days, payment_terms: q.payment_terms || "", delivery_terms: q.delivery_terms || "", warranty_terms: q.warranty_terms || "", note: q.note || "", items: q.lines.map((l) => ({ item_code: l.item_code, item_name: l.item_name, hsn: l.hsn, qty: l.qty, rate: l.rate, discount_pct: l.discount_pct, gst_pct: l.gst_pct })) });
+    if (q) setForm({ party: q.party, address: q.address || "", state: q.state || "", gstin: q.gstin || "", reference_line: q.reference_line || "", valid_days: q.valid_days, payment_terms: q.payment_terms || "", delivery_terms: q.delivery_terms || "", warranty_terms: q.warranty_terms || "", note: q.note || "", items: q.lines.map((l) => ({ item_code: l.item_code, item_name: l.item_name, hsn: l.hsn, qty: l.qty, rate: l.rate, discount_pct: l.discount_pct, gst_pct: l.gst_pct })) });
   }, [q]);
   useEffect(() => {
     if (find.trim().length < 2) { setFound([]); return undefined; }
@@ -141,6 +168,7 @@ export default function QuotationDetail() {
     setFind(""); setFound([]);
   };
   const body = useMemo(() => form && ({ ...form, valid_days: Number(form.valid_days), items: form.items.map((i) => ({ ...i, qty: Number(i.qty), rate: Number(i.rate), discount_pct: Number(i.discount_pct), gst_pct: Number(i.gst_pct) })) }), [form]);
+  const previewQ = useMemo(() => (form && q ? calcPreview(form, q) : q), [form, q]);
 
   async function run(fn, ok) {
     setBusy(true); setMsg("");
@@ -177,6 +205,7 @@ export default function QuotationDetail() {
           <section className="rounded-lg border border-slate-200 bg-white p-4">
             <h3 className="mb-2 text-sm font-semibold">{editable ? "Make the quotation" : "Quotation details"}</h3>
             <Field label="Customer"><input className={fieldClass} value={form.party} disabled={!editable} onChange={(e) => setForm({ ...form, party: e.target.value })} /></Field>
+            <Field label="Reference / subject line"><input className={fieldClass} value={form.reference_line} disabled={!editable} onChange={(e) => setForm({ ...form, reference_line: e.target.value })} placeholder="e.g. GeM bid: what the customer wants and why" /></Field>
             <div className="grid gap-x-3 sm:grid-cols-2">
               <Field label="Address"><input className={fieldClass} value={form.address} disabled={!editable} onChange={(e) => setForm({ ...form, address: e.target.value })} /></Field>
               <Field label={usd ? "Country (export: no GST)" : "State (decides CGST + SGST or IGST)"}><input className={fieldClass} value={form.state} disabled={!editable} onChange={(e) => setForm({ ...form, state: e.target.value })} /></Field>
@@ -188,7 +217,7 @@ export default function QuotationDetail() {
               {form.items.map((it, i) => (
                 <div key={i} className="rounded border border-slate-200 bg-slate-50 p-2">
                   <div className="flex items-start gap-1">
-                    <input className={fieldClass} value={it.item_name} disabled={!editable} onChange={(e) => setItem(i, "item_name", e.target.value)} aria-label="Item" />
+                    <input className={fieldClass} value={it.item_name} disabled={!editable} onChange={(e) => setItem(i, "item_name", e.target.value)} aria-label="Item" placeholder={it.item_code ? "" : "Type the item name"} />
                     {editable && form.items.length > 1 && <button type="button" aria-label="Remove line" className="px-1 text-rose-600" onClick={() => setForm((st) => ({ ...st, items: st.items.filter((_x, n) => n !== i) }))}>✕</button>}
                   </div>
                   <div className="mb-1 text-[10px] text-slate-400">{it.item_code} {it.hsn ? `· HSN ${it.hsn}` : ""}</div>
@@ -205,7 +234,7 @@ export default function QuotationDetail() {
               <div className="relative mt-2">
                 <input className={fieldClass} placeholder="Add an item: type its code or name from the Item Master" value={find} onChange={(e) => setFind(e.target.value)} />
                 {found.length > 0 && <ul className="absolute z-10 mt-1 max-h-56 w-full overflow-y-auto rounded border border-slate-200 bg-white text-sm shadow-lg">{found.map((it) => <li key={it.item_code}><button type="button" className="block w-full px-3 py-1.5 text-left hover:bg-sky-50" onClick={() => addItem(it)}>{it.item_name} <span className="text-xs text-slate-500">{it.item_code} · MRP ₹{it.mrp}</span></button></li>)}</ul>}
-                <button type="button" className="mt-1 text-xs text-indcool-blue hover:underline" onClick={() => setForm((st) => ({ ...st, items: [...st.items, { item_code: "", item_name: "New item", hsn: "", qty: 1, rate: 0, discount_pct: 0, gst_pct: 18 }] }))}>+ Add a line by hand</button>
+                <button type="button" className="mt-1.5 rounded border border-indcool-blue px-2 py-1 text-xs font-medium text-indcool-blue hover:bg-sky-50" onClick={() => setForm((st) => ({ ...st, items: [...st.items, { item_code: "", item_name: "", hsn: "", qty: 1, rate: 0, discount_pct: 0, gst_pct: 18 }] }))}>+ Add a custom item (not in Item Master)</button>
               </div>
             )}
             <Field label="Payment terms"><textarea className={fieldClass} rows={2} value={form.payment_terms} disabled={!editable} onChange={(e) => setForm({ ...form, payment_terms: e.target.value })} /></Field>
@@ -219,7 +248,7 @@ export default function QuotationDetail() {
             <ol className="space-y-2 border-l-2 border-slate-200 pl-3 text-sm">{q.history.map((h, i) => <li key={i}>{h.text}<div className="text-xs text-slate-400">{fmtDateTime(h.at)} · {h.by}</div></li>)}</ol>
           </section>
         </div>
-        <div><p className="mb-1 text-xs text-slate-500 print:hidden">The quotation as the customer gets it:</p><Paper q={q} /></div>
+        <div><p className="mb-1 text-xs text-slate-500 print:hidden">The quotation as the customer gets it{editable ? " (updates as you type, below)" : ""}:</p><Paper q={previewQ} /></div>
       </div>
       {reasonFor && <ReasonModal title={reasonFor.title} text={reasonFor.text} onClose={() => setReasonFor(null)} onOk={(r) => { const a = reasonFor.action; setReasonFor(null); act(a, r); }} />}
     </div>
