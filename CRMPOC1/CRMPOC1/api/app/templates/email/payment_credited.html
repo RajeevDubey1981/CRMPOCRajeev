@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html>
+<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #1e293b;">
+  <p>Dear {{ recipient_name }},</p>
+  <p>Good news &mdash; your payment has been credited! Thank you for your hard work.</p>
+  <p style="font-size: 22px; font-weight: bold; color: #047857; margin: 16px 0;">{{ amount_display }} credited to your account</p>
+  <table style="border-collapse: collapse; margin: 16px 0; width: 100%; max-width: 640px;">
+    {{ details_html }}
+  </table>
+  <p>We appreciate everything you do for our customers. Keep up the great work!</p>
+  <p>
+    For assistance, contact our helpdesk at
+    <a href="mailto:{{ helpdesk_email }}">{{ helpdesk_email }}</a>
+    or call <strong>{{ toll_free_number }}</strong>.
+  </p>
+  <p>Warm regards,<br>{{ from_name }}</p>
+</body>
+</html>

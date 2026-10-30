@@ -97,6 +97,7 @@ from app.services.workflow_notifications import (
     after_service_status_change,
     notify_customer_happy_code,
     notify_engineer_service_assigned,
+    notify_payment_credited,
     notify_vendor_service_assigned,
 )
 from app.services.role_access import is_operations_admin, is_service_team, is_system_admin, role_key
@@ -3283,6 +3284,25 @@ async def approve_service_payment(
     latest_payment.updated_at = _now()
     if body.remarks:
         latest_payment.remarks = body.remarks
+
+    is_vendor_payee = latest_payment.requested_by_type == "vendor"
+    if is_vendor_payee:
+        payee_vendor = db.get(Vendor, latest_payment.requested_by_vendor_id) if latest_payment.requested_by_vendor_id else None
+        payee_email, payee_name = (payee_vendor.email, payee_vendor.name_of_firm) if payee_vendor else (None, None)
+    else:
+        payee_user = db.get(User, latest_payment.requested_by_user_id) if latest_payment.requested_by_user_id else None
+        payee_email, payee_name = (payee_user.email, payee_user.name) if payee_user else (None, None)
+    notify_payment_credited(
+        background_tasks,
+        payee_email=payee_email,
+        payee_name=payee_name,
+        module="service",
+        label=service.request_no or f"#{service.id}",
+        amount=float(body.approved_amount or 0),
+        payment_type=payment_type,
+        payment_reference=latest_payment.payment_reference,
+        payment_paid_on=latest_payment.payment_paid_on,
+    )
 
     if latest_payment.service_request_unit_id:
         unit = db.get(ServiceRequestUnit, latest_payment.service_request_unit_id)

@@ -2,7 +2,7 @@ import json
 from datetime import date, datetime, timedelta, timezone
 
 from app.services.role_access import role_key as canonical_role_key
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile, status
 from sqlalchemy import Select, func, or_, select
 from sqlalchemy.orm import Session
 
@@ -37,6 +37,7 @@ from app.services.complaint_access import apply_complaint_assignment_scope
 from app.services.file_service import save_upload
 from app.services.installation_stages import stage_counts
 from app.services.installation_workflow import log_installation_action
+from app.services.workflow_notifications import notify_payment_credited
 from app.services.payment_approval_workflow import installation_payment_approval_stages, payment_approval_stages, stage_index
 from app.services.role_access import is_operations_admin, is_system_admin
 from app.services.service_access import is_service_desk_user
@@ -458,6 +459,7 @@ def ready_to_pay(
 
 @router.post("/ready-to-pay/bulk-pay", response_model=BulkPayResult)
 async def bulk_pay_ready_to_pay(
+    background_tasks: BackgroundTasks,
     refs: str = Form(...),  # JSON list of {"module": "installation"|"service", "entity_id": int, "payment_request_id": int|null}
     payment_type: str = Form(...),
     payment_reference: str = Form(...),
@@ -579,6 +581,20 @@ async def bulk_pay_ready_to_pay(
 
     if installation_rows:
         _create_payment_transaction(db, rows=installation_rows, actor=user, payment_type=payment_type)
+        engineer = db.get(User, payee_id)  # payee_type is always "engineer" for installations
+        if engineer is not None:
+            for inst in installation_rows:
+                notify_payment_credited(
+                    background_tasks,
+                    payee_email=engineer.email,
+                    payee_name=engineer.name,
+                    module="installation",
+                    label=f"#{inst.id}",
+                    amount=float(inst.payment_amount_paid or inst.payment_amount_requested or 0),
+                    payment_type=payment_type,
+                    payment_reference=normalized_reference,
+                    payment_paid_on=paid_on_date,
+                )
 
     service_transaction_amount = 0.0
     for payment, service in service_items:
@@ -645,6 +661,26 @@ async def bulk_pay_ready_to_pay(
                 entry_date=today,
                 created_by_user_id=None,
             ))
+
+        if payee_type == "engineer":
+            payee = db.get(User, payee_id)
+            payee_email, payee_name = (payee.email, payee.name) if payee else (None, None)
+        else:
+            payee = db.get(Vendor, payee_id)
+            payee_email, payee_name = (payee.email, payee.name_of_firm) if payee else (None, None)
+        if payee_email:
+            for payment, service in service_items:
+                notify_payment_credited(
+                    background_tasks,
+                    payee_email=payee_email,
+                    payee_name=payee_name,
+                    module="service",
+                    label=service.request_no or f"#{service.id}",
+                    amount=float(payment.approved_amount or 0),
+                    payment_type=payment_type,
+                    payment_reference=normalized_reference,
+                    payment_paid_on=paid_on_date,
+                )
 
     db.commit()
     return BulkPayResult(paid=paid_count, total_amount=total_amount)

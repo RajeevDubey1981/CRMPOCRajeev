@@ -66,6 +66,7 @@ from app.services.serial_history import EVENT_TYPES, create_serial_history_event
 from app.services.workflow_notifications import (
     notify_customer_installation_update,
     notify_engineer_installation_assigned,
+    notify_payment_credited,
 )
 from app.services.ledger_events import post_job_payout
 from app.services.payment_approval_workflow import (
@@ -1726,6 +1727,19 @@ async def update_status(
             actor=user,
             payment_type=inst.payment_type_paid or inst.payment_type_requested or "Cash",
         )
+        engineer = db.get(User, inst.assigned_engineer) if inst.assigned_engineer else None
+        if engineer is not None:
+            notify_payment_credited(
+                background_tasks,
+                payee_email=engineer.email,
+                payee_name=engineer.name,
+                module="installation",
+                label=f"#{inst.id}",
+                amount=float(inst.payment_amount_paid or inst.payment_amount_requested or 0),
+                payment_type=inst.payment_type_paid or inst.payment_type_requested,
+                payment_reference=inst.payment_reference,
+                payment_paid_on=inst.payment_paid_on,
+            )
     if old_status != "Payment Pending" and inst.status == "Payment Pending":
         notify_payment_stage(
             db,
@@ -1787,6 +1801,7 @@ async def update_status(
 
 @router.post("/bulk-status-update", response_model=list[InstallationOut])
 async def bulk_update_status(
+    background_tasks: BackgroundTasks,
     installation_ids: str = Form(...),
     new_status: str = Form(...),
     installation_date: str | None = Form(None),
@@ -1933,6 +1948,20 @@ async def bulk_update_status(
                 actor=user,
                 payment_type=completed_rows[0].payment_type_paid or completed_rows[0].payment_type_requested or "Cash",
             )
+            for inst in completed_rows:
+                engineer = db.get(User, inst.assigned_engineer) if inst.assigned_engineer else None
+                if engineer is not None:
+                    notify_payment_credited(
+                        background_tasks,
+                        payee_email=engineer.email,
+                        payee_name=engineer.name,
+                        module="installation",
+                        label=f"#{inst.id}",
+                        amount=float(inst.payment_amount_paid or inst.payment_amount_requested or 0),
+                        payment_type=inst.payment_type_paid or inst.payment_type_requested,
+                        payment_reference=inst.payment_reference,
+                        payment_paid_on=inst.payment_paid_on,
+                    )
 
     for inst in rows:
         _sync_order_completion_state(db, inst)

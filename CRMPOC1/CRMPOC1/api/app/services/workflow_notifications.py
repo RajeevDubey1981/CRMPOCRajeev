@@ -444,6 +444,81 @@ def notify_engineer_installation_assigned(
     )
 
 
+def _send_payment_credited_email(
+    to: str | None,
+    *,
+    recipient_name: str,
+    amount_display: str,
+    details: list[tuple[str, str]],
+) -> bool:
+    email = (to or "").strip()
+    if not email:
+        return False
+    details_html = _details_html(details)
+    text_lines = [
+        f"Dear {recipient_name},",
+        "",
+        f"Good news -- your payment of {amount_display} has been credited. Thank you for your hard work!",
+        "",
+    ]
+    for label, value in details:
+        if value:
+            text_lines.append(f"{label}: {value}")
+    text_lines.extend([
+        "",
+        f"For assistance, contact {HELPDESK_EMAIL} or call {TOLL_FREE_NUMBER}.",
+        "",
+        f"Warm regards,\n{_from_name()}",
+    ])
+    return send_template_email(
+        to=email,
+        template="payment_credited",
+        context={
+            "recipient_name": recipient_name,
+            "amount_display": amount_display,
+            "details_html": details_html,
+            "helpdesk_email": HELPDESK_EMAIL,
+            "toll_free_number": TOLL_FREE_NUMBER,
+            "from_name": _from_name(),
+            "text_body": "\n".join(text_lines),
+        },
+        subject=f"Payment credited — {amount_display}",
+    )
+
+
+def notify_payment_credited(
+    background_tasks: BackgroundTasks | None,
+    *,
+    payee_email: str | None,
+    payee_name: str | None,
+    module: str,  # "installation" | "service"
+    label: str,  # e.g. "#1234" or a service's own request number
+    amount: float,
+    payment_type: str | None = None,
+    payment_reference: str | None = None,
+    payment_paid_on=None,  # date | None
+) -> None:
+    """A thank-you note to whoever just got paid (engineer or vendor) once a payment is finalized
+    -- a single release or a pooled one, for either an installation or a service."""
+    if not payee_email or not amount:
+        return
+    module_label = "Installation" if module == "installation" else "Service"
+    amount_display = f"₹{amount:,.2f}"
+    _queue(
+        background_tasks,
+        _send_payment_credited_email,
+        payee_email,
+        recipient_name=(payee_name or "").strip() or "Team Member",
+        amount_display=amount_display,
+        details=[
+            (f"{module_label} ID", label),
+            ("Payment Type", payment_type or "—"),
+            ("Payment Reference", payment_reference or "—"),
+            ("Paid On", payment_paid_on.strftime("%d %b %Y") if payment_paid_on else "—"),
+        ],
+    )
+
+
 def notify_customer_installation_update(
     background_tasks: BackgroundTasks | None,
     *,
