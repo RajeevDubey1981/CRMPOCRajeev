@@ -197,6 +197,8 @@ class ServicePaymentRequest(Base, TimestampMixin):
     processed_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     payment_transaction_id: Mapped[int | None] = mapped_column(ForeignKey("payment_transactions.id"), nullable=True)
     service_request_unit_id: Mapped[int | None] = mapped_column(ForeignKey("service_request_units.id"), nullable=True, index=True)
+    payment_reference: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    payment_paid_on: Mapped[date | None] = mapped_column(Date, nullable=True)
 
 
 class ServiceNotification(Base, TimestampMixin):

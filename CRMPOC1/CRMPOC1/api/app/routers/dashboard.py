@@ -1,20 +1,24 @@
+import json
 from datetime import date, datetime, timedelta, timezone
 
 from app.services.role_access import role_key as canonical_role_key
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from sqlalchemy import Select, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.deps import get_current_user
+from app.models.account_ledger import AccountLedgerEntry
 from app.models.complaint import Complaint
 from app.models.installation import InstallationRequest
 from app.models.order import Order
+from app.models.payment import PaymentTransaction
 from app.models.payment_approval import PaymentApprovalLog
 from app.models.service import ServicePaymentRequest, ServiceRequest, ServiceRequestUnit
 from app.models.user import User
 from app.models.vendor import Vendor
 from app.schemas.dashboard import (
+    BulkPayResult,
     ComplaintChart,
     ComplaintChartPoint,
     ComplaintsSummary,
@@ -30,11 +34,20 @@ from app.services.engineer_service_scope import (
     engineer_visible_service_filter,
 )
 from app.services.complaint_access import apply_complaint_assignment_scope
+from app.services.file_service import save_upload
 from app.services.installation_stages import stage_counts
+from app.services.installation_workflow import log_installation_action
 from app.services.payment_approval_workflow import installation_payment_approval_stages, payment_approval_stages, stage_index
 from app.services.role_access import is_operations_admin, is_system_admin
 from app.services.service_access import is_service_desk_user
+from app.services.service_unit_workflow import sync_aggregate_service_status
 from app.services.permissions import can_act_on, sub_module_scope
+
+# Reused from their own routers rather than re-implemented, so a pooled payment finalizes an
+# installation or a service exactly the same way a single one already does (bank-details check,
+# UTR requirement, the per-row PaymentTransaction/order-completion bookkeeping included).
+from app.routers.installations import _apply_payment_transition, _create_payment_transaction, _sync_order_completion_state
+from app.routers.services import _log_status as _log_service_status
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 
@@ -389,6 +402,7 @@ def ready_to_pay(
                 label=f"#{inst.id}",
                 payee_name=engineer_name,
                 payee_type="Engineer" if engineer_name else None,
+                payee_id=inst.assigned_engineer,
                 requested_at=requested_at,
                 amount=float(inst.payment_amount_requested or 0),
                 days_waiting=days,
@@ -419,6 +433,8 @@ def ready_to_pay(
                 label=request_no or f"#{payment.service_request_id}",
                 payee_name=vendor_name if is_vendor else engineer_name,
                 payee_type="Vendor" if is_vendor else ("Engineer" if engineer_name else None),
+                payee_id=payment.requested_by_vendor_id if is_vendor else payment.requested_by_user_id,
+                payment_request_id=payment.id,
                 requested_at=requested_at,
                 amount=float(payment.total_requested_amount or 0),
                 days_waiting=days,
@@ -438,6 +454,200 @@ def ready_to_pay(
 
     items.sort(key=lambda i: -i.days_waiting)
     return items
+
+
+@router.post("/ready-to-pay/bulk-pay", response_model=BulkPayResult)
+async def bulk_pay_ready_to_pay(
+    refs: str = Form(...),  # JSON list of {"module": "installation"|"service", "entity_id": int, "payment_request_id": int|null}
+    payment_type: str = Form(...),
+    payment_reference: str = Form(...),
+    payment_paid_on: str = Form(...),
+    proof_document: UploadFile | None = File(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """One bank transfer covering several Ready to Pay items for the same engineer or vendor --
+    the amount shown is the pool (what was actually transferred); each item is still recorded paid
+    for its own original amount, all sharing the one reference, date and (optional) proof. Every
+    item must already be sitting at the Admin stage (i.e. actually be a Ready to Pay row) -- this
+    never lets a payment skip Accounts/Audit, it only lets Admin settle several already-cleared
+    ones in one go."""
+    if not is_system_admin(user):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only Admin can release a pooled payment")
+
+    try:
+        parsed_refs = json.loads(refs)
+    except (TypeError, ValueError):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid selection")
+    if not isinstance(parsed_refs, list) or not parsed_refs:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Nothing selected")
+    if payment_type not in ("Cash", "UPI"):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Payment type must be Cash or UPI")
+    normalized_reference = payment_reference.strip()
+    if not normalized_reference:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Payment reference / UTR is required")
+    try:
+        paid_on_date = date.fromisoformat(payment_paid_on)
+    except ValueError:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Paid on date must be a valid date")
+
+    installation_rows: list[InstallationRequest] = []
+    service_items: list[tuple[ServicePaymentRequest, ServiceRequest]] = []
+    payee_keys: set[tuple[str, int]] = set()
+
+    for ref in parsed_refs:
+        module = ref.get("module") if isinstance(ref, dict) else None
+        entity_id = ref.get("entity_id") if isinstance(ref, dict) else None
+        if module == "installation":
+            inst = db.get(InstallationRequest, entity_id)
+            if inst is None or inst.status != "Payment Pending" or inst.payment_approval_stage != "admin":
+                raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Installation #{entity_id} is not ready to pay")
+            if not inst.assigned_engineer:
+                raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Installation #{entity_id} has no engineer to pay")
+            installation_rows.append(inst)
+            payee_keys.add(("engineer", inst.assigned_engineer))
+        elif module == "service":
+            payment_request_id = ref.get("payment_request_id")
+            payment = db.get(ServicePaymentRequest, payment_request_id) if payment_request_id else None
+            if payment is None or payment.service_request_id != entity_id:
+                raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Service payment for #{entity_id} not found")
+            if payment.approval_status != "Pending" or payment.approval_stage != "admin":
+                raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Service #{entity_id} is not ready to pay")
+            service = db.get(ServiceRequest, entity_id)
+            if service is None:
+                raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Service #{entity_id} not found")
+            is_vendor = payment.requested_by_type == "vendor"
+            payee_id = payment.requested_by_vendor_id if is_vendor else payment.requested_by_user_id
+            if not payee_id:
+                raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Service #{entity_id} has no engineer or vendor to pay")
+            service_items.append((payment, service))
+            payee_keys.add(("vendor" if is_vendor else "engineer", payee_id))
+        else:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid selection")
+
+    if len(payee_keys) > 1:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "All selected payments must be for the same engineer or vendor")
+    payee_type, payee_id = next(iter(payee_keys))
+
+    if payee_type == "engineer":
+        engineer = db.get(User, payee_id)
+        if engineer is None or not (engineer.bank_account_number or "").strip():
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                "This engineer has no bank account details on file. Add them (Users -> Edit) before paying.",
+            )
+
+    if payment_type == "UPI" and not (proof_document is not None and proof_document.filename):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Upload Payment Proof / Document is required when payment type is UPI")
+
+    proof_path = None
+    if proof_document is not None and proof_document.filename:
+        proof_path = await save_upload(proof_document, module="payments")
+
+    now = datetime.now(timezone.utc)
+    paid_count = 0
+    total_amount = 0.0
+
+    for inst in installation_rows:
+        amount = float(inst.payment_amount_requested or 0)
+        old_status = inst.status
+        inst.status = _apply_payment_transition(
+            db,
+            inst,
+            requested_status="Completed",
+            actor=user,
+            installation_date=None,
+            payment_amount=None,
+            payment_type=payment_type,
+            payment_reference=normalized_reference,
+            payment_paid_on=payment_paid_on,
+        )
+        log_installation_action(
+            db,
+            inst,
+            action="Payment Approved (pooled)",
+            user=user,
+            old_status=old_status,
+            new_status=inst.status,
+            remarks=f"Part of a pooled payment of {len(parsed_refs)} request(s), ref {normalized_reference}",
+        )
+        if proof_path:
+            inst.payment_proof_file_path = proof_path
+        _sync_order_completion_state(db, inst)
+        paid_count += 1
+        total_amount += amount
+
+    if installation_rows:
+        _create_payment_transaction(db, rows=installation_rows, actor=user, payment_type=payment_type)
+
+    service_transaction_amount = 0.0
+    for payment, service in service_items:
+        amount = float(payment.total_requested_amount or 0)
+        old_status = service.status
+        payment.status = "Processed"
+        payment.approval_status = "Approved"
+        payment.approval_stage = "admin"
+        payment.approval_stage_label = "Completed"
+        payment.next_approver_role = None
+        payment.approved_amount = amount
+        payment.payment_type = payment_type
+        payment.payment_reference = normalized_reference
+        payment.payment_paid_on = paid_on_date
+        payment.processed_at = now
+        payment.processed_by_user_id = user.id
+        payment.updated_at = now
+        if proof_path:
+            payment.payment_proof_file_path = proof_path
+        if payment.service_request_unit_id:
+            unit = db.get(ServiceRequestUnit, payment.service_request_unit_id)
+            if unit is not None:
+                unit.unit_status = "Payment Completed"
+            sync_aggregate_service_status(db, service)
+        else:
+            service.status = "Payment Completed"
+            service.status_date = now
+        _log_service_status(
+            db,
+            service,
+            action="Payment Approved (pooled)",
+            user=user,
+            old_status=old_status,
+            new_status=service.status,
+            remarks=f"Part of a pooled payment of {len(parsed_refs)} request(s), ref {normalized_reference}",
+            metadata={"payment_request_id": payment.id},
+        )
+        paid_count += 1
+        total_amount += amount
+        service_transaction_amount += amount
+
+    if service_items:
+        transaction = PaymentTransaction(
+            payment_type=payment_type,
+            total_amount=service_transaction_amount,
+            request_count=len(service_items),
+            recorded_by_user_id=user.id,
+            engineer_user_id=payee_id if payee_type == "engineer" else None,
+        )
+        db.add(transaction)
+        db.flush()
+        for payment, _service in service_items:
+            payment.payment_transaction_id = transaction.id
+        today = now.date()
+        for entry_type in ("credit", "debit"):
+            db.add(AccountLedgerEntry(
+                party_type=payee_type,
+                party_id=payee_id,
+                entry_type=entry_type,
+                amount=service_transaction_amount,
+                description=f"Pooled service payout ({len(service_items)} request(s))",
+                source_type="job_payout",
+                source_id=transaction.id,
+                entry_date=today,
+                created_by_user_id=None,
+            ))
+
+    db.commit()
+    return BulkPayResult(paid=paid_count, total_amount=total_amount)
 
 
 @router.get("/orders-summary", response_model=OrdersSummary)

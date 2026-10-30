@@ -45,11 +45,18 @@ class ReadyToPayItem(BaseModel):
     label: str
     payee_name: str | None = None
     payee_type: str | None = None  # "Engineer" | "Vendor"
+    payee_id: int | None = None  # User.id (Engineer) or Vendor.id -- what a pooled payment groups by
+    payment_request_id: int | None = None  # ServicePaymentRequest.id -- unambiguous ref for a bulk pay (service only)
     requested_at: datetime | None = None
     amount: float
     days_waiting: int
     urgency: str  # "urgent" | "soon" | "ontime"
     href: str
+
+
+class BulkPayResult(BaseModel):
+    paid: int
+    total_amount: float
 
 
 class InstallationPaymentStageOut(BaseModel):
