@@ -59,6 +59,20 @@ def _normalized_email(value: str | None) -> str:
     return (value or "").strip().lower()
 
 
+def _normalized_phone(value: str | None) -> str:
+    """Digits only, keeping just the last 10 so "+91 96544 09709" and "09654409709" match "9654409709"."""
+    digits = "".join(ch for ch in (value or "") if ch.isdigit())
+    return digits[-10:] if len(digits) > 10 else digits
+
+
+def _phone_in_use(db: Session, normalized_phone: str, *, exclude_user_id: int | None = None) -> bool:
+    """Compares digits-only so "+91 96544 09709" and "9654409709" count as the same number."""
+    q = select(User.id, User.phone).where(User.phone.is_not(None), User.deleted_at.is_(None))
+    if exclude_user_id is not None:
+        q = q.where(User.id != exclude_user_id)
+    return any(_normalized_phone(phone) == normalized_phone for _uid, phone in db.execute(q))
+
+
 def _list_of(text: str | None) -> list[str]:
     try:
         return [str(s) for s in json.loads(text)] if text else []
@@ -236,6 +250,9 @@ async def create_user(
         )
     ):
         raise HTTPException(status.HTTP_409_CONFLICT, "Email already exists")
+    new_phone = _normalized_phone(body.phone)
+    if new_phone and _phone_in_use(db, new_phone):
+        raise HTTPException(status.HTTP_409_CONFLICT, "Phone number already exists")
     user = User(
         name=body.name,
         email=body.email,
@@ -295,6 +312,11 @@ async def update_user(
             )
             if existing:
                 raise HTTPException(status.HTTP_409_CONFLICT, "Email already in use")
+
+    if "phone" in data:
+        new_phone = _normalized_phone(data["phone"])
+        if new_phone and new_phone != _normalized_phone(user.phone) and _phone_in_use(db, new_phone, exclude_user_id=user.id):
+            raise HTTPException(status.HTTP_409_CONFLICT, "Phone number already in use")
 
     if data.get("can_manage_bids") is None:
         data.pop("can_manage_bids", None)
