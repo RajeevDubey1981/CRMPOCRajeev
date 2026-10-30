@@ -1262,7 +1262,10 @@ def _load_visible(db: Session, user: User, inst_id: int) -> InstallationRequest:
     inst = db.get(InstallationRequest, inst_id)
     if inst is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Installation request not found")
-    if not can_act_on(db, user, "installations", "can_view", None):
+    # A role with a stage of its own in the payment chain (Accounts, Audit, Sub Admin, Service,
+    # Service Manager) can open any installation even without the separately-ticked "installations"
+    # module permission on its Role card -- same reasoning as the payment-stage action check below.
+    if not can_act_on(db, user, "installations", "can_view", None) and not _can_act_on_installation_payment_stage(user):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Installation request not found")
     if canonical_role_key(user.role) == "engineer" and inst.assigned_engineer != user.id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Installation request not found")
@@ -1485,7 +1488,15 @@ async def update_status(
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid status")
 
     inst = _load_visible(db, user, installation_id)
-    if not can_act_on(db, user, "installations", "can_edit", None):
+    # Same bypass as _load_visible just above: a payment-chain role acting on its own stage
+    # (Payment Pending -> Completed/Rejected/Returned) doesn't need the general "installations"
+    # can_edit permission -- being one of that chain's stages already is the authorization.
+    payment_stage_bypass = (
+        _can_act_on_installation_payment_stage(user)
+        and inst.status == "Payment Pending"
+        and new_status in {"Completed", "Rejected", "Returned"}
+    )
+    if not can_act_on(db, user, "installations", "can_edit", None) and not payment_stage_bypass:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Your role cannot edit this installation request")
     if canonical_role_key(user.role) == "engineer" and is_vendor_assigned_engineer_workflow(inst):
         prepare_vendor_installation_for_engineer_workflow(db, inst, actor=user)

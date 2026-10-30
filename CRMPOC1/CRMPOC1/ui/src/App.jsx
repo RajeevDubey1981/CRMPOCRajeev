@@ -97,14 +97,33 @@ function UserAdminRoute({ children }) {
   return children;
 }
 
-// Payment Queue: the same roles the sidebar link uses (canActOnInstallationPayments covers
+// The roles the Payment Queue sidebar link uses (canActOnInstallationPayments covers
 // Admin/Sub Admin/Indcool Service/Service Manager/Accounts/Audit, isServiceTeamRole adds the bare
-// "service" desk role) -- deliberately NOT the general "installations" module permission, since
-// Accounts/Audit/Sub Admin act in the payment chain without necessarily having that broader,
-// separately-ticked module permission on their Role card.
+// "service" desk role) -- a role here acts somewhere in the payment chain even when it doesn't
+// have the broader, separately-ticked "installations" module permission on its Role card.
+function isPaymentChainRole(role) {
+  return isServiceTeamRole(role) || isSubAdminRole(role) || canActOnInstallationPayments(role);
+}
+
 function PaymentQueueRoute({ children }) {
   const { user } = useAuth();
-  if (!isServiceTeamRole(user?.role) && !isSubAdminRole(user?.role) && !canActOnInstallationPayments(user?.role)) {
+  if (!isPaymentChainRole(user?.role)) {
+    return <Navigate to="/dashboard" replace />;
+  }
+  return children;
+}
+
+// Same as PermissionRoute, but also lets a payment-chain role through even without the module
+// permission -- for pages (an installation's or service's own detail view) that role needs open
+// to act on a payment, same reasoning as PaymentQueueRoute above.
+function PermissionOrPaymentChainRoute({ module, action = "can_view", children }) {
+  const { user } = useAuth();
+  if (isSystemAdminRole(user?.role) || isPaymentChainRole(user?.role)) {
+    return children;
+  }
+  const permissions = Array.isArray(user?.permissions) ? user.permissions : [];
+  const allowed = permissions.some((permission) => permission.module === module && permission[action]);
+  if (!allowed) {
     return <Navigate to="/dashboard" replace />;
   }
   return children;
@@ -197,7 +216,7 @@ export default function App() {
         <Route path="/ledger" element={<LedgerPage />} />
         <Route path="/ledger/:partyType/:id" element={<LedgerDetail />} />
         <Route path="/services/new" element={<PermissionRoute module="services" action="can_create"><ServiceRequestCreate /></PermissionRoute>} />
-        <Route path="/services/:id" element={<PermissionRoute module="services"><ServiceRequestDetail /></PermissionRoute>} />
+        <Route path="/services/:id" element={<PermissionOrPaymentChainRoute module="services"><ServiceRequestDetail /></PermissionOrPaymentChainRoute>} />
         <Route path="/items" element={<PermissionRoute module="items"><ItemMastersPage /></PermissionRoute>} />
         <Route path="/items/my-requests" element={<MyPartRequests />} />
         <Route path="/items/new" element={<PermissionRoute module="items" action="can_create"><ItemMasterCreate /></PermissionRoute>} />
@@ -212,7 +231,7 @@ export default function App() {
         <Route path="/installations/payment-queue" element={<PaymentQueueRoute><PaymentQueue /></PaymentQueueRoute>} />
         <Route path="/installations/new" element={<PermissionRoute module="installations" action="can_create"><InstallationCreate /></PermissionRoute>} />
         <Route path="/installations/bulk-workflow" element={<PermissionRoute module="installations"><BulkInstallationWorkflowPage /></PermissionRoute>} />
-        <Route path="/installations/:id" element={<PermissionRoute module="installations"><InstallationDetail /></PermissionRoute>} />
+        <Route path="/installations/:id" element={<PermissionOrPaymentChainRoute module="installations"><InstallationDetail /></PermissionOrPaymentChainRoute>} />
         <Route path="/claims" element={<PermissionRoute module="claims"><ClaimsPage /></PermissionRoute>} />
         <Route path="/claims/new" element={<PermissionRoute module="claims" action="can_create"><ClaimCreate /></PermissionRoute>} />
         <Route path="/claims/:id" element={<PermissionRoute module="claims"><ClaimDetail /></PermissionRoute>} />
