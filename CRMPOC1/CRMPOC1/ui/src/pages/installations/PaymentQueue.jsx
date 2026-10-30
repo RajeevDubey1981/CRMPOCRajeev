@@ -3,11 +3,8 @@ import { useNavigate } from "react-router-dom";
 
 import { api } from "../../api/client.js";
 import { installationsApi } from "../../api/installations.js";
+import { servicesApi } from "../../api/services.js";
 import { formatApiError } from "../../utils/apiError.js";
-
-function fmtMoney(n) {
-  return `₹${Number(n || 0).toLocaleString("en-IN")}`;
-}
 
 function fmtDate(d) {
   if (!d) return "—";
@@ -45,7 +42,33 @@ function ReturnBox({ onCancel, onConfirm, busy }) {
   );
 }
 
+async function sendForward(item, { amount, paymentType }) {
+  if (item.module === "installation") {
+    const fd = new FormData();
+    fd.append("new_status", "Completed");
+    fd.append("payment_amount", amount);
+    fd.append("payment_type", paymentType);
+    return installationsApi.updateStatus(item.entity_id, fd);
+  }
+  return servicesApi.approvePayment(item.entity_id, {
+    approved_amount: amount,
+    payment_type: paymentType,
+    decision: "Approved",
+  });
+}
+
+async function sendReturn(item, remarks) {
+  if (item.module === "installation") {
+    const fd = new FormData();
+    fd.append("new_status", "Returned");
+    fd.append("work_report", remarks);
+    return installationsApi.updateStatus(item.entity_id, fd);
+  }
+  return servicesApi.approvePayment(item.entity_id, { approved_amount: item.amount, decision: "Rejected", remarks });
+}
+
 function QueueRow({ item, onActed }) {
+  const navigate = useNavigate();
   const [amount, setAmount] = useState(String(item.amount ?? ""));
   const [paymentType, setPaymentType] = useState(item.payment_type || "Cash");
   const [busy, setBusy] = useState(false);
@@ -57,11 +80,7 @@ function QueueRow({ item, onActed }) {
     setBusy(true);
     setErr("");
     try {
-      const fd = new FormData();
-      fd.append("new_status", "Completed");
-      fd.append("payment_amount", amount);
-      fd.append("payment_type", paymentType);
-      await installationsApi.updateStatus(item.entity_id, fd);
+      await sendForward(item, { amount, paymentType });
       window.dispatchEvent(new Event("payment-queue-changed"));
       onActed();
     } catch (e) {
@@ -71,14 +90,11 @@ function QueueRow({ item, onActed }) {
     }
   }
 
-  async function returnToEngineer(remarks) {
+  async function returnIt(remarks) {
     setBusy(true);
     setErr("");
     try {
-      const fd = new FormData();
-      fd.append("new_status", "Returned");
-      fd.append("work_report", remarks);
-      await installationsApi.updateStatus(item.entity_id, fd);
+      await sendReturn(item, remarks);
       window.dispatchEvent(new Event("payment-queue-changed"));
       onActed();
     } catch (e) {
@@ -91,10 +107,24 @@ function QueueRow({ item, onActed }) {
 
   return (
     <tr className="border-b border-slate-100 align-top hover:bg-slate-50">
-      <td className="px-3 py-2 font-mono">{item.label}</td>
+      <td className="px-3 py-2">
+        <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase text-white ${item.module === "installation" ? "bg-sky-600" : "bg-violet-600"}`}>
+          {item.module === "installation" ? "Install." : "Service"}
+        </span>
+      </td>
+      <td className="px-3 py-2">
+        <button type="button" onClick={() => navigate(item.href)} className="font-mono text-brand-700 underline decoration-dotted">
+          {item.label}
+        </button>
+      </td>
       <td className="px-3 py-2">
         <div className="font-medium text-slate-800">{item.customer_name || "—"}</div>
         <div className="text-xs text-slate-500">{item.engineer_name ? `Engineer: ${item.engineer_name}` : ""}</div>
+        {item.last_action && (
+          <div className="mt-0.5 inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600">
+            ↩ {item.last_action}
+          </div>
+        )}
       </td>
       <td className="px-3 py-2">
         <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-bold ${u.cls}`}>
@@ -102,19 +132,27 @@ function QueueRow({ item, onActed }) {
         </span>
         <div className="mt-0.5 text-[11px] text-slate-400">{fmtDate(item.requested_at)}</div>
       </td>
-      <td className="px-3 py-2">
-        <input
-          type="number" min="0" step="0.01" value={amount}
-          onChange={(e) => setAmount(e.target.value)}
-          className="w-24 rounded-md border border-slate-300 px-2 py-1 text-right text-sm"
-        />
-      </td>
-      <td className="px-3 py-2">
-        <select value={paymentType} onChange={(e) => setPaymentType(e.target.value)} className="rounded-md border border-slate-300 px-2 py-1 text-xs">
-          <option value="Cash">Cash</option>
-          <option value="UPI">UPI</option>
-        </select>
-      </td>
+      {item.actionable ? (
+        <>
+          <td className="px-3 py-2">
+            <input
+              type="number" min="0" step="0.01" value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              className="w-24 rounded-md border border-slate-300 px-2 py-1 text-right text-sm"
+            />
+          </td>
+          <td className="px-3 py-2">
+            <select value={paymentType} onChange={(e) => setPaymentType(e.target.value)} className="rounded-md border border-slate-300 px-2 py-1 text-xs">
+              <option value="Cash">Cash</option>
+              <option value="UPI">UPI</option>
+            </select>
+          </td>
+        </>
+      ) : (
+        <td className="px-3 py-2 text-xs text-slate-400" colSpan={2}>
+          Several serials on this one — open it to act per serial.
+        </td>
+      )}
       <td className="px-3 py-2">
         {item.next_stage_label ? (
           <span className="inline-flex items-center gap-1 rounded-full bg-indigo-100 px-2 py-0.5 text-xs font-bold text-indigo-700">
@@ -126,34 +164,47 @@ function QueueRow({ item, onActed }) {
       </td>
       <td className="px-3 py-2">
         <div className="flex items-center justify-end gap-2">
+          {item.actionable && (
+            <>
+              <button
+                type="button"
+                disabled={busy || amount === ""}
+                onClick={send}
+                className="rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
+              >
+                Send to {item.next_stage_label || "Admin"}
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => setShowReturn((s) => !s)}
+                className="rounded-md border border-rose-300 px-3 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-50"
+              >
+                Return
+              </button>
+            </>
+          )}
           <button
             type="button"
-            disabled={busy || amount === ""}
-            onClick={send}
-            className="rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
+            onClick={() => navigate(item.href)}
+            className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
           >
-            Send to {item.next_stage_label || "Admin"}
-          </button>
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => setShowReturn((s) => !s)}
-            className="rounded-md border border-rose-300 px-3 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-50"
-          >
-            Return to engineer
+            Open ↗
           </button>
         </div>
         {err && <div className="mt-1 text-right text-xs text-rose-600">{err}</div>}
-        {showReturn && <ReturnBox busy={busy} onCancel={() => setShowReturn(false)} onConfirm={returnToEngineer} />}
+        {showReturn && <ReturnBox busy={busy} onCancel={() => setShowReturn(false)} onConfirm={returnIt} />}
       </td>
     </tr>
   );
 }
 
-/** One stop: every installation payment sitting at the viewer's own stage of the chain (Service
- * Role -> Service Manager -> [Sub Admin, over ₹2500] -> Accounts -> Audit -> Admin), with the
- * exact next stop shown per row since Service Manager's own next stop branches on amount. Admin's
- * own final stage lives in Ready to Pay instead -- this is every stage before that. */
+/** One stop: every installation and service payment sitting at the viewer's own stage of its
+ * chain (installations: Service Role -> Service Manager -> [Sub Admin, over ₹2500] -> Accounts ->
+ * Audit -> Admin; services: the shorter Service Role -> [Service Manager] -> Admin), with the
+ * exact next stop shown per row, who last forwarded or returned it if anyone has, and an Open
+ * link to jump straight into that record's own workflow wherever it's sitting. Admin's own final
+ * stage lives in Ready to Pay instead -- this is every stage before that. */
 export default function PaymentQueue() {
   const navigate = useNavigate();
   const [items, setItems] = useState([]);
@@ -181,7 +232,7 @@ export default function PaymentQueue() {
       <div>
         <h1 className="text-lg font-semibold text-slate-800">Payment Queue</h1>
         <p className="text-sm text-slate-500">
-          Every installation payment waiting on your approval right now. "Send to" forwards it on exactly as raised; "Return to engineer" sends it all the way back for rework with a reason.
+          Every installation and service payment waiting on your approval right now. Click the ID, or "Open", to jump straight into that record's own workflow. "Send to" forwards it on as raised; "Return" sends it back with a reason.
         </p>
       </div>
 
@@ -199,9 +250,10 @@ export default function PaymentQueue() {
             <span className="text-sm font-semibold text-slate-700">{label} approval</span>
             <span className="rounded-full bg-slate-200 px-2 py-0.5 text-xs font-bold text-slate-700">{byStage[label].length}</span>
           </div>
-          <table className="w-full min-w-[820px] text-left text-sm">
+          <table className="w-full min-w-[900px] text-left text-sm">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+                <th className="px-3 py-2">Module</th>
                 <th className="px-3 py-2">ID</th>
                 <th className="px-3 py-2">Customer / Engineer</th>
                 <th className="px-3 py-2">Waiting</th>
@@ -213,7 +265,7 @@ export default function PaymentQueue() {
             </thead>
             <tbody>
               {byStage[label].map((item) => (
-                <QueueRow key={item.entity_id} item={item} onActed={load} />
+                <QueueRow key={`${item.module}-${item.entity_id}`} item={item} onActed={load} />
               ))}
             </tbody>
           </table>
@@ -223,9 +275,13 @@ export default function PaymentQueue() {
       {loading && <div className="rounded-lg bg-white p-6 text-center text-sm text-slate-500 shadow-sm">Loading…</div>}
 
       <p className="text-xs text-slate-500">
-        Want to look at it another way, or check a specific installation?{" "}
+        Want to look at it another way?{" "}
         <button type="button" onClick={() => navigate("/installations")} className="text-brand-700 underline">
           Open Installation Requests
+        </button>{" "}
+        or{" "}
+        <button type="button" onClick={() => navigate("/services")} className="text-brand-700 underline">
+          Service Requests
         </button>.
       </p>
     </div>

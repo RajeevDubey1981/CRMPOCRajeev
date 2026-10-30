@@ -10,6 +10,7 @@ from app.deps import get_current_user
 from app.models.complaint import Complaint
 from app.models.installation import InstallationRequest
 from app.models.order import Order
+from app.models.payment_approval import PaymentApprovalLog
 from app.models.service import ServicePaymentRequest, ServiceRequest, ServiceRequestUnit
 from app.models.user import User
 from app.models.vendor import Vendor
@@ -30,7 +31,7 @@ from app.services.engineer_service_scope import (
 )
 from app.services.complaint_access import apply_complaint_assignment_scope
 from app.services.installation_stages import stage_counts
-from app.services.payment_approval_workflow import installation_payment_approval_stages, stage_index
+from app.services.payment_approval_workflow import installation_payment_approval_stages, payment_approval_stages, stage_index
 from app.services.role_access import is_operations_admin, is_system_admin
 from app.services.service_access import is_service_desk_user
 from app.services.permissions import can_act_on, sub_module_scope
@@ -218,34 +219,61 @@ _PAYMENT_QUEUE_OWN_STAGE = {
 }
 
 
+def _last_action_map(db: Session, module: str, entity_ids: list[int]) -> dict[int, str]:
+    """The most recent approve/return decision per entity, in that module's payment_approval_logs
+    rows -- "Forwarded by <name>" or "Returned by <name>". Empty for anything still at its very
+    first stage, since raising a payment request isn't itself an approval decision."""
+    if not entity_ids:
+        return {}
+    rows = db.execute(
+        select(PaymentApprovalLog, User.name)
+        .outerjoin(User, User.id == PaymentApprovalLog.approved_by_user_id)
+        .where(PaymentApprovalLog.module == module, PaymentApprovalLog.entity_id.in_(entity_ids))
+        .order_by(PaymentApprovalLog.entity_id, PaymentApprovalLog.created_at.desc())
+    ).all()
+    latest: dict[int, str] = {}
+    for log, approver_name in rows:
+        if log.entity_id in latest:
+            continue  # already have this entity's most recent row (rows arrive newest-first per entity)
+        who = approver_name or log.approver_role or "someone"
+        latest[log.entity_id] = f"Returned by {who}" if log.decision == "Rejected" else f"Forwarded by {who}"
+    return latest
+
+
 @router.get("/my-payment-queue", response_model=list[PaymentQueueItem])
 def my_payment_queue(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    """Everything sitting at the viewer's own stage of the installation payment chain, with a
-    clear next-stop label (Service Manager's own next stop branches on amount, so this is computed
-    per row rather than hard-coded) and the same approve/return actions the record's own detail
-    page already has. System Admin sees every non-final stage at once, for oversight -- they can
-    act on any of it anyway (the admin bypass in installations.update_status)."""
+    """Everything sitting at the viewer's own stage of the installation and service payment
+    chains, with a clear next-stop label (Service Manager's own next stop on an installation
+    branches on amount, so this is computed per row rather than hard-coded), who last forwarded or
+    returned it (if anyone has yet), and the same approve/return actions the record's own detail
+    page already has -- installations act inline here; services open to their own detail page,
+    since a service can carry several serials each with their own payment request needing that
+    page's per-serial context. System Admin sees every non-final stage at once, for oversight --
+    they can act on any of it anyway (the admin bypass both modules' approval endpoints give it)."""
     role = canonical_role_key(user.role)
     own_stage = _PAYMENT_QUEUE_OWN_STAGE.get(role)
     if own_stage is None and not is_system_admin(user):
         return []
 
     now = datetime.now(timezone.utc)
-    stmt = select(InstallationRequest, User.name).outerjoin(User, User.id == InstallationRequest.assigned_engineer).where(
+    items: list[PaymentQueueItem] = []
+
+    inst_stmt = select(InstallationRequest, User.name).outerjoin(User, User.id == InstallationRequest.assigned_engineer).where(
         InstallationRequest.status == "Payment Pending",
     )
     if own_stage is not None:
-        stmt = stmt.where(InstallationRequest.payment_approval_stage == own_stage)
+        inst_stmt = inst_stmt.where(InstallationRequest.payment_approval_stage == own_stage)
     else:
-        stmt = stmt.where(InstallationRequest.payment_approval_stage != "admin")
+        inst_stmt = inst_stmt.where(InstallationRequest.payment_approval_stage != "admin")
     if is_service_desk_user(user):
         # A bare "service" user can only act once the Service Manager has routed this
         # installation to them specifically -- same narrowing _load_visible() enforces on the
         # actual approve/return call, so this list never shows something they'd then fail to act on.
-        stmt = stmt.where(InstallationRequest.assigned_service_user_id == user.id)
+        inst_stmt = inst_stmt.where(InstallationRequest.assigned_service_user_id == user.id)
 
-    items: list[PaymentQueueItem] = []
-    for inst, engineer_name in db.execute(stmt).all():
+    inst_rows = db.execute(inst_stmt).all()
+    inst_last_action = _last_action_map(db, "installations", [inst.id for inst, _ in inst_rows])
+    for inst, engineer_name in inst_rows:
         amount = float(inst.payment_amount_requested) if inst.payment_amount_requested is not None else None
         stages = installation_payment_approval_stages(amount)
         idx = stage_index(inst.payment_approval_stage, stages)
@@ -253,6 +281,7 @@ def my_payment_queue(db: Session = Depends(get_db), user: User = Depends(get_cur
         requested_at = inst.payment_requested_at
         days = _days_waiting(requested_at, now)
         items.append(PaymentQueueItem(
+            module="installation",
             entity_id=inst.id,
             label=f"#{inst.id}",
             customer_name=inst.customer_name,
@@ -265,8 +294,58 @@ def my_payment_queue(db: Session = Depends(get_db), user: User = Depends(get_cur
             stage_key=inst.payment_approval_stage or "",
             stage_label=stages[idx].label if idx < len(stages) else (inst.payment_approval_stage_label or ""),
             next_stage_label=next_label,
+            last_action=inst_last_action.get(inst.id),
             href=f"/installations/{inst.id}",
+            actionable=True,
         ))
+
+    # Service Requests only ever reach service_role/service_manager (no Sub Admin/Accounts/Audit
+    # stage exists for them), so this is a no-op for those three roles' own stage.
+    if own_stage in (None, "service_role", "service_manager"):
+        svc_stmt = (
+            select(ServicePaymentRequest, ServiceRequest.request_no, User.name)
+            .join(ServiceRequest, ServiceRequest.id == ServicePaymentRequest.service_request_id)
+            .outerjoin(User, User.id == ServicePaymentRequest.requested_by_user_id)
+            .where(ServicePaymentRequest.approval_status == "Pending")
+        )
+        if own_stage is not None:
+            svc_stmt = svc_stmt.where(ServicePaymentRequest.approval_stage == own_stage)
+        else:
+            svc_stmt = svc_stmt.where(ServicePaymentRequest.approval_stage != "admin")
+        svc_rows = db.execute(svc_stmt).all()
+        svc_last_action = _last_action_map(db, "services", [p.service_request_id for p, _, _ in svc_rows])
+        unit_counts: dict[int, int] = {}
+        if svc_rows:
+            for sr_id, n in db.execute(
+                select(ServiceRequestUnit.service_request_id, func.count())
+                .where(ServiceRequestUnit.service_request_id.in_({p.service_request_id for p, _, _ in svc_rows}))
+                .group_by(ServiceRequestUnit.service_request_id)
+            ).all():
+                unit_counts[sr_id] = n
+        flat_stages = payment_approval_stages()
+        for payment, request_no, engineer_name in svc_rows:
+            idx = stage_index(payment.approval_stage, flat_stages)
+            next_label = flat_stages[idx + 1].label if idx + 1 < len(flat_stages) else None
+            requested_at = payment.created_at
+            days = _days_waiting(requested_at, now)
+            items.append(PaymentQueueItem(
+                module="service",
+                entity_id=payment.service_request_id,
+                label=request_no or f"#{payment.service_request_id}",
+                engineer_name=engineer_name,
+                amount=float(payment.total_requested_amount or 0),
+                payment_type=payment.payment_type,
+                requested_at=requested_at,
+                days_waiting=days,
+                urgency=_payment_urgency(days),
+                stage_key=payment.approval_stage or "",
+                stage_label=flat_stages[idx].label if idx < len(flat_stages) else (payment.approval_stage_label or ""),
+                next_stage_label=next_label,
+                last_action=svc_last_action.get(payment.service_request_id),
+                href=f"/services/{payment.service_request_id}",
+                actionable=unit_counts.get(payment.service_request_id, 0) <= 1,
+            ))
+
     items.sort(key=lambda i: -i.days_waiting)
     return items
 

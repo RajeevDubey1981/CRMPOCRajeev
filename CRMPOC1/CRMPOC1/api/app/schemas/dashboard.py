@@ -61,6 +61,7 @@ class InstallationPaymentStageOut(BaseModel):
 
 
 class PaymentQueueItem(BaseModel):
+    module: str  # "installation" | "service"
     entity_id: int
     label: str
     customer_name: str | None = None
@@ -73,7 +74,9 @@ class PaymentQueueItem(BaseModel):
     stage_key: str
     stage_label: str
     next_stage_label: str | None = None  # None only at the final (admin) stage
+    last_action: str | None = None  # e.g. "Forwarded by Mohit SVM" -- None if nobody has acted yet
     href: str
+    actionable: bool = True  # False for service rows with more than one unit -- open the record instead
 
 
 class ServiceSummary(BaseModel):

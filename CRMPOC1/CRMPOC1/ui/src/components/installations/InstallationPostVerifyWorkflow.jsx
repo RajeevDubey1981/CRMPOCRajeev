@@ -220,6 +220,8 @@ export default function InstallationPostVerifyWorkflow({
     proof_document: null,
   });
   const [serviceReviewRemarks, setServiceReviewRemarks] = useState("");
+  const [paymentReturnRemarks, setPaymentReturnRemarks] = useState("");
+  const [showPaymentReturn, setShowPaymentReturn] = useState(false);
 
   const [submitMsg, setSubmitMsg] = useState("");
   const [submitTone, setSubmitTone] = useState("info");
@@ -360,6 +362,37 @@ export default function InstallationPostVerifyWorkflow({
       if (onUpdated) await onUpdated();
     } catch (error) {
       const message = formatApiError(error, "Failed to approve payment");
+      setApprovalErr(message);
+      onError?.(message);
+    } finally {
+      setBusy(false);
+      onBusy?.(false);
+    }
+  }
+
+  async function returnPayment() {
+    setApprovalErr("");
+    onError?.("");
+    if (!paymentReturnRemarks.trim()) {
+      const message = "Add a reason before returning this payment request";
+      setApprovalErr(message);
+      onError?.(message);
+      return;
+    }
+    setBusy(true);
+    onBusy?.(true);
+    try {
+      const fd = new FormData();
+      fd.append("new_status", "Returned");
+      fd.append("work_report", paymentReturnRemarks.trim());
+      await installationsApi.updateStatus(installationId, fd);
+      setPaymentReturnRemarks("");
+      setShowPaymentReturn(false);
+      setSubmitTone("info");
+      setSubmitMsg("Returned to the engineer for rework.");
+      if (onUpdated) await onUpdated();
+    } catch (error) {
+      const message = formatApiError(error, "Failed to return this payment");
       setApprovalErr(message);
       onError?.(message);
     } finally {
@@ -1032,14 +1065,45 @@ export default function InstallationPostVerifyWorkflow({
               {approvalErr}
             </div>
           )}
-          <button
-            type="button"
-            disabled={busy}
-            onClick={approvePayment}
-            className="mt-3 rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {busy ? "Approving..." : isAdminFinalApproval || isFinalPaymentApproval ? "Approve & Release Payment" : "Approve & Recommend for Payment"}
-          </button>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              disabled={busy}
+              onClick={approvePayment}
+              className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {busy ? "Approving..." : isAdminFinalApproval || isFinalPaymentApproval ? "Approve & Release Payment" : "Approve & Recommend for Payment"}
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => setShowPaymentReturn((s) => !s)}
+              className="rounded-md border border-rose-300 bg-white px-4 py-2 text-sm font-medium text-rose-700 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Return to engineer
+            </button>
+          </div>
+          {showPaymentReturn && (
+            <div className="mt-2 flex flex-wrap items-center gap-2 rounded-md border border-rose-200 bg-rose-50 p-2">
+              <input
+                value={paymentReturnRemarks}
+                onChange={(e) => setPaymentReturnRemarks(e.target.value)}
+                placeholder="Why it's being returned (required)"
+                className="flex-1 rounded-md border border-rose-300 px-2 py-1 text-sm"
+              />
+              <button
+                type="button"
+                disabled={busy || !paymentReturnRemarks.trim()}
+                onClick={returnPayment}
+                className="rounded-md bg-rose-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-rose-700 disabled:opacity-50"
+              >
+                Confirm return
+              </button>
+              <button type="button" onClick={() => setShowPaymentReturn(false)} className="text-sm text-slate-500 underline">
+                Cancel
+              </button>
+            </div>
+          )}
           {installation.status === "Completed" && isAdminLike && (
             <button
               type="button"
