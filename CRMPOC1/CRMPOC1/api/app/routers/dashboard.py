@@ -37,7 +37,7 @@ from app.services.complaint_access import apply_complaint_assignment_scope
 from app.services.file_service import save_upload
 from app.services.installation_stages import stage_counts
 from app.services.installation_workflow import log_installation_action
-from app.services.workflow_notifications import notify_payment_credited
+from app.services.workflow_notifications import notify_pooled_payment_credited
 from app.services.payment_approval_workflow import installation_payment_approval_stages, payment_approval_stages, stage_index
 from app.services.role_access import is_operations_admin, is_system_admin
 from app.services.service_access import is_service_desk_user
@@ -531,6 +531,8 @@ async def bulk_pay_ready_to_pay(
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "All selected payments must be for the same engineer or vendor")
     payee_type, payee_id = next(iter(payee_keys))
 
+    payee_email: str | None = None
+    payee_name: str | None = None
     if payee_type == "engineer":
         engineer = db.get(User, payee_id)
         if engineer is None or not (engineer.bank_account_number or "").strip():
@@ -538,6 +540,11 @@ async def bulk_pay_ready_to_pay(
                 status.HTTP_400_BAD_REQUEST,
                 "This engineer has no bank account details on file. Add them (Users -> Edit) before paying.",
             )
+        payee_email, payee_name = engineer.email, engineer.name
+    else:
+        vendor = db.get(Vendor, payee_id)
+        if vendor is not None:
+            payee_email, payee_name = vendor.email, vendor.name_of_firm
 
     if payment_type == "UPI" and not (proof_document is not None and proof_document.filename):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Upload Payment Proof / Document is required when payment type is UPI")
@@ -549,6 +556,7 @@ async def bulk_pay_ready_to_pay(
     now = datetime.now(timezone.utc)
     paid_count = 0
     total_amount = 0.0
+    paid_items: list[tuple[str, str, float]] = []  # (module_label, label, amount) for the one pooled summary email
 
     for inst in installation_rows:
         amount = float(inst.payment_amount_requested or 0)
@@ -578,23 +586,10 @@ async def bulk_pay_ready_to_pay(
         _sync_order_completion_state(db, inst)
         paid_count += 1
         total_amount += amount
+        paid_items.append(("Installation", f"#{inst.id}", amount))
 
     if installation_rows:
         _create_payment_transaction(db, rows=installation_rows, actor=user, payment_type=payment_type)
-        engineer = db.get(User, payee_id)  # payee_type is always "engineer" for installations
-        if engineer is not None:
-            for inst in installation_rows:
-                notify_payment_credited(
-                    background_tasks,
-                    payee_email=engineer.email,
-                    payee_name=engineer.name,
-                    module="installation",
-                    label=f"#{inst.id}",
-                    amount=float(inst.payment_amount_paid or inst.payment_amount_requested or 0),
-                    payment_type=payment_type,
-                    payment_reference=normalized_reference,
-                    payment_paid_on=paid_on_date,
-                )
 
     service_transaction_amount = 0.0
     for payment, service in service_items:
@@ -635,6 +630,7 @@ async def bulk_pay_ready_to_pay(
         paid_count += 1
         total_amount += amount
         service_transaction_amount += amount
+        paid_items.append(("Service", service.request_no or f"#{service.id}", amount))
 
     if service_items:
         transaction = PaymentTransaction(
@@ -662,25 +658,16 @@ async def bulk_pay_ready_to_pay(
                 created_by_user_id=None,
             ))
 
-        if payee_type == "engineer":
-            payee = db.get(User, payee_id)
-            payee_email, payee_name = (payee.email, payee.name) if payee else (None, None)
-        else:
-            payee = db.get(Vendor, payee_id)
-            payee_email, payee_name = (payee.email, payee.name_of_firm) if payee else (None, None)
-        if payee_email:
-            for payment, service in service_items:
-                notify_payment_credited(
-                    background_tasks,
-                    payee_email=payee_email,
-                    payee_name=payee_name,
-                    module="service",
-                    label=service.request_no or f"#{service.id}",
-                    amount=float(payment.approved_amount or 0),
-                    payment_type=payment_type,
-                    payment_reference=normalized_reference,
-                    payment_paid_on=paid_on_date,
-                )
+    notify_pooled_payment_credited(
+        background_tasks,
+        payee_email=payee_email,
+        payee_name=payee_name,
+        items=paid_items,
+        total_amount=total_amount,
+        payment_type=payment_type,
+        payment_reference=normalized_reference,
+        payment_paid_on=paid_on_date,
+    )
 
     db.commit()
     return BulkPayResult(paid=paid_count, total_amount=total_amount)

@@ -450,15 +450,17 @@ def _send_payment_credited_email(
     recipient_name: str,
     amount_display: str,
     details: list[tuple[str, str]],
+    intro: str | None = None,
 ) -> bool:
     email = (to or "").strip()
     if not email:
         return False
     details_html = _details_html(details)
+    intro = intro or f"Good news -- your payment of {amount_display} has been credited. Thank you for your hard work!"
     text_lines = [
         f"Dear {recipient_name},",
         "",
-        f"Good news -- your payment of {amount_display} has been credited. Thank you for your hard work!",
+        intro,
         "",
     ]
     for label, value in details:
@@ -516,6 +518,43 @@ def notify_payment_credited(
             ("Payment Reference", payment_reference or "—"),
             ("Paid On", payment_paid_on.strftime("%d %b %Y") if payment_paid_on else "—"),
         ],
+    )
+
+
+def notify_pooled_payment_credited(
+    background_tasks: BackgroundTasks | None,
+    *,
+    payee_email: str | None,
+    payee_name: str | None,
+    items: list[tuple[str, str, float]],  # (module_label, label, amount) -- e.g. ("Installation", "#83", 1200.0)
+    total_amount: float,
+    payment_type: str | None = None,
+    payment_reference: str | None = None,
+    payment_paid_on=None,  # date | None
+) -> None:
+    """One summary email for a whole pooled payment (several requests, one bank transfer) --
+    every item it covered is listed with its own amount, instead of one email per item."""
+    if not payee_email or not items:
+        return
+    amount_display = f"₹{total_amount:,.2f}"
+    count = len(items)
+    details = [(f"{module_label} {label}", f"₹{amount:,.2f}") for module_label, label, amount in items]
+    details.extend([
+        ("Payment Type", payment_type or "—"),
+        ("Payment Reference", payment_reference or "—"),
+        ("Paid On", payment_paid_on.strftime("%d %b %Y") if payment_paid_on else "—"),
+    ])
+    _queue(
+        background_tasks,
+        _send_payment_credited_email,
+        payee_email,
+        recipient_name=(payee_name or "").strip() or "Team Member",
+        amount_display=amount_display,
+        details=details,
+        intro=(
+            f"Good news -- {count} of your pending payment{'s' if count != 1 else ''} "
+            f"have been credited in one transfer, totalling {amount_display}. Thank you for your hard work!"
+        ),
     )
 
 
