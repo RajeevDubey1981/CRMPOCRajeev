@@ -298,9 +298,10 @@ export default function ServiceUnitAssignmentPanel({
   }
 
   function rowSerialValue(unit, slot) {
-    const saved = rowSerialInputs[unit.id]?.[slot];
-    if (saved !== undefined) return saved;
-    return unitSerialValues(unit)[slot] || "";
+    // Engineers verify a serial by entering or scanning it themselves -- the box must stay blank
+    // rather than show the serial the service team already has on file, or it stops being a real
+    // check. Only what the engineer has actually typed this session is ever shown here.
+    return rowSerialInputs[unit.id]?.[slot] ?? "";
   }
 
   function updateRowSerial(unitId, slot, value) {
@@ -396,7 +397,7 @@ export default function ServiceUnitAssignmentPanel({
                                     addSerialToAssignedRow(unit);
                                   }
                                 }}
-                                placeholder={value ? `Edit ${group.serial_labels[colIdx] || "serial"}` : `Enter ${group.serial_labels[colIdx] || "serial"}`}
+                                placeholder={`Enter or scan ${group.serial_labels[colIdx] || "serial number"}`}
                                 wrapperClassName="min-w-[13rem]"
                                 className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm font-mono"
                               />

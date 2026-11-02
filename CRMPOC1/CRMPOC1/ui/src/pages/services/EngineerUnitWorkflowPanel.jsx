@@ -243,10 +243,24 @@ export default function EngineerUnitWorkflowPanel({
   canApproveUnits = isServiceTeam,
   canForwardUnits = isServiceTeam,
   isPaymentAdmin = false,
+  role = "",
   run,
   busy = false,
   actionError = "",
 }) {
+  const PAYMENT_STAGE_ROLES = {
+    service_role: new Set(["service", "indcool_service"]),
+    service_manager: new Set(["service_manager"]),
+    sub_admin: new Set(["sub_admin"]),
+    accounts: new Set(["accounts"]),
+    audit: new Set(["audit"]),
+  };
+  function canActOnUnitPaymentStage(unit) {
+    if (isPaymentAdmin) return true;
+    const stage = unit.payment_approval_stage || "service_role";
+    if (stage === "admin") return false;
+    return PAYMENT_STAGE_ROLES[stage]?.has(role) ?? false;
+  }
   const [serviceClaims, setServiceClaims] = useState([]);
   const canSeeClaims = canApproveUnits || canForwardUnits;
 
@@ -926,15 +940,25 @@ export default function EngineerUnitWorkflowPanel({
     }
 
     if (unit.unit_status === "Payment Requested" && isServiceTeam) {
+      const myTurn = canActOnUnitPaymentStage(unit);
       return (
         <div className="flex flex-col items-end gap-1">
-          <button
-            type="button"
-            onClick={() => openModal("paymentApproval", unit.id)}
-            className="rounded-md bg-orange-500 px-3 py-1.5 text-xs text-white"
-          >
-            Approve payment
-          </button>
+          {myTurn ? (
+            <button
+              type="button"
+              onClick={() => openModal("paymentApproval", unit.id)}
+              className="rounded-md bg-orange-500 px-3 py-1.5 text-xs text-white"
+            >
+              Approve payment
+            </button>
+          ) : (
+            <span
+              className="cursor-default rounded-md bg-slate-100 px-3 py-1.5 text-xs text-slate-500"
+              title={`Waiting with ${unit.payment_next_approver_role || unit.payment_approval_stage_label || "the next approver"}`}
+            >
+              Sent for payment — with {unit.payment_approval_stage_label || "next approver"}
+            </span>
+          )}
           {proofActionLink(unit, openModal)}
           {observed && (
             <button type="button" onClick={() => openModal("observation", unit.id)} className="text-xs text-sky-700 underline">

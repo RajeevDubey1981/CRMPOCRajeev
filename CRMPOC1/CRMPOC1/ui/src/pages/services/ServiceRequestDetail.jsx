@@ -1087,6 +1087,7 @@ export default function ServiceRequestDetail() {
           canApproveUnits={canApproveUnits}
           canForwardUnits={canForwardUnits}
           isPaymentAdmin={roleIsPaymentAdmin}
+          role={role}
           run={run}
           busy={busy}
           actionError={err}
