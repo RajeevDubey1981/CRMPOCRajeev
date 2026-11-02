@@ -10,6 +10,8 @@ MODULES = (
     "vendors",
     "items",
     "couriers",
+    "manufacturers",
+    "insurance",
     "calls",
     "claims",
     "users",

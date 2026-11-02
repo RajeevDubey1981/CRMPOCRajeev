@@ -30,6 +30,12 @@ class Claim(Base, TimestampMixin):
     account_number: Mapped[str | None] = mapped_column(String(100), nullable=True)
     ifsc_code: Mapped[str | None] = mapped_column(String(20), nullable=True)
     admin_remark: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Who the claim is actually with -- one of "manufacturer" | "courier" | "insurance" | "company"
+    # (the business itself, no external party), set when it's raised.
+    routed_to: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    manufacturer_id: Mapped[int | None] = mapped_column(ForeignKey("manufacturers.id"), nullable=True)
+    courier_id: Mapped[int | None] = mapped_column(ForeignKey("couriers.id"), nullable=True)
+    insurance_id: Mapped[int | None] = mapped_column(ForeignKey("insurance_companies.id"), nullable=True)
 
 
 class ClaimPhoto(Base):

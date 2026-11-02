@@ -138,7 +138,7 @@ DEFAULT_ROLES = [
         "description": "Administrator — full access to all modules",
         "perms": {
             "complaints": ALL, "installations": ALL, "orders": ALL, "vendors": ALL,
-            "items": ALL, "couriers": ALL, "calls": ALL, "claims": ALL,
+            "items": ALL, "couriers": ALL, "manufacturers": ALL, "insurance": ALL, "calls": ALL, "claims": ALL,
             "users": ALL, "roles": ALL, "dashboard": ALL, "services": ALL, "bids": ALL,
             "historical_installations": (True, False, True, False, False),
         },
@@ -148,7 +148,7 @@ DEFAULT_ROLES = [
         "description": "Sub Admin - works like Admin but cannot change roles/permissions or manage Admin accounts",
         "perms": {
             "complaints": ALL, "installations": ALL, "orders": ALL, "vendors": ALL,
-            "items": ALL, "couriers": ALL, "calls": ALL, "claims": ALL,
+            "items": ALL, "couriers": ALL, "manufacturers": ALL, "insurance": ALL, "calls": ALL, "claims": ALL,
             "dashboard": ALL, "services": ALL, "partner_registrations": ALL,
             "users": (True, True, True, False, False),
             "roles": NONE,
@@ -227,7 +227,7 @@ DEFAULT_ROLES = [
         "description": "Service desk user — works only on service requests assigned to them",
         "perms": {
             "complaints": ALL, "installations": ALL, "orders": ALL, "vendors": ALL,
-            "items": ALL, "couriers": ALL, "calls": ALL, "claims": ALL,
+            "items": ALL, "couriers": ALL, "manufacturers": ALL, "insurance": ALL, "calls": ALL, "claims": ALL,
             "services": ALL, "dashboard": ALL,
             "users": NONE, "roles": NONE,
         },
@@ -237,7 +237,7 @@ DEFAULT_ROLES = [
         "description": "Service Manager — full service operations access and assign service desk users",
         "perms": {
             "complaints": ALL, "installations": ALL, "orders": ALL, "vendors": ALL,
-            "items": ALL, "couriers": ALL, "calls": ALL, "claims": ALL,
+            "items": ALL, "couriers": ALL, "manufacturers": ALL, "insurance": ALL, "calls": ALL, "claims": ALL,
             "services": ALL, "dashboard": ALL,
             "users": NONE, "roles": NONE,
         },
@@ -247,7 +247,7 @@ DEFAULT_ROLES = [
         "description": "Indcool Service team - full operations access (no system admin menu)",
         "perms": {
             "complaints": ALL, "installations": ALL, "orders": ALL, "vendors": ALL,
-            "items": ALL, "couriers": ALL, "calls": ALL, "claims": ALL,
+            "items": ALL, "couriers": ALL, "manufacturers": ALL, "insurance": ALL, "calls": ALL, "claims": ALL,
             "services": ALL, "dashboard": ALL,
             "users": NONE, "roles": NONE,
         },

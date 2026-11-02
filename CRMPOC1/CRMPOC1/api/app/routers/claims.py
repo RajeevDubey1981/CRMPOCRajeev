@@ -13,6 +13,9 @@ from app.database import get_db
 from app.deps import get_current_user
 from app.services.date_range import registered_between
 from app.models.claim import Claim
+from app.models.courier import Courier
+from app.models.insurance import Insurance
+from app.models.manufacturer import Manufacturer
 from app.models.order import OrderItem
 from app.models.user import User
 from app.schemas.claim import (
@@ -39,6 +42,18 @@ def _hydrate(db: Session, claim: Claim) -> dict:
     if claim.processed_by:
         u = db.get(User, claim.processed_by)
         processed_by_name = u.name if u else None
+    manufacturer_name = None
+    if claim.manufacturer_id:
+        m = db.get(Manufacturer, claim.manufacturer_id)
+        manufacturer_name = m.name if m else None
+    courier_name = None
+    if claim.courier_id:
+        c = db.get(Courier, claim.courier_id)
+        courier_name = c.courier_name if c else None
+    insurance_name = None
+    if claim.insurance_id:
+        i = db.get(Insurance, claim.insurance_id)
+        insurance_name = i.name if i else None
     return {
         **{k: getattr(claim, k) for k in (
             "id", "claim_id", "order_no", "serial_number",
@@ -46,8 +61,12 @@ def _hydrate(db: Session, claim: Claim) -> dict:
             "status", "submitted_at", "processed_by", "notes",
             "bank_name", "account_holder_name", "account_number",
             "ifsc_code", "admin_remark", "created_at", "updated_at",
+            "routed_to", "manufacturer_id", "courier_id", "insurance_id",
         )},
         "processed_by_name": processed_by_name,
+        "manufacturer_name": manufacturer_name,
+        "courier_name": courier_name,
+        "insurance_name": insurance_name,
     }
 
 
@@ -108,6 +127,7 @@ def list_claims(
                 customer_contact=c.customer_contact,
                 status=c.status,
                 submitted_at=c.submitted_at,
+                routed_to=c.routed_to,
             )
             for c in rows
         ],
@@ -206,6 +226,13 @@ def create_claim(
         )
         linked_item_id = linked_item.id if linked_item else None
 
+    if body.routed_to == "manufacturer" and not body.manufacturer_id:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Pick which manufacturer this claim is routed to")
+    if body.routed_to == "courier" and not body.courier_id:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Pick which courier this claim is routed to")
+    if body.routed_to == "insurance" and not body.insurance_id:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Pick which insurer this claim is routed to")
+
     claim = Claim(
         claim_id=_generate_claim_id(),
         order_no=body.order_no,
@@ -221,6 +248,10 @@ def create_claim(
         ifsc_code=body.ifsc_code,
         status="Processing",
         submitted_at=datetime.now(timezone.utc),
+        routed_to=body.routed_to,
+        manufacturer_id=body.manufacturer_id if body.routed_to == "manufacturer" else None,
+        courier_id=body.courier_id if body.routed_to == "courier" else None,
+        insurance_id=body.insurance_id if body.routed_to == "insurance" else None,
     )
     db.add(claim)
     db.flush()

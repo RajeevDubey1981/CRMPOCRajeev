@@ -4,6 +4,7 @@ from typing import Literal
 from pydantic import BaseModel, EmailStr
 
 STATUSES = ("Processing", "Completed", "Rejected")
+ROUTED_TO = ("manufacturer", "courier", "insurance", "company")
 
 
 class ClaimCreate(BaseModel):
@@ -17,6 +18,10 @@ class ClaimCreate(BaseModel):
     account_holder_name: str | None = None
     account_number: str | None = None
     ifsc_code: str | None = None
+    routed_to: Literal[ROUTED_TO] | None = None  # type: ignore[valid-type]
+    manufacturer_id: int | None = None
+    courier_id: int | None = None
+    insurance_id: int | None = None
 
 
 class ClaimUpdate(BaseModel):
@@ -30,6 +35,10 @@ class ClaimUpdate(BaseModel):
     account_holder_name: str | None = None
     account_number: str | None = None
     ifsc_code: str | None = None
+    routed_to: Literal[ROUTED_TO] | None = None  # type: ignore[valid-type]
+    manufacturer_id: int | None = None
+    courier_id: int | None = None
+    insurance_id: int | None = None
 
 
 class ClaimStatusUpdate(BaseModel):
@@ -55,6 +64,13 @@ class ClaimOut(BaseModel):
     account_number: str | None
     ifsc_code: str | None
     admin_remark: str | None
+    routed_to: str | None = None
+    manufacturer_id: int | None = None
+    manufacturer_name: str | None = None
+    courier_id: int | None = None
+    courier_name: str | None = None
+    insurance_id: int | None = None
+    insurance_name: str | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -71,6 +87,7 @@ class ClaimListItem(BaseModel):
     customer_contact: str | None
     status: str
     submitted_at: datetime
+    routed_to: str | None = None
 
 
 class ClaimListResponse(BaseModel):

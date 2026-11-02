@@ -190,6 +190,18 @@ export default function ClaimDetail() {
           <Field label="Submitted At" value={fmt(claim.submitted_at)} />
           <Field label="Processed By" value={claim.processed_by_name} />
           <Field label="Last Updated" value={fmt(claim.updated_at)} />
+          <Field
+            label="Routed To"
+            value={
+              claim.routed_to
+                ? `${claim.routed_to[0].toUpperCase()}${claim.routed_to.slice(1)}${
+                    claim.manufacturer_name || claim.courier_name || claim.insurance_name
+                      ? ` — ${claim.manufacturer_name || claim.courier_name || claim.insurance_name}`
+                      : ""
+                  }`
+                : null
+            }
+          />
           <Field label="Issue Description" value={claim.notes} full />
         </div>
       </section>
