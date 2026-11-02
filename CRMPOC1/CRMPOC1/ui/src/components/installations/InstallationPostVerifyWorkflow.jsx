@@ -1080,7 +1080,7 @@ export default function InstallationPostVerifyWorkflow({
               onClick={() => setShowPaymentReturn((s) => !s)}
               className="rounded-md border border-rose-300 bg-white px-4 py-2 text-sm font-medium text-rose-700 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              Return to engineer
+              Return to previous approver
             </button>
           </div>
           {showPaymentReturn && (

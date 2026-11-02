@@ -261,6 +261,7 @@ export default function EngineerUnitWorkflowPanel({
     if (stage === "admin") return false;
     return PAYMENT_STAGE_ROLES[stage]?.has(role) ?? false;
   }
+  const isPaymentChainRole = isServiceTeam || ["sub_admin", "accounts", "audit"].includes(role);
   const [serviceClaims, setServiceClaims] = useState([]);
   const canSeeClaims = canApproveUnits || canForwardUnits;
 
@@ -731,7 +732,7 @@ export default function EngineerUnitWorkflowPanel({
         remarks: form.remarks,
         reject: true,
       }),
-      { successMessage: "Payment request rejected. Engineer can update and re-submit." },
+      { successMessage: "Payment returned to the previous approver." },
     );
     closeModal();
   }
@@ -939,7 +940,7 @@ export default function EngineerUnitWorkflowPanel({
       return <span className="text-xs text-amber-700">Waiting for admin completion approval</span>;
     }
 
-    if (unit.unit_status === "Payment Requested" && isServiceTeam) {
+    if (unit.unit_status === "Payment Requested" && isPaymentChainRole) {
       const myTurn = canActOnUnitPaymentStage(unit);
       return (
         <div className="flex flex-col items-end gap-1">
@@ -2168,7 +2169,7 @@ export default function EngineerUnitWorkflowPanel({
               disabled={!form.remarks?.trim()}
               className="rounded-md border border-rose-300 px-4 py-2 text-sm text-rose-700 disabled:opacity-50"
             >
-              Reject payment
+              Return payment
             </button>
             <button
               type="button"

@@ -78,6 +78,7 @@ from app.services.payment_approval_workflow import (
     is_final_stage,
     next_stage,
     notify_payment_stage,
+    previous_stage,
     record_payment_approval,
     resolve_payment_stage_actions,
 )
@@ -1605,6 +1606,43 @@ async def update_status(
                 remarks=work_report,
                 stages=payment_stages,
             )
+            back_to = None if admin_bypass else previous_stage(inst.payment_approval_stage, payment_stages)
+            if new_status == "Returned" and back_to is not None:
+                # A Return always goes back exactly one step to whoever approved it last, never
+                # all the way to the engineer from partway through the chain -- only the first
+                # stage (Service Team) returning it has nowhere earlier to go but the engineer.
+                payload = approval_stage_payload(back_to.key, payment_stages)
+                inst.payment_approval_status = "Pending"
+                inst.payment_approval_stage = payload["payment_approval_stage"]
+                inst.payment_approval_stage_label = payload["payment_approval_stage_label"]
+                inst.payment_approval_step = payload["payment_approval_step"]
+                inst.payment_approval_total_steps = payload["payment_approval_total_steps"]
+                inst.payment_next_approver_role = payload["payment_next_approver_role"]
+                log_installation_action(
+                    db,
+                    inst,
+                    action=f"Payment Returned to {back_to.label}",
+                    user=user,
+                    old_status=old_status,
+                    new_status=inst.status,
+                    remarks=work_report,
+                    metadata={"returned_to": back_to.key},
+                )
+                notify_payment_stage(
+                    db,
+                    module="installations",
+                    entity_id=inst.id,
+                    title=f"Installation #{inst.id}",
+                    href=f"/installations/{inst.id}",
+                    entity_status=inst.status,
+                    stage_key=inst.payment_approval_stage,
+                    occurred_at=datetime.now(timezone.utc),
+                    stages=payment_stages,
+                )
+                db.commit()
+                db.refresh(inst)
+                return InstallationOut(**_hydrate(db, inst, viewer=user))
+
             inst.payment_approval_status = "Rejected"
             inst.status = return_installation_to_engineer_for_rework(inst, reject_stage="payment")
             log_installation_action(

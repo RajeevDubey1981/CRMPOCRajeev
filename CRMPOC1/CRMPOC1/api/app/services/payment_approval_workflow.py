@@ -107,6 +107,15 @@ def next_stage(stage_key: str | None, stages: list[PaymentApprovalStage] | None 
     return stages[idx + 1] if idx + 1 < len(stages) else None
 
 
+def previous_stage(stage_key: str | None, stages: list[PaymentApprovalStage] | None = None) -> PaymentApprovalStage | None:
+    """The stage immediately before this one, or None at the first stage -- a Return always goes
+    back exactly one step, never past the start of the chain or straight to the engineer from
+    partway through it."""
+    stages = stages or payment_approval_stages()
+    idx = stage_index(stage_key, stages)
+    return stages[idx - 1] if idx > 0 else None
+
+
 def user_can_approve_stage(user: Any, stage_key: str | None, stages: list[PaymentApprovalStage] | None = None) -> bool:
     if is_system_admin(user):
         return True

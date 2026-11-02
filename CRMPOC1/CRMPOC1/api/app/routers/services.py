@@ -191,6 +191,7 @@ from app.services.payment_approval_workflow import (
     is_final_stage,
     next_stage,
     notify_payment_stage,
+    previous_stage,
     record_payment_approval,
     resolve_payment_stage_actions,
 )
@@ -3053,10 +3054,8 @@ def cancel_payment_request(
     user: User = Depends(get_current_user),
 ):
     service = _load_visible_service(db, service_id, user)
-    if not (_is_engineer(user) or _is_vendor(user) or _is_service_team(user)):
+    if not reject and not (_is_engineer(user) or _is_vendor(user) or _is_service_team(user)):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Your role cannot cancel payment request")
-    if reject and not _is_service_team(user):
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only Indcool Service can reject payment requests")
     if reject and not (remarks or "").strip():
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Remarks are required when rejecting a payment request")
     if _is_engineer(user) and not _engineer_can_work_on_service(db, service, user):
@@ -3084,7 +3083,10 @@ def cancel_payment_request(
             )
             if payment is None:
                 raise HTTPException(status.HTTP_400_BAD_REQUEST, "No payment request found for this serial")
-            ensure_current_stage_approver(user, payment.approval_stage)
+            unit_stages = installation_payment_approval_stages(
+                float(payment.total_requested_amount) if payment.total_requested_amount is not None else None
+            )
+            ensure_current_stage_approver(user, payment.approval_stage, unit_stages)
             record_payment_approval(
                 db,
                 module="services",
@@ -3094,6 +3096,7 @@ def cancel_payment_request(
                 decision="Rejected",
                 user=user,
                 remarks=remarks,
+                stages=unit_stages,
             )
             resolve_payment_stage_actions(
                 db,
@@ -3101,14 +3104,27 @@ def cancel_payment_request(
                 entity_id=service.id,
                 entity_ref=str(payment.id),
             )
-            payment.status = "Rejected"
-            payment.approval_status = "Rejected"
-            payment.processed_at = _now()
-            payment.processed_by_user_id = user.id
-            payment.updated_at = _now()
-            payment.remarks = remarks
-            unit.unit_status = "Service Completed"
-            sync_aggregate_service_status(db, service)
+            back_to = previous_stage(payment.approval_stage, unit_stages)
+            if back_to is not None:
+                payload = approval_stage_payload(back_to.key, unit_stages)
+                payment.approval_status = "Pending"
+                payment.approval_stage = payload["payment_approval_stage"]
+                payment.approval_stage_label = payload["payment_approval_stage_label"]
+                payment.approval_step = payload["payment_approval_step"]
+                payment.approval_total_steps = payload["payment_approval_total_steps"]
+                payment.next_approver_role = payload["payment_next_approver_role"]
+                payment.updated_at = _now()
+                payment.remarks = remarks
+                action = f"Payment Returned to {back_to.label}"
+            else:
+                payment.status = "Rejected"
+                payment.approval_status = "Rejected"
+                payment.processed_at = _now()
+                payment.processed_by_user_id = user.id
+                payment.updated_at = _now()
+                payment.remarks = remarks
+                unit.unit_status = "Service Completed"
+                sync_aggregate_service_status(db, service)
         else:
             cancel_payment_for_unit(db, service, unit)
     else:
@@ -3122,7 +3138,10 @@ def cancel_payment_request(
         if latest_payment is None:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "No payment request found to cancel")
         if reject:
-            ensure_current_stage_approver(user, latest_payment.approval_stage)
+            whole_stages = installation_payment_approval_stages(
+                float(latest_payment.total_requested_amount) if latest_payment.total_requested_amount is not None else None
+            )
+            ensure_current_stage_approver(user, latest_payment.approval_stage, whole_stages)
             record_payment_approval(
                 db,
                 module="services",
@@ -3132,6 +3151,7 @@ def cancel_payment_request(
                 decision="Rejected",
                 user=user,
                 remarks=remarks,
+                stages=whole_stages,
             )
             resolve_payment_stage_actions(
                 db,
@@ -3139,16 +3159,31 @@ def cancel_payment_request(
                 entity_id=service.id,
                 entity_ref=str(latest_payment.id),
             )
-            latest_payment.status = "Rejected"
-            latest_payment.approval_status = "Rejected"
-            latest_payment.processed_at = _now()
-            latest_payment.processed_by_user_id = user.id
-            latest_payment.updated_at = _now()
-            latest_payment.remarks = remarks
+            back_to = previous_stage(latest_payment.approval_stage, whole_stages)
+            if back_to is not None:
+                payload = approval_stage_payload(back_to.key, whole_stages)
+                latest_payment.approval_status = "Pending"
+                latest_payment.approval_stage = payload["payment_approval_stage"]
+                latest_payment.approval_stage_label = payload["payment_approval_stage_label"]
+                latest_payment.approval_step = payload["payment_approval_step"]
+                latest_payment.approval_total_steps = payload["payment_approval_total_steps"]
+                latest_payment.next_approver_role = payload["payment_next_approver_role"]
+                latest_payment.updated_at = _now()
+                latest_payment.remarks = remarks
+                action = f"Payment Returned to {back_to.label}"
+            else:
+                latest_payment.status = "Rejected"
+                latest_payment.approval_status = "Rejected"
+                latest_payment.processed_at = _now()
+                latest_payment.processed_by_user_id = user.id
+                latest_payment.updated_at = _now()
+                latest_payment.remarks = remarks
+                service.status = "Service Completed"
+                service.status_date = _now()
         else:
             db.delete(latest_payment)
-        service.status = "Service Completed"
-        service.status_date = _now()
+            service.status = "Service Completed"
+            service.status_date = _now()
 
     _log_status(
         db,
@@ -3248,6 +3283,46 @@ async def approve_service_payment(
             remarks=body.remarks,
             stages=payment_stages,
         )
+        back_to = None if admin_bypass else previous_stage(latest_payment.approval_stage, payment_stages)
+        if back_to is not None:
+            # A return always goes back exactly one step to whoever approved it last, never all
+            # the way to the engineer from partway through the chain -- only Service Role
+            # returning it has nowhere earlier to go but Service Completed (raise payment again).
+            payload = approval_stage_payload(back_to.key, payment_stages)
+            latest_payment.approval_status = "Pending"
+            latest_payment.approval_stage = payload["payment_approval_stage"]
+            latest_payment.approval_stage_label = payload["payment_approval_stage_label"]
+            latest_payment.approval_step = payload["payment_approval_step"]
+            latest_payment.approval_total_steps = payload["payment_approval_total_steps"]
+            latest_payment.next_approver_role = payload["payment_next_approver_role"]
+            latest_payment.updated_at = _now()
+            latest_payment.remarks = body.remarks
+            _log_status(
+                db,
+                service,
+                action=f"Payment Returned to {back_to.label}",
+                user=user,
+                old_status=old_status,
+                new_status=service.status,
+                remarks=body.remarks,
+                metadata={"payment_request_id": latest_payment.id, "returned_to": back_to.key},
+            )
+            notify_payment_stage(
+                db,
+                module="services",
+                entity_id=service.id,
+                entity_ref=str(latest_payment.id),
+                title=f"Service {service.request_no}",
+                href=f"/services/{service.id}",
+                entity_status=service.status,
+                stage_key=latest_payment.approval_stage,
+                occurred_at=_now(),
+                stages=payment_stages,
+            )
+            db.commit()
+            db.refresh(service)
+            return _hydrate_service(db, service, user=user)
+
         latest_payment.status = "Rejected"
         latest_payment.approval_status = "Rejected"
         latest_payment.processed_at = _now()
