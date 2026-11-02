@@ -5,6 +5,7 @@ import { api } from "../../api/client.js";
 import { installationsApi } from "../../api/installations.js";
 import { servicesApi } from "../../api/services.js";
 import { formatApiError } from "../../utils/apiError.js";
+import PaymentFlowModal from "../../components/installations/PaymentFlowModal.jsx";
 
 function fmtDate(d) {
   if (!d) return "—";
@@ -74,6 +75,7 @@ function QueueRow({ item, onActed }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [showReturn, setShowReturn] = useState(false);
+  const [showFlow, setShowFlow] = useState(false);
   const u = URGENCY[item.urgency] || URGENCY.ontime;
 
   async function send() {
@@ -186,6 +188,13 @@ function QueueRow({ item, onActed }) {
           )}
           <button
             type="button"
+            onClick={() => setShowFlow(true)}
+            className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+          >
+            View flow
+          </button>
+          <button
+            type="button"
             onClick={() => navigate(item.href)}
             className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
           >
@@ -194,6 +203,14 @@ function QueueRow({ item, onActed }) {
         </div>
         {err && <div className="mt-1 text-right text-xs text-rose-600">{err}</div>}
         {showReturn && <ReturnBox busy={busy} onCancel={() => setShowReturn(false)} onConfirm={returnIt} />}
+        {showFlow && (
+          <PaymentFlowModal
+            module={item.module}
+            entityId={item.entity_id}
+            label={item.label}
+            onClose={() => setShowFlow(false)}
+          />
+        )}
       </td>
     </tr>
   );

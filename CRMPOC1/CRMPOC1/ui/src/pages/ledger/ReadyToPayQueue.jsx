@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 
 import { api } from "../../api/client.js";
 import { formatApiError } from "../../utils/apiError.js";
+import PaymentFlowModal from "../../components/installations/PaymentFlowModal.jsx";
 
 function fmtMoney(n) {
   return `₹${Number(n || 0).toLocaleString("en-IN")}`;
@@ -165,6 +166,7 @@ export default function ReadyToPayQueue() {
   const [sortBy, setSortBy] = useState("oldest");
   const [bucket, setBucket] = useState("all");
   const [selected, setSelected] = useState(new Set());
+  const [flowItem, setFlowItem] = useState(null);
   const [showPoolModal, setShowPoolModal] = useState(false);
   const [toast, setToast] = useState("");
 
@@ -345,13 +347,22 @@ export default function ReadyToPayQueue() {
                   </td>
                   <td className="px-3 py-2 text-right font-mono">{fmtMoney(item.amount)}</td>
                   <td className="px-3 py-2 text-right">
-                    <button
-                      type="button"
-                      onClick={() => navigate(item.href)}
-                      className="rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700"
-                    >
-                      Pay now
-                    </button>
+                    <div className="flex items-center justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setFlowItem(item)}
+                        className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                      >
+                        View flow
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => navigate(item.href)}
+                        className="rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700"
+                      >
+                        Pay now
+                      </button>
+                    </div>
                   </td>
                 </tr>
               );
@@ -386,6 +397,15 @@ export default function ReadyToPayQueue() {
 
       {showPoolModal && (
         <PoolPayModal items={selectedItems} onClose={() => setShowPoolModal(false)} onPaid={afterPaid} />
+      )}
+
+      {flowItem && (
+        <PaymentFlowModal
+          module={flowItem.module}
+          entityId={flowItem.entity_id}
+          label={flowItem.label}
+          onClose={() => setFlowItem(null)}
+        />
       )}
     </div>
   );
