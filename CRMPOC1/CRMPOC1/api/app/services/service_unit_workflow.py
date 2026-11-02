@@ -154,11 +154,15 @@ def sync_aggregate_service_status(db: Session, service: ServiceRequest) -> None:
             service.status = "Payment Requested"
         else:
             service.status = "Service Completed"
+    elif any(status == UNIT_STATUS_PAYMENT_REQUESTED for status in statuses):
+        # At least one serial has a payment waiting on someone's approval -- surface that even
+        # while other serials on the same visit are still earlier in the workflow, so this
+        # doesn't get buried under the generic "Service In Progress" bucket below.
+        service.status = "Payment Requested"
     elif any(
         status in (
             UNIT_STATUS_APPROVED,
             UNIT_STATUS_COMPLETED,
-            UNIT_STATUS_PAYMENT_REQUESTED,
             UNIT_STATUS_PAYMENT_COMPLETED,
         )
         for status in statuses

@@ -2913,6 +2913,7 @@ async def raise_payment_request(
         payment_request.approval_step = payload["payment_approval_step"]
         payment_request.approval_total_steps = payload["payment_approval_total_steps"]
         payment_request.next_approver_role = payload["payment_next_approver_role"]
+        sync_aggregate_service_status(db, service)
     elif has_unit_workflow:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "unit_id is required when raising payment for a specific serial")
     else:
