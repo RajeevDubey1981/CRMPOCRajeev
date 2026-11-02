@@ -67,6 +67,7 @@ from app.services.workflow_notifications import (
     notify_customer_installation_update,
     notify_engineer_installation_assigned,
     notify_payment_credited,
+    notify_pooled_payment_credited,
 )
 from app.services.ledger_events import post_job_payout
 from app.services.payment_approval_workflow import (
@@ -1948,19 +1949,48 @@ async def bulk_update_status(
                 actor=user,
                 payment_type=completed_rows[0].payment_type_paid or completed_rows[0].payment_type_requested or "Cash",
             )
+            payee_groups: dict[int, dict] = {}
             for inst in completed_rows:
                 engineer = db.get(User, inst.assigned_engineer) if inst.assigned_engineer else None
-                if engineer is not None:
+                if engineer is None or not engineer.email:
+                    continue
+                group = payee_groups.setdefault(engineer.id, {
+                    "email": engineer.email,
+                    "name": engineer.name,
+                    "items": [],
+                    "total": 0.0,
+                    "payment_type": inst.payment_type_paid or inst.payment_type_requested,
+                    "payment_reference": inst.payment_reference,
+                    "payment_paid_on": inst.payment_paid_on,
+                })
+                amount = float(inst.payment_amount_paid or inst.payment_amount_requested or 0)
+                group["items"].append(("Installation", f"#{inst.id}", amount))
+                group["total"] += amount
+
+            for group in payee_groups.values():
+                if len(group["items"]) == 1:
+                    label, amount = group["items"][0][1], group["items"][0][2]
                     notify_payment_credited(
                         background_tasks,
-                        payee_email=engineer.email,
-                        payee_name=engineer.name,
+                        payee_email=group["email"],
+                        payee_name=group["name"],
                         module="installation",
-                        label=f"#{inst.id}",
-                        amount=float(inst.payment_amount_paid or inst.payment_amount_requested or 0),
-                        payment_type=inst.payment_type_paid or inst.payment_type_requested,
-                        payment_reference=inst.payment_reference,
-                        payment_paid_on=inst.payment_paid_on,
+                        label=label,
+                        amount=amount,
+                        payment_type=group["payment_type"],
+                        payment_reference=group["payment_reference"],
+                        payment_paid_on=group["payment_paid_on"],
+                    )
+                else:
+                    notify_pooled_payment_credited(
+                        background_tasks,
+                        payee_email=group["email"],
+                        payee_name=group["name"],
+                        items=group["items"],
+                        total_amount=group["total"],
+                        payment_type=group["payment_type"],
+                        payment_reference=group["payment_reference"],
+                        payment_paid_on=group["payment_paid_on"],
                     )
 
     for inst in rows:

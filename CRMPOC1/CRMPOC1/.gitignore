@@ -20,6 +20,9 @@ ui/build/
 .env.local
 *.env.local
 scripts/deploy.env
+scripts/replica.env
+scripts/green-energy-server.txt
+scripts/green-energy-deploy.log
 
 # Editor
 .idea/
