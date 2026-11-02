@@ -184,6 +184,7 @@ from app.services.payment_approval_workflow import (
     approval_stage_payload,
     ensure_current_stage_approver,
     first_payment_stage,
+    installation_payment_approval_stages,
     is_final_stage,
     next_stage,
     notify_payment_stage,
@@ -320,7 +321,12 @@ def _engineer_assigned_service_ids(db: Session, engineer_id: int):
     ).distinct()
 
 
+_SERVICE_PAYMENT_STAGE_ROLES = {"accounts", "audit"}
+
+
 def _service_visible_to_user(db: Session, service: ServiceRequest, user: User) -> bool:
+    if canonical_role_key(user.role) in _SERVICE_PAYMENT_STAGE_ROLES:
+        return True
     if _is_call_center(user):
         return True
     if is_service_operations_member(user):
@@ -2898,8 +2904,9 @@ async def raise_payment_request(
             total_requested_amount,
             remarks,
         )
-        stage = first_payment_stage()
-        payload = approval_stage_payload(stage.key)
+        unit_stages = installation_payment_approval_stages(total_requested_amount)
+        stage = first_payment_stage(unit_stages)
+        payload = approval_stage_payload(stage.key, unit_stages)
         payment_request.approval_status = "Pending"
         payment_request.approval_stage = payload["payment_approval_stage"]
         payment_request.approval_stage_label = payload["payment_approval_stage_label"]
@@ -2928,8 +2935,9 @@ async def raise_payment_request(
             created_at=_now(),
             updated_at=_now(),
         )
-        stage = first_payment_stage()
-        payload = approval_stage_payload(stage.key)
+        whole_stages = installation_payment_approval_stages(total_requested_amount)
+        stage = first_payment_stage(whole_stages)
+        payload = approval_stage_payload(stage.key, whole_stages)
         payment_request.approval_status = "Pending"
         payment_request.approval_stage = payload["payment_approval_stage"]
         payment_request.approval_stage_label = payload["payment_approval_stage_label"]
@@ -3142,7 +3150,10 @@ async def approve_service_payment(
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "No payment request found to approve")
     if latest_payment.approval_status in {"Approved", "Rejected"} or latest_payment.status == "Processed":
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "This payment request is already finalized")
-    ensure_current_stage_approver(user, latest_payment.approval_stage)
+    payment_stages = installation_payment_approval_stages(
+        float(latest_payment.total_requested_amount) if latest_payment.total_requested_amount is not None else None
+    )
+    ensure_current_stage_approver(user, latest_payment.approval_stage, payment_stages)
     admin_bypass = is_system_admin(user)
     effective_stage_key = "admin" if admin_bypass else latest_payment.approval_stage
     if proof_document is not None and proof_document.filename and not is_system_admin(user):
@@ -3167,6 +3178,7 @@ async def approve_service_payment(
             decision="Rejected",
             user=user,
             remarks=body.remarks,
+            stages=payment_stages,
         )
         latest_payment.status = "Rejected"
         latest_payment.approval_status = "Rejected"
@@ -3206,11 +3218,12 @@ async def approve_service_payment(
         decision="Approved",
         user=user,
         remarks=body.remarks,
+        stages=payment_stages,
     )
 
-    if not admin_bypass and not is_final_stage(latest_payment.approval_stage):
-        following_stage = next_stage(latest_payment.approval_stage)
-        payload = approval_stage_payload(following_stage.key if following_stage else None)
+    if not admin_bypass and not is_final_stage(latest_payment.approval_stage, payment_stages):
+        following_stage = next_stage(latest_payment.approval_stage, payment_stages)
+        payload = approval_stage_payload(following_stage.key if following_stage else None, payment_stages)
         latest_payment.approval_status = "Pending"
         latest_payment.approval_stage = payload["payment_approval_stage"]
         latest_payment.approval_stage_label = payload["payment_approval_stage_label"]
@@ -3241,6 +3254,7 @@ async def approve_service_payment(
             entity_status=service.status,
             stage_key=latest_payment.approval_stage,
             occurred_at=_now(),
+            stages=payment_stages,
         )
         db.commit()
         db.refresh(service)

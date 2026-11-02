@@ -38,7 +38,7 @@ from app.services.file_service import save_upload
 from app.services.installation_stages import stage_counts
 from app.services.installation_workflow import log_installation_action
 from app.services.workflow_notifications import notify_pooled_payment_credited
-from app.services.payment_approval_workflow import installation_payment_approval_stages, payment_approval_stages, stage_index
+from app.services.payment_approval_workflow import installation_payment_approval_stages, stage_index
 from app.services.role_access import is_operations_admin, is_system_admin
 from app.services.service_access import is_service_desk_user
 from app.services.service_unit_workflow import sync_aggregate_service_status
@@ -313,52 +313,50 @@ def my_payment_queue(db: Session = Depends(get_db), user: User = Depends(get_cur
             actionable=True,
         ))
 
-    # Service Requests only ever reach service_role/service_manager (no Sub Admin/Accounts/Audit
-    # stage exists for them), so this is a no-op for those three roles' own stage.
-    if own_stage in (None, "service_role", "service_manager"):
-        svc_stmt = (
-            select(ServicePaymentRequest, ServiceRequest.request_no, User.name)
-            .join(ServiceRequest, ServiceRequest.id == ServicePaymentRequest.service_request_id)
-            .outerjoin(User, User.id == ServicePaymentRequest.requested_by_user_id)
-            .where(ServicePaymentRequest.approval_status == "Pending")
-        )
-        if own_stage is not None:
-            svc_stmt = svc_stmt.where(ServicePaymentRequest.approval_stage == own_stage)
-        else:
-            svc_stmt = svc_stmt.where(ServicePaymentRequest.approval_stage != "admin")
-        svc_rows = db.execute(svc_stmt).all()
-        svc_last_action = _last_action_map(db, "services", [p.service_request_id for p, _, _ in svc_rows])
-        unit_counts: dict[int, int] = {}
-        if svc_rows:
-            for sr_id, n in db.execute(
-                select(ServiceRequestUnit.service_request_id, func.count())
-                .where(ServiceRequestUnit.service_request_id.in_({p.service_request_id for p, _, _ in svc_rows}))
-                .group_by(ServiceRequestUnit.service_request_id)
-            ).all():
-                unit_counts[sr_id] = n
-        flat_stages = payment_approval_stages()
-        for payment, request_no, engineer_name in svc_rows:
-            idx = stage_index(payment.approval_stage, flat_stages)
-            next_label = flat_stages[idx + 1].label if idx + 1 < len(flat_stages) else None
-            requested_at = payment.created_at
-            days = _days_waiting(requested_at, now)
-            items.append(PaymentQueueItem(
-                module="service",
-                entity_id=payment.service_request_id,
-                label=request_no or f"#{payment.service_request_id}",
-                engineer_name=engineer_name,
-                amount=float(payment.total_requested_amount or 0),
-                payment_type=payment.payment_type,
-                requested_at=requested_at,
-                days_waiting=days,
-                urgency=_payment_urgency(days),
-                stage_key=payment.approval_stage or "",
-                stage_label=flat_stages[idx].label if idx < len(flat_stages) else (payment.approval_stage_label or ""),
-                next_stage_label=next_label,
-                last_action=svc_last_action.get(payment.service_request_id),
-                href=f"/services/{payment.service_request_id}",
-                actionable=unit_counts.get(payment.service_request_id, 0) <= 1,
-            ))
+    svc_stmt = (
+        select(ServicePaymentRequest, ServiceRequest.request_no, User.name)
+        .join(ServiceRequest, ServiceRequest.id == ServicePaymentRequest.service_request_id)
+        .outerjoin(User, User.id == ServicePaymentRequest.requested_by_user_id)
+        .where(ServicePaymentRequest.approval_status == "Pending")
+    )
+    if own_stage is not None:
+        svc_stmt = svc_stmt.where(ServicePaymentRequest.approval_stage == own_stage)
+    else:
+        svc_stmt = svc_stmt.where(ServicePaymentRequest.approval_stage != "admin")
+    svc_rows = db.execute(svc_stmt).all()
+    svc_last_action = _last_action_map(db, "services", [p.service_request_id for p, _, _ in svc_rows])
+    unit_counts: dict[int, int] = {}
+    if svc_rows:
+        for sr_id, n in db.execute(
+            select(ServiceRequestUnit.service_request_id, func.count())
+            .where(ServiceRequestUnit.service_request_id.in_({p.service_request_id for p, _, _ in svc_rows}))
+            .group_by(ServiceRequestUnit.service_request_id)
+        ).all():
+            unit_counts[sr_id] = n
+    for payment, request_no, engineer_name in svc_rows:
+        svc_amount = float(payment.total_requested_amount) if payment.total_requested_amount is not None else None
+        svc_stages = installation_payment_approval_stages(svc_amount)
+        idx = stage_index(payment.approval_stage, svc_stages)
+        next_label = svc_stages[idx + 1].label if idx + 1 < len(svc_stages) else None
+        requested_at = payment.created_at
+        days = _days_waiting(requested_at, now)
+        items.append(PaymentQueueItem(
+            module="service",
+            entity_id=payment.service_request_id,
+            label=request_no or f"#{payment.service_request_id}",
+            engineer_name=engineer_name,
+            amount=float(payment.total_requested_amount or 0),
+            payment_type=payment.payment_type,
+            requested_at=requested_at,
+            days_waiting=days,
+            urgency=_payment_urgency(days),
+            stage_key=payment.approval_stage or "",
+            stage_label=svc_stages[idx].label if idx < len(svc_stages) else (payment.approval_stage_label or ""),
+            next_stage_label=next_label,
+            last_action=svc_last_action.get(payment.service_request_id),
+            href=f"/services/{payment.service_request_id}",
+            actionable=unit_counts.get(payment.service_request_id, 0) <= 1,
+        ))
 
     items.sort(key=lambda i: -i.days_waiting)
     return items
