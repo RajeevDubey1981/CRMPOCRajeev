@@ -26,6 +26,7 @@ const NAV = [
   { to: "/services", label: "Service Requests", module: "services" },
   { to: "/partner-registrations", label: "Partner Registrations", module: "partner_registrations" },
   { to: "/services/my-units", label: "My Assigned Units", engineerOnly: true },
+  { to: "/services/my-payments", label: "Payment", engineerOnly: true },
   { to: "/items/my-requests", label: "My Part Requests", engineerOnly: true },
   { to: "/approvals", label: "Approvals", reviewerOnly: true },
   { to: "/ledger", label: "Accounts", ledgerAccess: true },

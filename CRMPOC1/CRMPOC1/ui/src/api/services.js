@@ -23,6 +23,7 @@ export const servicesApi = {
   addUnitBySerial: (id, body) => api.post(`/api/services/${id}/units/add-by-serial`, body).then((r) => r.data),
   setUnitBilling: (id, body) => api.post(`/api/services/${id}/units/billing`, body).then((r) => r.data),
   myAssignedUnits: () => api.get("/api/services/my-assigned-units").then((r) => r.data),
+  myPayments: () => api.get("/api/services/my-payments").then((r) => r.data),
   identifyCustomer: (id, body) => api.post(`/api/services/${id}/identify-customer`, body).then((r) => r.data),
   assign: (id, body) => api.post(`/api/services/${id}/assign`, body).then((r) => r.data),
   cancelAssignment: (id) => api.post(`/api/services/${id}/assignment-cancel`).then((r) => r.data),

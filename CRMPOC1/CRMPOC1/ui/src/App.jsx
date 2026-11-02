@@ -54,6 +54,7 @@ import LedgerDetail from "./pages/ledger/LedgerDetail.jsx";
 import ServiceRequestCreate from "./pages/services/ServiceRequestCreate.jsx";
 import ServiceRequestDetail from "./pages/services/ServiceRequestDetail.jsx";
 import EngineerAssignedUnits from "./pages/services/EngineerAssignedUnits.jsx";
+import MyPayments from "./pages/services/MyPayments.jsx";
 import ServiceDocumentUploadPublic from "./pages/services/ServiceDocumentUploadPublic.jsx";
 import PartnerRegistrationList from "./pages/partners/PartnerRegistrationList.jsx";
 import PartnerRegistrationReview from "./pages/partners/PartnerRegistrationReview.jsx";
@@ -212,6 +213,7 @@ export default function App() {
         <Route path="/partner-registrations" element={<PermissionRoute module="partner_registrations"><PartnerRegistrationList /></PermissionRoute>} />
         <Route path="/partner-registrations/:id/review" element={<PermissionRoute module="partner_registrations"><PartnerRegistrationReview /></PermissionRoute>} />
         <Route path="/services/my-units" element={<EngineerAssignedUnits />} />
+        <Route path="/services/my-payments" element={<MyPayments />} />
         <Route path="/approvals" element={<ApprovalsPage />} />
         <Route path="/ledger" element={<LedgerPage />} />
         <Route path="/ledger/:partyType/:id" element={<LedgerDetail />} />

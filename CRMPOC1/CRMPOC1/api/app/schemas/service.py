@@ -606,6 +606,30 @@ class ServiceListResponse(BaseModel):
     per_page: int
 
 
+class MyPaymentRequestItem(BaseModel):
+    payment_request_id: int
+    service_request_id: int
+    request_no: str
+    customer_name: str
+    amount: float
+    status_label: str  # "Awaiting approval" | "Payment received" | "Rejected"
+    stage_label: str | None = None
+    requested_at: datetime
+    payment_reference: str | None = None
+    payment_paid_on: date | None = None
+
+
+class MyPaymentsSummary(BaseModel):
+    raised_this_month: float
+    awaiting_approval: float
+    received_this_month: float
+
+
+class MyPaymentsOut(BaseModel):
+    summary: MyPaymentsSummary
+    items: list[MyPaymentRequestItem]
+
+
 class ServiceSummary(BaseModel):
     new_requests: int
     unassigned: int

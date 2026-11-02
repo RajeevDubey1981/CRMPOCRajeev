@@ -84,6 +84,9 @@ from app.schemas.service import (
     ServiceUpdate,
     ServiceVerifyOrderIn,
     EngineerAssignedUnitGroup,
+    MyPaymentRequestItem,
+    MyPaymentsOut,
+    MyPaymentsSummary,
 )
 from app.services.email_bounce import bounce_info, bounced_map
 from app.services.engineer_service_scope import engineer_visible_service_filter
@@ -1143,6 +1146,70 @@ def my_assigned_units(db: Session = Depends(get_db), user: User = Depends(get_cu
     if not _is_engineer(user):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Only engineers can view assigned units")
     return [EngineerAssignedUnitGroup(**group) for group in build_engineer_unit_groups(db, user.id)]
+
+
+@router.get("/my-payments", response_model=MyPaymentsOut)
+def my_payments(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Every payment this engineer has raised (whole-service or per-serial), with a plain
+    Awaiting approval / Payment received / Rejected status -- the engineer's own payment history,
+    separate from the multi-stage approval detail only the approving roles need to see."""
+    if not _is_engineer(user):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only engineers can view their own payments")
+
+    rows = db.execute(
+        select(ServicePaymentRequest, ServiceRequest.request_no, ServiceRequest.customer_name)
+        .join(ServiceRequest, ServiceRequest.id == ServicePaymentRequest.service_request_id)
+        .where(
+            ServicePaymentRequest.requested_by_type == "engineer",
+            ServicePaymentRequest.requested_by_user_id == user.id,
+        )
+        .order_by(desc(ServicePaymentRequest.created_at))
+    ).all()
+
+    now = _now()
+    items: list[MyPaymentRequestItem] = []
+    raised_this_month = 0.0
+    received_this_month = 0.0
+    awaiting_approval = 0.0
+    for payment, request_no, customer_name in rows:
+        amount = float(payment.total_requested_amount or 0)
+        if payment.approval_status == "Approved":
+            status_label = "Payment received"
+        elif payment.approval_status == "Rejected":
+            status_label = "Rejected"
+        else:
+            status_label = "Awaiting approval"
+            awaiting_approval += amount
+        if payment.created_at and payment.created_at.year == now.year and payment.created_at.month == now.month:
+            raised_this_month += amount
+        if (
+            status_label == "Payment received"
+            and payment.processed_at
+            and payment.processed_at.year == now.year
+            and payment.processed_at.month == now.month
+        ):
+            received_this_month += float(payment.approved_amount or amount)
+        items.append(MyPaymentRequestItem(
+            payment_request_id=payment.id,
+            service_request_id=payment.service_request_id,
+            request_no=request_no,
+            customer_name=customer_name,
+            amount=amount,
+            status_label=status_label,
+            stage_label=payment.approval_stage_label,
+            requested_at=payment.created_at,
+            payment_reference=payment.payment_reference,
+            payment_paid_on=payment.payment_paid_on,
+        ))
+
+    return MyPaymentsOut(
+        summary=MyPaymentsSummary(
+            raised_this_month=raised_this_month,
+            awaiting_approval=awaiting_approval,
+            received_this_month=received_this_month,
+        ),
+        items=items,
+    )
 
 
 @router.get("/review-units")
