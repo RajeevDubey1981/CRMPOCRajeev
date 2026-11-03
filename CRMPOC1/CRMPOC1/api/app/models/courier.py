@@ -1,4 +1,4 @@
-from sqlalchemy import Integer, String, Text
+from sqlalchemy import Boolean, Integer, String, Text, true
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -30,3 +30,7 @@ class Courier(Base, TimestampMixin, SoftDeleteMixin):
     bank_account_number: Mapped[str | None] = mapped_column(String(50), nullable=True)
     bank_ifsc: Mapped[str | None] = mapped_column(String(20), nullable=True)
     bank_branch: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # Deactivate hides this courier from the Courier dropdown on NEW orders (lookup/couriers), but
+    # keeps every existing order/ledger/rate-card/return entry on it working exactly as before --
+    # unlike Delete, which is blocked while any order on it isn't yet Delivered.
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default=true(), nullable=False)

@@ -82,6 +82,7 @@ def _to_out(c: Courier) -> CourierOut:
         bank_account_number=c.bank_account_number,
         bank_ifsc=c.bank_ifsc,
         bank_branch=c.bank_branch,
+        is_active=c.is_active,
         created_at=c.created_at,
         updated_at=c.updated_at,
     )
@@ -96,6 +97,7 @@ def _to_list_item(c: Courier) -> CourierListItem:
         email=c.email,
         address=c.address,
         courier_type=c.courier_type,
+        is_active=c.is_active,
         created_at=c.created_at,
     )
 

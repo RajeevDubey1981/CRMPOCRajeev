@@ -915,15 +915,24 @@ def lookup_vendors(
 
 @router.get("/lookup/couriers")
 def lookup_couriers(
+    include_id: int | None = None,
     db: Session = Depends(get_db),
     _user: User = Depends(get_current_user),
 ):
+    """Active couriers only, for the New/Edit Order dropdown -- a deactivated courier is hidden from
+    being picked for a new order, but pass its id as include_id (the order's current courier_id) so
+    an order already on it doesn't lose the ability to show/keep its own courier in the dropdown."""
+    conditions = [Courier.deleted_at.is_(None)]
+    if include_id is not None:
+        conditions = [Courier.deleted_at.is_(None), or_(Courier.is_active.is_(True), Courier.id == include_id)]
+    else:
+        conditions.append(Courier.is_active.is_(True))
     rows = db.scalars(
         select(Courier)
-        .where(Courier.deleted_at.is_(None))
+        .where(*conditions)
         .order_by(Courier.courier_name)
     ).all()
-    return [{"id": c.id, "name": c.courier_name, "courier_type": c.courier_type} for c in rows]
+    return [{"id": c.id, "name": c.courier_name, "courier_type": c.courier_type, "is_active": c.is_active} for c in rows]
 
 
 @router.get("/lookup/items")

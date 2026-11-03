@@ -132,6 +132,20 @@ export default function CourierDetail() {
     }
   }
 
+  const [togglingActive, setTogglingActive] = useState(false);
+  async function toggleActive() {
+    setTogglingActive(true);
+    try {
+      const updated = await couriersApi.update(id, { is_active: !courier.is_active });
+      setCourier(updated);
+      setSuccessMsg(updated.is_active ? "Courier reactivated — visible again for new orders." : "Courier deactivated — hidden from new orders, existing orders unaffected.");
+    } catch (e) {
+      setErr(e.response?.data?.detail || "Failed to update courier status");
+    } finally {
+      setTogglingActive(false);
+    }
+  }
+
   const fieldClass = "w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500";
   const labelClass = "mb-1 block text-sm font-medium text-slate-700";
 
@@ -145,9 +159,21 @@ export default function CourierDetail() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <Link to="/couriers" className="text-sm text-brand-600 hover:underline">← Back to Courier Masters</Link>
-          <h1 className="mt-1 text-2xl font-bold text-slate-900">{courier.courier_name}</h1>
+          <div className="mt-1 flex items-center gap-2">
+            <h1 className="text-2xl font-bold text-slate-900">{courier.courier_name}</h1>
+            <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${courier.is_active ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"}`}>
+              {courier.is_active ? "Active" : "Inactive"}
+            </span>
+          </div>
         </div>
         <div className="flex gap-2">
+          <button
+            onClick={toggleActive}
+            disabled={togglingActive}
+            className="rounded-md border border-amber-300 bg-amber-50 px-4 py-2 text-sm font-medium text-amber-800 hover:bg-amber-100 disabled:opacity-50"
+          >
+            {togglingActive ? "Saving…" : courier.is_active ? "⏸ Deactivate" : "▶ Reactivate"}
+          </button>
           <Link
             to={`/couriers/${courier.id}/rate-card`}
             className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"

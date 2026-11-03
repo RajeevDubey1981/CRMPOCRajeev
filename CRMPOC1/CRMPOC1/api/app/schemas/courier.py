@@ -22,6 +22,7 @@ class CourierCreate(BaseModel):
     bank_account_number: str | None = None
     bank_ifsc: str | None = None
     bank_branch: str | None = None
+    is_active: bool = True
 
 
 class CourierUpdate(BaseModel):
@@ -40,6 +41,7 @@ class CourierUpdate(BaseModel):
     bank_account_number: str | None = None
     bank_ifsc: str | None = None
     bank_branch: str | None = None
+    is_active: bool | None = None
 
 
 class CourierOut(BaseModel):
@@ -59,6 +61,7 @@ class CourierOut(BaseModel):
     bank_account_number: str | None = None
     bank_ifsc: str | None = None
     bank_branch: str | None = None
+    is_active: bool = True
     created_at: datetime
     updated_at: datetime
 
@@ -74,6 +77,7 @@ class CourierListItem(BaseModel):
     email: str | None
     address: str | None
     courier_type: str = "parcel"
+    is_active: bool = True
     created_at: datetime
 
 

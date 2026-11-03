@@ -391,6 +391,15 @@ export default function OrderDetail() {
   }, [id]);
 
   useEffect(() => {
+    // Re-fetch with include_id so a deactivated courier already on this order still shows in the
+    // dropdown -- Deactivate only hides a courier from being picked for a NEW order.
+    if (order?.courier_id) {
+      ordersApi.couriers(order.courier_id).then(setCouriers).catch(() => {});
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [order?.courier_id]);
+
+  useEffect(() => {
     if (order && searchParams.get("edit") === "1") {
       openEdit();
       const next = new URLSearchParams(searchParams);
