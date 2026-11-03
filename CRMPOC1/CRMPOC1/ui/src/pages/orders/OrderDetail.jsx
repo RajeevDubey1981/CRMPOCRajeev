@@ -15,6 +15,7 @@ import VendorOrderLineItemsEditor, {
 } from "../../components/orders/VendorOrderLineItemsEditor.jsx";
 import { ordersApi } from "../../api/orders.js";
 import { installationsApi } from "../../api/installations.js";
+import { couriersApi } from "../../api/couriers.js";
 import { useAuth } from "../../auth/AuthContext.jsx";
 import { isOperationsAdminRole, isSystemAdminRole, isSubAdminRole } from "../../utils/roles.js";
 import {
@@ -242,6 +243,52 @@ export default function OrderDetail() {
   const [editSaving, setEditSaving] = useState(false);
   const [vendors, setVendors] = useState([]);
   const [couriers, setCouriers] = useState([]);
+  const [freightCalcOpen, setFreightCalcOpen] = useState(false);
+  const [freightCalcForm, setFreightCalcForm] = useState({
+    weight_only: false, two_box: false,
+    weight_kg: "", length_cm: "", width_cm: "", height_cm: "",
+    box2_weight_kg: "", box2_length_cm: "", box2_width_cm: "", box2_height_cm: "",
+    destination_pincode: "", is_oda: false,
+  });
+  const [freightCalcResult, setFreightCalcResult] = useState(null);
+  const [freightCalcErr, setFreightCalcErr] = useState("");
+  const [freightCalcBusy, setFreightCalcBusy] = useState(false);
+
+  async function runFreightCalc() {
+    setFreightCalcErr(""); setFreightCalcResult(null);
+    if (!editForm.courier_id) { setFreightCalcErr("Pick a courier first"); return; }
+    if (!editForm.customer_state) { setFreightCalcErr("Customer state is required to compute the zone"); return; }
+    if (!freightCalcForm.weight_kg) { setFreightCalcErr("Weight is required"); return; }
+    const f = freightCalcForm;
+    setFreightCalcBusy(true);
+    try {
+      const result = await couriersApi.calculateFreight(Number(editForm.courier_id), {
+        destination_state: editForm.customer_state,
+        destination_pincode: f.destination_pincode.trim() || null,
+        weight_kg: Number(f.weight_kg),
+        weight_only: f.weight_only,
+        length_cm: f.weight_only || !f.length_cm ? null : Number(f.length_cm),
+        width_cm: f.weight_only || !f.width_cm ? null : Number(f.width_cm),
+        height_cm: f.weight_only || !f.height_cm ? null : Number(f.height_cm),
+        box2_weight_kg: f.two_box && f.box2_weight_kg ? Number(f.box2_weight_kg) : null,
+        box2_length_cm: f.two_box && f.box2_length_cm ? Number(f.box2_length_cm) : null,
+        box2_width_cm: f.two_box && f.box2_width_cm ? Number(f.box2_width_cm) : null,
+        box2_height_cm: f.two_box && f.box2_height_cm ? Number(f.box2_height_cm) : null,
+        is_oda: f.is_oda,
+      });
+      setFreightCalcResult(result);
+    } catch (e) {
+      setFreightCalcErr(e.response?.data?.detail || "Calculation failed — does this courier have a saved rate card?");
+    } finally {
+      setFreightCalcBusy(false);
+    }
+  }
+
+  function useFreightCalcResult() {
+    if (!freightCalcResult) return;
+    setEF("freight_amount", freightCalcResult.total);
+    setFreightCalcOpen(false);
+  }
   const [selectedSerials, setSelectedSerials] = useState(new Set());
   const [submitting, setSubmitting] = useState(false);
   const [submitErr, setSubmitErr] = useState("");
@@ -1819,25 +1866,133 @@ export default function OrderDetail() {
                 ))}
               </select>
             </div>
-            <div>
+            <div className="sm:col-span-2">
               <label className={labelClass}>Freight Amount (₹)</label>
-              <input
-                type="number" min="0" step="0.01"
-                value={editForm.freight_amount}
-                onChange={(e) => setEF("freight_amount", e.target.value)}
-                disabled={isVendor}
-                className={fieldClass}
-              />
-              {editForm.courier_id !== "" && (
-                <a
-                  href={`/couriers/${editForm.courier_id}/rate-card`}
-                  target="_blank" rel="noreferrer"
-                  className="mt-1 inline-block text-xs text-brand-600 hover:underline"
-                >
-                  Open the courier's rate card to calculate this →
-                </a>
-              )}
+              <div className="flex gap-2">
+                <input
+                  type="number" min="0" step="0.01"
+                  value={editForm.freight_amount}
+                  onChange={(e) => setEF("freight_amount", e.target.value)}
+                  disabled={isVendor}
+                  className={fieldClass}
+                />
+                {!isVendor && editForm.courier_id !== "" && (
+                  <button
+                    type="button"
+                    onClick={() => { setFreightCalcOpen((v) => !v); setFreightCalcResult(null); setFreightCalcErr(""); }}
+                    className="whitespace-nowrap rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                  >
+                    {freightCalcOpen ? "Close calculator" : "Calculate"}
+                  </button>
+                )}
+              </div>
               <p className="mt-1 text-xs text-slate-400">Saving this credits the courier's ledger automatically.</p>
+
+              {freightCalcOpen && (
+                <div className="mt-2 rounded-md border border-brand-200 bg-brand-50/40 p-3">
+                  <p className="mb-2 text-xs text-slate-600">
+                    Destination: <span className="font-semibold">{editForm.customer_state || "— set Customer State first —"}</span>
+                  </p>
+                  <div className="mb-2 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setFreightCalcForm((f) => ({ ...f, weight_only: false }))}
+                      className={`rounded-full px-3 py-1 text-xs font-semibold ${!freightCalcForm.weight_only ? "bg-brand-600 text-white" : "border border-slate-300 text-slate-600"}`}
+                    >
+                      I know L × W × H
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setFreightCalcForm((f) => ({ ...f, weight_only: true }))}
+                      className={`rounded-full px-3 py-1 text-xs font-semibold ${freightCalcForm.weight_only ? "bg-brand-600 text-white" : "border border-slate-300 text-slate-600"}`}
+                    >
+                      I only know the weight
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setFreightCalcForm((f) => ({ ...f, two_box: !f.two_box }))}
+                      disabled={freightCalcForm.weight_only}
+                      className={`rounded-full px-3 py-1 text-xs font-semibold disabled:opacity-40 ${freightCalcForm.two_box ? "bg-brand-600 text-white" : "border border-slate-300 text-slate-600"}`}
+                    >
+                      2 boxes (e.g. Split AC indoor + outdoor)
+                    </button>
+                  </div>
+
+                  <div className="flex flex-wrap items-end gap-2">
+                    <div>
+                      <label className="mb-1 block text-xs font-medium text-slate-700">{freightCalcForm.two_box ? "Box 1 weight (kg)" : "Weight (kg)"}</label>
+                      <input type="number" value={freightCalcForm.weight_kg} onChange={(e) => setFreightCalcForm((f) => ({ ...f, weight_kg: e.target.value }))} className="w-24 rounded-md border border-slate-300 px-2 py-1.5 text-sm" />
+                    </div>
+                    {!freightCalcForm.weight_only && (
+                      <div>
+                        <label className="mb-1 block text-xs font-medium text-slate-700">{freightCalcForm.two_box ? "Box 1 L×W×H (cm)" : "L×W×H (cm, optional)"}</label>
+                        <div className="flex gap-1">
+                          <input type="number" value={freightCalcForm.length_cm} onChange={(e) => setFreightCalcForm((f) => ({ ...f, length_cm: e.target.value }))} placeholder="L" className="w-14 rounded-md border border-slate-300 px-2 py-1.5 text-sm" />
+                          <input type="number" value={freightCalcForm.width_cm} onChange={(e) => setFreightCalcForm((f) => ({ ...f, width_cm: e.target.value }))} placeholder="W" className="w-14 rounded-md border border-slate-300 px-2 py-1.5 text-sm" />
+                          <input type="number" value={freightCalcForm.height_cm} onChange={(e) => setFreightCalcForm((f) => ({ ...f, height_cm: e.target.value }))} placeholder="H" className="w-14 rounded-md border border-slate-300 px-2 py-1.5 text-sm" />
+                        </div>
+                      </div>
+                    )}
+                    <div>
+                      <label className="mb-1 block text-xs font-medium text-slate-700">Pincode (optional, ODA)</label>
+                      <input value={freightCalcForm.destination_pincode} onChange={(e) => setFreightCalcForm((f) => ({ ...f, destination_pincode: e.target.value }))} placeholder="e.g. 800001" className="w-28 rounded-md border border-slate-300 px-2 py-1.5 text-sm" />
+                    </div>
+                    <label className="flex items-center gap-1.5 pb-2 text-xs text-slate-700">
+                      <input type="checkbox" checked={freightCalcForm.is_oda} onChange={(e) => setFreightCalcForm((f) => ({ ...f, is_oda: e.target.checked }))} />
+                      ODA
+                    </label>
+                  </div>
+
+                  {freightCalcForm.two_box && !freightCalcForm.weight_only && (
+                    <div className="mt-2 flex flex-wrap items-end gap-2 rounded-md bg-white/70 p-2">
+                      <div>
+                        <label className="mb-1 block text-xs font-medium text-slate-700">Box 2 weight (kg)</label>
+                        <input type="number" value={freightCalcForm.box2_weight_kg} onChange={(e) => setFreightCalcForm((f) => ({ ...f, box2_weight_kg: e.target.value }))} className="w-24 rounded-md border border-slate-300 px-2 py-1.5 text-sm" />
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-xs font-medium text-slate-700">Box 2 L×W×H (cm)</label>
+                        <div className="flex gap-1">
+                          <input type="number" value={freightCalcForm.box2_length_cm} onChange={(e) => setFreightCalcForm((f) => ({ ...f, box2_length_cm: e.target.value }))} placeholder="L" className="w-14 rounded-md border border-slate-300 px-2 py-1.5 text-sm" />
+                          <input type="number" value={freightCalcForm.box2_width_cm} onChange={(e) => setFreightCalcForm((f) => ({ ...f, box2_width_cm: e.target.value }))} placeholder="W" className="w-14 rounded-md border border-slate-300 px-2 py-1.5 text-sm" />
+                          <input type="number" value={freightCalcForm.box2_height_cm} onChange={(e) => setFreightCalcForm((f) => ({ ...f, box2_height_cm: e.target.value }))} placeholder="H" className="w-14 rounded-md border border-slate-300 px-2 py-1.5 text-sm" />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="mt-2">
+                    <button type="button" onClick={runFreightCalc} disabled={freightCalcBusy} className="rounded-md bg-slate-800 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-900 disabled:opacity-50">
+                      {freightCalcBusy ? "Calculating…" : "Calculate"}
+                    </button>
+                  </div>
+
+                  {freightCalcErr && <p className="mt-2 text-xs text-rose-700">{freightCalcErr}</p>}
+                  {freightCalcResult && (
+                    <div className="mt-2 rounded-md border border-slate-200 bg-white p-2">
+                      <p className="mb-1 text-xs text-slate-500">
+                        {freightCalcResult.source_zone || "?"} → {freightCalcResult.destination_zone || "?"} · chargeable {freightCalcResult.chargeable_weight_kg}kg
+                      </p>
+                      {freightCalcResult.lines.map((l, i) => (
+                        <div key={i} className="flex justify-between border-b border-slate-100 py-1 text-xs">
+                          <span className="text-slate-600">{l.label}</span>
+                          {l.amount !== 0 && <span className="font-mono">₹{l.amount.toLocaleString("en-IN")}</span>}
+                        </div>
+                      ))}
+                      <div className="mt-1 flex items-center justify-between text-sm font-bold">
+                        <span>Total freight</span>
+                        <span>₹{freightCalcResult.total.toLocaleString("en-IN")}</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={useFreightCalcResult}
+                        className="mt-2 w-full rounded-md bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-700"
+                      >
+                        Use this amount
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             <div>
