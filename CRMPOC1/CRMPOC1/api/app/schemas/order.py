@@ -136,6 +136,7 @@ class OrderUpdate(BaseModel):
     order_date: date | None = None
     oem_bill_no: str | None = None
     oem_bill_amount: float | None = None
+    oem_bill_qty: int | None = None
     vendor_id: int | None = None
     customer_name: str | None = None
     customer_contact: str | None = None
@@ -162,6 +163,7 @@ class OrderOut(BaseModel):
     order_date: date
     oem_bill_no: str | None
     oem_bill_amount: float | None = None
+    oem_bill_qty: int | None = None
     material_receipt_confirmed_at: datetime | None = None
     material_receipt_confirmed_by: str | None = None
     accounts_return_processed_at: datetime | None = None

@@ -18,6 +18,8 @@ class Order(Base, TimestampMixin, SoftDeleteMixin):
     # Credits this amount to the vendor's ledger (AccountLedgerEntry, source_type="oem_bill") the moment
     # it's set or changed — see _sync_oem_bill_ledger_entry in routers/orders.py.
     oem_bill_amount: Mapped[float | None] = mapped_column(Numeric(12, 2), nullable=True)
+    # Qty of this item/serial billed on oem_bill_no — one OEM bill can cover several items/serials across orders.
+    oem_bill_qty: Mapped[int | None] = mapped_column(Integer, nullable=True)
     vendor_id: Mapped[int | None] = mapped_column(ForeignKey("vendors.id"), nullable=True, index=True)
     customer_name: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
     customer_contact: Mapped[str | None] = mapped_column(String(20), nullable=True, index=True)
