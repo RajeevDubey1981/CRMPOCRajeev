@@ -20,7 +20,7 @@ ENTRY_TYPES = ("credit", "debit")
 # (Accounts' upload/match), "manual" (a one-off entry), "return" (Accounts processing a returned/
 # cancelled order), "job_payout" (auto, from an existing service/installation payment approval),
 # "vendor_approved_expense" (an extra-expense approval the vendor themselves accepted).
-SOURCE_TYPES = ("opening", "oem_bill", "freight", "bank_statement", "manual", "return", "job_payout", "vendor_approved_expense")
+SOURCE_TYPES = ("opening", "oem_bill", "freight", "return_freight", "bank_statement", "manual", "return", "job_payout", "vendor_approved_expense")
 
 
 class AccountLedgerEntry(Base):

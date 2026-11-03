@@ -39,6 +39,11 @@ class Order(Base, TimestampMixin, SoftDeleteMixin):
     # it's set or changed — see _sync_freight_ledger_entry in routers/orders.py.
     freight_amount: Mapped[float | None] = mapped_column(Numeric(12, 2), nullable=True)
     lrn_no: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    # The RTO leg has its own waybill and its own cost, separate from the outbound freight_amount above
+    # -- credits the courier's ledger as its own entry (source_type="return_freight") the moment it's
+    # set or changed, same pattern as _sync_freight_ledger_entry. See _sync_return_freight_ledger_entry.
+    return_lrn_no: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    return_freight_amount: Mapped[float | None] = mapped_column(Numeric(12, 2), nullable=True)
     vendor_bill_no: Mapped[str | None] = mapped_column(String(100), nullable=True)
     vendor_bill_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     status: Mapped[str] = mapped_column(String(50), default="Pending", nullable=False, index=True)

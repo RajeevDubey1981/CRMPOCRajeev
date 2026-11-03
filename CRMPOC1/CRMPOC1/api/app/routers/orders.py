@@ -132,6 +132,36 @@ def _sync_freight_ledger_entry(db: Session, order: Order) -> None:
         ))
 
 
+def _sync_return_freight_ledger_entry(db: Session, order: Order) -> None:
+    """Keeps the courier's ledger in step with the order's Return Freight Amount -- the RTO leg's own
+    waybill and cost, as its own entry (source_type="return_freight"), never merged into the outbound
+    freight entry from _sync_freight_ledger_entry above."""
+    from app.models.account_ledger import AccountLedgerEntry
+
+    existing = db.scalar(
+        select(AccountLedgerEntry).where(
+            AccountLedgerEntry.party_type == "courier",
+            AccountLedgerEntry.source_type == "return_freight",
+            AccountLedgerEntry.source_id == order.id,
+        )
+    )
+    if order.courier_id is None or order.return_freight_amount is None:
+        if existing:
+            db.delete(existing)
+        return
+    description = f"Return freight (LR {order.return_lrn_no or '—'}) — Order {order.order_no or order.id}"
+    if existing:
+        existing.party_id = order.courier_id
+        existing.amount = order.return_freight_amount
+        existing.description = description
+    else:
+        db.add(AccountLedgerEntry(
+            party_type="courier", party_id=order.courier_id, entry_type="credit", amount=order.return_freight_amount,
+            description=description, source_type="return_freight", source_id=order.id,
+            entry_date=order.order_date, created_by_user_id=order.created_by,
+        ))
+
+
 def _vendors_for_user(db: Session, user: User) -> list[Vendor]:
     if user.role != "vendor":
         return []
@@ -491,6 +521,8 @@ def _hydrate_order(db: Session, order: Order) -> OrderOut:
         courier_id=order.courier_id,
         courier_name=_resolve_courier_name(db, order.courier_id),
         freight_amount=float(order.freight_amount) if order.freight_amount is not None else None,
+        return_lrn_no=order.return_lrn_no,
+        return_freight_amount=float(order.return_freight_amount) if order.return_freight_amount is not None else None,
         lrn_no=order.lrn_no,
         vendor_bill_no=order.vendor_bill_no,
         vendor_bill_date=order.vendor_bill_date,
@@ -1881,6 +1913,8 @@ def update_order(
         _sync_oem_bill_ledger_entry(db, order)
     if "freight_amount" in data or "courier_id" in data:
         _sync_freight_ledger_entry(db, order)
+    if "return_freight_amount" in data or "courier_id" in data:
+        _sync_return_freight_ledger_entry(db, order)
     db.commit()
     db.refresh(order)
     if old_status != order.status and order.status == "Delivered":

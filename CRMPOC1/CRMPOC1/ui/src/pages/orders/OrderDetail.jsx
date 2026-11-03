@@ -533,6 +533,8 @@ export default function OrderDetail() {
       customer_address: order.customer_address || "",
       courier_id: order.courier_id ?? "",
       freight_amount: order.freight_amount ?? "",
+      return_lrn_no: order.return_lrn_no || "",
+      return_freight_amount: order.return_freight_amount ?? "",
       lrn_no: order.lrn_no || "",
       vendor_bill_no: order.vendor_bill_no || "",
       vendor_bill_date: order.vendor_bill_date || "",
@@ -1008,6 +1010,8 @@ export default function OrderDetail() {
             consignee_addresses: serializeConsigneesForApi(editConsignees),
             courier_id: editForm.courier_id !== "" ? Number(editForm.courier_id) : null,
             freight_amount: editForm.freight_amount !== "" ? Number(editForm.freight_amount) : null,
+            return_lrn_no: editForm.return_lrn_no || null,
+            return_freight_amount: editForm.return_freight_amount !== "" ? Number(editForm.return_freight_amount) : null,
             lrn_no: editForm.lrn_no || null,
             vendor_bill_no: editForm.vendor_bill_no || null,
             vendor_bill_date: editForm.vendor_bill_date || null,
@@ -1216,6 +1220,8 @@ export default function OrderDetail() {
           <Field label="Consignee (ship-to)" value={consigneeSummaryLine(order.consignee_addresses)} />
           <Field label="Courier" value={order.courier_name} />
           <Field label="LRN No" value={order.lrn_no} mono />
+          {order.return_lrn_no && <Field label="Return LR No" value={order.return_lrn_no} mono />}
+          {order.return_freight_amount != null && <Field label="Return Freight Amount" value={`₹${order.return_freight_amount}`} />}
           <Field label="Vendor Bill No" value={order.vendor_bill_no} />
           <Field label="Vendor Bill Date" value={fmtDate(order.vendor_bill_date)} />
           <Field label="Expected Delivery" value={fmtDate(order.expected_delivery_date)} />
@@ -1952,6 +1958,9 @@ export default function OrderDetail() {
                 )}
               </div>
               <p className="mt-1 text-xs text-slate-400">Saving this credits the courier's ledger automatically.</p>
+              <p className="mt-1 text-xs text-slate-400">
+                If ODA, this is just the dispatch estimate — correct it to the courier's actual confirmed ODA charge once it's delivered.
+              </p>
 
               {freightCalcOpen && (
                 <div className="mt-2 rounded-md border border-brand-200 bg-brand-50/40 p-3">
@@ -2059,6 +2068,43 @@ export default function OrderDetail() {
                 </div>
               )}
             </div>
+
+            {!isVendor && editForm.status === "Returned" && (
+              <div className="sm:col-span-2 rounded-md border border-amber-200 bg-amber-50 p-3">
+                <div className="mb-2 flex items-center justify-between">
+                  <p className="text-sm font-medium text-amber-900">Return Freight</p>
+                  <button
+                    type="button"
+                    onClick={() => setEF("status", "Shipped")}
+                    className="whitespace-nowrap rounded-md border border-amber-300 bg-white px-2 py-1 text-xs font-medium text-amber-800 hover:bg-amber-100"
+                  >
+                    ↻ Not actually returned — set back to Shipped
+                  </button>
+                </div>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div>
+                    <label className={labelClass}>Return LR No</label>
+                    <input
+                      value={editForm.return_lrn_no}
+                      onChange={(e) => setEF("return_lrn_no", e.target.value)}
+                      placeholder="e.g. DLV-RTO-88213"
+                      className={fieldClass}
+                    />
+                    <p className="mt-1 text-xs text-amber-700">The RTO leg's own waybill — separate from the outbound LRN.</p>
+                  </div>
+                  <div>
+                    <label className={labelClass}>Return Freight Amount (₹)</label>
+                    <input
+                      type="number" min="0" step="0.01"
+                      value={editForm.return_freight_amount}
+                      onChange={(e) => setEF("return_freight_amount", e.target.value)}
+                      className={fieldClass}
+                    />
+                    <p className="mt-1 text-xs text-amber-700">Saving this credits the courier's ledger as its own entry — not merged with the outbound freight.</p>
+                  </div>
+                </div>
+              </div>
+            )}
 
             <div>
               <label className={labelClass}>Customer Name</label>
