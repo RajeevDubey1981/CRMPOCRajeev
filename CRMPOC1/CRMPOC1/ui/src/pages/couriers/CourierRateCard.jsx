@@ -20,7 +20,12 @@ export default function CourierRateCard() {
   const [savedMsg, setSavedMsg] = useState("");
 
   const [calcForm, setCalcForm] = useState({
-    destination_state: "", weight_kg: "", length_cm: "", width_cm: "", height_cm: "", is_oda: false,
+    destination_state: "", destination_pincode: "",
+    weight_only: false, two_box: false,
+    weight_kg: "", length_cm: "", width_cm: "", height_cm: "",
+    box2_weight_kg: "", box2_length_cm: "", box2_width_cm: "", box2_height_cm: "",
+    single_length_cm: "", single_width_cm: "", single_height_cm: "",
+    is_oda: false,
   });
   const [calcResult, setCalcResult] = useState(null);
   const [calcErr, setCalcErr] = useState("");
@@ -112,10 +117,19 @@ export default function CourierRateCard() {
     try {
       const result = await couriersApi.calculateFreight(courierId, {
         destination_state: calcForm.destination_state.trim(),
+        destination_pincode: calcForm.destination_pincode.trim() || null,
         weight_kg: Number(calcForm.weight_kg),
-        length_cm: calcForm.length_cm ? Number(calcForm.length_cm) : null,
-        width_cm: calcForm.width_cm ? Number(calcForm.width_cm) : null,
-        height_cm: calcForm.height_cm ? Number(calcForm.height_cm) : null,
+        weight_only: calcForm.weight_only,
+        length_cm: calcForm.weight_only || !calcForm.length_cm ? null : Number(calcForm.length_cm),
+        width_cm: calcForm.weight_only || !calcForm.width_cm ? null : Number(calcForm.width_cm),
+        height_cm: calcForm.weight_only || !calcForm.height_cm ? null : Number(calcForm.height_cm),
+        box2_weight_kg: calcForm.two_box && calcForm.box2_weight_kg ? Number(calcForm.box2_weight_kg) : null,
+        box2_length_cm: calcForm.two_box && calcForm.box2_length_cm ? Number(calcForm.box2_length_cm) : null,
+        box2_width_cm: calcForm.two_box && calcForm.box2_width_cm ? Number(calcForm.box2_width_cm) : null,
+        box2_height_cm: calcForm.two_box && calcForm.box2_height_cm ? Number(calcForm.box2_height_cm) : null,
+        single_length_cm: calcForm.two_box && calcForm.single_length_cm ? Number(calcForm.single_length_cm) : null,
+        single_width_cm: calcForm.two_box && calcForm.single_width_cm ? Number(calcForm.single_width_cm) : null,
+        single_height_cm: calcForm.two_box && calcForm.single_height_cm ? Number(calcForm.single_height_cm) : null,
         is_oda: calcForm.is_oda,
       });
       setCalcResult(result);
@@ -267,6 +281,37 @@ export default function CourierRateCard() {
 
       <section className="rounded-lg border-2 border-dashed border-brand-300 bg-brand-50/30 p-6">
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">Try a freight calculation</h2>
+
+        <div className="mb-3 flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => setCalcForm((f) => ({ ...f, weight_only: false }))}
+            className={`rounded-full px-3 py-1 text-xs font-semibold ${!calcForm.weight_only ? "bg-brand-600 text-white" : "border border-slate-300 text-slate-600"}`}
+          >
+            I know L × W × H
+          </button>
+          <button
+            type="button"
+            onClick={() => setCalcForm((f) => ({ ...f, weight_only: true }))}
+            className={`rounded-full px-3 py-1 text-xs font-semibold ${calcForm.weight_only ? "bg-brand-600 text-white" : "border border-slate-300 text-slate-600"}`}
+          >
+            I only know the weight
+          </button>
+          <button
+            type="button"
+            onClick={() => setCalcForm((f) => ({ ...f, two_box: !f.two_box }))}
+            disabled={calcForm.weight_only}
+            className={`rounded-full px-3 py-1 text-xs font-semibold disabled:opacity-40 ${calcForm.two_box ? "bg-brand-600 text-white" : "border border-slate-300 text-slate-600"}`}
+          >
+            Packed as 2 boxes (e.g. Split AC indoor + outdoor)
+          </button>
+        </div>
+        {calcForm.weight_only && (
+          <p className="mb-3 text-xs text-slate-500">
+            No measuring tape needed — charges on actual weight only, no volumetric check. Flag this entry for an office review once the real box size is known.
+          </p>
+        )}
+
         <div className="flex flex-wrap items-end gap-3">
           <div>
             <label className="mb-1 block text-xs font-medium text-slate-700">Destination state</label>
@@ -278,7 +323,23 @@ export default function CourierRateCard() {
             />
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-slate-700">Actual weight (kg)</label>
+            <label className="mb-1 block text-xs font-medium text-slate-700">Pincode (optional, for ODA)</label>
+            <input
+              value={calcForm.destination_pincode}
+              onChange={(e) => setCalcForm((f) => ({ ...f, destination_pincode: e.target.value }))}
+              placeholder="e.g. 800001"
+              className="w-32 rounded-md border border-slate-300 px-2 py-1.5 text-sm"
+            />
+          </div>
+          <label className="flex items-center gap-1.5 pb-2 text-sm text-slate-700">
+            <input type="checkbox" checked={calcForm.is_oda} onChange={(e) => setCalcForm((f) => ({ ...f, is_oda: e.target.checked }))} />
+            This pincode is ODA
+          </label>
+        </div>
+
+        <div className="mt-3 flex flex-wrap items-end gap-3">
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-700">{calcForm.two_box ? "Box 1 weight (kg)" : "Actual weight (kg)"}</label>
             <input
               type="number"
               value={calcForm.weight_kg}
@@ -286,22 +347,54 @@ export default function CourierRateCard() {
               className="w-28 rounded-md border border-slate-300 px-2 py-1.5 text-sm"
             />
           </div>
-          <div>
-            <label className="mb-1 block text-xs font-medium text-slate-700">Box L × W × H (cm, optional)</label>
-            <div className="flex gap-1">
-              <input type="number" value={calcForm.length_cm} onChange={(e) => setCalcForm((f) => ({ ...f, length_cm: e.target.value }))} placeholder="L" className="w-16 rounded-md border border-slate-300 px-2 py-1.5 text-sm" />
-              <input type="number" value={calcForm.width_cm} onChange={(e) => setCalcForm((f) => ({ ...f, width_cm: e.target.value }))} placeholder="W" className="w-16 rounded-md border border-slate-300 px-2 py-1.5 text-sm" />
-              <input type="number" value={calcForm.height_cm} onChange={(e) => setCalcForm((f) => ({ ...f, height_cm: e.target.value }))} placeholder="H" className="w-16 rounded-md border border-slate-300 px-2 py-1.5 text-sm" />
+          {!calcForm.weight_only && (
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-700">{calcForm.two_box ? "Box 1 L × W × H (cm)" : "Box L × W × H (cm, optional)"}</label>
+              <div className="flex gap-1">
+                <input type="number" value={calcForm.length_cm} onChange={(e) => setCalcForm((f) => ({ ...f, length_cm: e.target.value }))} placeholder="L" className="w-16 rounded-md border border-slate-300 px-2 py-1.5 text-sm" />
+                <input type="number" value={calcForm.width_cm} onChange={(e) => setCalcForm((f) => ({ ...f, width_cm: e.target.value }))} placeholder="W" className="w-16 rounded-md border border-slate-300 px-2 py-1.5 text-sm" />
+                <input type="number" value={calcForm.height_cm} onChange={(e) => setCalcForm((f) => ({ ...f, height_cm: e.target.value }))} placeholder="H" className="w-16 rounded-md border border-slate-300 px-2 py-1.5 text-sm" />
+              </div>
             </div>
-          </div>
-          <label className="flex items-center gap-1.5 pb-2 text-sm text-slate-700">
-            <input type="checkbox" checked={calcForm.is_oda} onChange={(e) => setCalcForm((f) => ({ ...f, is_oda: e.target.checked }))} />
-            ODA pincode
-          </label>
+          )}
+        </div>
+
+        {calcForm.two_box && !calcForm.weight_only && (
+          <>
+            <div className="mt-3 flex flex-wrap items-end gap-3 rounded-md bg-white/60 p-2">
+              <div>
+                <label className="mb-1 block text-xs font-medium text-slate-700">Box 2 weight (kg)</label>
+                <input type="number" value={calcForm.box2_weight_kg} onChange={(e) => setCalcForm((f) => ({ ...f, box2_weight_kg: e.target.value }))} className="w-28 rounded-md border border-slate-300 px-2 py-1.5 text-sm" />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-slate-700">Box 2 L × W × H (cm)</label>
+                <div className="flex gap-1">
+                  <input type="number" value={calcForm.box2_length_cm} onChange={(e) => setCalcForm((f) => ({ ...f, box2_length_cm: e.target.value }))} placeholder="L" className="w-16 rounded-md border border-slate-300 px-2 py-1.5 text-sm" />
+                  <input type="number" value={calcForm.box2_width_cm} onChange={(e) => setCalcForm((f) => ({ ...f, box2_width_cm: e.target.value }))} placeholder="W" className="w-16 rounded-md border border-slate-300 px-2 py-1.5 text-sm" />
+                  <input type="number" value={calcForm.box2_height_cm} onChange={(e) => setCalcForm((f) => ({ ...f, box2_height_cm: e.target.value }))} placeholder="H" className="w-16 rounded-md border border-slate-300 px-2 py-1.5 text-sm" />
+                </div>
+              </div>
+            </div>
+            <div className="mt-2 flex flex-wrap items-end gap-3 rounded-md bg-white/60 p-2">
+              <div>
+                <label className="mb-1 block text-xs font-medium text-slate-700">If packed as 1 combined box instead — L × W × H (cm)</label>
+                <div className="flex gap-1">
+                  <input type="number" value={calcForm.single_length_cm} onChange={(e) => setCalcForm((f) => ({ ...f, single_length_cm: e.target.value }))} placeholder="L" className="w-16 rounded-md border border-slate-300 px-2 py-1.5 text-sm" />
+                  <input type="number" value={calcForm.single_width_cm} onChange={(e) => setCalcForm((f) => ({ ...f, single_width_cm: e.target.value }))} placeholder="W" className="w-16 rounded-md border border-slate-300 px-2 py-1.5 text-sm" />
+                  <input type="number" value={calcForm.single_height_cm} onChange={(e) => setCalcForm((f) => ({ ...f, single_height_cm: e.target.value }))} placeholder="H" className="w-16 rounded-md border border-slate-300 px-2 py-1.5 text-sm" />
+                </div>
+              </div>
+              <p className="pb-2 text-xs text-slate-500">Fill this in to compare — the calculator will say which packing is cheaper.</p>
+            </div>
+          </>
+        )}
+
+        <div className="mt-3">
           <button type="button" onClick={runCalc} disabled={calcBusy} className="rounded-md bg-slate-800 px-4 py-2 text-sm font-medium text-white hover:bg-slate-900 disabled:opacity-50">
-            {calcBusy ? "Calculating…" : "Calculate"}
+            {calcBusy ? "Calculating…" : "Calculate freight"}
           </button>
         </div>
+
         {calcErr && <p className="mt-2 text-sm text-rose-700">{calcErr}</p>}
         {calcResult && (
           <div className="mt-4 rounded-md border border-slate-200 bg-white p-4">
@@ -311,13 +404,25 @@ export default function CourierRateCard() {
             {calcResult.lines.map((l, i) => (
               <div key={i} className="flex justify-between border-b border-slate-100 py-1 text-sm">
                 <span className="text-slate-600">{l.label}</span>
-                <span className="font-mono">₹{l.amount.toLocaleString("en-IN")}</span>
+                {l.amount !== 0 && <span className="font-mono">₹{l.amount.toLocaleString("en-IN")}</span>}
               </div>
             ))}
             <div className="mt-2 flex justify-between text-sm font-bold">
-              <span>Total freight</span>
+              <span>Total freight {calcResult.single_box_total != null ? "— 2 boxes" : ""}</span>
               <span>₹{calcResult.total.toLocaleString("en-IN")}</span>
             </div>
+            {calcResult.single_box_total != null && (
+              <>
+                <div className="mt-1 flex justify-between text-sm">
+                  <span className="text-slate-600">Total freight — 1 combined box</span>
+                  <span className="font-mono">₹{calcResult.single_box_total.toLocaleString("en-IN")}</span>
+                </div>
+                <p className="mt-2 rounded-md bg-brand-50 px-3 py-2 text-sm font-semibold text-brand-700">
+                  Recommended: {calcResult.recommended === "one_box" ? "pack as 1 combined box" : "pack as 2 boxes"}
+                  {calcResult.recommended !== "one_box" && calcResult.total === calcResult.single_box_total ? " (same freight, safer handling)" : ""}
+                </p>
+              </>
+            )}
           </div>
         )}
       </section>

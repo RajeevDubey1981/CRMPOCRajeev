@@ -20,6 +20,7 @@ from app.database import get_db
 from app.deps import get_current_user
 from app.models.account_ledger import AccountLedgerEntry
 from app.models.bank_statement import BankStatementImport, BankStatementLine
+from app.models.courier import Courier
 from app.models.order import Order, OrderItem
 from app.models.pending_ledger_payment import PendingLedgerPayment
 from app.models.user import User
@@ -35,8 +36,8 @@ from app.services.role_access import is_service_team, is_system_admin, role_key
 
 router = APIRouter(prefix="/api/ledger", tags=["account-ledger"])
 
-PartyType = Literal["vendor", "engineer"]
-MODULE_FOR = {"vendor": "vendor_ledger", "engineer": "engineer_ledger"}
+PartyType = Literal["vendor", "engineer", "courier"]
+MODULE_FOR = {"vendor": "vendor_ledger", "engineer": "engineer_ledger", "courier": "transporter_ledger"}
 
 
 def _require(db: Session, user: User, party_type: PartyType, flag: str) -> None:
@@ -49,6 +50,10 @@ def _load_party(db: Session, party_type: PartyType, party_id: int):
         party = db.get(Vendor, party_id)
         if party is None or party.deleted_at is not None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Vendor not found")
+    elif party_type == "courier":
+        party = db.get(Courier, party_id)
+        if party is None or party.deleted_at is not None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Courier not found")
     else:
         party = db.get(User, party_id)
         if party is None or party.deleted_at is not None or role_key(party.role) != "engineer":
@@ -57,13 +62,20 @@ def _load_party(db: Session, party_type: PartyType, party_id: int):
 
 
 def _party_name(party, party_type: PartyType) -> str:
-    return party.name_of_firm if party_type == "vendor" else party.name
+    if party_type == "vendor":
+        return party.name_of_firm
+    if party_type == "courier":
+        return party.courier_name
+    return party.name
 
 
 def _party_name_safe(db: Session, party_type: str, party_id: int) -> str | None:
     if party_type == "vendor":
         v = db.get(Vendor, party_id)
         return v.name_of_firm if v else None
+    if party_type == "courier":
+        c = db.get(Courier, party_id)
+        return c.courier_name if c else None
     u = db.get(User, party_id)
     return u.name if u else None
 
@@ -752,6 +764,25 @@ def list_engineers(
         out.append({
             "id": u.id, "name": u.name, "code": f"ENG-{u.id:04d}", "phone": u.phone,
             "role": u.role, "balance": float(balance), "overdue_days": overdue,
+        })
+    return out
+
+
+@router.get("/couriers")
+def list_couriers(q: Optional[str] = None, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    _require(db, user, "courier", "can_view")
+    stmt = select(Courier).where(Courier.deleted_at.is_(None))
+    if q:
+        stmt = stmt.where(Courier.courier_name.ilike(f"%{q.strip()}%"))
+    couriers = db.scalars(stmt.order_by(Courier.courier_name).limit(100)).all()
+    out = []
+    for c in couriers:
+        entries = _entries(db, "courier", c.id)
+        balance = compute_balance(entries)
+        overdue = compute_overdue_days(compute_oldest_unpaid_since(entries), c.payment_cycle_days)
+        out.append({
+            "id": c.id, "name": c.courier_name, "code": f"CR-{c.id:04d}", "phone": c.contact_mobile,
+            "balance": float(balance), "overdue_days": overdue,
         })
     return out
 

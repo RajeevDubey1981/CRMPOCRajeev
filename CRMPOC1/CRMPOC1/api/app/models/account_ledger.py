@@ -13,13 +13,14 @@ from sqlalchemy.sql import func
 
 from app.database import Base
 
-PARTY_TYPES = ("vendor", "engineer")
+PARTY_TYPES = ("vendor", "engineer", "courier")
 ENTRY_TYPES = ("credit", "debit")
 # Where an entry came from: "opening" (set once per party), "oem_bill" (auto, from an order's bill
-# amount), "bank_statement" (Accounts' upload/match), "manual" (a one-off entry), "return" (Accounts
-# processing a returned/cancelled order), "job_payout" (auto, from an existing service/installation
-# payment approval), "vendor_approved_expense" (an extra-expense approval the vendor themselves accepted).
-SOURCE_TYPES = ("opening", "oem_bill", "bank_statement", "manual", "return", "job_payout", "vendor_approved_expense")
+# amount), "freight" (auto, from an order's freight amount, courier party only), "bank_statement"
+# (Accounts' upload/match), "manual" (a one-off entry), "return" (Accounts processing a returned/
+# cancelled order), "job_payout" (auto, from an existing service/installation payment approval),
+# "vendor_approved_expense" (an extra-expense approval the vendor themselves accepted).
+SOURCE_TYPES = ("opening", "oem_bill", "freight", "bank_statement", "manual", "return", "job_payout", "vendor_approved_expense")
 
 
 class AccountLedgerEntry(Base):

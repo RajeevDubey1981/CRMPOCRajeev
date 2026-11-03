@@ -45,10 +45,22 @@ class CourierRateProfileOut(BaseModel):
 
 class FreightCalcIn(BaseModel):
     destination_state: str
+    destination_pincode: str | None = None  # reference only; flips on is_oda manually for now
     weight_kg: float
+    weight_only: bool = False  # True: skip the volumetric check, charge on weight_kg alone
     length_cm: float | None = None
     width_cm: float | None = None
     height_cm: float | None = None
+    # Second box, for a shipment packed as 2 pieces (e.g. split AC indoor + outdoor). When given,
+    # the engine also prices packing everything as 1 box (single_* fields) and returns both so the
+    # cheaper option can be picked.
+    box2_weight_kg: float | None = None
+    box2_length_cm: float | None = None
+    box2_width_cm: float | None = None
+    box2_height_cm: float | None = None
+    single_length_cm: float | None = None
+    single_width_cm: float | None = None
+    single_height_cm: float | None = None
     is_oda: bool = False
 
 
@@ -63,3 +75,7 @@ class FreightCalcOut(BaseModel):
     chargeable_weight_kg: float
     lines: list[FreightCalcLine]
     total: float
+    # Filled in only when a 2-box request also supplied single_* dimensions: the same shipment
+    # priced as 1 combined box, so the cheaper packing can be chosen.
+    single_box_total: float | None = None
+    recommended: str | None = None  # "two_boxes" | "one_box", when single_box_total is set

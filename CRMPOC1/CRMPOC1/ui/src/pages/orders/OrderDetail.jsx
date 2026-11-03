@@ -482,6 +482,7 @@ export default function OrderDetail() {
       customer_state: order.customer_state || "",
       customer_address: order.customer_address || "",
       courier_id: order.courier_id ?? "",
+      freight_amount: order.freight_amount ?? "",
       lrn_no: order.lrn_no || "",
       vendor_bill_no: order.vendor_bill_no || "",
       vendor_bill_date: order.vendor_bill_date || "",
@@ -953,6 +954,7 @@ export default function OrderDetail() {
             customer_address: editForm.customer_address || null,
             consignee_addresses: serializeConsigneesForApi(editConsignees),
             courier_id: editForm.courier_id !== "" ? Number(editForm.courier_id) : null,
+            freight_amount: editForm.freight_amount !== "" ? Number(editForm.freight_amount) : null,
             lrn_no: editForm.lrn_no || null,
             vendor_bill_no: editForm.vendor_bill_no || null,
             vendor_bill_date: editForm.vendor_bill_date || null,
@@ -1816,6 +1818,26 @@ export default function OrderDetail() {
                   <option key={c.id} value={c.id}>{c.name}</option>
                 ))}
               </select>
+            </div>
+            <div>
+              <label className={labelClass}>Freight Amount (₹)</label>
+              <input
+                type="number" min="0" step="0.01"
+                value={editForm.freight_amount}
+                onChange={(e) => setEF("freight_amount", e.target.value)}
+                disabled={isVendor}
+                className={fieldClass}
+              />
+              {editForm.courier_id !== "" && (
+                <a
+                  href={`/couriers/${editForm.courier_id}/rate-card`}
+                  target="_blank" rel="noreferrer"
+                  className="mt-1 inline-block text-xs text-brand-600 hover:underline"
+                >
+                  Open the courier's rate card to calculate this →
+                </a>
+              )}
+              <p className="mt-1 text-xs text-slate-400">Saving this credits the courier's ledger automatically.</p>
             </div>
 
             <div>

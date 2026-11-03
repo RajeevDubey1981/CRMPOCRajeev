@@ -13,6 +13,7 @@ export const MODULE_LABELS = {
   vendor_ledger: "Vendor Account (Dr/Cr ledger, bank statements)",
   engineer_ledger: "Engineer Account (Dr/Cr ledger)",
   ledger_audit: "Audit (approves every ledger payment before it posts)",
+  transporter_ledger: "Courier/Transporter Account (Dr/Cr ledger)",
 };
 
 export function normalizePermissionModules(modules = []) {

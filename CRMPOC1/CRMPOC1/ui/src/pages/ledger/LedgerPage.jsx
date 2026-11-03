@@ -20,6 +20,7 @@ export default function LedgerPage() {
 
   const canSeeVendors = has("vendor_ledger", "can_view");
   const canSeeEngineers = has("engineer_ledger", "can_view");
+  const canSeeCouriers = has("transporter_ledger", "can_view");
   const canSeeDashboard = has("vendor_ledger", "can_edit") || has("engineer_ledger", "can_edit");
   const canSeeAudit = has("ledger_audit", "can_view");
   // Anyone who can raise a vendor-expense approval (Sales, Service Team) gets a "My Requests" tab --
@@ -32,11 +33,11 @@ export default function LedgerPage() {
 
   const [searchParams] = useSearchParams();
   const requested = searchParams.get("tab");
-  const defaultTab = canSeeDashboard ? "dashboard" : canSeePayQueue ? "pay" : canSeeVendors ? "vendors" : canSeeEngineers ? "engineers" : canSeeAudit ? "audit" : "mine";
-  const initialTab = ["dashboard", "pay", "vendors", "engineers", "audit", "mine"].includes(requested) ? requested : defaultTab;
+  const defaultTab = canSeeDashboard ? "dashboard" : canSeePayQueue ? "pay" : canSeeVendors ? "vendors" : canSeeEngineers ? "engineers" : canSeeCouriers ? "couriers" : canSeeAudit ? "audit" : "mine";
+  const initialTab = ["dashboard", "pay", "vendors", "engineers", "couriers", "audit", "mine"].includes(requested) ? requested : defaultTab;
   const [tab, setTab] = useState(initialTab);
 
-  if (!canSeeVendors && !canSeeEngineers && !canSeeDashboard && !canSeeAudit && !canSeeMyRequests && !canSeePayQueue) {
+  if (!canSeeVendors && !canSeeEngineers && !canSeeCouriers && !canSeeDashboard && !canSeeAudit && !canSeeMyRequests && !canSeePayQueue) {
     return <Navigate to="/dashboard" replace />;
   }
 
@@ -45,6 +46,7 @@ export default function LedgerPage() {
     ...(canSeePayQueue ? [["pay", "Ready to Pay"]] : []),
     ...(canSeeVendors ? [["vendors", "Vendors"]] : []),
     ...(canSeeEngineers ? [["engineers", "Engineers"]] : []),
+    ...(canSeeCouriers ? [["couriers", "Couriers"]] : []),
     ...(canSeeAudit ? [["audit", "Audit"]] : []),
     ...(canSeeMyRequests ? [["mine", "My Requests"]] : []),
   ];
@@ -72,6 +74,7 @@ export default function LedgerPage() {
       {activeTab === "pay" && canSeePayQueue && <ReadyToPayQueue />}
       {activeTab === "vendors" && canSeeVendors && <LedgerSearch partyType="vendor" />}
       {activeTab === "engineers" && canSeeEngineers && <LedgerSearch partyType="engineer" />}
+      {activeTab === "couriers" && canSeeCouriers && <LedgerSearch partyType="courier" />}
       {activeTab === "audit" && canSeeAudit && <AuditQueue />}
       {activeTab === "mine" && canSeeMyRequests && <MyVendorExpenseRequests />}
     </div>

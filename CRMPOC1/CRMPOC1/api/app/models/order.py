@@ -26,6 +26,9 @@ class Order(Base, TimestampMixin, SoftDeleteMixin):
     customer_state: Mapped[str | None] = mapped_column(String(100), nullable=True)
     customer_address: Mapped[str | None] = mapped_column(Text, nullable=True)
     courier_id: Mapped[int | None] = mapped_column(ForeignKey("couriers.id"), nullable=True)
+    # Credits this amount to the courier's ledger (AccountLedgerEntry, source_type="freight") the moment
+    # it's set or changed — see _sync_freight_ledger_entry in routers/orders.py.
+    freight_amount: Mapped[float | None] = mapped_column(Numeric(12, 2), nullable=True)
     lrn_no: Mapped[str | None] = mapped_column(String(100), nullable=True)
     vendor_bill_no: Mapped[str | None] = mapped_column(String(100), nullable=True)
     vendor_bill_date: Mapped[date | None] = mapped_column(Date, nullable=True)

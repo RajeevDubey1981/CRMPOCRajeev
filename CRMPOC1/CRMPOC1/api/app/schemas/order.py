@@ -144,6 +144,7 @@ class OrderUpdate(BaseModel):
     customer_state: str | None = None
     customer_address: str | None = None
     courier_id: int | None = None
+    freight_amount: float | None = None
     lrn_no: str | None = None
     vendor_bill_no: str | None = None
     vendor_bill_date: date | None = None
@@ -174,6 +175,7 @@ class OrderOut(BaseModel):
     customer_address: str | None = None
     courier_id: int | None
     courier_name: str | None = None  # resolved
+    freight_amount: float | None = None
     lrn_no: str | None
     vendor_bill_no: str | None
     vendor_bill_date: date | None

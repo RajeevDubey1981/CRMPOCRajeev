@@ -17,6 +17,7 @@ function fmtMoney(n) {
 export default function LedgerSearch({ partyType }) {
   const navigate = useNavigate();
   const isVendor = partyType === "vendor";
+  const isCourier = partyType === "courier";
   const [filters, setFilters] = useState({ state: "", district: "", phone: "", code: "", q: "" });
   const [rows, setRows] = useState([]);
   const [searched, setSearched] = useState(false);
@@ -32,7 +33,9 @@ export default function LedgerSearch({ partyType }) {
     try {
       const params = { state: filters.state || undefined, district: filters.district || undefined, phone: filters.phone || undefined, q: filters.q || undefined };
       if (isVendor) params.code = filters.code || undefined;
-      const data = isVendor ? await accountLedgerApi.listVendors(params) : await accountLedgerApi.listEngineers(params);
+      const data = isCourier
+        ? await accountLedgerApi.listCouriers({ q: filters.q || undefined })
+        : isVendor ? await accountLedgerApi.listVendors(params) : await accountLedgerApi.listEngineers(params);
       setRows(data);
     } catch (e) {
       setErr(e.response?.data?.detail || "Search failed");
@@ -44,11 +47,19 @@ export default function LedgerSearch({ partyType }) {
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="text-lg font-semibold text-slate-800">Find {isVendor ? "a vendor's" : "an engineer's"} account</h1>
-        <p className="text-sm text-slate-500">{isVendor ? "Vendors" : "Engineers"} only — {isVendor ? "engineers" : "vendors"} never show up here.</p>
+        <h1 className="text-lg font-semibold text-slate-800">Find {isVendor ? "a vendor's" : isCourier ? "a courier's" : "an engineer's"} account</h1>
+        <p className="text-sm text-slate-500">{isVendor ? "Vendors" : isCourier ? "Couriers/transporters" : "Engineers"} only.</p>
       </div>
 
       <div className="rounded-lg bg-white p-4 shadow-sm">
+        {isCourier ? (
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div>
+              <label className="text-xs uppercase tracking-wide text-slate-500">Courier name</label>
+              <input value={filters.q} onChange={(e) => patch("q", e.target.value)} placeholder="e.g. Delhivery" className={`${inputClass()} mt-1`} />
+            </div>
+          </div>
+        ) : (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
           <div>
             <label className="text-xs uppercase tracking-wide text-slate-500">State</label>
@@ -75,6 +86,7 @@ export default function LedgerSearch({ partyType }) {
             />
           </div>
         </div>
+        )}
         {isVendor && (
           <div className="mt-3">
             <label className="text-xs uppercase tracking-wide text-slate-500">Or company name</label>
@@ -94,10 +106,10 @@ export default function LedgerSearch({ partyType }) {
           <table className="min-w-full text-sm">
             <thead className="bg-slate-100 text-left text-slate-600">
               <tr>
-                <th className="px-3 py-2">{isVendor ? "Vendor" : "Engineer"}</th>
+                <th className="px-3 py-2">{isVendor ? "Vendor" : isCourier ? "Courier" : "Engineer"}</th>
                 <th className="px-3 py-2">Code</th>
                 <th className="px-3 py-2">Phone</th>
-                {!isVendor && <th className="px-3 py-2">Type</th>}
+                {!isVendor && !isCourier && <th className="px-3 py-2">Type</th>}
                 <th className="px-3 py-2 text-right">Balance</th>
               </tr>
             </thead>
@@ -112,7 +124,7 @@ export default function LedgerSearch({ partyType }) {
                   </td>
                   <td className="px-3 py-2 text-xs text-slate-500">{r.code}</td>
                   <td className="px-3 py-2 text-xs text-slate-500">{r.phone || "—"}</td>
-                  {!isVendor && <td className="px-3 py-2 text-xs text-slate-500">{r.role}</td>}
+                  {!isVendor && !isCourier && <td className="px-3 py-2 text-xs text-slate-500">{r.role}</td>}
                   <td className="px-3 py-2 text-right font-mono">{fmtMoney(r.balance)}</td>
                 </tr>
               ))}

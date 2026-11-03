@@ -172,8 +172,8 @@ export default function LedgerDetail() {
 
   return (
     <div className="space-y-4">
-      <Link to={partyType === "vendor" ? "/ledger/vendors" : "/ledger/engineers"} className="text-sm text-brand-700 hover:underline">
-        ← Back to {partyType === "vendor" ? "vendor" : "engineer"} search
+      <Link to={partyType === "vendor" ? "/ledger/vendors" : partyType === "courier" ? "/ledger/couriers" : "/ledger/engineers"} className="text-sm text-brand-700 hover:underline">
+        ← Back to {partyType === "vendor" ? "vendor" : partyType === "courier" ? "courier" : "engineer"} search
       </Link>
 
       <div className="rounded-lg bg-white p-5 shadow-sm">
@@ -187,7 +187,7 @@ export default function LedgerDetail() {
                 </span>
               )}
             </h1>
-            <p className="text-xs text-slate-500">{partyType === "vendor" ? "Vendor" : "Engineer"} account</p>
+            <p className="text-xs text-slate-500">{partyType === "vendor" ? "Vendor" : partyType === "courier" ? "Courier" : "Engineer"} account</p>
           </div>
         </div>
 
