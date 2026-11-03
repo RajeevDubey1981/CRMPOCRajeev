@@ -1835,6 +1835,9 @@ export default function OrderDetail() {
                   className={fieldClass}
                 />
                 <p className="mt-1 text-xs text-slate-400">Saving this credits the vendor's account automatically.</p>
+                <p className="mt-1 text-xs text-slate-400">
+                  Qty on bill {editForm.oem_bill_no || "—"}: {(editForm.items || []).length} item{(editForm.items || []).length === 1 ? "" : "s"} (see Line Items below).
+                </p>
               </div>
             )}
 
