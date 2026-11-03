@@ -523,6 +523,7 @@ export default function OrderDetail() {
       oem_bill_line_no: order.oem_bill_line_no || "",
       oem_bill_amount: order.oem_bill_amount ?? "",
       oem_bill_qty: order.oem_bill_qty ?? "",
+      boxes_per_unit: order.boxes_per_unit ?? 2,
       vendor_id: order.vendor_id ?? "",
       customer_name: order.customer_name || "",
       customer_contact: order.customer_contact || "",
@@ -996,6 +997,7 @@ export default function OrderDetail() {
             oem_bill_line_no: editForm.oem_bill_line_no || null,
             oem_bill_amount: editForm.oem_bill_amount === "" ? null : Number(editForm.oem_bill_amount),
             oem_bill_qty: editForm.oem_bill_qty === "" ? null : Number(editForm.oem_bill_qty),
+            boxes_per_unit: editForm.boxes_per_unit === "" ? null : Number(editForm.boxes_per_unit),
             vendor_id: editForm.vendor_id !== "" ? Number(editForm.vendor_id) : null,
             customer_name: editForm.customer_name || null,
             customer_contact: editForm.customer_contact || null,
@@ -1873,6 +1875,31 @@ export default function OrderDetail() {
                 ) : (
                   <p className="mt-1 text-xs text-slate-400">Used to auto-calculate the credit on a partial return.</p>
                 )}
+              </div>
+            )}
+            {!isVendor && (
+              <div>
+                <label className={labelClass}>Boxes per unit</label>
+                <div className="flex gap-2">
+                  {[1, 2].map((n) => (
+                    <button
+                      key={n}
+                      type="button"
+                      disabled={!canManageOemBill}
+                      onClick={() => setEF("boxes_per_unit", n)}
+                      className={`rounded-md border px-3 py-2 text-sm font-medium ${
+                        Number(editForm.boxes_per_unit) === n
+                          ? "border-brand-500 bg-brand-50 text-brand-800"
+                          : "border-slate-300 text-slate-600 hover:bg-slate-50"
+                      } disabled:opacity-50`}
+                    >
+                      {n} box{n === 1 ? "" : "es"}
+                    </button>
+                  ))}
+                </div>
+                <p className="mt-1 text-xs text-slate-400">
+                  {Number(editForm.boxes_per_unit) === 2 ? "e.g. Split AC — indoor + outdoor." : "e.g. Window AC, Refrigerator."}
+                </p>
               </div>
             )}
 

@@ -23,6 +23,10 @@ class Order(Base, TimestampMixin, SoftDeleteMixin):
     # Qty this oem_bill_amount covers on this line -- divides down to a per-unit price, used to
     # auto-calculate the return credit in process_return (routers/account_ledger.py) for partial returns.
     oem_bill_qty: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # How many physical boxes make up 1 unit of oem_bill_qty (e.g. 2 for a Split AC -- indoor + outdoor).
+    # Data only for now: a later return-side feature will use this to tell a complete-unit return apart
+    # from a partial one (only some boxes of a unit back).
+    boxes_per_unit: Mapped[int | None] = mapped_column(Integer, nullable=True)
     vendor_id: Mapped[int | None] = mapped_column(ForeignKey("vendors.id"), nullable=True, index=True)
     customer_name: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
     customer_contact: Mapped[str | None] = mapped_column(String(20), nullable=True, index=True)
