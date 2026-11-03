@@ -124,6 +124,12 @@ export default function CourierDetail() {
           <h1 className="mt-1 text-2xl font-bold text-slate-900">{courier.courier_name}</h1>
         </div>
         <div className="flex gap-2">
+          <Link
+            to={`/couriers/${courier.id}/rate-card`}
+            className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+          >
+            📋 Rate Card
+          </Link>
           <button
             onClick={openEdit}
             className="rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700"

@@ -33,6 +33,7 @@ import ItemMasterDetail from "./pages/item_masters/ItemMasterDetail.jsx";
 import CourierList from "./pages/couriers/CourierList.jsx";
 import CourierCreate from "./pages/couriers/CourierCreate.jsx";
 import CourierDetail from "./pages/couriers/CourierDetail.jsx";
+import CourierRateCard from "./pages/couriers/CourierRateCard.jsx";
 import MarketDashboard from "./pages/market/MarketDashboard.jsx";
 import MarketUsers from "./pages/market/MarketUsers.jsx";
 import MarketItems from "./pages/market/MarketItems.jsx";
@@ -226,6 +227,7 @@ export default function App() {
         <Route path="/couriers" element={<OperationsAdminRoute><CourierList /></OperationsAdminRoute>} />
         <Route path="/couriers/new" element={<OperationsAdminRoute><CourierCreate /></OperationsAdminRoute>} />
         <Route path="/couriers/:id" element={<OperationsAdminRoute><CourierDetail /></OperationsAdminRoute>} />
+        <Route path="/couriers/:id/rate-card" element={<OperationsAdminRoute><CourierRateCard /></OperationsAdminRoute>} />
         <Route path="/orders" element={<PermissionRoute module="orders"><OrderList /></PermissionRoute>} />
         <Route path="/orders/new" element={<PermissionRoute module="orders" action="can_create"><OrderCreate /></PermissionRoute>} />
         <Route path="/orders/:id" element={<PermissionRoute module="orders"><OrderDetail /></PermissionRoute>} />

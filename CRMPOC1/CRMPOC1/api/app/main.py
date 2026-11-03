@@ -7,7 +7,7 @@ from fastapi.staticfiles import StaticFiles
 from app.config import settings
 from app.release_build import RELEASE_BUILD
 from app.services.input_security import sanitize_json
-from app.routers import account_ledger, auth, bids, calls, field_photos, claims, complaints, couriers, dashboard, email_send_logs, historical_installations, insurance, installation_callcenter, installations, item_master, manufacturers, market, orders, partner_agreements_public, partner_registrations, partner_registrations_public, pending_actions, projects, queries, roles, serials, services, shortage_claims, users
+from app.routers import account_ledger, auth, bids, calls, field_photos, claims, complaints, couriers, courier_rate_profiles, dashboard, email_send_logs, historical_installations, insurance, installation_callcenter, installations, item_master, manufacturers, market, orders, partner_agreements_public, partner_registrations, partner_registrations_public, pending_actions, projects, queries, roles, serials, services, shortage_claims, users
 from app.routers import places, sarvam_api
 from app.marketing.router import router as marketing_router
 from app.parts.router import router as parts_router
@@ -65,6 +65,7 @@ app.include_router(historical_installations.router)
 app.include_router(projects.router)
 app.include_router(item_master.router)
 app.include_router(couriers.router)
+app.include_router(courier_rate_profiles.router)
 app.include_router(manufacturers.router)
 app.include_router(insurance.router)
 app.include_router(orders.router)
