@@ -69,6 +69,7 @@ export default function SerialHistory() {
   const initialSerial = searchParams.get("serial") || "";
   const [input, setInput] = useState(initialSerial);
   const [header, setHeader] = useState(null);
+  const [expenditure, setExpenditure] = useState(null);
   const [events, setEvents] = useState([]);
   const [suggestions, setSuggestions] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -87,10 +88,12 @@ export default function SerialHistory() {
     serialApi.history(serial)
       .then(({ data }) => {
         setHeader(data.header);
+        setExpenditure(data.expenditure || null);
         setEvents(data.events || []);
       })
       .catch((e) => {
         setHeader(null);
+        setExpenditure(null);
         setEvents([]);
         setErr(e.response?.data?.detail || "Failed to load serial history");
       })
@@ -237,6 +240,44 @@ export default function SerialHistory() {
               </div>
             </div>
           </section>
+
+          {expenditure && (
+            <section className="rounded-xl bg-white p-6 shadow-sm">
+              <h2 className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Expenditure to date</h2>
+              <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+                <div className="rounded-lg border border-slate-200 p-3">
+                  <div className="text-xs uppercase tracking-wide text-slate-500">Total paid</div>
+                  <div className="mt-1 text-lg font-semibold text-emerald-700 tabular-nums">₹{formatAmount(expenditure.total_paid) || "0"}</div>
+                </div>
+                <div className="rounded-lg border border-slate-200 p-3">
+                  <div className="text-xs uppercase tracking-wide text-slate-500">Parts cost</div>
+                  <div className="mt-1 text-lg font-semibold text-amber-700 tabular-nums">₹{formatAmount(expenditure.parts_cost) || "0"}</div>
+                </div>
+                <div className="rounded-lg border border-slate-200 p-3">
+                  <div className="text-xs uppercase tracking-wide text-slate-500">Service visits</div>
+                  <div className="mt-1 text-lg font-semibold text-slate-900 tabular-nums">{expenditure.service_visits}</div>
+                </div>
+                <div className="rounded-lg border border-slate-200 p-3">
+                  <div className="text-xs uppercase tracking-wide text-slate-500">Claims raised</div>
+                  <div className="mt-1 text-lg font-semibold text-slate-900 tabular-nums">{expenditure.claims_count}</div>
+                </div>
+              </div>
+              {expenditure.engineers.length > 0 && (
+                <div className="mt-4">
+                  <div className="mb-2 text-xs uppercase tracking-wide text-slate-500">Engineers who worked on this serial</div>
+                  <div className="flex flex-wrap gap-2">
+                    {expenditure.engineers.map((eng) => (
+                      <div key={eng.user_id} className="rounded-md border border-slate-200 bg-slate-50 px-3 py-1.5 text-sm">
+                        <span className="font-medium text-slate-800">{eng.name}</span>
+                        {eng.contact && <span className="text-slate-500"> · {eng.contact}</span>}
+                        <span className="text-slate-400"> · {eng.visits} visit{eng.visits === 1 ? "" : "s"}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </section>
+          )}
 
           <section className="rounded-xl bg-white p-6 shadow-sm">
             <div className="mb-4 flex items-center justify-between">

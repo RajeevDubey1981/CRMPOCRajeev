@@ -53,6 +53,22 @@ class SerialHistoryEventOut(BaseModel):
     metadata: dict | None = None
 
 
+class SerialEngineerWorked(BaseModel):
+    user_id: int
+    name: str
+    contact: str | None = None
+    visits: int
+
+
+class SerialExpenditureSummary(BaseModel):
+    total_paid: float
+    parts_cost: float
+    service_visits: int
+    claims_count: int
+    engineers: list[SerialEngineerWorked]
+
+
 class SerialHistoryResponse(BaseModel):
     header: SerialHistoryHeader
+    expenditure: SerialExpenditureSummary
     events: list[SerialHistoryEventOut]

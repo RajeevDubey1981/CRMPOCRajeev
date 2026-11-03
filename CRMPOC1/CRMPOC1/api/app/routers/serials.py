@@ -14,8 +14,16 @@ from app.models.installation import InstallationRequest
 from app.models.item_master import ItemMaster
 from app.models.order import Order, OrderItem
 from app.models.serial_history import SerialHistoryEvent
+from app.models.service import ServicePaymentRequest, ServiceRequest, ServiceRequestUnit
 from app.models.user import User
-from app.schemas.serial import SerialHistoryEventOut, SerialHistoryHeader, SerialHistoryResponse, SerialLookup
+from app.schemas.serial import (
+    SerialEngineerWorked,
+    SerialExpenditureSummary,
+    SerialHistoryEventOut,
+    SerialHistoryHeader,
+    SerialHistoryResponse,
+    SerialLookup,
+)
 from app.services.serial_history import backfill_serial_history_for_serial
 
 router = APIRouter(prefix="/api/serials", tags=["serials"])
@@ -196,6 +204,77 @@ def lookup(
     )
 
 
+def _build_expenditure_summary(db: Session, serial_no: str) -> SerialExpenditureSummary:
+    """What this specific serial has cost so far -- payments released, parts cost, how many
+    service visits and claims, and every engineer who has worked on it with their contact
+    number -- pulled from the real payment/claim records, not the event log (whose amounts live
+    in free-form metadata and aren't reliable for a total)."""
+    needle = func.lower(serial_no)
+
+    total_paid = 0.0
+    parts_cost = 0.0
+    service_visits = 0
+    engineer_visits: dict[int, int] = {}
+
+    inst_rows = db.scalars(
+        select(InstallationRequest).where(
+            or_(func.lower(InstallationRequest.serial_no) == needle, func.lower(InstallationRequest.serial_no_2) == needle)
+        )
+    ).all()
+    for inst in inst_rows:
+        total_paid += float(inst.payment_amount_paid or 0)
+        if inst.assigned_engineer:
+            engineer_visits[inst.assigned_engineer] = engineer_visits.get(inst.assigned_engineer, 0) + 1
+
+    unit_rows = db.scalars(
+        select(ServiceRequestUnit).where(
+            or_(func.lower(ServiceRequestUnit.serial_no) == needle, func.lower(ServiceRequestUnit.serial_no_2) == needle)
+        )
+    ).all()
+    unit_ids = [u.id for u in unit_rows]
+    for unit in unit_rows:
+        service_visits += 1
+        if unit.assigned_engineer_id:
+            engineer_visits[unit.assigned_engineer_id] = engineer_visits.get(unit.assigned_engineer_id, 0) + 1
+
+    whole_service_rows = db.scalars(select(ServiceRequest).where(func.lower(ServiceRequest.serial_no) == needle)).all()
+    whole_service_ids = [s.id for s in whole_service_rows]
+    for svc in whole_service_rows:
+        service_visits += 1
+        if svc.assigned_engineer_id:
+            engineer_visits[svc.assigned_engineer_id] = engineer_visits.get(svc.assigned_engineer_id, 0) + 1
+
+    payment_stmt = select(ServicePaymentRequest).where(ServicePaymentRequest.approval_status == "Approved")
+    conditions = []
+    if unit_ids:
+        conditions.append(ServicePaymentRequest.service_request_unit_id.in_(unit_ids))
+    if whole_service_ids:
+        conditions.append(ServicePaymentRequest.service_request_id.in_(whole_service_ids))
+    if conditions:
+        for payment in db.scalars(payment_stmt.where(or_(*conditions))).all():
+            total_paid += float(payment.approved_amount or payment.total_requested_amount or 0)
+            parts_cost += float(payment.settlement_parts_amount or 0)
+
+    claims_count = db.scalar(
+        select(func.count()).select_from(Claim).where(func.lower(Claim.serial_number) == needle)
+    ) or 0
+
+    engineers: list[SerialEngineerWorked] = []
+    for user_id, visits in sorted(engineer_visits.items(), key=lambda kv: -kv[1]):
+        u = db.get(User, user_id)
+        if u is None:
+            continue
+        engineers.append(SerialEngineerWorked(user_id=u.id, name=u.name, contact=u.phone, visits=visits))
+
+    return SerialExpenditureSummary(
+        total_paid=total_paid,
+        parts_cost=parts_cost,
+        service_visits=service_visits,
+        claims_count=claims_count,
+        engineers=engineers,
+    )
+
+
 def _find_order_item(db: Session, serial_no: str) -> OrderItem | None:
     return db.scalar(
         select(OrderItem).where(
@@ -305,4 +384,5 @@ def get_serial_history(
         component_warranty_date=component_warranty_date,
         machine_warranty_date=machine_warranty_date,
     )
-    return SerialHistoryResponse(header=header, events=events)
+    expenditure = _build_expenditure_summary(db, primary_serial)
+    return SerialHistoryResponse(header=header, expenditure=expenditure, events=events)
