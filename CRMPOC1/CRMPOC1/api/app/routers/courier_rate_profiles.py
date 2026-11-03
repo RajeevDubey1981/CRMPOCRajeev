@@ -108,7 +108,11 @@ def _price_shipment(profile: CourierRateProfileData, source_zone, destination_zo
         fsc = round(base_amount * profile.fsc_percent / 100, 2)
         lines.append(FreightCalcLine(label=f"Fuel surcharge ({profile.fsc_percent}%)", amount=fsc))
 
-    return lines, subtotal
+    if profile.handling_rate_per_kg and chargeable_weight >= (profile.handling_min_weight_kg or 0) > 0:
+        handling = round(profile.handling_rate_per_kg * chargeable_weight, 2)
+        lines.append(FreightCalcLine(label=f"Handling (≥{profile.handling_min_weight_kg}kg, {profile.handling_rate_per_kg}/kg)", amount=handling))
+
+    return lines, sum(l.amount for l in lines)
 
 
 def _add_oda(profile: CourierRateProfileData, lines: list[FreightCalcLine], chargeable_weight: float, is_oda: bool) -> float:
