@@ -1,6 +1,6 @@
 import { hasPermission } from "../../utils/permissions.js";
 import { useAuth } from "../../auth/AuthContext.jsx";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 
 import Modal from "../../components/Modal.jsx";
@@ -68,9 +68,13 @@ export default function CourierDetail() {
     setEditing(true);
   }
 
-  // Auto-open edit modal if ?edit=1 was in the URL and courier loaded
+  // Auto-open edit modal if ?edit=1 was in the URL and courier loaded -- only once, so saving
+  // doesn't make this pop back open every time `courier` refreshes with the new values (it looked
+  // like the save silently did nothing, because the modal instantly reopened over the success message).
+  const autoOpenedRef = useRef(false);
   useEffect(() => {
-    if (courier && searchParams.get("edit") === "1" && !editing) {
+    if (courier && searchParams.get("edit") === "1" && !autoOpenedRef.current) {
+      autoOpenedRef.current = true;
       openEdit();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
