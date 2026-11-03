@@ -19,8 +19,10 @@ from deploy import load_config, ssh_run  # noqa: E402
 import paramiko  # noqa: E402
 
 REMOTE_SCRIPT = r"""
-import json, os
+import json, os, sys
 from pathlib import Path
+
+sys.path.insert(0, "/var/www/indcool/api")
 
 for line in Path("/var/www/indcool/api/.env").read_text(encoding="utf-8").splitlines():
     line = line.strip()
