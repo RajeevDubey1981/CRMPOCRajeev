@@ -24,7 +24,7 @@ class CourierRateProfileData(BaseModel):
     zone_rates: list[ZoneRate] = Field(default_factory=list)
     docket_charge: float = 0
     fsc_percent: float = 0
-    volumetric_divisor: float = 5000
+    volumetric_divisor: float = 5000  # kg = (L x W x H in cm) / this divisor
     handling_rate_per_kg: float = 0
     handling_min_weight_kg: float = 0
     demurrage_rate_per_kg: float = 0
@@ -46,7 +46,9 @@ class CourierRateProfileOut(BaseModel):
 class FreightCalcIn(BaseModel):
     destination_state: str
     weight_kg: float
-    volumetric_cu_ft: float | None = None
+    length_cm: float | None = None
+    width_cm: float | None = None
+    height_cm: float | None = None
     is_oda: bool = False
 
 

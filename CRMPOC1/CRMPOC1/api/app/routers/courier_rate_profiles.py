@@ -90,9 +90,15 @@ def calculate_freight(profile: CourierRateProfileData, body: FreightCalcIn) -> F
     destination_zone = _find_zone_for_state(profile, body.destination_state)
 
     volumetric_weight = 0.0
-    if body.volumetric_cu_ft and profile.volumetric_divisor:
-        volumetric_weight = body.volumetric_cu_ft * profile.volumetric_divisor
+    if body.length_cm and body.width_cm and body.height_cm and profile.volumetric_divisor:
+        volumetric_weight = (body.length_cm * body.width_cm * body.height_cm) / profile.volumetric_divisor
     chargeable_weight = max(body.weight_kg, volumetric_weight, profile.min_chargeable_weight_kg or 0)
+
+    if volumetric_weight > 0:
+        lines.append(FreightCalcLine(
+            label=f"Actual {body.weight_kg}kg vs. volumetric {round(volumetric_weight, 1)}kg — higher one charged",
+            amount=0,
+        ))
 
     rate = None
     if source_zone and destination_zone:

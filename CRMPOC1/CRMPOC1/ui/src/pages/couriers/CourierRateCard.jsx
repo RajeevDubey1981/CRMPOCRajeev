@@ -19,7 +19,9 @@ export default function CourierRateCard() {
   const [err, setErr] = useState("");
   const [savedMsg, setSavedMsg] = useState("");
 
-  const [calcForm, setCalcForm] = useState({ destination_state: "", weight_kg: "", is_oda: false });
+  const [calcForm, setCalcForm] = useState({
+    destination_state: "", weight_kg: "", length_cm: "", width_cm: "", height_cm: "", is_oda: false,
+  });
   const [calcResult, setCalcResult] = useState(null);
   const [calcErr, setCalcErr] = useState("");
   const [calcBusy, setCalcBusy] = useState(false);
@@ -111,6 +113,9 @@ export default function CourierRateCard() {
       const result = await couriersApi.calculateFreight(courierId, {
         destination_state: calcForm.destination_state.trim(),
         weight_kg: Number(calcForm.weight_kg),
+        length_cm: calcForm.length_cm ? Number(calcForm.length_cm) : null,
+        width_cm: calcForm.width_cm ? Number(calcForm.width_cm) : null,
+        height_cm: calcForm.height_cm ? Number(calcForm.height_cm) : null,
         is_oda: calcForm.is_oda,
       });
       setCalcResult(result);
@@ -273,13 +278,21 @@ export default function CourierRateCard() {
             />
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-slate-700">Weight (kg)</label>
+            <label className="mb-1 block text-xs font-medium text-slate-700">Actual weight (kg)</label>
             <input
               type="number"
               value={calcForm.weight_kg}
               onChange={(e) => setCalcForm((f) => ({ ...f, weight_kg: e.target.value }))}
               className="w-28 rounded-md border border-slate-300 px-2 py-1.5 text-sm"
             />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-700">Box L × W × H (cm, optional)</label>
+            <div className="flex gap-1">
+              <input type="number" value={calcForm.length_cm} onChange={(e) => setCalcForm((f) => ({ ...f, length_cm: e.target.value }))} placeholder="L" className="w-16 rounded-md border border-slate-300 px-2 py-1.5 text-sm" />
+              <input type="number" value={calcForm.width_cm} onChange={(e) => setCalcForm((f) => ({ ...f, width_cm: e.target.value }))} placeholder="W" className="w-16 rounded-md border border-slate-300 px-2 py-1.5 text-sm" />
+              <input type="number" value={calcForm.height_cm} onChange={(e) => setCalcForm((f) => ({ ...f, height_cm: e.target.value }))} placeholder="H" className="w-16 rounded-md border border-slate-300 px-2 py-1.5 text-sm" />
+            </div>
           </div>
           <label className="flex items-center gap-1.5 pb-2 text-sm text-slate-700">
             <input type="checkbox" checked={calcForm.is_oda} onChange={(e) => setCalcForm((f) => ({ ...f, is_oda: e.target.checked }))} />
