@@ -15,9 +15,14 @@ class Order(Base, TimestampMixin, SoftDeleteMixin):
     order_no: Mapped[str | None] = mapped_column(String(255), unique=True, nullable=True, index=True)
     order_date: Mapped[date] = mapped_column(Date, nullable=False)
     oem_bill_no: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
+    # Which line of oem_bill_no this order is, when one bill lists several item lines -- reference only.
+    oem_bill_line_no: Mapped[str | None] = mapped_column(String(50), nullable=True)
     # Credits this amount to the vendor's ledger (AccountLedgerEntry, source_type="oem_bill") the moment
     # it's set or changed — see _sync_oem_bill_ledger_entry in routers/orders.py.
     oem_bill_amount: Mapped[float | None] = mapped_column(Numeric(12, 2), nullable=True)
+    # Qty this oem_bill_amount covers on this line -- divides down to a per-unit price, used to
+    # auto-calculate the return credit in process_return (routers/account_ledger.py) for partial returns.
+    oem_bill_qty: Mapped[int | None] = mapped_column(Integer, nullable=True)
     vendor_id: Mapped[int | None] = mapped_column(ForeignKey("vendors.id"), nullable=True, index=True)
     customer_name: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
     customer_contact: Mapped[str | None] = mapped_column(String(20), nullable=True, index=True)

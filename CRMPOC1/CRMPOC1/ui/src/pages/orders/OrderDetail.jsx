@@ -520,7 +520,9 @@ export default function OrderDetail() {
       order_no: order.order_no || "",
       order_date: order.order_date || "",
       oem_bill_no: order.oem_bill_no || "",
+      oem_bill_line_no: order.oem_bill_line_no || "",
       oem_bill_amount: order.oem_bill_amount ?? "",
+      oem_bill_qty: order.oem_bill_qty ?? "",
       vendor_id: order.vendor_id ?? "",
       customer_name: order.customer_name || "",
       customer_contact: order.customer_contact || "",
@@ -991,7 +993,9 @@ export default function OrderDetail() {
           }
         : {
             oem_bill_no: editForm.oem_bill_no || null,
+            oem_bill_line_no: editForm.oem_bill_line_no || null,
             oem_bill_amount: editForm.oem_bill_amount === "" ? null : Number(editForm.oem_bill_amount),
+            oem_bill_qty: editForm.oem_bill_qty === "" ? null : Number(editForm.oem_bill_qty),
             vendor_id: editForm.vendor_id !== "" ? Number(editForm.vendor_id) : null,
             customer_name: editForm.customer_name || null,
             customer_contact: editForm.customer_contact || null,
@@ -1203,6 +1207,8 @@ export default function OrderDetail() {
         <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
           <Field label="Order Date" value={fmtDate(order.order_date)} />
           <Field label="OEM Bill No" value={order.oem_bill_no} />
+          <Field label="Bill Line No" value={order.oem_bill_line_no} />
+          <Field label="Bill Qty" value={order.oem_bill_qty} />
           <Field label="Status" value={order.status} />
           <Field label="Customer" value={order.customer_name} />
           <Field label="Consignee (ship-to)" value={consigneeSummaryLine(order.consignee_addresses)} />
@@ -1826,6 +1832,19 @@ export default function OrderDetail() {
             </div>
             {!isVendor && (
               <div>
+                <label className={labelClass}>Bill Line No</label>
+                <input
+                  value={editForm.oem_bill_line_no}
+                  onChange={(e) => setEF("oem_bill_line_no", e.target.value)}
+                  disabled={!canManageOemBill}
+                  className={fieldClass}
+                  placeholder="e.g. 1"
+                />
+                <p className="mt-1 text-xs text-slate-400">Which line on this bill this order is, if the bill has several.</p>
+              </div>
+            )}
+            {!isVendor && (
+              <div>
                 <label className={labelClass}>Bill Amount (₹)</label>
                 <input
                   type="number" min="0" step="0.01"
@@ -1835,9 +1854,25 @@ export default function OrderDetail() {
                   className={fieldClass}
                 />
                 <p className="mt-1 text-xs text-slate-400">Saving this credits the vendor's account automatically.</p>
-                <p className="mt-1 text-xs text-slate-400">
-                  Qty on bill {editForm.oem_bill_no || "—"}: {(editForm.items || []).length} item{(editForm.items || []).length === 1 ? "" : "s"} (see Line Items below).
-                </p>
+              </div>
+            )}
+            {!isVendor && (
+              <div>
+                <label className={labelClass}>Qty (on this bill line)</label>
+                <input
+                  type="number" min="1" step="1"
+                  value={editForm.oem_bill_qty}
+                  onChange={(e) => setEF("oem_bill_qty", e.target.value)}
+                  disabled={!canManageOemBill}
+                  className={fieldClass}
+                />
+                {editForm.oem_bill_amount !== "" && editForm.oem_bill_qty !== "" && Number(editForm.oem_bill_qty) > 0 ? (
+                  <p className="mt-1 text-xs text-green-700">
+                    = ₹{(Number(editForm.oem_bill_amount) / Number(editForm.oem_bill_qty)).toLocaleString("en-IN", { maximumFractionDigits: 2 })} per unit — auto-divided
+                  </p>
+                ) : (
+                  <p className="mt-1 text-xs text-slate-400">Used to auto-calculate the credit on a partial return.</p>
+                )}
               </div>
             )}
 

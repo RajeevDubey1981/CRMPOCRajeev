@@ -240,6 +240,14 @@ def _order_unit_count(db: Session, order_id: int) -> int:
     return int(total) if total else 1
 
 
+def _oem_unit_price(order: Order) -> float | None:
+    """Per-unit price for this order's OEM bill line, when both amount and qty are set -- drives the
+    auto-calculated return amount in process_return below."""
+    if order.oem_bill_amount is None or not order.oem_bill_qty:
+        return None
+    return float(order.oem_bill_amount) / order.oem_bill_qty
+
+
 def _return_pending_out(db: Session, order: Order) -> dict:
     vendor = db.get(Vendor, order.vendor_id) if order.vendor_id else None
     confirmer = db.get(User, order.material_receipt_confirmed_by_user_id) if order.material_receipt_confirmed_by_user_id else None
@@ -248,6 +256,8 @@ def _return_pending_out(db: Session, order: Order) -> dict:
         "vendor_id": order.vendor_id, "vendor_name": vendor.name_of_firm if vendor else None,
         "customer_name": order.customer_name,
         "oem_bill_amount": float(order.oem_bill_amount) if order.oem_bill_amount is not None else None,
+        "oem_bill_qty": order.oem_bill_qty,
+        "oem_unit_price": _oem_unit_price(order),
         "unit_count": _order_unit_count(db, order.id),
         "suggested_return_amount": float(order.oem_bill_amount) if order.oem_bill_amount is not None else None,
         "material_receipt_confirmed_at": order.material_receipt_confirmed_at,
@@ -289,6 +299,10 @@ def confirm_material_receipt(order_id: int, db: Session = Depends(get_db), user:
 
 class ProcessReturnIn(BaseModel):
     return_amount: float = Field(ge=0, default=0)
+    # Qty actually returned of this order's OEM bill line -- when set, return_amount is recomputed as
+    # qty_returned * oem_unit_price (oem_bill_amount / oem_bill_qty) and the submitted return_amount
+    # is ignored, so a partial return is never entered by hand.
+    qty_returned: Optional[int] = Field(ge=1, default=None)
     return_charges_amount: float = Field(ge=0, default=0)
     note: str = Field(min_length=2)
     entry_date: Optional[date] = None
@@ -318,8 +332,20 @@ def process_return(
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "This return has already been processed")
     if order.vendor_id is None:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "This order has no vendor to debit")
-    if body.return_amount <= 0 and body.return_charges_amount <= 0:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Enter a return amount or return charges")
+
+    return_amount = body.return_amount
+    return_note_suffix = ""
+    if body.qty_returned is not None:
+        unit_price = _oem_unit_price(order)
+        if unit_price is None:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "This order has no OEM Bill Amount/Qty to calculate a per-unit price from")
+        if body.qty_returned > order.oem_bill_qty:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Qty Returned cannot exceed the bill's Qty ({order.oem_bill_qty})")
+        return_amount = round(body.qty_returned * unit_price, 2)
+        return_note_suffix = f" ({body.qty_returned} of {order.oem_bill_qty} units returned, @ {unit_price:.2f}/unit)"
+
+    if return_amount <= 0 and body.return_charges_amount <= 0:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Enter a return amount, Qty Returned, or return charges")
 
     entry_date = body.entry_date or datetime.now(timezone.utc).date()
     ref = order.order_no or str(order.id)
@@ -338,8 +364,8 @@ def process_return(
                 source_type="return", source_id=order.id, entry_date=entry_date, raised_by_user_id=user.id,
             )
 
-    if body.return_amount > 0:
-        _post_or_queue(body.return_amount, f"Order {ref} -- return amount. {body.note}")
+    if return_amount > 0:
+        _post_or_queue(return_amount, f"Order {ref} -- return amount{return_note_suffix}. {body.note}")
     if body.return_charges_amount > 0:
         _post_or_queue(body.return_charges_amount, f"Order {ref} -- return/courier charges. {body.note}")
     order.accounts_return_processed_at = datetime.now(timezone.utc)

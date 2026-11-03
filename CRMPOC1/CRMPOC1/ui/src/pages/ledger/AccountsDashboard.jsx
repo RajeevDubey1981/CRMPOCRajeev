@@ -218,7 +218,7 @@ function ReturnsPanel() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
   const [open, setOpen] = useState(null); // order_id being processed
-  const [form, setForm] = useState({ return_amount: "", return_charges_amount: "", note: "" });
+  const [form, setForm] = useState({ return_amount: "", qty_returned: "", return_charges_amount: "", note: "" });
   const [busy, setBusy] = useState(false);
 
   function load() {
@@ -232,7 +232,7 @@ function ReturnsPanel() {
 
   function startProcess(row) {
     setOpen(row.order_id);
-    setForm({ return_amount: row.suggested_return_amount ?? "", return_charges_amount: "", note: "" });
+    setForm({ return_amount: row.suggested_return_amount ?? "", qty_returned: "", return_charges_amount: "", note: "" });
   }
 
   async function submit(orderId) {
@@ -240,6 +240,7 @@ function ReturnsPanel() {
     try {
       await accountLedgerApi.processReturn(orderId, {
         return_amount: Number(form.return_amount || 0),
+        qty_returned: form.qty_returned === "" ? null : Number(form.qty_returned),
         return_charges_amount: Number(form.return_charges_amount || 0),
         note: form.note,
       });
@@ -302,10 +303,29 @@ function ReturnsPanel() {
               {open === row.order_id && (
                 <tr key={`${row.order_id}-form`}>
                   <td colSpan={6} className="bg-slate-50 px-4 py-3">
+                    {row.oem_unit_price != null && (
+                      <div className="mb-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2">
+                        <label className="text-xs font-semibold text-amber-800">
+                          Qty Returned (out of {row.oem_bill_qty})
+                          <input
+                            type="number" min="1" max={row.oem_bill_qty}
+                            className="mt-1 w-32 rounded-md border border-slate-300 px-2 py-1 text-sm"
+                            value={form.qty_returned}
+                            onChange={(e) => setForm((f) => ({ ...f, qty_returned: e.target.value }))}
+                          />
+                        </label>
+                        {form.qty_returned !== "" && Number(form.qty_returned) > 0 && (
+                          <p className="mt-1 text-xs font-semibold text-amber-800">
+                            = {form.qty_returned} × ₹{row.oem_unit_price.toLocaleString("en-IN", { maximumFractionDigits: 2 })}/unit = ₹{(Number(form.qty_returned) * row.oem_unit_price).toLocaleString("en-IN", { maximumFractionDigits: 2 })} — auto-calculated, no manual entry
+                          </p>
+                        )}
+                        <p className="mt-1 text-[11px] text-amber-700">Leave blank to enter Return amount manually below instead.</p>
+                      </div>
+                    )}
                     <div className="grid gap-3 sm:grid-cols-3">
                       <label className="text-xs text-slate-600">
                         Return amount
-                        <input type="number" className="mt-1 w-full rounded-md border border-slate-300 px-2 py-1 text-sm" value={form.return_amount}
+                        <input type="number" disabled={form.qty_returned !== ""} className="mt-1 w-full rounded-md border border-slate-300 px-2 py-1 text-sm disabled:bg-slate-100 disabled:text-slate-400" value={form.qty_returned !== "" ? "" : form.return_amount}
                           onChange={(e) => setForm((f) => ({ ...f, return_amount: e.target.value }))} />
                       </label>
                       <label className="text-xs text-slate-600">
