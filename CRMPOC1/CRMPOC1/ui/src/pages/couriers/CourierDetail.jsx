@@ -53,6 +53,16 @@ export default function CourierDetail() {
       contact_mobile: courier.contact_mobile || "",
       email: courier.email || "",
       address: courier.address || "",
+      courier_type: courier.courier_type || "parcel",
+      gst_number: courier.gst_number || "",
+      pan_number: courier.pan_number || "",
+      cin: courier.cin || "",
+      registered_state: courier.registered_state || "",
+      bank_account_holder: courier.bank_account_holder || "",
+      bank_name: courier.bank_name || "",
+      bank_account_number: courier.bank_account_number || "",
+      bank_ifsc: courier.bank_ifsc || "",
+      bank_branch: courier.bank_branch || "",
     });
     setSaveErr("");
     setEditing(true);
@@ -83,6 +93,16 @@ export default function CourierDetail() {
         contact_mobile: editForm.contact_mobile.trim() || null,
         email: editForm.email.trim() || null,
         address: editForm.address.trim() || null,
+        courier_type: editForm.courier_type,
+        gst_number: editForm.gst_number.trim() || null,
+        pan_number: editForm.pan_number.trim() || null,
+        cin: editForm.cin.trim() || null,
+        registered_state: editForm.registered_state.trim() || null,
+        bank_account_holder: editForm.bank_account_holder.trim() || null,
+        bank_name: editForm.bank_name.trim() || null,
+        bank_account_number: editForm.bank_account_number.trim() || null,
+        bank_ifsc: editForm.bank_ifsc.trim() || null,
+        bank_branch: editForm.bank_branch.trim() || null,
       };
       const updated = await couriersApi.update(id, body);
       setCourier(updated);
@@ -157,6 +177,7 @@ export default function CourierDetail() {
         <h2 className="mb-4 text-sm font-medium text-slate-700">Courier details</h2>
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <Field label="Courier Name" value={courier.courier_name} />
+          <Field label="Type" value={courier.courier_type === "truck" ? "Truck / LTL (no rate card)" : "Parcel (rate card)"} />
           <Field label="Contact Name" value={courier.contact_name} />
           <Field label="Contact Mobile" value={courier.contact_mobile} />
           <Field label="Email" value={courier.email} />
@@ -164,6 +185,28 @@ export default function CourierDetail() {
           <Field label="Created At" value={fmt(courier.created_at)} />
           <Field label="Last Updated" value={fmt(courier.updated_at)} />
         </div>
+      </section>
+
+      <section className="rounded-lg bg-white p-6 shadow-sm">
+        <h2 className="mb-4 text-sm font-medium text-slate-700">Statutory details</h2>
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <Field label="GST Number" value={courier.gst_number} />
+          <Field label="PAN" value={courier.pan_number} />
+          <Field label="CIN" value={courier.cin} />
+          <Field label="Registered State" value={courier.registered_state} />
+        </div>
+      </section>
+
+      <section className="rounded-lg bg-white p-6 shadow-sm">
+        <h2 className="mb-4 text-sm font-medium text-slate-700">Bank details</h2>
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <Field label="Account Holder Name" value={courier.bank_account_holder} />
+          <Field label="Bank Name" value={courier.bank_name} />
+          <Field label="Account Number" value={courier.bank_account_number} />
+          <Field label="IFSC Code" value={courier.bank_ifsc} />
+          <Field label="Branch" value={courier.bank_branch} />
+        </div>
+        <p className="mt-2 text-xs text-slate-400">Used only for reference when Accounts releases a payment — nothing here triggers a transfer automatically.</p>
       </section>
 
       {/* Edit Modal */}
@@ -209,6 +252,26 @@ export default function CourierDetail() {
             </div>
           </div>
           <div>
+            <label className={labelClass}>Type</label>
+            <div className="flex gap-2">
+              {[{ v: "parcel", l: "Parcel (rate card)" }, { v: "truck", l: "Truck / LTL (no rate card)" }].map((o) => (
+                <button
+                  key={o.v}
+                  type="button"
+                  onClick={() => setField("courier_type", o.v)}
+                  className={`rounded-md border px-3 py-2 text-sm font-medium ${
+                    editForm?.courier_type === o.v
+                      ? "border-brand-500 bg-brand-50 text-brand-800"
+                      : "border-slate-300 text-slate-600 hover:bg-slate-50"
+                  }`}
+                >
+                  {o.l}
+                </button>
+              ))}
+            </div>
+            <p className="mt-1 text-xs text-slate-400">Truck/LTL couriers (Wheels Eye, Porter, self truck) skip the rate card in Edit Order — just a reference number and amount.</p>
+          </div>
+          <div>
             <label className={labelClass}>Address</label>
             <textarea
               rows={3}
@@ -217,6 +280,52 @@ export default function CourierDetail() {
               className={fieldClass}
             />
           </div>
+
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">Statutory details</h3>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <div>
+              <label className={labelClass}>GST Number</label>
+              <input value={editForm?.gst_number || ""} onChange={(e) => setField("gst_number", e.target.value)} className={fieldClass} />
+            </div>
+            <div>
+              <label className={labelClass}>PAN</label>
+              <input value={editForm?.pan_number || ""} onChange={(e) => setField("pan_number", e.target.value)} className={fieldClass} />
+            </div>
+            <div>
+              <label className={labelClass}>CIN</label>
+              <input value={editForm?.cin || ""} onChange={(e) => setField("cin", e.target.value)} className={fieldClass} />
+            </div>
+            <div>
+              <label className={labelClass}>Registered State</label>
+              <input value={editForm?.registered_state || ""} onChange={(e) => setField("registered_state", e.target.value)} className={fieldClass} />
+            </div>
+          </div>
+
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">Bank details</h3>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <div>
+              <label className={labelClass}>Account Holder Name</label>
+              <input value={editForm?.bank_account_holder || ""} onChange={(e) => setField("bank_account_holder", e.target.value)} className={fieldClass} />
+            </div>
+            <div>
+              <label className={labelClass}>Bank Name</label>
+              <input value={editForm?.bank_name || ""} onChange={(e) => setField("bank_name", e.target.value)} className={fieldClass} />
+            </div>
+            <div>
+              <label className={labelClass}>Account Number</label>
+              <input value={editForm?.bank_account_number || ""} onChange={(e) => setField("bank_account_number", e.target.value)} className={fieldClass} />
+            </div>
+            <div>
+              <label className={labelClass}>IFSC Code</label>
+              <input value={editForm?.bank_ifsc || ""} onChange={(e) => setField("bank_ifsc", e.target.value)} className={fieldClass} />
+            </div>
+            <div className="md:col-span-2">
+              <label className={labelClass}>Branch</label>
+              <input value={editForm?.bank_branch || ""} onChange={(e) => setField("bank_branch", e.target.value)} className={fieldClass} />
+            </div>
+          </div>
+          <p className="text-xs text-slate-400">Bank details are for reference only — nothing here triggers a transfer automatically.</p>
+
           <div className="flex justify-end gap-2">
             <button
               type="button"

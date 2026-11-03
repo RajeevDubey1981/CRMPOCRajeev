@@ -1937,8 +1937,12 @@ export default function OrderDetail() {
                 ))}
               </select>
             </div>
+            {(() => {
+              const selectedCourier = couriers.find((c) => String(c.id) === String(editForm.courier_id));
+              const isTruckCourier = selectedCourier?.courier_type === "truck";
+              return (
             <div className="sm:col-span-2">
-              <label className={labelClass}>Freight Amount (₹)</label>
+              <label className={labelClass}>{isTruckCourier ? "Amount (₹) — agreed with driver/aggregator" : "Freight Amount (₹)"}</label>
               <div className="flex gap-2">
                 <input
                   type="number" min="0" step="0.01"
@@ -1947,7 +1951,7 @@ export default function OrderDetail() {
                   disabled={isVendor}
                   className={fieldClass}
                 />
-                {!isVendor && editForm.courier_id !== "" && (
+                {!isVendor && !isTruckCourier && editForm.courier_id !== "" && (
                   <button
                     type="button"
                     onClick={() => { setFreightCalcOpen((v) => !v); setFreightCalcResult(null); setFreightCalcErr(""); }}
@@ -1958,11 +1962,17 @@ export default function OrderDetail() {
                 )}
               </div>
               <p className="mt-1 text-xs text-slate-400">Saving this credits the courier's ledger automatically.</p>
+              {isTruckCourier ? (
+                <p className="mt-1 text-xs text-slate-400">
+                  No rate card for this courier — just the reference/trip number (LRN No field below) and the agreed amount.
+                </p>
+              ) : (
               <p className="mt-1 text-xs text-slate-400">
                 If ODA, this is just the dispatch estimate — correct it to the courier's actual confirmed ODA charge once it's delivered.
               </p>
+              )}
 
-              {freightCalcOpen && (
+              {!isTruckCourier && freightCalcOpen && (
                 <div className="mt-2 rounded-md border border-brand-200 bg-brand-50/40 p-3">
                   <p className="mb-2 text-xs text-slate-600">
                     Destination: <span className="font-semibold">{editForm.customer_state || "— set Customer State first —"}</span>
@@ -2068,6 +2078,8 @@ export default function OrderDetail() {
                 </div>
               )}
             </div>
+              );
+            })()}
 
             {!isVendor && editForm.status === "Returned" && (
               <div className="sm:col-span-2 rounded-md border border-amber-200 bg-amber-50 p-3">

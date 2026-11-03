@@ -17,3 +17,16 @@ class Courier(Base, TimestampMixin, SoftDeleteMixin):
     # Same role as Vendor/User's payment_cycle_days: drives the overdue-days calc on the courier's
     # own ledger tab (account_ledger.py). Null = no cycle set yet, overdue isn't computed.
     payment_cycle_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # "parcel" (default): priced off a saved CourierRateProfile zone matrix, e.g. Delhivery.
+    # "truck": no rate card -- Edit Order just takes a reference/trip number and a manually agreed
+    # amount, for aggregators like Wheels Eye/Porter or a self-owned truck.
+    courier_type: Mapped[str] = mapped_column(String(20), default="parcel", server_default="parcel", nullable=False)
+    gst_number: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    pan_number: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    cin: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    registered_state: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    bank_account_holder: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    bank_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    bank_account_number: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    bank_ifsc: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    bank_branch: Mapped[str | None] = mapped_column(String(255), nullable=True)

@@ -923,7 +923,7 @@ def lookup_couriers(
         .where(Courier.deleted_at.is_(None))
         .order_by(Courier.courier_name)
     ).all()
-    return [{"id": c.id, "name": c.courier_name} for c in rows]
+    return [{"id": c.id, "name": c.courier_name, "courier_type": c.courier_type} for c in rows]
 
 
 @router.get("/lookup/items")
@@ -1229,6 +1229,11 @@ async def create_order(
         existing = db.scalar(select(Order).where(Order.order_no == body.order_no))
         if existing:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Order No '{body.order_no}' already exists")
+
+    if body.lrn_no and body.lrn_no.strip():
+        existing = db.scalar(select(Order).where(Order.lrn_no == body.lrn_no.strip(), Order.deleted_at.is_(None)))
+        if existing:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, f"LRN No '{body.lrn_no.strip()}' is already used on order {existing.order_no or existing.id}")
 
     if document is None or not document.filename:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Order Document is required")
@@ -1782,6 +1787,18 @@ def update_order(
     consignee_updates = data.pop("consignee_addresses", None)
     order_expected_delivery_before = order.expected_delivery_date
     vendor_notify_fields: dict[str, object] = {}
+
+    for lrn_field in ("lrn_no", "return_lrn_no"):
+        lrn_value = data.get(lrn_field)
+        if lrn_value and lrn_value.strip():
+            dup = db.scalar(
+                select(Order).where(
+                    getattr(Order, lrn_field) == lrn_value.strip(), Order.id != order.id, Order.deleted_at.is_(None),
+                )
+            )
+            if dup:
+                field_label = "Return LR No" if lrn_field == "return_lrn_no" else "LRN No"
+                raise HTTPException(status.HTTP_400_BAD_REQUEST, f"{field_label} '{lrn_value.strip()}' is already used on order {dup.order_no or dup.id}")
 
     for field, value in data.items():
         if field == "courier_id":

@@ -72,6 +72,16 @@ def _to_out(c: Courier) -> CourierOut:
         contact_mobile=c.contact_mobile,
         email=c.email,
         address=c.address,
+        courier_type=c.courier_type,
+        gst_number=c.gst_number,
+        pan_number=c.pan_number,
+        cin=c.cin,
+        registered_state=c.registered_state,
+        bank_account_holder=c.bank_account_holder,
+        bank_name=c.bank_name,
+        bank_account_number=c.bank_account_number,
+        bank_ifsc=c.bank_ifsc,
+        bank_branch=c.bank_branch,
         created_at=c.created_at,
         updated_at=c.updated_at,
     )
@@ -85,6 +95,7 @@ def _to_list_item(c: Courier) -> CourierListItem:
         contact_mobile=c.contact_mobile,
         email=c.email,
         address=c.address,
+        courier_type=c.courier_type,
         created_at=c.created_at,
     )
 
@@ -211,6 +222,16 @@ def create_courier(
         contact_mobile=(body.contact_mobile or "").strip() or None,
         email=body.email,
         address=(body.address or "").strip() or None,
+        courier_type=body.courier_type,
+        gst_number=(body.gst_number or "").strip() or None,
+        pan_number=(body.pan_number or "").strip() or None,
+        cin=(body.cin or "").strip() or None,
+        registered_state=(body.registered_state or "").strip() or None,
+        bank_account_holder=(body.bank_account_holder or "").strip() or None,
+        bank_name=(body.bank_name or "").strip() or None,
+        bank_account_number=(body.bank_account_number or "").strip() or None,
+        bank_ifsc=(body.bank_ifsc or "").strip() or None,
+        bank_branch=(body.bank_branch or "").strip() or None,
     )
     db.add(courier)
     db.commit()
