@@ -212,6 +212,34 @@ export default function LedgerDetail() {
           </div>
         </div>
 
+        {data.location && (
+          <div className="mt-4 rounded-md border border-amber-300 bg-amber-50 p-4">
+            <p className="text-xs font-semibold uppercase tracking-wide text-amber-800">📍 Location</p>
+            <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-4">
+              <div>
+                <div className="text-[10px] uppercase text-amber-700">State</div>
+                <div className="font-semibold text-slate-900">{data.location.state || "—"}</div>
+              </div>
+              <div>
+                <div className="text-[10px] uppercase text-amber-700">District</div>
+                <div className="font-semibold text-slate-900">{data.location.district || "—"}</div>
+              </div>
+              {data.location.pincode && (
+                <div>
+                  <div className="text-[10px] uppercase text-amber-700">Pincode</div>
+                  <div className="font-mono font-semibold text-slate-900">{data.location.pincode}</div>
+                </div>
+              )}
+              {data.location.extra_pincodes && (
+                <div className="sm:col-span-2">
+                  <div className="text-[10px] uppercase text-amber-700">Other pincodes covered</div>
+                  <div className="font-mono font-semibold text-slate-900">{data.location.extra_pincodes}</div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         {partyType === "engineer" && (data.bank_details || data.has_bank_details != null) && (
           <div className="mt-4 rounded-md border border-slate-200 bg-slate-50 p-4">
             <div className="flex items-center justify-between">

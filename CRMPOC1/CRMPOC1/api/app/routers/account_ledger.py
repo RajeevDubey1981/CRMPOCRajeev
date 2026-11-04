@@ -172,6 +172,16 @@ def _detail(db: Session, party_type: PartyType, party_id: int, party, can_edit: 
     cycle_days = party.payment_cycle_days
     overdue_days = compute_overdue_days(oldest_unpaid, cycle_days)
     opening = next((e for e in entries if e.source_type == "opening"), None)
+    location = None
+    if party_type in ("engineer", "vendor"):
+        state = getattr(party, "state", None)
+        district = getattr(party, "district", None)
+        pincode = getattr(party, "pincode", None) if party_type == "vendor" else None
+        extra_pincodes = getattr(party, "extra_pincodes", None) if party_type == "engineer" else None
+        if state or district or pincode or extra_pincodes:
+            location = {
+                "state": state, "district": district, "pincode": pincode, "extra_pincodes": extra_pincodes,
+            }
     bank_details = None
     if party_type == "engineer" and can_edit and bool(party.bank_account_number):
         bank_details = {
@@ -192,6 +202,7 @@ def _detail(db: Session, party_type: PartyType, party_id: int, party, can_edit: 
         "oldest_unpaid_since": oldest_unpaid,
         "overdue_days": overdue_days,
         "can_edit": can_edit,
+        "location": location,
         "bank_details": bank_details,
         "has_bank_details": bool(party.bank_account_number) if party_type == "engineer" else None,
         "entries": [_entry_out(e) for e in entries],
