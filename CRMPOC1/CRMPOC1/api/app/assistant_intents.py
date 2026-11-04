@@ -13,7 +13,7 @@ GUIDE_INTENTS = [
     # --- Sales ---
     {
         "id": "find_leads",
-        "keywords": ["lead", "leads", "find lead", "sales lead", "my leads"],
+        "keywords": ["lead", "leads", "sales lead", "my leads", "how to find"],
         "text": "Here's how to find a lead:",
         "steps": [
             "Go to Sales → My leads in the left sidebar.",
@@ -286,4 +286,8 @@ LOOKUP_INTENTS = [
     {"id": "find_order", "keywords": ["order", "find order", "where is", "order status"]},
     {"id": "courier_ledger", "keywords": ["courier balance", "courier ledger", "transporter balance"]},
     {"id": "vendor_ledger", "keywords": ["vendor balance", "vendor ledger"]},
+    {"id": "find_lead", "keywords": ["find lead", "lead status", "lead phone", "lead detail"]},
+    {"id": "find_serial", "keywords": ["serial", "find serial", "serial number", "track serial", "serial status"]},
+    {"id": "find_complaint", "keywords": ["complaint status", "find complaint", "track complaint", "complaint number"]},
+    {"id": "find_installation", "keywords": ["installation status", "find installation", "track installation"]},
 ]
