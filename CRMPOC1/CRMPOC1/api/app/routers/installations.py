@@ -1145,10 +1145,7 @@ def bulk_assign(
         prepare_vendor_installation_for_engineer_workflow(db, inst, actor=user)
         assigned.append(inst.id)
         engineer_assignments.setdefault(pair.engineer_id, []).append(inst.id)
-        if inst.complaint_id:
-            complaint = db.get(Complaint, inst.complaint_id)
-            if complaint is not None and complaint.assigned_engineer != pair.engineer_id:
-                complaint.assigned_engineer = pair.engineer_id
+        _sync_complaint_engineer(db, inst, pair.engineer_id)
         order_no, _ = resolve_order_context(db, inst)
         if order_no:
             engineer_order_nos.setdefault(pair.engineer_id, set()).add(order_no)
@@ -1259,6 +1256,18 @@ def cancel_submission(
     _cancel_one(db, inst)
     db.commit()
     return {"message": "Submission cancelled", "installation_id": installation_id}
+
+
+def _sync_complaint_engineer(db: Session, inst: InstallationRequest, engineer_id: int | None) -> None:
+    """Keeps Complaint.assigned_engineer in step with InstallationRequest.assigned_engineer whenever
+    the installation has a linked complaint -- the complaint's own "Assigned engineer" field reads
+    complaint.assigned_engineer directly (ComplaintDetail.jsx), not the installation's copy, so every
+    place that sets inst.assigned_engineer must also call this or that field goes stale."""
+    if not inst.complaint_id:
+        return
+    complaint = db.get(Complaint, inst.complaint_id)
+    if complaint is not None and complaint.assigned_engineer != engineer_id:
+        complaint.assigned_engineer = engineer_id
 
 
 def _load_visible(db: Session, user: User, inst_id: int) -> InstallationRequest:
@@ -1483,6 +1492,7 @@ async def update_status(
             )
         inst.status = "Submitted"
         inst.assigned_engineer = None
+        _sync_complaint_engineer(db, inst, None)
         db.commit()
         db.refresh(inst)
         return InstallationOut(**_hydrate(db, inst, viewer=user))
@@ -1727,6 +1737,7 @@ async def update_status(
         if inst.status in {"Submitted", "Assigned"}:
             inst.status = "Assigned"
         prepare_vendor_installation_for_engineer_workflow(db, inst, actor=user)
+        _sync_complaint_engineer(db, inst, assigned_engineer)
     if installation_date:
         inst.installation_date = datetime.fromisoformat(installation_date)
     if work_report is not None:
@@ -1957,6 +1968,7 @@ async def bulk_update_status(
             if inst.status in {"Submitted", "Assigned"}:
                 inst.status = "Assigned"
             prepare_vendor_installation_for_engineer_workflow(db, inst, actor=user)
+            _sync_complaint_engineer(db, inst, assigned_engineer)
         if installation_date:
             inst.installation_date = datetime.fromisoformat(installation_date)
         if work_report is not None:
