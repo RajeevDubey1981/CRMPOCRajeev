@@ -5,6 +5,7 @@ import { fetchPendingActions, markPendingActionsRead } from "../api/pendingActio
 import { useAuth } from "../auth/AuthContext.jsx";
 import ApprovalAlerts from "../components/approvals/ApprovalAlerts.jsx";
 import PendingActionsModal from "../components/PendingActionsModal.jsx";
+import AssistantWidget from "./AssistantWidget.jsx";
 import CallcenterGuard from "./CallcenterGuard.jsx";
 import MobileNav, { mobileNavItems } from "./MobileNav.jsx";
 import NewVersionBar from "./NewVersionBar.jsx";
@@ -133,6 +134,7 @@ export default function Layout() {
         </main>
       </div>
       <MobileNav onMore={() => setMobileSidebarOpen(true)} />
+      <AssistantWidget />
       <ApprovalAlerts />
       <PendingActionsModal
         open={modalOpen}
