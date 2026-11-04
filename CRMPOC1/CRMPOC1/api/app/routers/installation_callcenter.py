@@ -5,7 +5,7 @@ from __future__ import annotations
 from app.services.role_access import role_key as canonical_role_key
 
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, UploadFile, status
 from sqlalchemy import desc, func, or_, select
@@ -209,6 +209,16 @@ def search_orders_for_installation(
     ]
 
 
+def _reject_if_expired(inst: InstallationRequest) -> None:
+    expires_at = inst.document_access_token_expires_at
+    if expires_at is None:
+        return
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    if now_utc() > expires_at:
+        raise HTTPException(status.HTTP_410_GONE, "This upload link has expired")
+
+
 @router.get("/public/{token}", response_model=InstallationPublicDocumentContext)
 def public_upload_context(token: str, db: Session = Depends(get_db)):
     inst = db.scalar(
@@ -216,6 +226,7 @@ def public_upload_context(token: str, db: Session = Depends(get_db)):
     )
     if inst is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Upload link not found")
+    _reject_if_expired(inst)
     order_no, _ = None, inst.order_id
     if inst.order_id:
         order = db.get(Order, inst.order_id)
@@ -249,6 +260,7 @@ async def public_upload(
     )
     if inst is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Upload link not found")
+    _reject_if_expired(inst)
     validate_customer_document_upload(document_type, file)
     path = await save_upload(file, module="installations")
     old_status = inst.status
@@ -331,6 +343,10 @@ def request_document_link(
     token = ensure_document_token(inst)
     inst.ask_for_documents = True
     inst.document_request_sent_at = now_utc()
+    inst.document_access_token_expires_at = now_utc() + timedelta(hours=48)
+    inst.document_reminder_1_sent_at = None
+    inst.document_reminder_2_sent_at = None
+    inst.document_expired_notified_at = None
     old_status = inst.status
     if inst.status == "Pending":
         inst.status = "Document Requested"

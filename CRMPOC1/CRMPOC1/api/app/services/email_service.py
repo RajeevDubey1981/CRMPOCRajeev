@@ -507,6 +507,66 @@ def send_document_upload_link_email(
     )
 
 
+def send_document_upload_reminder_email(
+    to: str,
+    customer_name: str | None,
+    ticket_id: str | None,
+    upload_url: str,
+    hours_remaining: int,
+    required_documents: list[str] | None = None,
+) -> bool:
+    """Follow-up for an upload link that hasn't been used yet -- see
+    scripts/send_upload_link_reminders.py, which sends this twice before the 48h link expires."""
+    ticket = (ticket_id or "").strip() or "your request"
+    document_items = _document_items_for_email(required_documents)
+    documents_html = _documents_html(document_items)
+    from_name = (settings.smtp_from_name or "").strip() or "INDcool Service Team"
+    subject = f"Reminder: document upload pending — Ticket ID: {ticket} (expires in {hours_remaining}h)"
+    document_lines = "\n".join(f"- {item}" for item in document_items)
+    text_body = (
+        "Dear Sir/Madam,\n\n"
+        f"This is a reminder that we're still waiting on documents for Ticket ID: {ticket}.\n"
+        f"The upload link expires in approximately {hours_remaining} hours.\n\n"
+        f"{document_lines}\n\n"
+        f"Upload Documents: {upload_url}\n\n"
+        f"Thank you,\n{from_name}"
+    )
+    html_body = (
+        f"<p>Dear Sir/Madam,</p>"
+        f"<p>This is a reminder that we're still waiting on documents for <b>Ticket ID: {ticket}</b>. "
+        f"The upload link expires in approximately <b>{hours_remaining} hours</b>.</p>"
+        f"<ul>{documents_html}</ul>"
+        f'<p><a href="{upload_url}">Upload Documents</a></p>'
+        f"<p>Thank you,<br/>{from_name}</p>"
+    )
+    return send_email(to=to, subject=subject, html_body=html_body, text_body=text_body, template="document_upload_reminder")
+
+
+def send_document_upload_expired_email(
+    to: str,
+    customer_name: str | None,
+    ticket_id: str | None,
+) -> bool:
+    """Sent once the 48h upload link expires without any documents received -- see
+    scripts/send_upload_link_reminders.py. No link is included since the old one is now dead."""
+    ticket = (ticket_id or "").strip() or "your request"
+    from_name = (settings.smtp_from_name or "").strip() or "INDcool Service Team"
+    subject = f"Document upload link expired — Ticket ID: {ticket}"
+    text_body = (
+        "Dear Sir/Madam,\n\n"
+        f"The document upload link for Ticket ID: {ticket} has expired as we did not receive the documents in time.\n"
+        "Please contact us so we can send a fresh link.\n\n"
+        f"Thank you,\n{from_name}"
+    )
+    html_body = (
+        f"<p>Dear Sir/Madam,</p>"
+        f"<p>The document upload link for <b>Ticket ID: {ticket}</b> has expired as we did not receive the "
+        f"documents in time. Please contact us so we can send a fresh link.</p>"
+        f"<p>Thank you,<br/>{from_name}</p>"
+    )
+    return send_email(to=to, subject=subject, html_body=html_body, text_body=text_body, template="document_upload_expired")
+
+
 def send_service_rejection_document_request_email(
     to: str,
     customer_name: str | None,

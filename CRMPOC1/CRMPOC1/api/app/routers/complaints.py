@@ -2,7 +2,7 @@ import csv
 import io
 import secrets
 import time
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Literal
 
 from app.services.role_access import role_key as canonical_role_key
@@ -1334,6 +1334,11 @@ def request_installation_customer_documents(
     ensure_document_token(inst)
     inst.ask_for_documents = True
     inst.document_request_sent_at = now_utc()
+    # Each (re)send gives a fresh 48h window -- clear any reminder/expiry state from a previous link.
+    inst.document_access_token_expires_at = now_utc() + timedelta(hours=48)
+    inst.document_reminder_1_sent_at = None
+    inst.document_reminder_2_sent_at = None
+    inst.document_expired_notified_at = None
     if inst.status == "Pending":
         inst.status = "Document Requested"
     upload_url = document_upload_url(inst) or ""

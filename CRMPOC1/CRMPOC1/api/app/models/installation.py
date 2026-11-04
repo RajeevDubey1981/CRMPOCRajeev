@@ -62,6 +62,13 @@ class InstallationRequest(Base, TimestampMixin):
     document_access_token: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True)
     ask_for_documents: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     document_request_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # The upload link expires 48h after it's (re)sent -- see request_installation_customer_documents
+    # in routers/complaints.py and installation_callcenter.py, and scripts/send_upload_link_reminders.py
+    # for the two follow-up reminders + the expired notice sent before/after this.
+    document_access_token_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    document_reminder_1_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    document_reminder_2_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    document_expired_notified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     order_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     order_verified_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     engineer_entered_serial_no: Mapped[str | None] = mapped_column(String(100), nullable=True)
