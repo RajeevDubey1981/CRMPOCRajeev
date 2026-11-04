@@ -531,15 +531,19 @@ def send_document_upload_reminder_email(
         f"Upload Documents: {upload_url}\n\n"
         f"Thank you,\n{from_name}"
     )
-    html_body = (
-        f"<p>Dear Sir/Madam,</p>"
-        f"<p>This is a reminder that we're still waiting on documents for <b>Ticket ID: {ticket}</b>. "
-        f"The upload link expires in approximately <b>{hours_remaining} hours</b>.</p>"
-        f"<ul>{documents_html}</ul>"
-        f'<p><a href="{upload_url}">Upload Documents</a></p>'
-        f"<p>Thank you,<br/>{from_name}</p>"
+    return send_template_email(
+        to=to,
+        template="document_upload_reminder",
+        context={
+            "ticket_id": ticket,
+            "upload_url": upload_url,
+            "documents_html": documents_html,
+            "hours_remaining": hours_remaining,
+            "from_name": from_name,
+            "text_body": text_body,
+        },
+        subject=subject,
     )
-    return send_email(to=to, subject=subject, html_body=html_body, text_body=text_body, template="document_upload_reminder")
 
 
 def send_document_upload_expired_email(
@@ -558,13 +562,16 @@ def send_document_upload_expired_email(
         "Please contact us so we can send a fresh link.\n\n"
         f"Thank you,\n{from_name}"
     )
-    html_body = (
-        f"<p>Dear Sir/Madam,</p>"
-        f"<p>The document upload link for <b>Ticket ID: {ticket}</b> has expired as we did not receive the "
-        f"documents in time. Please contact us so we can send a fresh link.</p>"
-        f"<p>Thank you,<br/>{from_name}</p>"
+    return send_template_email(
+        to=to,
+        template="document_upload_expired",
+        context={
+            "ticket_id": ticket,
+            "from_name": from_name,
+            "text_body": text_body,
+        },
+        subject=subject,
     )
-    return send_email(to=to, subject=subject, html_body=html_body, text_body=text_body, template="document_upload_expired")
 
 
 def send_service_rejection_document_request_email(

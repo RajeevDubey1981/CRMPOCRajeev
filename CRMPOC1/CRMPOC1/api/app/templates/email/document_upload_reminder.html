@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html>
+<body style="margin:0; padding:0; background:#eef2f7; font-family: Arial, Helvetica, sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#eef2f7; padding:24px 0;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="background:#ffffff; border-radius:10px; overflow:hidden; box-shadow:0 1px 4px rgba(15,23,42,0.08);">
+          <tr>
+            <td style="background:#122050; padding:20px 28px;">
+              <span style="color:#ffffff; font-size:18px; font-weight:bold; letter-spacing:0.3px;">INDcool</span>
+              <span style="color:#aab6d6; font-size:12px; display:block; margin-top:2px;">Service &amp; operations</span>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:28px 28px 8px;">
+              <span style="display:inline-block; background:#fff3cd; color:#8a6400; font-size:12px; font-weight:bold; padding:5px 12px; border-radius:999px;">
+                ⏳ Expires in {{ hours_remaining }} hours
+              </span>
+              <h1 style="font-size:20px; color:#1e293b; margin:16px 0 4px;">We're still waiting on your documents</h1>
+              <p style="color:#475569; font-size:14px; line-height:1.6; margin:0 0 4px;">Dear Sir/Madam,</p>
+              <p style="color:#475569; font-size:14px; line-height:1.6; margin:0 0 20px;">
+                This is a reminder for <strong>Ticket ID: {{ ticket_id }}</strong> — we haven't received your documents yet, and the upload link will stop working soon.
+              </p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:0 28px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px;">
+                <tr>
+                  <td style="padding:16px 20px;">
+                    <div style="font-size:11px; font-weight:bold; color:#64748b; text-transform:uppercase; letter-spacing:0.4px; margin-bottom:8px;">Documents needed</div>
+                    <ul style="margin:0; padding-left:18px; color:#1e293b; font-size:14px; line-height:1.9;">
+                      {{ documents_html }}
+                    </ul>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:24px 28px 8px;" align="center">
+              <a href="{{ upload_url }}" style="display:inline-block; background:#122050; color:#ffffff; font-size:15px; font-weight:bold; text-decoration:none; padding:13px 32px; border-radius:7px;">
+                Upload Documents Now
+              </a>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:12px 28px 28px;" align="center">
+              <p style="color:#94a3b8; font-size:12px; margin:0;">Once this link expires, you'll need to contact us for a new one.</p>
+            </td>
+          </tr>
+          <tr>
+            <td style="background:#f8fafc; border-top:1px solid #e2e8f0; padding:18px 28px;">
+              <p style="color:#64748b; font-size:12px; margin:0 0 4px;">Need help? Call +919213945441, 1800119515</p>
+              <p style="color:#64748b; font-size:12px; margin:0;">Email: <a href="mailto:corpdesk@indcool.in" style="color:#2563eb;">corpdesk@indcool.in</a></p>
+              <p style="color:#94a3b8; font-size:11px; margin:12px 0 0;">Thank you,<br>{{ from_name }}</p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
