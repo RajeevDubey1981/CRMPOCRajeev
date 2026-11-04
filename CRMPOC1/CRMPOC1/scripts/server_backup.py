@@ -57,6 +57,14 @@ def main() -> int:
         print(f"BACKUP files: ok, {size} bytes")
         run(f"sudo cp {remote_api}/.env {folder}/api.env && sudo chmod 600 {folder}/api.env")
         print(f"BACKUP folder: {folder}")
+        # Retention: only after this backup is complete, drop predeploy folders older than 7 days.
+        # The newest 3 are always kept, so there is never a day without a backup.
+        names = run("sudo ls -1 /var/backups/indcool").split()
+        old = [n for n in sorted(n for n in names if n.startswith("predeploy-"))[:-3]
+               if run(f"sudo find /var/backups/indcool/{n} -maxdepth 0 -mtime +7 | wc -l").strip().splitlines()[-1].strip() == "1"]
+        for n in old:
+            run(f"sudo rm -rf /var/backups/indcool/{n}")
+        print(f"CLEANUP: removed {len(old)} predeploy folder(s) older than 7 days")
     finally:
         client.close()
     return 0
