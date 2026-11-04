@@ -37,6 +37,16 @@ class AskOut(BaseModel):
     card_body: str | None = None
 
 
+def _stem(word: str) -> str:
+    # Minimal plural-folding so "lead"/"leads", "quote"/"quotes" etc. match without
+    # enumerating every form in assistant_intents.py.
+    if len(word) > 3 and word.endswith("es"):
+        return word[:-2]
+    if len(word) > 3 and word.endswith("s") and not word.endswith("ss"):
+        return word[:-1]
+    return word
+
+
 def _score(message_words: set[str], keywords: list[str]) -> int:
     score = 0
     for kw in keywords:
@@ -47,7 +57,8 @@ def _score(message_words: set[str], keywords: list[str]) -> int:
 
 
 def _best_match(message: str, intents: list[dict]) -> dict | None:
-    words = set(re.findall(r"[a-z0-9]+", message.lower()))
+    raw_words = set(re.findall(r"[a-z0-9]+", message.lower()))
+    words = raw_words | {_stem(w) for w in raw_words}
     best, best_score = None, 0
     for intent in intents:
         s = _score(words, intent["keywords"])
@@ -151,8 +162,10 @@ def ask(body: AskIn, db: Session = Depends(get_db), user: User = Depends(get_cur
     # A lookup intent wins only if it scored at least as well as the best guide match --
     # otherwise a guide question that happens to mention "order" (e.g. "how to process return order")
     # would get routed to a raw order search instead of the guide.
-    lookup_score = _score(set(re.findall(r"[a-z0-9]+", message.lower())), lookup["keywords"]) if lookup else 0
-    guide_score = _score(set(re.findall(r"[a-z0-9]+", message.lower())), guide["keywords"]) if guide else 0
+    raw_words = set(re.findall(r"[a-z0-9]+", message.lower()))
+    scored_words = raw_words | {_stem(w) for w in raw_words}
+    lookup_score = _score(scored_words, lookup["keywords"]) if lookup else 0
+    guide_score = _score(scored_words, guide["keywords"]) if guide else 0
 
     if lookup and lookup_score > 0 and lookup_score >= guide_score:
         if lookup["id"] == "find_order":
