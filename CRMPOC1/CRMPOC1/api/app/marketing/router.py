@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import date, datetime, timedelta, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -404,6 +404,7 @@ class BannerIn(BaseModel):
     pill2: str = ""
     cta_text: str = "Shop Now"
     cta_link: str = ""
+    image_path: Optional[str] = None
     start_date: date
     end_date: date
     target_type: str = "all"
@@ -414,11 +415,34 @@ def _banner_out(b: MkBanner) -> dict:
     today = datetime.now(timezone.utc).date()
     return {
         "id": b.id, "name": b.name, "theme": b.theme, "greeting": b.greeting, "headline": b.headline,
-        "pill1": b.pill1, "pill2": b.pill2, "cta_text": b.cta_text, "cta_link": b.cta_link,
+        "pill1": b.pill1, "pill2": b.pill2, "cta_text": b.cta_text, "cta_link": b.cta_link, "image_path": b.image_path,
         "start_date": b.start_date.isoformat(), "end_date": b.end_date.isoformat(),
         "target_type": b.target_type, "is_enabled": b.is_enabled,
         "is_active_now": b.is_enabled and b.start_date <= today <= b.end_date,
     }
+
+
+# A banner image is a wide strip meant to sit above an email's own content -- not a square social post.
+# 1200x300px (4:1), JPG or PNG, under 2MB. It is re-encoded on upload (EXIF stripped, capped at 1920px).
+BANNER_IMAGE_GUIDE = {
+    "recommended_size": "1200 x 300 px (a 4:1 wide strip, like the top of a bank's festive email)",
+    "formats": ["JPG", "PNG"],
+    "max_size_mb": 2,
+    "note": "Keep important text inside the middle 80% of the image -- some mail apps crop the edges.",
+}
+
+
+@router.get("/banners/image-guide")
+def banner_image_guide(_: Ctx = Depends(get_ctx)):
+    return BANNER_IMAGE_GUIDE
+
+
+@router.post("/banners/upload-image")
+async def upload_banner_image(file: UploadFile = File(...), ctx: Ctx = Depends(require("banner_edit"))):
+    from app.services.file_service import save_upload, to_public_upload_path
+
+    path = await save_upload(file, module="marketing_banners", allowed_ext={".jpg", ".jpeg", ".png"}, allowed_mime={"image/jpeg", "image/png", "image/jpg"})
+    return {"image_path": to_public_upload_path(path)}
 
 
 @router.get("/banners")

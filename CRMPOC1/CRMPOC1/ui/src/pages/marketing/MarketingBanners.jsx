@@ -11,10 +11,13 @@ const THEMES = {
 
 const EMPTY = {
   name: "", theme: "green", greeting: "Happy Diwali!", headline: "Heavy Duty Dubai Series — festive price, built for extreme heat.",
-  pill1: "HEAVY DUTY", pill2: "Dubai Series", cta_text: "Shop Now", cta_link: "", start_date: "", end_date: "", target_type: "all", is_enabled: true,
+  pill1: "HEAVY DUTY", pill2: "Dubai Series", cta_text: "Shop Now", cta_link: "", image_path: null, start_date: "", end_date: "", target_type: "all", is_enabled: true,
 };
 
 function BannerPreview({ b }) {
+  if (b.image_path) {
+    return <img src={b.image_path} alt={b.headline || "Banner"} className="w-full rounded-lg border border-slate-200" />;
+  }
   const theme = THEMES[b.theme] || THEMES.green;
   return (
     <div style={{ background: theme.bg }} className="rounded-lg p-3">
@@ -37,7 +40,19 @@ function Form({ initial, onSaved, onCancel }) {
   const [form, setForm] = useState(initial);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
+  const [uploading, setUploading] = useState(false);
+  const guide = useAsync(() => marketingApi.bannerImageGuide(), []);
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.type === "checkbox" ? e.target.checked : e.target.value }));
+
+  async function pickImage(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true); setMsg("");
+    try {
+      const r = await marketingApi.uploadBannerImage(file);
+      setForm((f) => ({ ...f, image_path: r.image_path }));
+    } catch (err) { setMsg(errText(err)); } finally { setUploading(false); e.target.value = ""; }
+  }
 
   async function save() {
     if (!form.name.trim() || !form.headline.trim() || !form.start_date || !form.end_date) {
@@ -95,6 +110,20 @@ function Form({ initial, onSaved, onCancel }) {
         <label className="flex items-center gap-1.5 text-sm text-slate-600">
           <input type="checkbox" checked={form.is_enabled} onChange={set("is_enabled")} />Enabled
         </label>
+      </div>
+      <div className="mt-4 rounded-lg border border-dashed border-slate-300 p-3">
+        <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">Upload your own banner image (optional)</div>
+        <p className="mb-2 text-xs text-slate-500">
+          Recommended size: <b>{guide.data?.recommended_size || "1200 x 300 px (a 4:1 wide strip)"}</b>.
+          Format: <b>{(guide.data?.formats || ["JPG", "PNG"]).join(" or ")}</b>, under <b>{guide.data?.max_size_mb ?? 2}MB</b>.
+          {guide.data?.note ? ` ${guide.data.note}` : " Keep important text inside the middle 80% — some mail apps crop the edges."}
+          {" "}If no image is uploaded, the theme design above is used instead.
+        </p>
+        <div className="flex items-center gap-2">
+          <input type="file" accept="image/jpeg,image/png" onChange={pickImage} disabled={uploading} className="text-sm" />
+          {uploading && <span className="text-xs text-slate-500">Uploading...</span>}
+          {form.image_path && <button type="button" className={btn.plain} onClick={() => setForm((f) => ({ ...f, image_path: null }))}>Remove image</button>}
+        </div>
       </div>
       <div className="mt-3">
         <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">Live preview</div>

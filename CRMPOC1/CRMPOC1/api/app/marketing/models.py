@@ -123,6 +123,7 @@ class MkBanner(MarketingBase, Stamped):
     pill2: Mapped[str] = mapped_column(String(40), nullable=False, default="")
     cta_text: Mapped[str] = mapped_column(String(40), nullable=False, default="Shop Now")
     cta_link: Mapped[str] = mapped_column(String(500), nullable=False, default="")
+    image_path: Mapped[str | None] = mapped_column(String(500), nullable=True)  # uploaded banner image, replaces the drawn design in email
     start_date: Mapped[date_] = mapped_column(Date, nullable=False)
     end_date: Mapped[date_] = mapped_column(Date, nullable=False)
     target_type: Mapped[str] = mapped_column(String(20), nullable=False, default="all")  # all (more targets come with Audiences)

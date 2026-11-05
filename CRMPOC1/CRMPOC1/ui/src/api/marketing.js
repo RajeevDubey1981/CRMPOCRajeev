@@ -24,6 +24,12 @@ export const marketingApi = {
   createBanner: (body) => api.post("/api/marketing/banners", body).then((r) => r.data),
   updateBanner: (id, body) => put(`/api/marketing/banners/${id}`, body),
   deleteBanner: (id) => api.delete(`/api/marketing/banners/${id}`).then((r) => r.data),
+  bannerImageGuide: () => get("/api/marketing/banners/image-guide"),
+  uploadBannerImage: (file) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    return api.post("/api/marketing/banners/upload-image", fd, { headers: { "Content-Type": "multipart/form-data" } }).then((r) => r.data);
+  },
   audiences: () => get("/api/marketing/audiences"),
   audienceCount: (params) => get("/api/marketing/audiences/count", params),
   createAudience: (body) => api.post("/api/marketing/audiences", body).then((r) => r.data),

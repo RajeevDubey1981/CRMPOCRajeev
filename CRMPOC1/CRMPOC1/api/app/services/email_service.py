@@ -161,6 +161,15 @@ _BANNER_THEMES = {
 
 
 def _render_banner(b) -> str:
+    image_path = getattr(b, "image_path", None)
+    if image_path:
+        base = (settings.app_public_url or "").rstrip("/")
+        src = f"{base}{image_path}" if base else image_path
+        img = f'<img src="{src}" alt="{b.headline}" width="600" style="display:block; width:100%; max-width:600px; height:auto; border:0;" />'
+        if b.cta_link:
+            return f'<a href="{b.cta_link}" style="display:block; text-decoration:none;">{img}</a>'
+        return img
+
     theme = _BANNER_THEMES.get(b.theme, _BANNER_THEMES["green"])
     greeting = (
         f'<span style="color:{theme["accent"]}; font-weight:bold;">{b.greeting}</span>&nbsp;&nbsp;' if b.greeting else ""
