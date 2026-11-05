@@ -131,6 +131,22 @@ class MkBanner(MarketingBase, Stamped):
     created_by: Mapped[int] = mapped_column(Integer, nullable=False)  # crm user id
 
 
+class MkConsent(MarketingBase, Stamped):
+    """A phone number or email on the Marketing STOP list -- excluded from every audience count and, later, every send.
+    contact_key is the phone's digits or the email lowercased/trimmed, so it matches however it was typed elsewhere."""
+
+    __tablename__ = "mk_consent"
+    __table_args__ = (UniqueConstraint("contact_key", "channel", name="uq_mk_consent_contact_channel"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    contact_key: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    contact_display: Mapped[str] = mapped_column(String(255), nullable=False, default="")  # as typed, for the list screen
+    channel: Mapped[str] = mapped_column(String(20), nullable=False, default="all")  # all | email | whatsapp | sms
+    reason: Mapped[str] = mapped_column(String(200), nullable=False, default="")
+    source: Mapped[str] = mapped_column(String(20), nullable=False, default="manual")  # manual | reply_stop
+    created_by: Mapped[int] = mapped_column(Integer, nullable=False)  # crm user id
+
+
 class MkAudience(MarketingBase, Stamped):
     """A saved filter over the CRM's own Sales leads (prospects) or Orders (existing customers).
     Nothing is copied here -- the count and matches are computed live from the CRM database each time."""

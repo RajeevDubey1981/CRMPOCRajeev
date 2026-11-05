@@ -18,7 +18,7 @@ from app.marketing.access import (
 )
 from app.marketing import meta, secrets_box
 from app.marketing.db import get_marketing_db, marketing_enabled, new_marketing_session
-from app.marketing.models import MkAudience, MkBanner, MkChannel, MkChannelAsset, MkRoleTick, MkSetting, MkTickHistory, MkUserTick
+from app.marketing.models import MkAudience, MkBanner, MkChannel, MkChannelAsset, MkConsent, MkRoleTick, MkSetting, MkTickHistory, MkUserTick
 from app.marketing.rules import ALL_TICKS, KINDS, KINDS_ORDER, LOCKED_TICKS, OPEN_SETTINGS, SETTING_DEFAULTS, TICK_DEFAULTS, TICK_GROUPS
 from app.models.order import Order
 from app.models.user import User
@@ -486,6 +486,69 @@ def delete_banner(banner_id: int, ctx: Ctx = Depends(require("banner_edit")), md
     return {"deleted": True}
 
 
+# ---------------- consent / STOP list ----------------
+def normalize_contact(value: str | None) -> str | None:
+    """A phone's digits, or a lowercased/trimmed email -- so the same person matches however it was typed."""
+    if not value:
+        return None
+    v = value.strip()
+    if not v:
+        return None
+    if "@" in v:
+        return v.lower()
+    digits = "".join(ch for ch in v if ch.isdigit())
+    return digits[-10:] if len(digits) >= 10 else (digits or None)
+
+
+def _stopped_keys(mdb: Session, channel: str = "email") -> set[str]:
+    rows = mdb.scalars(select(MkConsent.contact_key).where(MkConsent.channel.in_(["all", channel])))
+    return set(rows)
+
+
+class ConsentIn(BaseModel):
+    contact: str
+    channel: str = "all"
+    reason: str = ""
+
+
+def _consent_out(c: MkConsent) -> dict:
+    return {
+        "id": c.id, "contact": c.contact_display, "channel": c.channel, "reason": c.reason,
+        "source": c.source, "created_at": c.created_at.isoformat() if c.created_at else None,
+    }
+
+
+@router.get("/consent")
+def list_consent(ctx: Ctx = Depends(require("consent_edit")), mdb: Session = Depends(get_marketing_db)):
+    rows = mdb.scalars(select(MkConsent).order_by(MkConsent.id.desc())).all()
+    return [_consent_out(c) for c in rows]
+
+
+@router.post("/consent")
+def add_consent(body: ConsentIn, ctx: Ctx = Depends(require("consent_edit")), mdb: Session = Depends(get_marketing_db), main_db: Session = Depends(get_db)):
+    key = normalize_contact(body.contact)
+    if not key:
+        raise HTTPException(400, "Enter a phone number or an email")
+    channel = body.channel if body.channel in ("all", "email", "whatsapp", "sms") else "all"
+    existing = mdb.scalar(select(MkConsent).where(MkConsent.contact_key == key, MkConsent.channel == channel))
+    if existing:
+        return _consent_out(existing)
+    c = MkConsent(contact_key=key, contact_display=body.contact.strip(), channel=channel, reason=body.reason.strip(), source="manual", created_by=ctx.user.id)
+    mdb.add(c)
+    commit(main_db, mdb)
+    return _consent_out(c)
+
+
+@router.delete("/consent/{consent_id}")
+def remove_consent(consent_id: int, ctx: Ctx = Depends(require("consent_edit")), mdb: Session = Depends(get_marketing_db), main_db: Session = Depends(get_db)):
+    c = mdb.get(MkConsent, consent_id)
+    if c is None:
+        raise HTTPException(404, "Not on the STOP list")
+    mdb.delete(c)
+    commit(main_db, mdb)
+    return {"deleted": True}
+
+
 # ---------------- audiences ----------------
 class AudienceIn(BaseModel):
     name: str
@@ -498,10 +561,10 @@ class AudienceIn(BaseModel):
     priority: Optional[str] = None
 
 
-def _count_prospects(sales_db: Session | None, ctx: Ctx, a: dict) -> int:
+def _count_prospects(sales_db: Session | None, mdb: Session, ctx: Ctx, a: dict) -> int:
     if sales_db is None or not sales_enabled():
         return 0
-    q = sales_db.query(SalesLead)
+    q = sales_db.query(SalesLead.phone, SalesLead.email)
     if a.get("market"):
         q = q.filter(SalesLead.lead_type == a["market"])
     if a.get("stage"):
@@ -517,11 +580,12 @@ def _count_prospects(sales_db: Session | None, ctx: Ctx, a: dict) -> int:
         q = q.filter((SalesLead.last_action_at.is_(None)) | (SalesLead.last_action_at <= cutoff))
     if not ctx.has("aud_all"):
         q = q.filter(SalesLead.owner_user_id == ctx.user.id)
-    return q.count()
+    stopped = _stopped_keys(mdb)
+    return sum(1 for phone, email in q.all() if normalize_contact(phone) not in stopped and normalize_contact(email) not in stopped)
 
 
-def _count_customers(main_db: Session, a: dict) -> int:
-    q = main_db.query(Order.customer_contact).filter(Order.customer_contact.isnot(None), Order.deleted_at.is_(None))
+def _count_customers(main_db: Session, mdb: Session, a: dict) -> int:
+    q = main_db.query(Order.customer_contact, Order.customer_email).filter(Order.customer_contact.isnot(None), Order.deleted_at.is_(None))
     if a.get("market"):
         q = q.filter(Order.market == a["market"])
     if a.get("state"):
@@ -529,15 +593,26 @@ def _count_customers(main_db: Session, a: dict) -> int:
     if a.get("stale_days"):
         cutoff = datetime.now(timezone.utc).date() - timedelta(days=int(a["stale_days"]))
         q = q.filter(Order.order_date <= cutoff)
-    return q.distinct().count()
+    stopped = _stopped_keys(mdb)
+    seen: set[str] = set()
+    count = 0
+    for contact, email in q.distinct().all():
+        key = normalize_contact(contact) or normalize_contact(email)
+        if not key or key in seen:
+            continue
+        if normalize_contact(contact) in stopped or normalize_contact(email) in stopped:
+            continue
+        seen.add(key)
+        count += 1
+    return count
 
 
-def _audience_count(main_db: Session, sales_db: Session | None, ctx: Ctx, a: dict) -> int:
+def _audience_count(main_db: Session, sales_db: Session | None, mdb: Session, ctx: Ctx, a: dict) -> int:
     if a.get("source") == "customers":
         if not ctx.has("aud_all"):
             return 0  # only an "all CRM data" tick may build audiences from existing customers
-        return _count_customers(main_db, a)
-    return _count_prospects(sales_db, ctx, a)
+        return _count_customers(main_db, mdb, a)
+    return _count_prospects(sales_db, mdb, ctx, a)
 
 
 def _audience_out(a: MkAudience, count: int) -> dict:
@@ -555,7 +630,7 @@ def list_audiences(ctx: Ctx = Depends(get_ctx), mdb: Session = Depends(get_marke
     out = []
     for r in rows:
         a = {"source": r.source, "market": r.market, "stage": r.stage, "state": r.state, "stale_days": r.stale_days, "heat": r.heat, "priority": r.priority}
-        out.append(_audience_out(r, _audience_count(main_db, sales_db, ctx, a)))
+        out.append(_audience_out(r, _audience_count(main_db, sales_db, mdb, ctx, a)))
     return out
 
 
@@ -563,12 +638,12 @@ def list_audiences(ctx: Ctx = Depends(get_ctx), mdb: Session = Depends(get_marke
 def count_audience(
     source: str = Query("prospects"), market: Optional[str] = None, stage: Optional[str] = None, state: Optional[str] = None,
     stale_days: Optional[int] = None, heat: Optional[str] = None, priority: Optional[str] = None,
-    ctx: Ctx = Depends(get_ctx), main_db: Session = Depends(get_db), sales_db: Session = Depends(get_sales_db),
+    ctx: Ctx = Depends(get_ctx), mdb: Session = Depends(get_marketing_db), main_db: Session = Depends(get_db), sales_db: Session = Depends(get_sales_db),
 ):
     if not ctx.any("aud_own", "aud_all"):
         raise HTTPException(403, "You do not have this tick in Marketing")
     a = {"source": source, "market": market, "stage": stage, "state": state, "stale_days": stale_days, "heat": heat, "priority": priority}
-    return {"count": _audience_count(main_db, sales_db, ctx, a)}
+    return {"count": _audience_count(main_db, sales_db, mdb, ctx, a)}
 
 
 @router.post("/audiences")
@@ -580,7 +655,7 @@ def create_audience(body: AudienceIn, ctx: Ctx = Depends(get_ctx), mdb: Session 
     a = MkAudience(**body.model_dump(), created_by=ctx.user.id)
     mdb.add(a)
     commit(main_db, mdb)
-    return _audience_out(a, _audience_count(main_db, sales_db, ctx, body.model_dump()))
+    return _audience_out(a, _audience_count(main_db, sales_db, mdb, ctx, body.model_dump()))
 
 
 @router.put("/audiences/{audience_id}")
@@ -595,7 +670,7 @@ def update_audience(audience_id: int, body: AudienceIn, ctx: Ctx = Depends(get_c
     for key, value in body.model_dump().items():
         setattr(a, key, value)
     commit(main_db, mdb)
-    return _audience_out(a, _audience_count(main_db, sales_db, ctx, body.model_dump()))
+    return _audience_out(a, _audience_count(main_db, sales_db, mdb, ctx, body.model_dump()))
 
 
 @router.delete("/audiences/{audience_id}")
