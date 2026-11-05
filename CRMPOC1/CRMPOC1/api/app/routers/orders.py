@@ -518,6 +518,7 @@ def _hydrate_order(db: Session, order: Order) -> OrderOut:
         customer_city=order.customer_city,
         customer_state=order.customer_state,
         customer_address=order.customer_address,
+        market=order.market,
         courier_id=order.courier_id,
         courier_name=_resolve_courier_name(db, order.courier_id),
         freight_amount=float(order.freight_amount) if order.freight_amount is not None else None,
@@ -645,6 +646,7 @@ VENDOR_PENDING_ORDER_FIELDS = {
     "customer_city",
     "customer_state",
     "customer_address",
+    "market",
     "expected_delivery_date",
 }
 
@@ -1290,6 +1292,7 @@ async def create_order(
         customer_city=body.customer_city,
         customer_state=body.customer_state,
         customer_address=body.customer_address,
+        market=body.market,
         courier_id=_ensure_active_courier(db, body.courier_id),
         lrn_no=body.lrn_no,
         vendor_bill_no=body.vendor_bill_no,

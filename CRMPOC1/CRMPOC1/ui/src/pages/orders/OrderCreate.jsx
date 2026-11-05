@@ -8,6 +8,16 @@ import { INDIAN_STATES_UTS } from "../../data/indianStates.js";
 import { useAuth } from "../../auth/AuthContext.jsx";
 
 const DELIVERY_STATUSES = ["Pending", "Shipped", "In Transit", "Delivered", "Returned", "Cancelled"];
+const MARKET_OPTIONS = [
+  { value: "gem", label: "GeM" },
+  { value: "csd", label: "CSD" },
+  { value: "retail", label: "Retail" },
+  { value: "spare", label: "Spare parts" },
+  { value: "dealer", label: "Dealer" },
+  { value: "tender", label: "State tender" },
+  { value: "corp", label: "Corporate / project" },
+  { value: "export", label: "Export" },
+];
 const YEAR_OPTIONS = Array.from({ length: 10 }, (_, i) => i + 1);
 const FREE_SERVICE_COUNT_OPTIONS = [0, 1, 2, 3, 4].map((value) => ({ value, label: String(value) }));
 
@@ -78,6 +88,7 @@ export default function OrderCreate() {
     customer_city: "",
     customer_state: "",
     customer_address: "",
+    market: "",
     vendor_id: "",
     status: "Pending",
     courier_id: "",
@@ -242,6 +253,10 @@ export default function OrderCreate() {
       setErr("Vendor Name is required");
       return;
     }
+    if (!form.market) {
+      setErr("Market is required");
+      return;
+    }
     if (isVendor && !currentVendor) {
       setErr("Your vendor login is not linked to an active vendor record");
       return;
@@ -275,6 +290,7 @@ export default function OrderCreate() {
         customer_city: form.customer_city || null,
         customer_state: form.customer_state || null,
         customer_address: form.customer_address || null,
+        market: form.market || null,
         consignee_addresses: consignees
           .filter(consigneeRowHasContent)
           .map((row) => ({
@@ -432,6 +448,15 @@ export default function OrderCreate() {
                 value={form.customer_address}
                 onChange={(e) => set("customer_address", e.target.value)}
                 className={fieldClass}
+              />
+            </div>
+            <div>
+              <RequiredLabel>Market</RequiredLabel>
+              <SearchableSelect
+                options={MARKET_OPTIONS}
+                value={form.market}
+                onChange={(v) => set("market", v)}
+                placeholder="Select market..."
               />
             </div>
           </div>

@@ -33,6 +33,17 @@ const WORK_STARTED_STATUSES = new Set([
 ]);
 
 const ORDER_STATUSES = ["Pending", "Shipped", "In Transit", "Delivered", "Returned", "Cancelled"];
+const MARKET_OPTIONS = [
+  { value: "gem", label: "GeM" },
+  { value: "csd", label: "CSD" },
+  { value: "retail", label: "Retail" },
+  { value: "spare", label: "Spare parts" },
+  { value: "dealer", label: "Dealer" },
+  { value: "tender", label: "State tender" },
+  { value: "corp", label: "Corporate / project" },
+  { value: "export", label: "Export" },
+];
+const MARKET_LABELS = Object.fromEntries(MARKET_OPTIONS.map((o) => [o.value, o.label]));
 const VENDOR_POST_SHIPMENT_STATUSES = new Set(["Shipped", "In Transit", "Delivered", "Returned", "Completed"]);
 const VENDOR_LOCKED_SHIPMENT_STATUSES = new Set(["Shipped", "In Transit"]);
 
@@ -540,6 +551,7 @@ export default function OrderDetail() {
       customer_city: order.customer_city || "",
       customer_state: order.customer_state || "",
       customer_address: order.customer_address || "",
+      market: order.market || "",
       courier_id: order.courier_id ?? "",
       freight_amount: order.freight_amount ?? "",
       return_lrn_no: order.return_lrn_no || "",
@@ -978,6 +990,7 @@ export default function OrderDetail() {
           customer_city: editForm.customer_city || null,
           customer_state: editForm.customer_state || null,
           customer_address: editForm.customer_address || null,
+          market: editForm.market || null,
           consignee_addresses: serializeConsigneesForApi(editConsignees),
           expected_delivery_date: editForm.expected_delivery_date || null,
         });
@@ -1016,6 +1029,7 @@ export default function OrderDetail() {
             customer_city: editForm.customer_city || null,
             customer_state: editForm.customer_state || null,
             customer_address: editForm.customer_address || null,
+            market: editForm.market || null,
             consignee_addresses: serializeConsigneesForApi(editConsignees),
             courier_id: editForm.courier_id !== "" ? Number(editForm.courier_id) : null,
             freight_amount: editForm.freight_amount !== "" ? Number(editForm.freight_amount) : null,
@@ -1285,6 +1299,7 @@ export default function OrderDetail() {
           <Field label="Email" value={order.customer_email} />
           <Field label="City" value={order.customer_city} />
           <Field label="State" value={order.customer_state} />
+          <Field label="Market" value={MARKET_LABELS[order.market] || order.market || "— Unclassified —"} />
           <Field label="Address" value={order.customer_address} full />
         </div>
       </section>
@@ -2187,6 +2202,20 @@ export default function OrderDetail() {
                 disabled={isVendor && !canVendorEditPendingDetails}
                 className={fieldClass}
               />
+            </div>
+            <div>
+              <label className={labelClass}>Market</label>
+              <select
+                value={editForm.market}
+                onChange={(e) => setEF("market", e.target.value)}
+                disabled={isVendor && !canVendorEditPendingDetails}
+                className={fieldClass}
+              >
+                <option value="">- Select -</option>
+                {MARKET_OPTIONS.map((m) => (
+                  <option key={m.value} value={m.value}>{m.label}</option>
+                ))}
+              </select>
             </div>
 
             {(!isVendor || canVendorEditPendingDetails) && (
