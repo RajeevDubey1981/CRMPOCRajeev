@@ -161,6 +161,11 @@ class SettingsIn(BaseModel):
     company_name: Optional[str] = None
     company_address: Optional[str] = None
     company_gstin: Optional[str] = None
+    bank_name: Optional[str] = None
+    bank_account_name: Optional[str] = None
+    bank_account_no: Optional[str] = None
+    bank_ifsc: Optional[str] = None
+    bank_branch: Optional[str] = None
 
 
 # ---------------- helpers ----------------
@@ -206,6 +211,9 @@ def sales_status(ctx: Ctx = Depends(get_ctx), sdb: Session = Depends(get_sales_d
             "fx_rate": float(L.get_setting(sdb, "fx_rate")), "discount_limit": float(L.get_setting(sdb, "discount_limit")),
             "home_state": L.get_setting(sdb, "home_state"), "company_name": L.get_setting(sdb, "company_name"),
             "company_address": L.get_setting(sdb, "company_address"), "company_gstin": L.get_setting(sdb, "company_gstin"),
+            "bank_name": L.get_setting(sdb, "bank_name"), "bank_account_name": L.get_setting(sdb, "bank_account_name"),
+            "bank_account_no": L.get_setting(sdb, "bank_account_no"), "bank_ifsc": L.get_setting(sdb, "bank_ifsc"),
+            "bank_branch": L.get_setting(sdb, "bank_branch"),
         },
         "lead_types": [{"key": t["key"], "label": t["label"], "color": t["color"]} for t in T.active_types(sdb)],
         "statuses": STATUSES,
@@ -780,7 +788,13 @@ def update_settings(body: SettingsIn, ctx: Ctx = Depends(get_ctx), sdb: Session 
         if v is not None:
             L.set_setting(sdb, k, str(v))
     commit(main_db, sdb)
-    return {k: L.get_setting(sdb, k) for k in ("fx_rate", "discount_limit", "home_state", "company_name", "company_address", "company_gstin")}
+    return {
+        k: L.get_setting(sdb, k)
+        for k in (
+            "fx_rate", "discount_limit", "home_state", "company_name", "company_address", "company_gstin",
+            "bank_name", "bank_account_name", "bank_account_no", "bank_ifsc", "bank_branch",
+        )
+    }
 
 
 @router.get("/summary")

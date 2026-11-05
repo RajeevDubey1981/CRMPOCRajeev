@@ -94,6 +94,18 @@ function Paper({ q }) {
           {usd && <li>Documents with the shipment: commercial invoice, packing list, Bill of Lading, certificate of origin, and any certificate the buyer's country asks for.</li>}
         </ol>
       </div>
+      {q.company.bank_account_no && (
+        <div className="mt-3 rounded border border-slate-200 bg-slate-50 p-2.5 text-[11.5px] text-slate-700">
+          <b>Bank details for payment</b>
+          <div className="mt-1 grid gap-x-4 gap-y-0.5 sm:grid-cols-2">
+            <div>A/c name: {q.company.bank_account_name || q.company.name}</div>
+            <div>Bank: {q.company.bank_name}</div>
+            <div>A/c no.: {q.company.bank_account_no}</div>
+            <div>IFSC: {q.company.bank_ifsc}</div>
+            {q.company.bank_branch && <div>Branch: {q.company.bank_branch}</div>}
+          </div>
+        </div>
+      )}
       <div className="mt-6 flex justify-between text-[11.5px] text-slate-600"><span>Customer's acceptance (sign and stamp)</span><span className="text-right">For {q.company.name}<br /><br />Authorised signatory</span></div>
       <div className="mt-4 border-t border-slate-300 pt-1 text-center text-[10.5px] text-slate-500">{q.company.name} · {q.company.address} · This quotation is made by computer and needs no stamp when it is approved</div>
     </div>

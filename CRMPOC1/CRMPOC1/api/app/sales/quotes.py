@@ -284,5 +284,10 @@ def quotation_out(sdb: Session, q: SalesQuotation, *, with_lines: bool = True) -
             "tagline": "Air conditioners · Refrigeration · Appliances",
             "address": get_setting(sdb, "company_address", "OC528, Gaur City, Greater Noida West, Uttar Pradesh") or "",
             "gstin": get_setting(sdb, "company_gstin", ""),
+            "bank_name": get_setting(sdb, "bank_name", ""),
+            "bank_account_name": get_setting(sdb, "bank_account_name", ""),
+            "bank_account_no": get_setting(sdb, "bank_account_no", ""),
+            "bank_ifsc": get_setting(sdb, "bank_ifsc", ""),
+            "bank_branch": get_setting(sdb, "bank_branch", ""),
         }
     return out

@@ -7,6 +7,7 @@ import LeadList from "./LeadList.jsx";
 import MyDay from "./MyDay.jsx";
 import QuotationDetail from "./QuotationDetail.jsx";
 import QuotationList from "./QuotationList.jsx";
+import SalesCompanySettings from "./SalesCompanySettings.jsx";
 import SalesDashboard from "./SalesDashboard.jsx";
 import SalesLog from "./SalesLog.jsx";
 import SourcesPage from "./SourcesPage.jsx";
@@ -42,6 +43,7 @@ export default function SalesRoutes() {
         <Route path="log" element={<Gate tick="reglog"><SalesLog /></Gate>} />
         <Route path="sources" element={<Gate tick="connect"><SourcesPage /></Gate>} />
         <Route path="types" element={<Gate admin><TypesPage /></Gate>} />
+        <Route path="company" element={<Gate admin><SalesCompanySettings /></Gate>} />
         <Route path="*" element={<Navigate to="/sales" replace />} />
       </Routes>
     </SalesProvider>

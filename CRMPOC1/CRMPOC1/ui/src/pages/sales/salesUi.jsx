@@ -271,6 +271,7 @@ export function SalesTabs() {
     ...((status?.ticks || []).includes("connect") ? [["/sales/sources", "Connections"]] : []),
     ...((status?.ticks || []).includes("reglog") ? [["/sales/log", "Registered-first log"]] : []),
     ...(m.ticks ? [["/sales/types", "Lead types"]] : []),
+    ...(status?.is_admin ? [["/sales/company", "Company details"]] : []),
   ];
   // the movement switch sits at the end of the row
   return (
