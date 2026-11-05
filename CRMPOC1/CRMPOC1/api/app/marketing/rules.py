@@ -22,6 +22,9 @@ TICK_GROUPS = (
     ("Consent", (
         ("consent_edit", "Edit the opt-in and STOP list", False),
     )),
+    ("Festive banner", (
+        ("banner_edit", "Create and edit the festive banner shown on CRM emails", False),
+    )),
     ("Channels and settings", (
         ("connect", "Connect or disconnect a platform (logins and keys)", True),
         ("settings", "Change rates, senders and limits", True),
@@ -44,7 +47,7 @@ TICK_DEFAULTS = {
     # a Marketing user writes and sends small campaigns; the bigger ones wait for approval
     "mkt": frozenset({"view", "aud_own", "aud_all", "draft", "submit", "release_small"}),
     # a Marketing manager does everything except what is locked to Admin and Sub Admin; only a manager sees the cost
-    "mktm": frozenset({"view", "aud_own", "aud_all", "upload", "draft", "submit", "release_small", "approve", "cost", "consent_edit"}),
+    "mktm": frozenset({"view", "aud_own", "aud_all", "upload", "draft", "submit", "release_small", "approve", "cost", "consent_edit", "banner_edit"}),
 }
 
 SETTING_DEFAULTS = {

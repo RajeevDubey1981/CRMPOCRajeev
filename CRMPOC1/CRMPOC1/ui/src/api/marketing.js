@@ -20,4 +20,8 @@ export const marketingApi = {
   metaAdAccounts: () => get("/api/marketing/meta/ad-accounts"),
   metaUseAccount: (id, inUse) => api.put(`/api/marketing/meta/ad-accounts/${id}`, null, { params: { in_use: inUse } }).then((r) => r.data),
   metaCampaigns: (account) => get("/api/marketing/meta/campaigns", { account }),
+  banners: () => get("/api/marketing/banners"),
+  createBanner: (body) => api.post("/api/marketing/banners", body).then((r) => r.data),
+  updateBanner: (id, body) => put(`/api/marketing/banners/${id}`, body),
+  deleteBanner: (id) => api.delete(`/api/marketing/banners/${id}`).then((r) => r.data),
 };

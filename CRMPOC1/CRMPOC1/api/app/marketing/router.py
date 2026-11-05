@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -18,7 +18,7 @@ from app.marketing.access import (
 )
 from app.marketing import meta, secrets_box
 from app.marketing.db import get_marketing_db, marketing_enabled, new_marketing_session
-from app.marketing.models import MkChannel, MkChannelAsset, MkRoleTick, MkSetting, MkTickHistory, MkUserTick
+from app.marketing.models import MkBanner, MkChannel, MkChannelAsset, MkRoleTick, MkSetting, MkTickHistory, MkUserTick
 from app.marketing.rules import ALL_TICKS, KINDS, KINDS_ORDER, LOCKED_TICKS, OPEN_SETTINGS, SETTING_DEFAULTS, TICK_DEFAULTS, TICK_GROUPS
 from app.models.user import User
 from app.services.role_access import role_key
@@ -389,3 +389,71 @@ def meta_campaigns(account: str = Query(..., min_length=3, max_length=40), ctx: 
         return meta.campaigns(token, account)
     except meta.MetaError as exc:
         raise HTTPException(502, str(exc))
+
+
+# ---------------- festive banner ----------------
+class BannerIn(BaseModel):
+    name: str
+    theme: str = "green"
+    greeting: str = ""
+    headline: str
+    pill1: str = ""
+    pill2: str = ""
+    cta_text: str = "Shop Now"
+    cta_link: str = ""
+    start_date: date
+    end_date: date
+    target_type: str = "all"
+    is_enabled: bool = True
+
+
+def _banner_out(b: MkBanner) -> dict:
+    today = datetime.now(timezone.utc).date()
+    return {
+        "id": b.id, "name": b.name, "theme": b.theme, "greeting": b.greeting, "headline": b.headline,
+        "pill1": b.pill1, "pill2": b.pill2, "cta_text": b.cta_text, "cta_link": b.cta_link,
+        "start_date": b.start_date.isoformat(), "end_date": b.end_date.isoformat(),
+        "target_type": b.target_type, "is_enabled": b.is_enabled,
+        "is_active_now": b.is_enabled and b.start_date <= today <= b.end_date,
+    }
+
+
+@router.get("/banners")
+def list_banners(ctx: Ctx = Depends(get_ctx), mdb: Session = Depends(get_marketing_db)):
+    if not (ctx.has("banner_edit") or ctx.has("view")):
+        raise HTTPException(403, "You do not have this tick in Marketing")
+    rows = mdb.scalars(select(MkBanner).order_by(MkBanner.start_date.desc())).all()
+    return [_banner_out(b) for b in rows]
+
+
+@router.post("/banners")
+def create_banner(body: BannerIn, ctx: Ctx = Depends(require("banner_edit")), mdb: Session = Depends(get_marketing_db), main_db: Session = Depends(get_db)):
+    if body.end_date < body.start_date:
+        raise HTTPException(400, "End date cannot be before the start date")
+    b = MkBanner(**body.model_dump(), created_by=ctx.user.id)
+    mdb.add(b)
+    commit(main_db, mdb)
+    return _banner_out(b)
+
+
+@router.put("/banners/{banner_id}")
+def update_banner(banner_id: int, body: BannerIn, ctx: Ctx = Depends(require("banner_edit")), mdb: Session = Depends(get_marketing_db), main_db: Session = Depends(get_db)):
+    b = mdb.get(MkBanner, banner_id)
+    if b is None:
+        raise HTTPException(404, "Banner not found")
+    if body.end_date < body.start_date:
+        raise HTTPException(400, "End date cannot be before the start date")
+    for key, value in body.model_dump().items():
+        setattr(b, key, value)
+    commit(main_db, mdb)
+    return _banner_out(b)
+
+
+@router.delete("/banners/{banner_id}")
+def delete_banner(banner_id: int, ctx: Ctx = Depends(require("banner_edit")), mdb: Session = Depends(get_marketing_db), main_db: Session = Depends(get_db)):
+    b = mdb.get(MkBanner, banner_id)
+    if b is None:
+        raise HTTPException(404, "Banner not found")
+    mdb.delete(b)
+    commit(main_db, mdb)
+    return {"deleted": True}

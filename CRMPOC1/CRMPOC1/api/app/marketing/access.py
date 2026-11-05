@@ -102,4 +102,5 @@ def menu_flags(ctx: Ctx) -> dict:
         "ticks": ctx.is_admin,
         "settings": t("settings") or t("cost"),
         "channels": t("cost") or t("connect"),
+        "banners": t("banner_edit") or ctx.is_admin,
     }

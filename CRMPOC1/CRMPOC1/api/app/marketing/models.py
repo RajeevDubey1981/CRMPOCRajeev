@@ -4,9 +4,10 @@ settings. Contacts, consent, audiences and campaigns are added in the next relea
 
 from __future__ import annotations
 
+from datetime import date as date_
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, Date, DateTime, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 
@@ -106,3 +107,24 @@ class MkChannelAsset(MarketingBase, Stamped):
     name: Mapped[str] = mapped_column(String(255), nullable=False, default="")
     currency: Mapped[str | None] = mapped_column(String(10), nullable=True)
     in_use: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)  # the ones the CRM works with
+
+
+class MkBanner(MarketingBase, Stamped):
+    """A festive/offer banner shown at the top of outgoing CRM emails while it is active."""
+
+    __tablename__ = "mk_banner"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    theme: Mapped[str] = mapped_column(String(20), nullable=False, default="green")  # green | violet | navy
+    greeting: Mapped[str] = mapped_column(String(60), nullable=False, default="")  # e.g. "Happy Diwali!"
+    headline: Mapped[str] = mapped_column(String(200), nullable=False)
+    pill1: Mapped[str] = mapped_column(String(40), nullable=False, default="")
+    pill2: Mapped[str] = mapped_column(String(40), nullable=False, default="")
+    cta_text: Mapped[str] = mapped_column(String(40), nullable=False, default="Shop Now")
+    cta_link: Mapped[str] = mapped_column(String(500), nullable=False, default="")
+    start_date: Mapped[date_] = mapped_column(Date, nullable=False)
+    end_date: Mapped[date_] = mapped_column(Date, nullable=False)
+    target_type: Mapped[str] = mapped_column(String(20), nullable=False, default="all")  # all (more targets come with Audiences)
+    is_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_by: Mapped[int] = mapped_column(Integer, nullable=False)  # crm user id

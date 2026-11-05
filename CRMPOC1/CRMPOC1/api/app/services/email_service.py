@@ -151,13 +151,102 @@ def send_email(
         return False
 
 
+_BANNER_SKIP_SUBSTRINGS = ("otp",)  # never decorate a one-time-password email
+
+_BANNER_THEMES = {
+    "green": {"bg": "#0b3d2e", "bg2": "#1c6b4f", "accent": "#f4c542", "text": "#ffffff"},
+    "violet": {"bg": "#2b1a4a", "bg2": "#4a2f7a", "accent": "#f4c542", "text": "#ffffff"},
+    "navy": {"bg": "#122050", "bg2": "#1d3a7a", "accent": "#f4c542", "text": "#ffffff"},
+}
+
+
+def _render_banner(b) -> str:
+    theme = _BANNER_THEMES.get(b.theme, _BANNER_THEMES["green"])
+    greeting = (
+        f'<span style="color:{theme["accent"]}; font-weight:bold;">{b.greeting}</span>&nbsp;&nbsp;' if b.greeting else ""
+    )
+    pills = "".join(
+        f'<span style="background:rgba(255,255,255,0.15); color:{theme["text"]}; font-size:11px; '
+        f'padding:3px 10px; border-radius:999px; margin-right:6px;">{p}</span>'
+        for p in (b.pill1, b.pill2) if p
+    )
+    cta = ""
+    if b.cta_text and b.cta_link:
+        cta = (
+            f'<a href="{b.cta_link}" style="display:inline-block; background:{theme["accent"]}; color:#1a1a1a; '
+            f'font-weight:bold; font-size:12px; text-decoration:none; padding:7px 16px; border-radius:999px; '
+            f'margin-left:10px;">{b.cta_text}</a>'
+        )
+    return (
+        f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" '
+        f'style="background:{theme["bg"]}; background:linear-gradient(135deg,{theme["bg"]},{theme["bg2"]});">'
+        f'<tr><td style="padding:14px 24px;">'
+        f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0">'
+        f'<tr><td style="font-size:13px; color:{theme["text"]};">{greeting}{pills}</td></tr>'
+        f'<tr><td style="padding-top:6px; font-size:14px; color:{theme["text"]}; font-weight:bold;">{b.headline}{cta}</td></tr>'
+        f"</table></td></tr></table>"
+    )
+
+
+def _active_banner_html() -> str:
+    try:
+        from app.marketing.db import marketing_enabled, new_marketing_session
+        from app.marketing.models import MkBanner
+    except Exception:
+        return ""
+    if not marketing_enabled():
+        return ""
+    from datetime import datetime, timezone
+
+    today = datetime.now(timezone.utc).date()
+    mdb = new_marketing_session()
+    try:
+        banner = (
+            mdb.query(MkBanner)
+            .filter(
+                MkBanner.is_enabled.is_(True),
+                MkBanner.target_type == "all",
+                MkBanner.start_date <= today,
+                MkBanner.end_date >= today,
+            )
+            .order_by(MkBanner.id.desc())
+            .first()
+        )
+    except Exception:
+        logger.exception("could not read the active festive banner")
+        return ""
+    finally:
+        mdb.close()
+    if banner is None:
+        return ""
+    try:
+        return _render_banner(banner)
+    except Exception:
+        logger.exception("could not render the festive banner")
+        return ""
+
+
+def _insert_banner(html_body: str, banner_html: str) -> str:
+    match = re.search(r"<body[^>]*>", html_body, re.IGNORECASE)
+    if match:
+        idx = match.end()
+        return html_body[:idx] + banner_html + html_body[idx:]
+    return banner_html + html_body
+
+
 def send_template_email(
     to: str,
     template: str,
     context: dict,
     subject: str | None = None,
+    *,
+    include_banner: bool = True,
 ) -> bool:
     html_body = _substitute_template(_load_template(template), context)
+    if include_banner and not any(s in template.lower() for s in _BANNER_SKIP_SUBSTRINGS):
+        banner_html = _active_banner_html()
+        if banner_html:
+            html_body = _insert_banner(html_body, banner_html)
     resolved_subject = subject or context.get("subject") or "Notification from Indcool"
     text_body = context.get("text_body")
     return send_email(to, resolved_subject, html_body, text_body=text_body, template=template)
