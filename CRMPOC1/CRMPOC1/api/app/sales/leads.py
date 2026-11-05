@@ -43,8 +43,9 @@ def bad(msg: str, code: int = status.HTTP_400_BAD_REQUEST):
 # ---------------- settings ----------------
 SETTING_DEFAULTS = {
     "fx_rate": "88", "discount_limit": "10", "home_state": "Uttar Pradesh", "company_name": "INDcool",
-    "company_address": "OC528, Gaur City, Greater Noida West, Uttar Pradesh", "company_gstin": "",
-    "bank_name": "", "bank_account_name": "", "bank_account_no": "", "bank_ifsc": "", "bank_branch": "",
+    "company_address": "OC528, Gaur City, Greater Noida West, Uttar Pradesh", "company_gstin": "09AAHCI6192D1ZE",
+    "bank_name": "HDFC Bank", "bank_account_name": "INDCOOL ELECTRICALS PVT. LTD", "bank_account_no": "99909891572565",
+    "bank_ifsc": "HDFC0006490", "bank_branch": "Kasna, Greater Noida",
     "auto_assign_new": "0",  # 1 = a new lead is given by the rules at once; 0 = it waits for the Sales manager to give it
 }
 
