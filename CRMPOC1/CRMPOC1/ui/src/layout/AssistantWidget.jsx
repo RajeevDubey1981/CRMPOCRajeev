@@ -37,7 +37,7 @@ export default function AssistantWidget() {
   }
 
   return (
-    <div className="fixed bottom-5 right-5 z-40 flex flex-col items-end gap-3">
+    <div className="fixed bottom-4 right-4 z-40 flex flex-col items-end gap-3">
       {open && (
         <div className="flex h-[480px] max-h-[70vh] w-[340px] max-w-[calc(100vw-2.75rem)] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
           <div className="flex items-center gap-2 bg-[#122050] px-4 py-3 text-white">
@@ -111,23 +111,23 @@ export default function AssistantWidget() {
       )}
 
       {!open && (
-        <div className="relative flex h-[170px] w-[170px] items-center justify-center">
+        <div className="relative flex h-[76px] w-[76px] items-center justify-center">
           {[0, 1, 2, 3].map((i) => (
             <div
               key={i}
-              className="absolute h-[100px] w-[100px] rounded-full border-[3px] border-white"
+              className="absolute h-[52px] w-[52px] rounded-full border-2 border-white"
               style={{ animation: "indcool-assistant-ring 2s cubic-bezier(.15,.6,.3,1) infinite", animationDelay: `${i * 0.5}s`, opacity: 0 }}
             />
           ))}
           <button
             type="button"
             onClick={() => setOpen(true)}
-            className="relative z-10 flex h-[100px] w-[100px] flex-col items-center justify-center gap-0.5 rounded-full border-[3px] border-white/20 text-white shadow-[0_10px_30px_rgba(18,32,80,0.5)] transition-transform hover:scale-105"
+            className="relative z-10 flex h-[52px] w-[52px] items-center justify-center rounded-full border-2 border-white/20 text-white shadow-[0_6px_18px_rgba(18,32,80,0.5)] transition-transform hover:scale-105"
             style={{ background: "radial-gradient(circle at 32% 28%, #22326e, #122050 60%, #0a1430 100%)" }}
+            title="INDcool Assistant"
           >
-            <span className="text-2xl leading-none">💬</span>
-            <span className="text-[13px] font-extrabold tracking-wide">Assistant</span>
-            <span className="absolute right-2 top-1 h-3.5 w-3.5 rounded-full border-2 border-white bg-emerald-400" />
+            <span className="text-xl leading-none">💬</span>
+            <span className="absolute right-0.5 top-0.5 h-2.5 w-2.5 rounded-full border-2 border-white bg-emerald-400" />
           </button>
         </div>
       )}
