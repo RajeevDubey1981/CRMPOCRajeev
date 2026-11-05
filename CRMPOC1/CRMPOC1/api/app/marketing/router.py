@@ -18,9 +18,12 @@ from app.marketing.access import (
 )
 from app.marketing import meta, secrets_box
 from app.marketing.db import get_marketing_db, marketing_enabled, new_marketing_session
-from app.marketing.models import MkBanner, MkChannel, MkChannelAsset, MkRoleTick, MkSetting, MkTickHistory, MkUserTick
+from app.marketing.models import MkAudience, MkBanner, MkChannel, MkChannelAsset, MkRoleTick, MkSetting, MkTickHistory, MkUserTick
 from app.marketing.rules import ALL_TICKS, KINDS, KINDS_ORDER, LOCKED_TICKS, OPEN_SETTINGS, SETTING_DEFAULTS, TICK_DEFAULTS, TICK_GROUPS
+from app.models.order import Order
 from app.models.user import User
+from app.sales.db import get_sales_db, sales_enabled
+from app.sales.models import SalesLead
 from app.services.role_access import role_key
 
 router = APIRouter(prefix="/api/marketing", tags=["marketing"])
@@ -455,5 +458,129 @@ def delete_banner(banner_id: int, ctx: Ctx = Depends(require("banner_edit")), md
     if b is None:
         raise HTTPException(404, "Banner not found")
     mdb.delete(b)
+    commit(main_db, mdb)
+    return {"deleted": True}
+
+
+# ---------------- audiences ----------------
+class AudienceIn(BaseModel):
+    name: str
+    source: str = "prospects"  # prospects | customers
+    market: Optional[str] = None
+    stage: Optional[str] = None
+    state: Optional[str] = None
+    stale_days: Optional[int] = None
+    heat: Optional[str] = None
+    priority: Optional[str] = None
+
+
+def _count_prospects(sales_db: Session | None, ctx: Ctx, a: dict) -> int:
+    if sales_db is None or not sales_enabled():
+        return 0
+    q = sales_db.query(SalesLead)
+    if a.get("market"):
+        q = q.filter(SalesLead.lead_type == a["market"])
+    if a.get("stage"):
+        q = q.filter(SalesLead.status == a["stage"])
+    if a.get("state"):
+        q = q.filter(SalesLead.state == a["state"])
+    if a.get("heat"):
+        q = q.filter(SalesLead.heat == a["heat"])
+    if a.get("priority"):
+        q = q.filter(SalesLead.priority == a["priority"])
+    if a.get("stale_days"):
+        cutoff = datetime.now(timezone.utc) - timedelta(days=int(a["stale_days"]))
+        q = q.filter((SalesLead.last_action_at.is_(None)) | (SalesLead.last_action_at <= cutoff))
+    if not ctx.has("aud_all"):
+        q = q.filter(SalesLead.owner_user_id == ctx.user.id)
+    return q.count()
+
+
+def _count_customers(main_db: Session, a: dict) -> int:
+    q = main_db.query(Order.customer_contact).filter(Order.customer_contact.isnot(None), Order.deleted_at.is_(None))
+    if a.get("market"):
+        q = q.filter(Order.market == a["market"])
+    if a.get("state"):
+        q = q.filter(Order.customer_state == a["state"])
+    if a.get("stale_days"):
+        cutoff = datetime.now(timezone.utc).date() - timedelta(days=int(a["stale_days"]))
+        q = q.filter(Order.order_date <= cutoff)
+    return q.distinct().count()
+
+
+def _audience_count(main_db: Session, sales_db: Session | None, ctx: Ctx, a: dict) -> int:
+    if a.get("source") == "customers":
+        if not ctx.has("aud_all"):
+            return 0  # only an "all CRM data" tick may build audiences from existing customers
+        return _count_customers(main_db, a)
+    return _count_prospects(sales_db, ctx, a)
+
+
+def _audience_out(a: MkAudience, count: int) -> dict:
+    return {
+        "id": a.id, "name": a.name, "source": a.source, "market": a.market, "stage": a.stage, "state": a.state,
+        "stale_days": a.stale_days, "heat": a.heat, "priority": a.priority, "count": count,
+    }
+
+
+@router.get("/audiences")
+def list_audiences(ctx: Ctx = Depends(get_ctx), mdb: Session = Depends(get_marketing_db), main_db: Session = Depends(get_db), sales_db: Session = Depends(get_sales_db)):
+    if not ctx.any("aud_own", "aud_all"):
+        raise HTTPException(403, "You do not have this tick in Marketing")
+    rows = mdb.scalars(select(MkAudience).order_by(MkAudience.id.desc())).all()
+    out = []
+    for r in rows:
+        a = {"source": r.source, "market": r.market, "stage": r.stage, "state": r.state, "stale_days": r.stale_days, "heat": r.heat, "priority": r.priority}
+        out.append(_audience_out(r, _audience_count(main_db, sales_db, ctx, a)))
+    return out
+
+
+@router.get("/audiences/count")
+def count_audience(
+    source: str = Query("prospects"), market: Optional[str] = None, stage: Optional[str] = None, state: Optional[str] = None,
+    stale_days: Optional[int] = None, heat: Optional[str] = None, priority: Optional[str] = None,
+    ctx: Ctx = Depends(get_ctx), main_db: Session = Depends(get_db), sales_db: Session = Depends(get_sales_db),
+):
+    if not ctx.any("aud_own", "aud_all"):
+        raise HTTPException(403, "You do not have this tick in Marketing")
+    a = {"source": source, "market": market, "stage": stage, "state": state, "stale_days": stale_days, "heat": heat, "priority": priority}
+    return {"count": _audience_count(main_db, sales_db, ctx, a)}
+
+
+@router.post("/audiences")
+def create_audience(body: AudienceIn, ctx: Ctx = Depends(get_ctx), mdb: Session = Depends(get_marketing_db), main_db: Session = Depends(get_db), sales_db: Session = Depends(get_sales_db)):
+    if not ctx.any("aud_own", "aud_all"):
+        raise HTTPException(403, "You do not have this tick in Marketing")
+    if body.source == "customers" and not ctx.has("aud_all"):
+        raise HTTPException(403, "Building audiences from existing customers needs the 'all CRM data' tick")
+    a = MkAudience(**body.model_dump(), created_by=ctx.user.id)
+    mdb.add(a)
+    commit(main_db, mdb)
+    return _audience_out(a, _audience_count(main_db, sales_db, ctx, body.model_dump()))
+
+
+@router.put("/audiences/{audience_id}")
+def update_audience(audience_id: int, body: AudienceIn, ctx: Ctx = Depends(get_ctx), mdb: Session = Depends(get_marketing_db), main_db: Session = Depends(get_db), sales_db: Session = Depends(get_sales_db)):
+    if not ctx.any("aud_own", "aud_all"):
+        raise HTTPException(403, "You do not have this tick in Marketing")
+    a = mdb.get(MkAudience, audience_id)
+    if a is None:
+        raise HTTPException(404, "Audience not found")
+    if body.source == "customers" and not ctx.has("aud_all"):
+        raise HTTPException(403, "Building audiences from existing customers needs the 'all CRM data' tick")
+    for key, value in body.model_dump().items():
+        setattr(a, key, value)
+    commit(main_db, mdb)
+    return _audience_out(a, _audience_count(main_db, sales_db, ctx, body.model_dump()))
+
+
+@router.delete("/audiences/{audience_id}")
+def delete_audience(audience_id: int, ctx: Ctx = Depends(get_ctx), mdb: Session = Depends(get_marketing_db), main_db: Session = Depends(get_db)):
+    if not ctx.any("aud_own", "aud_all"):
+        raise HTTPException(403, "You do not have this tick in Marketing")
+    a = mdb.get(MkAudience, audience_id)
+    if a is None:
+        raise HTTPException(404, "Audience not found")
+    mdb.delete(a)
     commit(main_db, mdb)
     return {"deleted": True}

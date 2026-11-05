@@ -105,6 +105,9 @@ class SalesLead(SalesBase, Stamped):
     source: Mapped[str] = mapped_column(String(100), nullable=False, default="Typed in")
     channel: Mapped[str] = mapped_column(String(40), nullable=False, default="hand")
     lead_type: Mapped[str] = mapped_column(String(20), nullable=False, default="retail", index=True)
+    # Who this contact is within their market (dealer, distributor, customer, engineer, franchisee) --
+    # steers the default outreach channel/tone for Marketing Audiences. Optional, Sales-editable.
+    party_role: Mapped[str | None] = mapped_column(String(20), nullable=True)
     details: Mapped[str | None] = mapped_column(Text, nullable=True)
     message: Mapped[str | None] = mapped_column(Text, nullable=True)  # the customer's own words, copied
     status: Mapped[str] = mapped_column(String(10), nullable=False, default="new", index=True)

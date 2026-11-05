@@ -34,6 +34,9 @@ class Order(Base, TimestampMixin, SoftDeleteMixin):
     customer_city: Mapped[str | None] = mapped_column(String(100), nullable=True)
     customer_state: Mapped[str | None] = mapped_column(String(100), nullable=True)
     customer_address: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Which market this sale came through (gem, csd, retail, service, dealer) -- same keys as SalesLead.lead_type.
+    # Set at order creation going forward; older orders are left null (shown as "Unclassified").
+    market: Mapped[str | None] = mapped_column(String(20), nullable=True, index=True)
     courier_id: Mapped[int | None] = mapped_column(ForeignKey("couriers.id"), nullable=True)
     # Credits this amount to the courier's ledger (AccountLedgerEntry, source_type="freight") the moment
     # it's set or changed — see _sync_freight_ledger_entry in routers/orders.py.

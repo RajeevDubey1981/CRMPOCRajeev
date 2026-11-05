@@ -24,4 +24,9 @@ export const marketingApi = {
   createBanner: (body) => api.post("/api/marketing/banners", body).then((r) => r.data),
   updateBanner: (id, body) => put(`/api/marketing/banners/${id}`, body),
   deleteBanner: (id) => api.delete(`/api/marketing/banners/${id}`).then((r) => r.data),
+  audiences: () => get("/api/marketing/audiences"),
+  audienceCount: (params) => get("/api/marketing/audiences/count", params),
+  createAudience: (body) => api.post("/api/marketing/audiences", body).then((r) => r.data),
+  updateAudience: (id, body) => put(`/api/marketing/audiences/${id}`, body),
+  deleteAudience: (id) => api.delete(`/api/marketing/audiences/${id}`).then((r) => r.data),
 };

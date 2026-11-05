@@ -35,6 +35,7 @@ export function MarketingTabs() {
   const tabs = [
     ["/marketing", "Overview", true],
     ...(m.channels ? [["/marketing/channels", "Channels"]] : []),
+    ...(m.audiences ? [["/marketing/audiences", "Audiences"]] : []),
     ...(m.banners ? [["/marketing/banners", "Festive banner"]] : []),
     ...(m.settings ? [["/marketing/settings", "Settings"]] : []),
     ...(m.ticks ? [["/marketing/ticks", "Access ticks"]] : []),

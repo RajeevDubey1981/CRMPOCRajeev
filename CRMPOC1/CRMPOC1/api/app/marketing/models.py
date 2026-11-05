@@ -128,3 +128,21 @@ class MkBanner(MarketingBase, Stamped):
     target_type: Mapped[str] = mapped_column(String(20), nullable=False, default="all")  # all (more targets come with Audiences)
     is_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     created_by: Mapped[int] = mapped_column(Integer, nullable=False)  # crm user id
+
+
+class MkAudience(MarketingBase, Stamped):
+    """A saved filter over the CRM's own Sales leads (prospects) or Orders (existing customers).
+    Nothing is copied here -- the count and matches are computed live from the CRM database each time."""
+
+    __tablename__ = "mk_audience"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    source: Mapped[str] = mapped_column(String(20), nullable=False, default="prospects")  # prospects | customers
+    market: Mapped[str | None] = mapped_column(String(20), nullable=True)  # lead_type / Order.market key, or null = any
+    stage: Mapped[str | None] = mapped_column(String(20), nullable=True)  # SalesLead.status key, or "interested_open"
+    state: Mapped[str | None] = mapped_column(String(100), nullable=True)  # place filter
+    stale_days: Mapped[int | None] = mapped_column(Integer, nullable=True)  # no action in at least this many days
+    heat: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    priority: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    created_by: Mapped[int] = mapped_column(Integer, nullable=False)  # crm user id
