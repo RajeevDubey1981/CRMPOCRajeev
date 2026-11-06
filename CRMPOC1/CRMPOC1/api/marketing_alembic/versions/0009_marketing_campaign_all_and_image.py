@@ -15,8 +15,12 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.add_column("mk_campaign", sa.Column("send_to_all", sa.Boolean(), nullable=False, server_default=sa.false()))
-    op.add_column("mk_campaign", sa.Column("image_path", sa.String(length=500), nullable=True))
+    bind = op.get_bind()
+    columns = {c["name"] for c in sa.inspect(bind).get_columns("mk_campaign")}
+    if "send_to_all" not in columns:
+        op.add_column("mk_campaign", sa.Column("send_to_all", sa.Boolean(), nullable=False, server_default=sa.false()))
+    if "image_path" not in columns:
+        op.add_column("mk_campaign", sa.Column("image_path", sa.String(length=500), nullable=True))
     with op.batch_alter_table("mk_campaign") as batch_op:
         batch_op.alter_column("audience_id", existing_type=sa.Integer(), nullable=True)
 

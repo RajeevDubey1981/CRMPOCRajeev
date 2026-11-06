@@ -15,11 +15,18 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.add_column("mk_campaign", sa.Column("offer_name", sa.String(length=255), nullable=False, server_default=""))
-    op.add_column("mk_campaign", sa.Column("offer_price", sa.String(length=30), nullable=False, server_default=""))
-    op.add_column("mk_campaign", sa.Column("offer_mrp", sa.String(length=30), nullable=False, server_default=""))
-    op.add_column("mk_campaign", sa.Column("offer_image_path", sa.String(length=500), nullable=True))
-    op.add_column("mk_campaign", sa.Column("offer_link", sa.String(length=500), nullable=False, server_default=""))
+    bind = op.get_bind()
+    columns = {c["name"] for c in sa.inspect(bind).get_columns("mk_campaign")}
+    if "offer_name" not in columns:
+        op.add_column("mk_campaign", sa.Column("offer_name", sa.String(length=255), nullable=False, server_default=""))
+    if "offer_price" not in columns:
+        op.add_column("mk_campaign", sa.Column("offer_price", sa.String(length=30), nullable=False, server_default=""))
+    if "offer_mrp" not in columns:
+        op.add_column("mk_campaign", sa.Column("offer_mrp", sa.String(length=30), nullable=False, server_default=""))
+    if "offer_image_path" not in columns:
+        op.add_column("mk_campaign", sa.Column("offer_image_path", sa.String(length=500), nullable=True))
+    if "offer_link" not in columns:
+        op.add_column("mk_campaign", sa.Column("offer_link", sa.String(length=500), nullable=False, server_default=""))
 
 
 def downgrade() -> None:
