@@ -23,6 +23,11 @@ from app.security import decode_token
 SESSION_COOKIE = "indcool_session"
 PARTNER_DOC_COOKIE = "indcool_partner_doc"
 
+# Marketing images are deliberately public: they're meant to be loaded, with no login, by an email client's
+# own image proxy (Gmail, Outlook, ...) when a recipient opens a festive banner or campaign email. Nothing
+# sensitive is ever stored under these prefixes -- only banner/campaign/offer artwork the sender chose to upload.
+PUBLIC_PREFIXES = ("marketing_banners/", "marketing_campaigns/")
+
 
 def _session_token_valid(token: str | None) -> bool:
     if not token:
@@ -50,6 +55,10 @@ def _partner_token_owns_path(token: str | None, upload_path: str) -> bool:
 def is_authorized(path: str, scope) -> bool:
     """path is the sub-path StaticFiles resolved (e.g. "partners/2026/10/<uuid>.pdf", no leading
     /uploads/); scope is the raw ASGI scope so we can read headers/cookies without a receive channel."""
+    clean_path = path.replace("\\", "/").lstrip("/")
+    if clean_path.startswith(PUBLIC_PREFIXES):
+        return True
+
     request = Request(scope)
 
     auth_header = request.headers.get("authorization", "")
