@@ -755,6 +755,11 @@ class CampaignIn(BaseModel):
     audience_id: Optional[int] = None
     send_to_all: bool = False
     image_path: Optional[str] = None
+    offer_name: str = ""
+    offer_price: str = ""
+    offer_mrp: str = ""
+    offer_image_path: Optional[str] = None
+    offer_link: str = ""
     subject: str
     body: str
 
@@ -763,6 +768,8 @@ def _campaign_out(c: MkCampaign, audience_name: str | None) -> dict:
     return {
         "id": c.id, "name": c.name, "audience_id": c.audience_id, "audience_name": "Everyone" if c.send_to_all else audience_name,
         "send_to_all": c.send_to_all, "image_path": c.image_path,
+        "offer_name": c.offer_name, "offer_price": c.offer_price, "offer_mrp": c.offer_mrp,
+        "offer_image_path": c.offer_image_path, "offer_link": c.offer_link,
         "channel": c.channel, "subject": c.subject, "body": c.body, "status": c.status, "reject_reason": c.reject_reason,
         "total_count": c.total_count, "sent_count": c.sent_count, "skipped_count": c.skipped_count,
         "created_at": c.created_at.isoformat() if c.created_at else None,
@@ -866,6 +873,8 @@ def create_campaign(body: CampaignIn, ctx: Ctx = Depends(require("draft")), mdb:
     audience = _validate_campaign_target(body, ctx, mdb)
     c = MkCampaign(
         name=body.name, audience_id=audience.id if audience else None, send_to_all=body.send_to_all, image_path=body.image_path,
+        offer_name=body.offer_name, offer_price=body.offer_price, offer_mrp=body.offer_mrp,
+        offer_image_path=body.offer_image_path, offer_link=body.offer_link,
         subject=body.subject, body=body.body, status="draft", created_by=ctx.user.id,
     )
     mdb.add(c)
@@ -884,6 +893,9 @@ def update_campaign(campaign_id: int, body: CampaignIn, ctx: Ctx = Depends(requi
     c.name, c.audience_id, c.send_to_all, c.image_path, c.subject, c.body = (
         body.name, audience.id if audience else None, body.send_to_all, body.image_path, body.subject, body.body,
     )
+    c.offer_name, c.offer_price, c.offer_mrp, c.offer_image_path, c.offer_link = (
+        body.offer_name, body.offer_price, body.offer_mrp, body.offer_image_path, body.offer_link,
+    )
     commit(main_db, mdb)
     return _campaign_out(c, audience.name if audience else None)
 
@@ -900,16 +912,55 @@ def delete_campaign(campaign_id: int, ctx: Ctx = Depends(require("draft")), mdb:
     return {"deleted": True}
 
 
-def _campaign_email_html(c: MkCampaign, name: str) -> str:
-    body_html = (c.body or "").replace("{{name}}", name or "there").replace("\n", "<br/>")
-    if not c.image_path:
-        return f"<div style='font-family:Arial,sans-serif;font-size:14px;'>{body_html}</div>"
+def _campaign_asset_url(path: str) -> str:
     from app.config import settings
 
     base = (settings.app_public_url or "").rstrip("/")
-    src = f"{base}{c.image_path}" if base else c.image_path
-    img = f"<img src='{src}' alt='{c.subject}' width='600' style='display:block; width:100%; max-width:600px; height:auto; border:0;' />"
-    return f"<div style='font-family:Arial,sans-serif;'>{img}<div style='padding:16px 4px; font-size:14px; color:#1c2230;'>{body_html}</div></div>"
+    return f"{base}{path}" if base else path
+
+
+def _campaign_offer_html(c: MkCampaign) -> str:
+    if not (c.offer_name or "").strip():
+        return ""
+    img = (
+        f"<img src='{_campaign_asset_url(c.offer_image_path)}' width='110' "
+        f"style='display:block; width:110px; height:110px; object-fit:cover; border-radius:8px; border:1px solid #e8e2f4;' />"
+        if c.offer_image_path else ""
+    )
+    price_html = f"<span style='font-size:17px; font-weight:800; color:#1c2230;'>{c.offer_price}</span>" if c.offer_price else ""
+    mrp_html = f"<span style='font-size:13px; color:#9aa; text-decoration:line-through; margin-left:8px;'>{c.offer_mrp}</span>" if c.offer_mrp else ""
+    btn_html = (
+        f"<a href='{c.offer_link}' style='display:inline-block; margin-top:10px; background:#1e3a78; color:#fff; "
+        f"font-size:13px; font-weight:700; padding:7px 16px; border-radius:7px; text-decoration:none;'>Shop Now &rarr;</a>"
+        if c.offer_link else ""
+    )
+    img_cell = f"<td style='width:110px; padding-right:14px; vertical-align:top;'>{img}</td>" if img else ""
+    return (
+        "<table role='presentation' width='100%' cellpadding='0' cellspacing='0' "
+        "style='margin:16px 0; border:1px solid #e8e2f4; border-radius:10px; background:#fafafe;'>"
+        f"<tr><td style='padding:14px;'><table role='presentation' cellpadding='0' cellspacing='0'><tr>{img_cell}"
+        f"<td style='vertical-align:top;'>"
+        "<span style='font-size:10.5px; font-weight:800; text-transform:uppercase; letter-spacing:.04em; color:#b8860b; "
+        "background:#faf1dc; border-radius:999px; padding:2px 8px;'>Today's offer</span>"
+        f"<div style='font-size:14.5px; font-weight:700; color:#1c2230; margin-top:6px; line-height:1.3;'>{c.offer_name}</div>"
+        f"<div style='margin-top:6px;'>{price_html}{mrp_html}</div>{btn_html}"
+        "</td></tr></table></td></tr></table>"
+    )
+
+
+def _campaign_email_html(c: MkCampaign, name: str) -> str:
+    body_html = (c.body or "").replace("{{name}}", name or "there").replace("\n", "<br/>")
+    offer_html = _campaign_offer_html(c)
+    banner_html = ""
+    if c.image_path:
+        src = _campaign_asset_url(c.image_path)
+        banner_html = f"<img src='{src}' alt='{c.subject}' width='600' style='display:block; width:100%; max-width:600px; height:auto; border:0;' />"
+    return (
+        "<div style='font-family:Arial,sans-serif;'>"
+        f"{banner_html}{offer_html}"
+        f"<div style='padding:16px 4px; font-size:14px; color:#1c2230;'>{body_html}</div>"
+        "</div>"
+    )
 
 
 def _send_campaign(mdb: Session, main_db: Session, sales_db: Session, ctx: Ctx, c: MkCampaign) -> None:

@@ -158,6 +158,12 @@ class MkCampaign(MarketingBase, Stamped):
     audience_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)  # null when send_to_all
     send_to_all: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)  # every CRM contact with an email, not one saved audience
     image_path: Mapped[str | None] = mapped_column(String(500), nullable=True)  # an uploaded hero banner shown above the message
+    # the one product this campaign is about -- shown as a card under the hero banner, above the message
+    offer_name: Mapped[str] = mapped_column(String(255), nullable=False, default="")
+    offer_price: Mapped[str] = mapped_column(String(30), nullable=False, default="")
+    offer_mrp: Mapped[str] = mapped_column(String(30), nullable=False, default="")
+    offer_image_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    offer_link: Mapped[str] = mapped_column(String(500), nullable=False, default="")
     channel: Mapped[str] = mapped_column(String(20), nullable=False, default="email")
     subject: Mapped[str] = mapped_column(String(200), nullable=False, default="")
     body: Mapped[str] = mapped_column(Text, nullable=False, default="")  # plain text/simple HTML; {{name}} substituted per contact

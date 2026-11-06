@@ -13,7 +13,33 @@ const STATUS_LABEL = {
   cancelled: ["Cancelled", "bg-slate-100 text-slate-500"],
 };
 
-const EMPTY = { name: "", audience_id: "", send_to_all: false, image_path: null, subject: "", body: "" };
+const EMPTY = {
+  name: "", audience_id: "", send_to_all: false, image_path: null,
+  offer_name: "", offer_price: "", offer_mrp: "", offer_image_path: null, offer_link: "",
+  subject: "", body: "",
+};
+
+function OfferCardPreview({ form }) {
+  if (!form.offer_name.trim()) return null;
+  return (
+    <div className="my-3 flex gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
+      {form.offer_image_path ? (
+        <img src={form.offer_image_path} alt="" className="h-20 w-20 shrink-0 rounded-md border border-slate-200 object-cover" />
+      ) : (
+        <div className="grid h-20 w-20 shrink-0 place-items-center rounded-md border border-dashed border-slate-300 text-slate-300"><Icon name="file" size={20} /></div>
+      )}
+      <div>
+        <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-700">Today's offer</span>
+        <div className="mt-1 text-sm font-semibold leading-snug text-slate-800">{form.offer_name}</div>
+        <div className="mt-1 flex items-baseline gap-2">
+          {form.offer_price && <span className="text-base font-extrabold text-slate-800">{form.offer_price}</span>}
+          {form.offer_mrp && <span className="text-xs text-slate-400 line-through">{form.offer_mrp}</span>}
+        </div>
+        {form.offer_link && <span className="mt-1.5 inline-block rounded-md bg-[#1e3a78] px-3 py-1 text-xs font-bold text-white">Shop Now →</span>}
+      </div>
+    </div>
+  );
+}
 
 function EmailPreview({ form }) {
   return (
@@ -23,6 +49,7 @@ function EmailPreview({ form }) {
         <div className="mb-1.5 border-b border-slate-100 pb-1.5 text-xs text-slate-400">
           <div><b className="text-slate-600">Subject:</b> {form.subject || <span className="italic text-slate-300">(no subject yet)</span>}</div>
         </div>
+        <OfferCardPreview form={form} />
         <div className="whitespace-pre-wrap text-[13px] leading-relaxed text-slate-700">
           {(form.body || "Hi {{name}},\n\n...").replace(/\{\{name\}\}/g, "Rohit")}
         </div>
@@ -34,19 +61,19 @@ function EmailPreview({ form }) {
 function Form({ audiences, canAll, initial, onSaved, onCancel }) {
   const [form, setForm] = useState(initial);
   const [busy, setBusy] = useState(false);
-  const [uploading, setUploading] = useState(false);
+  const [uploading, setUploading] = useState("");
   const [msg, setMsg] = useState("");
   const guide = useAsync(() => marketingApi.campaignImageGuide(), []);
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
 
-  async function pickImage(e) {
+  async function pickImage(field, e) {
     const file = e.target.files?.[0];
     if (!file) return;
-    setUploading(true); setMsg("");
+    setUploading(field); setMsg("");
     try {
       const r = await marketingApi.uploadCampaignImage(file);
-      setForm((f) => ({ ...f, image_path: r.image_path }));
-    } catch (err) { setMsg(errText(err)); } finally { setUploading(false); e.target.value = ""; }
+      setForm((f) => ({ ...f, [field]: r.image_path }));
+    } catch (err) { setMsg(errText(err)); } finally { setUploading(""); e.target.value = ""; }
   }
 
   async function save() {
@@ -108,9 +135,33 @@ function Form({ audiences, canAll, initial, onSaved, onCancel }) {
           {" "}Shown at the top of the email, above your message.
         </p>
         <div className="flex items-center gap-2">
-          <input type="file" accept="image/jpeg,image/png" onChange={pickImage} disabled={uploading} className="text-sm" />
-          {uploading && <span className="text-xs text-slate-500">Uploading...</span>}
+          <input type="file" accept="image/jpeg,image/png" onChange={(e) => pickImage("image_path", e)} disabled={!!uploading} className="text-sm" />
+          {uploading === "image_path" && <span className="text-xs text-slate-500">Uploading...</span>}
           {form.image_path && <button type="button" className={btn.plain} onClick={() => setForm((f) => ({ ...f, image_path: null }))}>Remove image</button>}
+        </div>
+      </div>
+
+      <div className="mt-4 rounded-lg border border-dashed border-slate-300 p-3">
+        <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">Offer product (optional)</div>
+        <p className="mb-2 text-xs text-slate-500">Shown as a card under the banner — one product this campaign is about: image, name, price and a link to it.</p>
+        <div className="grid gap-3 md:grid-cols-2">
+          <label className="text-sm text-slate-600 md:col-span-2">Product name
+            <input className={fieldClass} value={form.offer_name} onChange={set("offer_name")} placeholder="Direct Cool Series 190L 3 Star Single Door Refrigerator — AquaFlora" />
+          </label>
+          <label className="text-sm text-slate-600">Price
+            <input className={fieldClass} value={form.offer_price} onChange={set("offer_price")} placeholder="₹14,990" />
+          </label>
+          <label className="text-sm text-slate-600">MRP (optional, struck through)
+            <input className={fieldClass} value={form.offer_mrp} onChange={set("offer_mrp")} placeholder="₹17,990" />
+          </label>
+          <label className="text-sm text-slate-600 md:col-span-2">Product link
+            <input className={fieldClass} value={form.offer_link} onChange={set("offer_link")} placeholder="https://www.indcool.in/product/..." />
+          </label>
+        </div>
+        <div className="mt-2 flex items-center gap-2">
+          <input type="file" accept="image/jpeg,image/png" onChange={(e) => pickImage("offer_image_path", e)} disabled={!!uploading} className="text-sm" />
+          {uploading === "offer_image_path" && <span className="text-xs text-slate-500">Uploading...</span>}
+          {form.offer_image_path && <button type="button" className={btn.plain} onClick={() => setForm((f) => ({ ...f, offer_image_path: null }))}>Remove image</button>}
         </div>
       </div>
 
@@ -199,6 +250,7 @@ function CampaignCard({ c, i, canApprove, onChanged }) {
       {open && (
         <div className="s-pop mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
           {c.image_path && <img src={c.image_path} alt="" className="mb-2 w-full rounded border border-slate-200" />}
+          <OfferCardPreview form={c} />
           <pre className="whitespace-pre-wrap text-xs text-slate-700">{c.body}</pre>
           {detail.data?.logs && (
             <div className="mt-3 max-h-56 overflow-y-auto">
