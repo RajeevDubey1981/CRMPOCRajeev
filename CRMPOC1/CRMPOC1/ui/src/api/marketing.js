@@ -46,4 +46,10 @@ export const marketingApi = {
   submitCampaign: (id) => api.post(`/api/marketing/campaigns/${id}/submit`).then((r) => r.data),
   approveCampaign: (id) => api.post(`/api/marketing/campaigns/${id}/approve`).then((r) => r.data),
   rejectCampaign: (id, reason) => api.post(`/api/marketing/campaigns/${id}/reject`, { reason }).then((r) => r.data),
+  campaignImageGuide: () => get("/api/marketing/campaigns/image-guide"),
+  uploadCampaignImage: (file) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    return api.post("/api/marketing/campaigns/upload-image", fd, { headers: { "Content-Type": "multipart/form-data" } }).then((r) => r.data);
+  },
 };

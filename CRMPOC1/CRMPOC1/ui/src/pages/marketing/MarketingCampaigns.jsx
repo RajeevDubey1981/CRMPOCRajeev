@@ -13,22 +13,50 @@ const STATUS_LABEL = {
   cancelled: ["Cancelled", "bg-slate-100 text-slate-500"],
 };
 
-const EMPTY = { name: "", audience_id: "", subject: "", body: "" };
+const EMPTY = { name: "", audience_id: "", send_to_all: false, image_path: null, subject: "", body: "" };
 
-function Form({ audiences, initial, onSaved, onCancel }) {
+function EmailPreview({ form }) {
+  return (
+    <div className="overflow-hidden rounded-lg border border-slate-200">
+      {form.image_path && <img src={form.image_path} alt="Banner" className="block w-full" />}
+      <div className="bg-white p-3.5">
+        <div className="mb-1.5 border-b border-slate-100 pb-1.5 text-xs text-slate-400">
+          <div><b className="text-slate-600">Subject:</b> {form.subject || <span className="italic text-slate-300">(no subject yet)</span>}</div>
+        </div>
+        <div className="whitespace-pre-wrap text-[13px] leading-relaxed text-slate-700">
+          {(form.body || "Hi {{name}},\n\n...").replace(/\{\{name\}\}/g, "Rohit")}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Form({ audiences, canAll, initial, onSaved, onCancel }) {
   const [form, setForm] = useState(initial);
   const [busy, setBusy] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [msg, setMsg] = useState("");
+  const guide = useAsync(() => marketingApi.campaignImageGuide(), []);
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
 
+  async function pickImage(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true); setMsg("");
+    try {
+      const r = await marketingApi.uploadCampaignImage(file);
+      setForm((f) => ({ ...f, image_path: r.image_path }));
+    } catch (err) { setMsg(errText(err)); } finally { setUploading(false); e.target.value = ""; }
+  }
+
   async function save() {
-    if (!form.name.trim() || !form.audience_id || !form.subject.trim() || !form.body.trim()) {
-      setMsg("Name, audience, subject and message are all required.");
+    if (!form.name.trim() || (!form.send_to_all && !form.audience_id) || !form.subject.trim() || !form.body.trim()) {
+      setMsg("Name, a target (audience or Everyone), subject and message are all required.");
       return;
     }
     setBusy(true); setMsg("");
     try {
-      const body = { ...form, audience_id: Number(form.audience_id) };
+      const body = { ...form, audience_id: form.send_to_all ? null : Number(form.audience_id) };
       if (form.id) await marketingApi.updateCampaign(form.id, body);
       else await marketingApi.createCampaign(body);
       onSaved();
@@ -46,12 +74,24 @@ function Form({ audiences, initial, onSaved, onCancel }) {
         <label className="text-sm text-slate-600">Campaign name
           <input className={fieldClass} value={form.name} onChange={set("name")} placeholder="GeM — festive follow-up" />
         </label>
-        <label className="text-sm text-slate-600">Audience
-          <select className={fieldClass} value={form.audience_id} onChange={set("audience_id")}>
-            <option value="">— Select a saved audience —</option>
-            {audiences.map((a) => <option key={a.id} value={a.id}>{a.name} ({a.count})</option>)}
+        <label className="text-sm text-slate-600">Send to
+          <select
+            className={fieldClass}
+            value={form.send_to_all ? "all" : "audience"}
+            onChange={(e) => setForm((f) => ({ ...f, send_to_all: e.target.value === "all" }))}
+          >
+            <option value="audience">A saved audience</option>
+            {canAll && <option value="all">Everyone (all CRM contacts with an email)</option>}
           </select>
         </label>
+        {!form.send_to_all && (
+          <label className="text-sm text-slate-600 md:col-span-2">Audience
+            <select className={fieldClass} value={form.audience_id} onChange={set("audience_id")}>
+              <option value="">— Select a saved audience —</option>
+              {audiences.map((a) => <option key={a.id} value={a.id}>{a.name} ({a.count})</option>)}
+            </select>
+          </label>
+        )}
         <label className="text-sm text-slate-600 md:col-span-2">Subject
           <input className={fieldClass} value={form.subject} onChange={set("subject")} />
         </label>
@@ -60,6 +100,25 @@ function Form({ audiences, initial, onSaved, onCancel }) {
           <span className="mt-1 block text-xs text-slate-400">Use {"{{name}}"} to greet each person by name. Email only, for now.</span>
         </label>
       </div>
+
+      <div className="mt-4 rounded-lg border border-dashed border-slate-300 p-3">
+        <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">Hero banner image (optional)</div>
+        <p className="mb-2 text-xs text-slate-500">
+          Recommended size: <b>{guide.data?.recommended_size || "1200 x 600 px"}</b>. Format: <b>{(guide.data?.formats || ["JPG", "PNG"]).join(" or ")}</b>, under <b>{guide.data?.max_size_mb ?? 3}MB</b>.
+          {" "}Shown at the top of the email, above your message.
+        </p>
+        <div className="flex items-center gap-2">
+          <input type="file" accept="image/jpeg,image/png" onChange={pickImage} disabled={uploading} className="text-sm" />
+          {uploading && <span className="text-xs text-slate-500">Uploading...</span>}
+          {form.image_path && <button type="button" className={btn.plain} onClick={() => setForm((f) => ({ ...f, image_path: null }))}>Remove image</button>}
+        </div>
+      </div>
+
+      <div className="mt-4">
+        <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">Email preview</div>
+        <EmailPreview form={form} />
+      </div>
+
       <div className="mt-3 flex gap-2">
         <button type="button" className={btn.primary} disabled={busy} onClick={save}>{form.id ? "Save draft" : "Create draft"}</button>
         <button type="button" className={btn.plain} onClick={onCancel}>Cancel</button>
@@ -139,6 +198,7 @@ function CampaignCard({ c, i, canApprove, onChanged }) {
 
       {open && (
         <div className="s-pop mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
+          {c.image_path && <img src={c.image_path} alt="" className="mb-2 w-full rounded border border-slate-200" />}
           <pre className="whitespace-pre-wrap text-xs text-slate-700">{c.body}</pre>
           {detail.data?.logs && (
             <div className="mt-3 max-h-56 overflow-y-auto">
@@ -199,6 +259,8 @@ export default function MarketingCampaigns() {
   const [editing, setEditing] = useState(null);
 
   const canApprove = has("approve");
+  const canAll = has("aud_all");
+  const canCreate = canAll || !!(audiences.data || []).length;
   const campaigns = list.data || [];
 
   const stats = useMemo(() => {
@@ -248,16 +310,16 @@ export default function MarketingCampaigns() {
       {list.error && <Notice tone="bad">{list.error}</Notice>}
 
       {editing ? (
-        <Form audiences={audiences.data || []} initial={editing} onSaved={() => { setEditing(null); list.reload(); }} onCancel={() => setEditing(null)} />
+        <Form audiences={audiences.data || []} canAll={canAll} initial={editing} onSaved={() => { setEditing(null); list.reload(); }} onCancel={() => setEditing(null)} />
       ) : (
         <div className="mb-4">
-          <button type="button" className={btn.primary} onClick={() => setEditing({ ...EMPTY })} disabled={!(audiences.data || []).length}>+ New campaign</button>
-          {!(audiences.data || []).length && !audiences.loading && <p className="mt-1 text-xs text-slate-500">Save an audience first, under Audiences.</p>}
+          <button type="button" className={btn.primary} onClick={() => setEditing({ ...EMPTY })} disabled={!canCreate}>+ New campaign</button>
+          {!canCreate && <p className="mt-1 text-xs text-slate-500">Save an audience first, under Audiences.</p>}
         </div>
       )}
 
       {!editing && !list.loading && campaigns.length === 0 ? (
-        <EmptyState onNew={() => setEditing({ ...EMPTY })} canCreate={!!(audiences.data || []).length} />
+        <EmptyState onNew={() => setEditing({ ...EMPTY })} canCreate={canCreate} />
       ) : (
         <div className="grid gap-3">
           {campaigns.map((c, i) => <CampaignCard key={c.id} c={c} i={i} canApprove={canApprove} onChanged={list.reload} />)}

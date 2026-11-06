@@ -155,7 +155,9 @@ class MkCampaign(MarketingBase, Stamped):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(120), nullable=False)
-    audience_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    audience_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)  # null when send_to_all
+    send_to_all: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)  # every CRM contact with an email, not one saved audience
+    image_path: Mapped[str | None] = mapped_column(String(500), nullable=True)  # an uploaded hero banner shown above the message
     channel: Mapped[str] = mapped_column(String(20), nullable=False, default="email")
     subject: Mapped[str] = mapped_column(String(200), nullable=False, default="")
     body: Mapped[str] = mapped_column(Text, nullable=False, default="")  # plain text/simple HTML; {{name}} substituted per contact

@@ -752,19 +752,72 @@ def delete_audience(audience_id: int, ctx: Ctx = Depends(get_ctx), mdb: Session 
 # ---------------- campaigns ----------------
 class CampaignIn(BaseModel):
     name: str
-    audience_id: int
+    audience_id: Optional[int] = None
+    send_to_all: bool = False
+    image_path: Optional[str] = None
     subject: str
     body: str
 
 
 def _campaign_out(c: MkCampaign, audience_name: str | None) -> dict:
     return {
-        "id": c.id, "name": c.name, "audience_id": c.audience_id, "audience_name": audience_name,
+        "id": c.id, "name": c.name, "audience_id": c.audience_id, "audience_name": "Everyone" if c.send_to_all else audience_name,
+        "send_to_all": c.send_to_all, "image_path": c.image_path,
         "channel": c.channel, "subject": c.subject, "body": c.body, "status": c.status, "reject_reason": c.reject_reason,
         "total_count": c.total_count, "sent_count": c.sent_count, "skipped_count": c.skipped_count,
         "created_at": c.created_at.isoformat() if c.created_at else None,
         "sent_at": c.sent_at.isoformat() if c.sent_at else None,
     }
+
+
+CAMPAIGN_IMAGE_GUIDE = {
+    "recommended_size": "1200 x 600 px (roughly 2:1, a big hero banner for the top of the email)",
+    "formats": ["JPG", "PNG"],
+    "max_size_mb": 3,
+    "note": "Keep important text inside the middle 80% -- some mail apps crop the edges.",
+}
+
+
+@router.get("/campaigns/image-guide")
+def campaign_image_guide(_: Ctx = Depends(get_ctx)):
+    return CAMPAIGN_IMAGE_GUIDE
+
+
+@router.post("/campaigns/upload-image")
+async def upload_campaign_image(file: UploadFile = File(...), ctx: Ctx = Depends(require("draft"))):
+    from app.services.file_service import save_upload, to_public_upload_path
+
+    path = await save_upload(file, module="marketing_campaigns", allowed_ext={".jpg", ".jpeg", ".png"}, allowed_mime={"image/jpeg", "image/png", "image/jpg"}, max_bytes=3 * 1024 * 1024)
+    return {"image_path": to_public_upload_path(path)}
+
+
+def _rows_for_campaign(main_db: Session, sales_db: Session | None, ctx: Ctx, c: MkCampaign, audience: MkAudience | None) -> list[tuple[str, str, str | None]]:
+    if c.send_to_all:
+        rows = _prospect_rows(sales_db, ctx, {})
+        if ctx.has("aud_all"):
+            rows = rows + _customer_rows(main_db, {})
+        return rows
+    a = {"source": audience.source, "market": audience.market, "stage": audience.stage, "state": audience.state, "stale_days": audience.stale_days, "heat": audience.heat, "priority": audience.priority}
+    return _audience_rows(main_db, sales_db, ctx, a)
+
+
+def _count_for_campaign(main_db: Session, sales_db: Session | None, mdb: Session, ctx: Ctx, c: MkCampaign, audience: MkAudience | None) -> int:
+    if c.send_to_all:
+        rows = _prospect_rows(sales_db, ctx, {})
+        if ctx.has("aud_all"):
+            rows = rows + _customer_rows(main_db, {})
+        stopped = _stopped_keys(mdb, "email")
+        seen: set[str] = set()
+        for _name, phone, email in rows:
+            key = normalize_contact(email) or normalize_contact(phone)
+            if not key or key in seen:
+                continue
+            if normalize_contact(email) in stopped or normalize_contact(phone) in stopped:
+                continue
+            seen.add(key)
+        return len(seen)
+    a = {"source": audience.source, "market": audience.market, "stage": audience.stage, "state": audience.state, "stale_days": audience.stale_days, "heat": audience.heat, "priority": audience.priority}
+    return _audience_count(main_db, sales_db, mdb, ctx, a)
 
 
 def _audience_names(mdb: Session, ids: set[int]) -> dict[int, str]:
@@ -776,7 +829,7 @@ def _audience_names(mdb: Session, ids: set[int]) -> dict[int, str]:
 @router.get("/campaigns")
 def list_campaigns(ctx: Ctx = Depends(require("draft", "submit", "approve")), mdb: Session = Depends(get_marketing_db)):
     rows = mdb.scalars(select(MkCampaign).order_by(MkCampaign.id.desc())).all()
-    names = _audience_names(mdb, {r.audience_id for r in rows})
+    names = _audience_names(mdb, {r.audience_id for r in rows if r.audience_id})
     return [_campaign_out(r, names.get(r.audience_id)) for r in rows]
 
 
@@ -785,7 +838,7 @@ def get_campaign(campaign_id: int, ctx: Ctx = Depends(require("draft", "submit",
     c = mdb.get(MkCampaign, campaign_id)
     if c is None:
         raise HTTPException(404, "Campaign not found")
-    names = _audience_names(mdb, {c.audience_id})
+    names = _audience_names(mdb, {c.audience_id} if c.audience_id else set())
     out = _campaign_out(c, names.get(c.audience_id))
     logs = mdb.scalars(select(MkCampaignLog).where(MkCampaignLog.campaign_id == c.id).order_by(MkCampaignLog.id.desc()).limit(500)).all()
     out["logs"] = [
@@ -795,14 +848,29 @@ def get_campaign(campaign_id: int, ctx: Ctx = Depends(require("draft", "submit",
     return out
 
 
+def _validate_campaign_target(body: CampaignIn, ctx: Ctx, mdb: Session) -> MkAudience | None:
+    if body.send_to_all:
+        if not ctx.has("aud_all"):
+            raise HTTPException(403, "Sending to everyone needs the 'all CRM data' tick")
+        return None
+    if not body.audience_id:
+        raise HTTPException(400, "Pick an audience, or switch to Everyone")
+    audience = mdb.get(MkAudience, body.audience_id)
+    if audience is None:
+        raise HTTPException(404, "Audience not found")
+    return audience
+
+
 @router.post("/campaigns")
 def create_campaign(body: CampaignIn, ctx: Ctx = Depends(require("draft")), mdb: Session = Depends(get_marketing_db), main_db: Session = Depends(get_db)):
-    if mdb.get(MkAudience, body.audience_id) is None:
-        raise HTTPException(404, "Audience not found")
-    c = MkCampaign(name=body.name, audience_id=body.audience_id, subject=body.subject, body=body.body, status="draft", created_by=ctx.user.id)
+    audience = _validate_campaign_target(body, ctx, mdb)
+    c = MkCampaign(
+        name=body.name, audience_id=audience.id if audience else None, send_to_all=body.send_to_all, image_path=body.image_path,
+        subject=body.subject, body=body.body, status="draft", created_by=ctx.user.id,
+    )
     mdb.add(c)
     commit(main_db, mdb)
-    return _campaign_out(c, mdb.get(MkAudience, c.audience_id).name)
+    return _campaign_out(c, audience.name if audience else None)
 
 
 @router.put("/campaigns/{campaign_id}")
@@ -812,11 +880,12 @@ def update_campaign(campaign_id: int, body: CampaignIn, ctx: Ctx = Depends(requi
         raise HTTPException(404, "Campaign not found")
     if c.status != "draft":
         raise HTTPException(409, "Only a draft campaign can be edited")
-    if mdb.get(MkAudience, body.audience_id) is None:
-        raise HTTPException(404, "Audience not found")
-    c.name, c.audience_id, c.subject, c.body = body.name, body.audience_id, body.subject, body.body
+    audience = _validate_campaign_target(body, ctx, mdb)
+    c.name, c.audience_id, c.send_to_all, c.image_path, c.subject, c.body = (
+        body.name, audience.id if audience else None, body.send_to_all, body.image_path, body.subject, body.body,
+    )
     commit(main_db, mdb)
-    return _campaign_out(c, mdb.get(MkAudience, c.audience_id).name)
+    return _campaign_out(c, audience.name if audience else None)
 
 
 @router.delete("/campaigns/{campaign_id}")
@@ -831,15 +900,23 @@ def delete_campaign(campaign_id: int, ctx: Ctx = Depends(require("draft")), mdb:
     return {"deleted": True}
 
 
+def _campaign_email_html(c: MkCampaign, name: str) -> str:
+    body_html = (c.body or "").replace("{{name}}", name or "there").replace("\n", "<br/>")
+    if not c.image_path:
+        return f"<div style='font-family:Arial,sans-serif;font-size:14px;'>{body_html}</div>"
+    from app.config import settings
+
+    base = (settings.app_public_url or "").rstrip("/")
+    src = f"{base}{c.image_path}" if base else c.image_path
+    img = f"<img src='{src}' alt='{c.subject}' width='600' style='display:block; width:100%; max-width:600px; height:auto; border:0;' />"
+    return f"<div style='font-family:Arial,sans-serif;'>{img}<div style='padding:16px 4px; font-size:14px; color:#1c2230;'>{body_html}</div></div>"
+
+
 def _send_campaign(mdb: Session, main_db: Session, sales_db: Session, ctx: Ctx, c: MkCampaign) -> None:
     from app.services.email_service import send_email
 
-    audience = mdb.get(MkAudience, c.audience_id)
-    a = {
-        "source": audience.source, "market": audience.market, "stage": audience.stage, "state": audience.state,
-        "stale_days": audience.stale_days, "heat": audience.heat, "priority": audience.priority,
-    }
-    rows = _audience_rows(main_db, sales_db, ctx, a)
+    audience = mdb.get(MkAudience, c.audience_id) if c.audience_id else None
+    rows = _rows_for_campaign(main_db, sales_db, ctx, c, audience)
     stopped = _stopped_keys(mdb, "email")
     pause_days = int(get_setting(mdb, "pause_days") or 4)
     cooldown_cutoff = datetime.now(timezone.utc) - timedelta(days=pause_days)
@@ -870,8 +947,7 @@ def _send_campaign(mdb: Session, main_db: Session, sales_db: Session, ctx: Ctx, 
             mdb.add(MkCampaignLog(campaign_id=c.id, contact_key=key, contact_name=name or "", contact_address=email, result="cooldown"))
             skipped += 1
             continue
-        body_html = (c.body or "").replace("{{name}}", name or "there").replace("\n", "<br/>")
-        ok = send_email(email, c.subject, f"<div style='font-family:Arial,sans-serif;font-size:14px;'>{body_html}</div>", template="marketing_campaign")
+        ok = send_email(email, c.subject, _campaign_email_html(c, name), template="marketing_campaign")
         mdb.add(MkCampaignLog(campaign_id=c.id, contact_key=key, contact_name=name or "", contact_address=email, result="sent" if ok else "failed"))
         if ok:
             sent += 1
@@ -898,19 +974,18 @@ def submit_campaign(campaign_id: int, ctx: Ctx = Depends(require("submit")), mdb
         raise HTTPException(409, "Only a draft or rejected campaign can be submitted")
     if not (c.subject or "").strip() or not (c.body or "").strip():
         raise HTTPException(400, "Write a subject and a message before sending")
-    audience = mdb.get(MkAudience, c.audience_id)
-    a = {"source": audience.source, "market": audience.market, "stage": audience.stage, "state": audience.state, "stale_days": audience.stale_days, "heat": audience.heat, "priority": audience.priority}
-    count = _audience_count(main_db, sales_db, mdb, ctx, a)
+    audience = mdb.get(MkAudience, c.audience_id) if c.audience_id else None
+    count = _count_for_campaign(main_db, sales_db, mdb, ctx, c, audience)
     limit = int(get_setting(mdb, "approval_min_audience") or 1000)
     if count <= limit and ctx.has("release_small"):
         c.approved_by = ctx.user.id
         c.approved_at = datetime.now(timezone.utc)
         _send_campaign(mdb, main_db, sales_db, ctx, c)
         commit(main_db, mdb)
-        return _campaign_out(c, audience.name)
+        return _campaign_out(c, audience.name if audience else None)
     c.status = "wait"
     commit(main_db, mdb)
-    return _campaign_out(c, audience.name)
+    return _campaign_out(c, audience.name if audience else None)
 
 
 @router.post("/campaigns/{campaign_id}/approve")
@@ -924,7 +999,7 @@ def approve_campaign(campaign_id: int, ctx: Ctx = Depends(require("approve")), m
     c.approved_at = datetime.now(timezone.utc)
     _send_campaign(mdb, main_db, sales_db, ctx, c)
     commit(main_db, mdb)
-    audience = mdb.get(MkAudience, c.audience_id)
+    audience = mdb.get(MkAudience, c.audience_id) if c.audience_id else None
     return _campaign_out(c, audience.name if audience else None)
 
 
