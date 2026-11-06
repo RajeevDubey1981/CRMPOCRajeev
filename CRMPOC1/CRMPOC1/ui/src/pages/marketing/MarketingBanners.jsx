@@ -7,6 +7,10 @@ const THEMES = {
   green: { label: "Diwali green", bg: "linear-gradient(135deg,#0b3d2e,#1c6b4f)", accent: "#f4c542" },
   violet: { label: "Diwali violet", bg: "linear-gradient(135deg,#2b1a4a,#4a2f7a)", accent: "#f4c542" },
   navy: { label: "Navy & gold", bg: "linear-gradient(135deg,#122050,#1d3a7a)", accent: "#f4c542" },
+  maroon: { label: "Maroon & gold", bg: "linear-gradient(135deg,#450a0a,#7f1d1d)", accent: "#f4c542" },
+  red: { label: "Classic Diwali red", bg: "linear-gradient(135deg,#5c0a0a,#9c1c1c)", accent: "#f4c542" },
+  teal: { label: "Teal & gold", bg: "linear-gradient(135deg,#063a3a,#0f766e)", accent: "#f4c542" },
+  charcoal: { label: "Charcoal & gold", bg: "linear-gradient(135deg,#18181b,#3f3f46)", accent: "#f4c542" },
 };
 
 const EMPTY = {

@@ -157,6 +157,10 @@ _BANNER_THEMES = {
     "green": {"bg": "#0b3d2e", "bg2": "#1c6b4f", "accent": "#f4c542", "text": "#ffffff"},
     "violet": {"bg": "#2b1a4a", "bg2": "#4a2f7a", "accent": "#f4c542", "text": "#ffffff"},
     "navy": {"bg": "#122050", "bg2": "#1d3a7a", "accent": "#f4c542", "text": "#ffffff"},
+    "maroon": {"bg": "#450a0a", "bg2": "#7f1d1d", "accent": "#f4c542", "text": "#ffffff"},
+    "red": {"bg": "#5c0a0a", "bg2": "#9c1c1c", "accent": "#f4c542", "text": "#ffffff"},
+    "teal": {"bg": "#063a3a", "bg2": "#0f766e", "accent": "#f4c542", "text": "#ffffff"},
+    "charcoal": {"bg": "#18181b", "bg2": "#3f3f46", "accent": "#f4c542", "text": "#ffffff"},
 }
 
 
