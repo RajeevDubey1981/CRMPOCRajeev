@@ -1,7 +1,7 @@
 """marketing campaigns: an offer product card (image, name, price, link) shown under the hero banner
 
 Revision ID: 0010_marketing_campaign_offer
-Revises: 0009_marketing_campaign_all_and_image
+Revises: 0009_campaign_all_and_image
 """
 from typing import Sequence, Union
 
@@ -9,7 +9,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "0010_marketing_campaign_offer"
-down_revision: Union[str, Sequence[str], None] = "0009_marketing_campaign_all_and_image"
+down_revision: Union[str, Sequence[str], None] = "0009_campaign_all_and_image"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

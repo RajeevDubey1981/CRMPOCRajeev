@@ -1,15 +1,15 @@
 """marketing campaigns: send to everyone (not just one audience), and an uploaded hero image
 
-Revision ID: 0009_marketing_campaign_all_and_image
-Revises: 0008_marketing_banner_audience_target
+Revision ID: 0009_campaign_all_and_image
+Revises: 0008_banner_audience_target
 """
 from typing import Sequence, Union
 
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "0009_marketing_campaign_all_and_image"
-down_revision: Union[str, Sequence[str], None] = "0008_marketing_banner_audience_target"
+revision: str = "0009_campaign_all_and_image"
+down_revision: Union[str, Sequence[str], None] = "0008_banner_audience_target"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
