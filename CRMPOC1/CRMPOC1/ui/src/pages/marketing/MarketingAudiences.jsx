@@ -33,11 +33,56 @@ function toParams(f) {
   return p;
 }
 
+function MembersModal({ title, params, onClose }) {
+  const [state, setState] = useState({ loading: true, error: "", data: null });
+  useEffect(() => {
+    let alive = true;
+    marketingApi.audienceMembers(params)
+      .then((r) => { if (alive) setState({ loading: false, error: "", data: r }); })
+      .catch((e) => { if (alive) setState({ loading: false, error: errText(e), data: null }); });
+    return () => { alive = false; };
+  }, [JSON.stringify(params)]);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4" onClick={onClose}>
+      <div className="s-pop max-h-[80vh] w-full max-w-lg overflow-hidden rounded-xl bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
+          <h3 className="text-sm font-semibold text-slate-800">{title}</h3>
+          <button type="button" onClick={onClose} className="text-slate-400 hover:text-slate-600">✕</button>
+        </div>
+        <div className="max-h-[65vh] overflow-y-auto">
+          {state.loading && <p className="px-4 py-6 text-center text-sm text-slate-500">Loading...</p>}
+          {state.error && <div className="px-4 py-3"><Notice tone="bad">{state.error}</Notice></div>}
+          {state.data && (
+            <table className="w-full text-sm">
+              <thead className="sticky top-0 bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                <tr><th className="px-4 py-2">Name</th><th className="px-4 py-2">Phone</th><th className="px-4 py-2">Email</th></tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {state.data.members.map((m, i) => (
+                  <tr key={i}>
+                    <td className="px-4 py-2">{m.name || "—"}{m.stopped && <span className="ml-1.5 rounded-full bg-rose-100 px-1.5 py-0.5 text-[10px] font-semibold text-rose-700">STOP</span>}</td>
+                    <td className="px-4 py-2 text-slate-600">{m.phone || "—"}</td>
+                    <td className="px-4 py-2 text-slate-600">{m.email || "—"}</td>
+                  </tr>
+                ))}
+                {state.data.members.length === 0 && <tr><td colSpan={3} className="px-4 py-6 text-center text-slate-400">Nobody matches yet.</td></tr>}
+              </tbody>
+            </table>
+          )}
+        </div>
+        {state.data?.truncated && <div className="border-t border-slate-200 px-4 py-2 text-xs text-slate-400">Showing the first {state.data.members.length} of {state.data.total}.</div>}
+      </div>
+    </div>
+  );
+}
+
 function Form({ initial, canAll, onSaved, onCancel }) {
   const [form, setForm] = useState(initial);
   const [count, setCount] = useState(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
+  const [showMembers, setShowMembers] = useState(false);
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
 
   useEffect(() => {
@@ -107,13 +152,17 @@ function Form({ initial, canAll, onSaved, onCancel }) {
         )}
       </div>
       <div className="mt-3 flex flex-wrap items-center gap-2">
-        <span className="rounded-full bg-violet-100 px-3 py-1 text-sm font-semibold text-violet-700">{count === null ? "..." : count} people match</span>
+        <button type="button" onClick={() => count > 0 && setShowMembers(true)}
+          className={`rounded-full bg-violet-100 px-3 py-1 text-sm font-semibold text-violet-700 ${count > 0 ? "hover:bg-violet-200" : "cursor-default"}`}>
+          {count === null ? "..." : count} people match{count > 0 ? " · view list" : ""}
+        </button>
         <span className="rounded-full bg-amber-100 px-3 py-1 text-xs text-amber-800">{suggestedTone(form.market)}</span>
       </div>
       <div className="mt-3 flex gap-2">
         <button type="button" className={btn.primary} disabled={busy} onClick={save}>{form.id ? "Save changes" : "Save audience"}</button>
         <button type="button" className={btn.plain} onClick={onCancel}>Cancel</button>
       </div>
+      {showMembers && <MembersModal title={`${form.name || "This audience"} — matching people`} params={toParams(form)} onClose={() => setShowMembers(false)} />}
     </div>
   );
 }
@@ -124,6 +173,7 @@ export default function MarketingAudiences() {
   const list = useAsync(() => marketingApi.audiences(), []);
   const [editing, setEditing] = useState(null);
   const [msg, setMsg] = useState("");
+  const [viewing, setViewing] = useState(null);
 
   async function remove(a) {
     if (!window.confirm(`Delete audience "${a.name}"?`)) return;
@@ -148,7 +198,10 @@ export default function MarketingAudiences() {
           <div key={a.id} style={{ "--i": i }} className="s-rise rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
             <div className="flex items-center justify-between gap-2">
               <span className="text-sm font-semibold text-slate-800">{a.name}</span>
-              <span className="rounded-full bg-violet-100 px-2.5 py-0.5 text-xs font-semibold text-violet-700">{a.count}</span>
+              <button type="button" disabled={!a.count} onClick={() => setViewing(a)}
+                className={`rounded-full bg-violet-100 px-2.5 py-0.5 text-xs font-semibold text-violet-700 ${a.count ? "hover:bg-violet-200" : "cursor-default"}`}>
+                {a.count}
+              </button>
             </div>
             <div className="mt-1 text-xs text-slate-500">{a.source === "customers" ? "Customers" : "Prospects"} · {MARKETS.find((m) => m[0] === a.market)?.[1] || "Any market"}{a.stage ? ` · ${STAGES.find((s) => s[0] === a.stage)?.[1] || a.stage}` : ""}</div>
             <div className="mt-2 flex gap-2">
@@ -159,6 +212,7 @@ export default function MarketingAudiences() {
         ))}
         {!list.loading && (list.data || []).length === 0 && <p className="text-sm text-slate-500">No saved audiences yet.</p>}
       </div>
+      {viewing && <MembersModal title={`${viewing.name} — matching people`} params={toParams(viewing)} onClose={() => setViewing(null)} />}
     </div>
   );
 }

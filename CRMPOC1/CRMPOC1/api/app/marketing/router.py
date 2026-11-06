@@ -710,6 +710,34 @@ def count_audience(
     return {"count": _audience_count(main_db, sales_db, mdb, ctx, a)}
 
 
+@router.get("/audiences/members")
+def audience_members(
+    source: str = Query("prospects"), market: Optional[str] = None, stage: Optional[str] = None, state: Optional[str] = None,
+    stale_days: Optional[int] = None, heat: Optional[str] = None, priority: Optional[str] = None,
+    limit: int = Query(500, ge=1, le=2000),
+    ctx: Ctx = Depends(get_ctx), mdb: Session = Depends(get_marketing_db), main_db: Session = Depends(get_db), sales_db: Session = Depends(get_sales_db),
+):
+    if not ctx.any("aud_own", "aud_all"):
+        raise HTTPException(403, "You do not have this tick in Marketing")
+    if source == "customers" and not ctx.has("aud_all"):
+        raise HTTPException(403, "Building audiences from existing customers needs the 'all CRM data' tick")
+    a = {"source": source, "market": market, "stage": stage, "state": state, "stale_days": stale_days, "heat": heat, "priority": priority}
+    rows = _audience_rows(main_db, sales_db, ctx, a)
+    stopped = _stopped_keys(mdb, "email")
+    seen: set[str] = set()
+    out = []
+    for name, phone, email in rows:
+        key = normalize_contact(email) or normalize_contact(phone)
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        out.append({
+            "name": name, "phone": phone, "email": email,
+            "stopped": normalize_contact(email) in stopped or normalize_contact(phone) in stopped,
+        })
+    return {"total": len(out), "truncated": len(out) > limit, "members": out[:limit]}
+
+
 @router.post("/audiences")
 def create_audience(body: AudienceIn, ctx: Ctx = Depends(get_ctx), mdb: Session = Depends(get_marketing_db), main_db: Session = Depends(get_db), sales_db: Session = Depends(get_sales_db)):
     if not ctx.any("aud_own", "aud_all"):

@@ -35,6 +35,7 @@ export const marketingApi = {
   removeConsent: (id) => api.delete(`/api/marketing/consent/${id}`).then((r) => r.data),
   audiences: () => get("/api/marketing/audiences"),
   audienceCount: (params) => get("/api/marketing/audiences/count", params),
+  audienceMembers: (params) => get("/api/marketing/audiences/members", params),
   createAudience: (body) => api.post("/api/marketing/audiences", body).then((r) => r.data),
   updateAudience: (id, body) => put(`/api/marketing/audiences/${id}`, body),
   deleteAudience: (id) => api.delete(`/api/marketing/audiences/${id}`).then((r) => r.data),
