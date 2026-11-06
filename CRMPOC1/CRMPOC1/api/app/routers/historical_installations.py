@@ -2,12 +2,15 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 from datetime import date, datetime, time, timezone
 from decimal import Decimal, ROUND_DOWN
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 from sqlalchemy import func, or_, select
+
+logger = logging.getLogger(__name__)
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -230,9 +233,8 @@ async def complete(
         created_count = completed_count = skipped_count = 0
         for item in serial_items:
             linked = by_item.get(item.id, [])
-            created = False
             if not linked:
-                linked = [InstallationRequest(
+                new_request = InstallationRequest(
                     source="historical", order_id=order.id, order_item_id=item.id,
                     customer_name=order.customer_name.strip(), contact_number=order.customer_contact.strip(),
                     customer_email=order.customer_email, address=order.customer_address,
@@ -240,23 +242,10 @@ async def complete(
                     serial_no=_serial(item.serial_no), serial_no_2=_serial(item.serial_no_2),
                     request_date=event_at, created_by=user.id, status="Completed",
                     installation_date=event_at, work_report=reason,
-                )]
-                db.add(linked[0])
-                db.flush()
-                created_count += 1
-                created = True
-                created_requests.append(linked[0])
-            if created:
-                affected.append(linked[0])
-                metadata = {"historical": True}
-                log = InstallationStatusLog(
-                    installation_request_id=linked[0].id, action="Historical request created",
-                    old_status=None, new_status="Completed", performed_by=user.id,
-                    performed_role=user.role, remarks=reason,
-                    metadata_json=json.dumps(metadata),
                 )
-                db.add(log)
-                status_logs.append((log, metadata))
+                db.add(new_request)
+                created_count += 1
+                created_requests.append(new_request)
             else:
                 for inst in linked:
                     if inst.status == "Completed":
@@ -283,6 +272,20 @@ async def complete(
                     completed_count += 1
                     affected.append(inst)
             item.installation_status = "Completed"
+
+        if created_requests:
+            db.flush()  # one round trip to assign ids to every newly created request, instead of one per item
+            for new_request in created_requests:
+                affected.append(new_request)
+                metadata = {"historical": True}
+                log = InstallationStatusLog(
+                    installation_request_id=new_request.id, action="Historical request created",
+                    old_status=None, new_status="Completed", performed_by=user.id,
+                    performed_role=user.role, remarks=reason,
+                    metadata_json=json.dumps(metadata),
+                )
+                db.add(log)
+                status_logs.append((log, metadata))
 
         order_fully_done = all(row.installation_status == "Completed" for row in serial_bearing_items)
         if order_fully_done:
@@ -341,8 +344,14 @@ async def complete(
                 "created_count": created_count, "completed_count": completed_count,
                 "skipped_count": skipped_count, "incomplete_count": len(items) - len(serial_bearing_items), "order_completed": order_fully_done,
                 "payment_transaction_id": transaction.id if transaction else None, "idempotent": False}
+    except HTTPException:
+        db.rollback()
+        if saved_file and saved_file.exists():
+            saved_file.unlink()
+        raise
     except Exception:
         db.rollback()
         if saved_file and saved_file.exists():
             saved_file.unlink()
+        logger.exception("Historical installation completion failed for order_id=%s, operation_key=%s", order_id, operation_key)
         raise
