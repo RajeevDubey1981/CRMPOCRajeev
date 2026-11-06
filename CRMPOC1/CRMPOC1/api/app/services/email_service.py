@@ -201,10 +201,61 @@ def _render_banner(b) -> str:
     )
 
 
-def _active_banner_html() -> str:
+def _email_matches_audience(audience, to_email: str) -> bool:
+    """Whether to_email is currently a member of a saved Marketing audience -- used to target a banner."""
+    email = (to_email or "").strip().lower()
+    if not email:
+        return False
+    try:
+        if audience.source == "customers":
+            from sqlalchemy import func
+
+            from app.database import SessionLocal
+            from app.models.order import Order
+
+            db = SessionLocal()
+            try:
+                q = db.query(Order.id).filter(Order.customer_email.isnot(None), func.lower(Order.customer_email) == email, Order.deleted_at.is_(None))
+                if audience.market:
+                    q = q.filter(Order.market == audience.market)
+                if audience.state:
+                    q = q.filter(Order.customer_state == audience.state)
+                return q.first() is not None
+            finally:
+                db.close()
+        else:
+            from sqlalchemy import func
+
+            from app.sales.db import new_sales_session, sales_enabled
+            from app.sales.models import SalesLead
+
+            if not sales_enabled():
+                return False
+            sdb = new_sales_session()
+            try:
+                q = sdb.query(SalesLead.id).filter(SalesLead.email.isnot(None), func.lower(SalesLead.email) == email)
+                if audience.market:
+                    q = q.filter(SalesLead.lead_type == audience.market)
+                if audience.stage:
+                    q = q.filter(SalesLead.status == audience.stage)
+                if audience.state:
+                    q = q.filter(SalesLead.state == audience.state)
+                if audience.heat:
+                    q = q.filter(SalesLead.heat == audience.heat)
+                if audience.priority:
+                    q = q.filter(SalesLead.priority == audience.priority)
+                return q.first() is not None
+            finally:
+                sdb.close()
+    except Exception:
+        logger.exception("could not check audience membership for banner targeting")
+        return False
+
+
+def _active_banner_html(to_email: str | None = None) -> str:
     try:
         from app.marketing.db import marketing_enabled, new_marketing_session
-        from app.marketing.models import MkBanner
+        from app.marketing.models import MkAudience, MkBanner
     except Exception:
         return ""
     if not marketing_enabled():
@@ -214,29 +265,28 @@ def _active_banner_html() -> str:
     today = datetime.now(timezone.utc).date()
     mdb = new_marketing_session()
     try:
-        banner = (
+        banners = (
             mdb.query(MkBanner)
-            .filter(
-                MkBanner.is_enabled.is_(True),
-                MkBanner.target_type == "all",
-                MkBanner.start_date <= today,
-                MkBanner.end_date >= today,
-            )
+            .filter(MkBanner.is_enabled.is_(True), MkBanner.start_date <= today, MkBanner.end_date >= today)
             .order_by(MkBanner.id.desc())
-            .first()
+            .all()
         )
+        fallback = None
+        for b in banners:
+            if b.target_type == "audience" and b.target_audience_id:
+                audience = mdb.get(MkAudience, b.target_audience_id)
+                if audience and _email_matches_audience(audience, to_email or ""):
+                    return _render_banner(b)
+            elif b.target_type == "all" and fallback is None:
+                fallback = b
+        if fallback is None:
+            return ""
+        return _render_banner(fallback)
     except Exception:
         logger.exception("could not read the active festive banner")
         return ""
     finally:
         mdb.close()
-    if banner is None:
-        return ""
-    try:
-        return _render_banner(banner)
-    except Exception:
-        logger.exception("could not render the festive banner")
-        return ""
 
 
 def _insert_banner(html_body: str, banner_html: str) -> str:
@@ -257,7 +307,7 @@ def send_template_email(
 ) -> bool:
     html_body = _substitute_template(_load_template(template), context)
     if include_banner and not any(s in template.lower() for s in _BANNER_SKIP_SUBSTRINGS):
-        banner_html = _active_banner_html()
+        banner_html = _active_banner_html(to)
         if banner_html:
             html_body = _insert_banner(html_body, banner_html)
     resolved_subject = subject or context.get("subject") or "Notification from Indcool"

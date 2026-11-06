@@ -15,7 +15,8 @@ const THEMES = {
 
 const EMPTY = {
   name: "", theme: "green", greeting: "Happy Diwali!", headline: "Heavy Duty Dubai Series — festive price, built for extreme heat.",
-  pill1: "HEAVY DUTY", pill2: "Dubai Series", cta_text: "Shop Now", cta_link: "", image_path: null, start_date: "", end_date: "", target_type: "all", is_enabled: true,
+  pill1: "HEAVY DUTY", pill2: "Dubai Series", cta_text: "Shop Now", cta_link: "", image_path: null, start_date: "", end_date: "",
+  target_type: "all", target_audience_id: "", is_enabled: true,
 };
 
 function BannerPreview({ b }) {
@@ -46,6 +47,7 @@ function Form({ initial, onSaved, onCancel }) {
   const [msg, setMsg] = useState("");
   const [uploading, setUploading] = useState(false);
   const guide = useAsync(() => marketingApi.bannerImageGuide(), []);
+  const audiences = useAsync(() => marketingApi.audiences().catch(() => []), []);
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.type === "checkbox" ? e.target.checked : e.target.value }));
 
   async function pickImage(e) {
@@ -63,10 +65,15 @@ function Form({ initial, onSaved, onCancel }) {
       setMsg("Name, headline and both dates are required.");
       return;
     }
+    if (form.target_type === "audience" && !form.target_audience_id) {
+      setMsg("Pick which audience this banner targets, or switch target back to Everyone.");
+      return;
+    }
     setBusy(true); setMsg("");
     try {
-      if (form.id) await marketingApi.updateBanner(form.id, form);
-      else await marketingApi.createBanner(form);
+      const body = { ...form, target_audience_id: form.target_type === "audience" ? Number(form.target_audience_id) : null };
+      if (form.id) await marketingApi.updateBanner(form.id, body);
+      else await marketingApi.createBanner(body);
       onSaved();
     } catch (e) { setMsg(errText(e)); } finally { setBusy(false); }
   }
@@ -88,10 +95,24 @@ function Form({ initial, onSaved, onCancel }) {
           <input className={fieldClass} value={form.greeting} onChange={set("greeting")} placeholder="Happy Diwali!" />
         </label>
         <label className="text-sm text-slate-600">Target
-          <select className={fieldClass} value={form.target_type} onChange={set("target_type")}>
+          <select
+            className={fieldClass}
+            value={form.target_type}
+            onChange={(e) => setForm((f) => ({ ...f, target_type: e.target.value, target_audience_id: e.target.value === "all" ? "" : f.target_audience_id }))}
+          >
             <option value="all">Everyone (all outgoing mail)</option>
+            <option value="audience">A saved audience only</option>
           </select>
         </label>
+        {form.target_type === "audience" && (
+          <label className="text-sm text-slate-600">Which audience
+            <select className={fieldClass} value={form.target_audience_id || ""} onChange={set("target_audience_id")}>
+              <option value="">— Select a saved audience —</option>
+              {(audiences.data || []).map((a) => <option key={a.id} value={a.id}>{a.name} ({a.count})</option>)}
+            </select>
+            <span className="mt-1 block text-xs text-slate-400">Shown only on mail to someone who currently matches that audience's filters.</span>
+          </label>
+        )}
         <label className="text-sm text-slate-600 md:col-span-2">Headline / offer line
           <input className={fieldClass} value={form.headline} onChange={set("headline")} />
         </label>
@@ -177,6 +198,9 @@ export default function MarketingBanners() {
                   {b.is_active_now ? "Active now" : "Not active"}
                 </span>
                 <span className="text-xs text-slate-400">{b.start_date} → {b.end_date}</span>
+                <span className="rounded-full bg-violet-50 px-2 py-0.5 text-[11px] font-semibold text-violet-700">
+                  {b.target_type === "audience" ? `Audience: ${b.target_audience_name || "—"}` : "Everyone"}
+                </span>
               </div>
               <div className="flex gap-2">
                 <button type="button" className={btn.plain} onClick={() => setEditing(b)}>Edit</button>

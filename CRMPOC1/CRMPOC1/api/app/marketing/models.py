@@ -126,7 +126,8 @@ class MkBanner(MarketingBase, Stamped):
     image_path: Mapped[str | None] = mapped_column(String(500), nullable=True)  # uploaded banner image, replaces the drawn design in email
     start_date: Mapped[date_] = mapped_column(Date, nullable=False)
     end_date: Mapped[date_] = mapped_column(Date, nullable=False)
-    target_type: Mapped[str] = mapped_column(String(20), nullable=False, default="all")  # all (more targets come with Audiences)
+    target_type: Mapped[str] = mapped_column(String(20), nullable=False, default="all")  # all | audience
+    target_audience_id: Mapped[int | None] = mapped_column(Integer, nullable=True)  # set when target_type == "audience"
     is_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     created_by: Mapped[int] = mapped_column(Integer, nullable=False)  # crm user id
 

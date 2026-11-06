@@ -411,16 +411,18 @@ class BannerIn(BaseModel):
     start_date: date
     end_date: date
     target_type: str = "all"
+    target_audience_id: Optional[int] = None
     is_enabled: bool = True
 
 
-def _banner_out(b: MkBanner) -> dict:
+def _banner_out(b: MkBanner, audience_name: str | None = None) -> dict:
     today = datetime.now(timezone.utc).date()
     return {
         "id": b.id, "name": b.name, "theme": b.theme, "greeting": b.greeting, "headline": b.headline,
         "pill1": b.pill1, "pill2": b.pill2, "cta_text": b.cta_text, "cta_link": b.cta_link, "image_path": b.image_path,
         "start_date": b.start_date.isoformat(), "end_date": b.end_date.isoformat(),
-        "target_type": b.target_type, "is_enabled": b.is_enabled,
+        "target_type": b.target_type, "target_audience_id": b.target_audience_id, "target_audience_name": audience_name,
+        "is_enabled": b.is_enabled,
         "is_active_now": b.is_enabled and b.start_date <= today <= b.end_date,
     }
 
@@ -453,17 +455,21 @@ def list_banners(ctx: Ctx = Depends(get_ctx), mdb: Session = Depends(get_marketi
     if not (ctx.has("banner_edit") or ctx.has("view")):
         raise HTTPException(403, "You do not have this tick in Marketing")
     rows = mdb.scalars(select(MkBanner).order_by(MkBanner.start_date.desc())).all()
-    return [_banner_out(b) for b in rows]
+    names = _audience_names(mdb, {r.target_audience_id for r in rows if r.target_audience_id})
+    return [_banner_out(b, names.get(b.target_audience_id)) for b in rows]
 
 
 @router.post("/banners")
 def create_banner(body: BannerIn, ctx: Ctx = Depends(require("banner_edit")), mdb: Session = Depends(get_marketing_db), main_db: Session = Depends(get_db)):
     if body.end_date < body.start_date:
         raise HTTPException(400, "End date cannot be before the start date")
+    if body.target_type == "audience" and not body.target_audience_id:
+        raise HTTPException(400, "Pick an audience to target, or switch target back to Everyone")
     b = MkBanner(**body.model_dump(), created_by=ctx.user.id)
     mdb.add(b)
     commit(main_db, mdb)
-    return _banner_out(b)
+    audience = mdb.get(MkAudience, b.target_audience_id) if b.target_audience_id else None
+    return _banner_out(b, audience.name if audience else None)
 
 
 @router.put("/banners/{banner_id}")
@@ -473,10 +479,13 @@ def update_banner(banner_id: int, body: BannerIn, ctx: Ctx = Depends(require("ba
         raise HTTPException(404, "Banner not found")
     if body.end_date < body.start_date:
         raise HTTPException(400, "End date cannot be before the start date")
+    if body.target_type == "audience" and not body.target_audience_id:
+        raise HTTPException(400, "Pick an audience to target, or switch target back to Everyone")
     for key, value in body.model_dump().items():
         setattr(b, key, value)
     commit(main_db, mdb)
-    return _banner_out(b)
+    audience = mdb.get(MkAudience, b.target_audience_id) if b.target_audience_id else None
+    return _banner_out(b, audience.name if audience else None)
 
 
 @router.delete("/banners/{banner_id}")
