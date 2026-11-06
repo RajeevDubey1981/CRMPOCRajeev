@@ -25,6 +25,7 @@ export default function HistoricalInstallation() {
   const [proof, setProof] = useState(null);
   const [operationKey, setOperationKey] = useState("");
   const [selectedIds, setSelectedIds] = useState(new Set());
+  const [mode, setMode] = useState("complete"); // "complete" = whole order, "selective" = pick serials
   const timer = useRef(null);
 
   useEffect(() => {
@@ -92,8 +93,17 @@ export default function HistoricalInstallation() {
     setForm((f) => ({ ...f, payment_total: suggestedTotalFor(preview, next).toFixed(2) }));
   }
 
+  function chooseMode(next) {
+    setMode(next);
+    if (next === "complete") {
+      const all = new Set(selectableIds(preview));
+      setSelectedIds(all);
+      setForm((f) => ({ ...f, payment_total: suggestedTotalFor(preview, all).toFixed(2) }));
+    }
+  }
+
   function reset() {
-    setQuery(""); setSuggestions([]); setPreview(null); setReviewing(false); setResult(null); setError(""); setProof(null); setOperationKey(""); setSelectedIds(new Set());
+    setQuery(""); setSuggestions([]); setPreview(null); setReviewing(false); setResult(null); setError(""); setProof(null); setOperationKey(""); setSelectedIds(new Set()); setMode("complete");
     setForm({ installation_date: "", reason: "", payment_total: "0.00", payment_type: "Cash" });
   }
 
@@ -181,19 +191,37 @@ export default function HistoricalInstallation() {
           {preview.blocking_errors.map((message) => <div key={message} className="mt-3 rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-700">{message}</div>)}
         </section>}
 
+        {canComplete && <section className="rounded-xl bg-white p-5 shadow-sm">
+          <div className="text-sm font-medium text-slate-700">How much to complete</div>
+          <div className="mt-2 grid gap-3 sm:grid-cols-2">
+            <button type="button" onClick={() => chooseMode("complete")}
+              className={`rounded-lg border-2 p-3 text-left ${mode === "complete" ? "border-brand-600 bg-brand-50" : "border-slate-200"}`}>
+              <div className="font-semibold text-slate-800">Complete Installation</div>
+              <div className="text-xs text-slate-500">Every serial item on this order, in one go.</div>
+            </button>
+            <button type="button" onClick={() => chooseMode("selective")}
+              className={`rounded-lg border-2 p-3 text-left ${mode === "selective" ? "border-brand-600 bg-brand-50" : "border-slate-200"}`}>
+              <div className="font-semibold text-slate-800">Selective Serial</div>
+              <div className="text-xs text-slate-500">Pick which serials to complete now; do the rest later.</div>
+            </button>
+          </div>
+        </section>}
+
         <section className="overflow-hidden rounded-xl bg-white shadow-sm">
           <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
             <span>{selectedIds.size} of {selectableIds(preview).length} serial items selected to complete</span>
-            <button type="button" onClick={toggleAll} className="font-medium text-brand-700">
-              {selectedIds.size === selectableIds(preview).length ? "Deselect all" : "Select all"}
-            </button>
+            {mode === "selective" && (
+              <button type="button" onClick={toggleAll} className="font-medium text-brand-700">
+                {selectedIds.size === selectableIds(preview).length ? "Deselect all" : "Select all"}
+              </button>
+            )}
           </div>
           <div className="overflow-x-auto"><table className="min-w-full text-sm"><thead className="bg-slate-100 text-left text-slate-600"><tr>
             <th className="px-3 py-2"></th><th className="px-3 py-2">Item</th><th className="px-3 py-2">Serial 1</th><th className="px-3 py-2">Serial 2</th><th className="px-3 py-2">Item status</th><th className="px-3 py-2">Installation requests</th>
           </tr></thead><tbody className="divide-y">
             {preview.items.map((item) => <tr key={item.id} className={item.missing_serial ? "bg-amber-50" : selectedIds.has(item.id) ? "" : "opacity-50"}>
               <td className="px-3 py-3">
-                <input type="checkbox" disabled={item.missing_serial} checked={selectedIds.has(item.id)} onChange={() => toggleItem(item.id)} className="h-4 w-4" />
+                <input type="checkbox" disabled={item.missing_serial || mode === "complete"} checked={selectedIds.has(item.id)} onChange={() => toggleItem(item.id)} className="h-4 w-4" />
               </td>
               <td className="px-3 py-3"><div className="font-medium">{item.item_name || "Unknown item"}</div><div className="text-xs text-slate-500">{item.item_code || "-"}</div></td>
               <td className="px-3 py-3 font-mono text-xs">{item.serial_no || "Missing"}</td><td className="px-3 py-3 font-mono text-xs">{item.serial_no_2 || "-"}</td><td className="px-3 py-3">{item.installation_status}</td>
