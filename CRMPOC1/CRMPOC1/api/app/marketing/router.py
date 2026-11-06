@@ -18,7 +18,10 @@ from app.marketing.access import (
 )
 from app.marketing import meta, secrets_box
 from app.marketing.db import get_marketing_db, marketing_enabled, new_marketing_session
-from app.marketing.models import MkAudience, MkBanner, MkChannel, MkChannelAsset, MkConsent, MkRoleTick, MkSetting, MkTickHistory, MkUserTick
+from app.marketing.models import (
+    MkAudience, MkBanner, MkCampaign, MkCampaignLog, MkChannel, MkChannelAsset, MkConsent, MkContactTouch,
+    MkRoleTick, MkSetting, MkTickHistory, MkUserTick,
+)
 from app.marketing.rules import ALL_TICKS, KINDS, KINDS_ORDER, LOCKED_TICKS, OPEN_SETTINGS, SETTING_DEFAULTS, TICK_DEFAULTS, TICK_GROUPS
 from app.models.order import Order
 from app.models.user import User
@@ -607,6 +610,58 @@ def _count_customers(main_db: Session, mdb: Session, a: dict) -> int:
     return count
 
 
+def _prospect_rows(sales_db: Session | None, ctx: Ctx, a: dict) -> list[tuple[str, str, str | None]]:
+    """[(name, phone, email), ...] for an audience of source=prospects, before consent/cooldown filtering."""
+    if sales_db is None or not sales_enabled():
+        return []
+    q = sales_db.query(SalesLead.name, SalesLead.phone, SalesLead.email)
+    if a.get("market"):
+        q = q.filter(SalesLead.lead_type == a["market"])
+    if a.get("stage"):
+        q = q.filter(SalesLead.status == a["stage"])
+    if a.get("state"):
+        q = q.filter(SalesLead.state == a["state"])
+    if a.get("heat"):
+        q = q.filter(SalesLead.heat == a["heat"])
+    if a.get("priority"):
+        q = q.filter(SalesLead.priority == a["priority"])
+    if a.get("stale_days"):
+        cutoff = datetime.now(timezone.utc) - timedelta(days=int(a["stale_days"]))
+        q = q.filter((SalesLead.last_action_at.is_(None)) | (SalesLead.last_action_at <= cutoff))
+    if not ctx.has("aud_all"):
+        q = q.filter(SalesLead.owner_user_id == ctx.user.id)
+    return list(q.all())
+
+
+def _customer_rows(main_db: Session, a: dict) -> list[tuple[str, str, str | None]]:
+    """[(name, phone, email), ...] for an audience of source=customers, deduped by contact, before consent/cooldown filtering."""
+    q = main_db.query(Order.customer_name, Order.customer_contact, Order.customer_email).filter(
+        Order.customer_contact.isnot(None), Order.deleted_at.is_(None)
+    )
+    if a.get("market"):
+        q = q.filter(Order.market == a["market"])
+    if a.get("state"):
+        q = q.filter(Order.customer_state == a["state"])
+    if a.get("stale_days"):
+        cutoff = datetime.now(timezone.utc).date() - timedelta(days=int(a["stale_days"]))
+        q = q.filter(Order.order_date <= cutoff)
+    seen: set[str] = set()
+    out: list[tuple[str, str, str | None]] = []
+    for name, contact, email in q.distinct().all():
+        key = normalize_contact(contact) or normalize_contact(email)
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        out.append((name, contact, email))
+    return out
+
+
+def _audience_rows(main_db: Session, sales_db: Session | None, ctx: Ctx, a: dict) -> list[tuple[str, str, str | None]]:
+    if a.get("source") == "customers":
+        return _customer_rows(main_db, a) if ctx.has("aud_all") else []
+    return _prospect_rows(sales_db, ctx, a)
+
+
 def _audience_count(main_db: Session, sales_db: Session | None, mdb: Session, ctx: Ctx, a: dict) -> int:
     if a.get("source") == "customers":
         if not ctx.has("aud_all"):
@@ -683,3 +738,200 @@ def delete_audience(audience_id: int, ctx: Ctx = Depends(get_ctx), mdb: Session 
     mdb.delete(a)
     commit(main_db, mdb)
     return {"deleted": True}
+
+
+# ---------------- campaigns ----------------
+class CampaignIn(BaseModel):
+    name: str
+    audience_id: int
+    subject: str
+    body: str
+
+
+def _campaign_out(c: MkCampaign, audience_name: str | None) -> dict:
+    return {
+        "id": c.id, "name": c.name, "audience_id": c.audience_id, "audience_name": audience_name,
+        "channel": c.channel, "subject": c.subject, "body": c.body, "status": c.status, "reject_reason": c.reject_reason,
+        "total_count": c.total_count, "sent_count": c.sent_count, "skipped_count": c.skipped_count,
+        "created_at": c.created_at.isoformat() if c.created_at else None,
+        "sent_at": c.sent_at.isoformat() if c.sent_at else None,
+    }
+
+
+def _audience_names(mdb: Session, ids: set[int]) -> dict[int, str]:
+    if not ids:
+        return {}
+    return {a.id: a.name for a in mdb.scalars(select(MkAudience).where(MkAudience.id.in_(ids)))}
+
+
+@router.get("/campaigns")
+def list_campaigns(ctx: Ctx = Depends(require("draft", "submit", "approve")), mdb: Session = Depends(get_marketing_db)):
+    rows = mdb.scalars(select(MkCampaign).order_by(MkCampaign.id.desc())).all()
+    names = _audience_names(mdb, {r.audience_id for r in rows})
+    return [_campaign_out(r, names.get(r.audience_id)) for r in rows]
+
+
+@router.get("/campaigns/{campaign_id}")
+def get_campaign(campaign_id: int, ctx: Ctx = Depends(require("draft", "submit", "approve")), mdb: Session = Depends(get_marketing_db)):
+    c = mdb.get(MkCampaign, campaign_id)
+    if c is None:
+        raise HTTPException(404, "Campaign not found")
+    names = _audience_names(mdb, {c.audience_id})
+    out = _campaign_out(c, names.get(c.audience_id))
+    logs = mdb.scalars(select(MkCampaignLog).where(MkCampaignLog.campaign_id == c.id).order_by(MkCampaignLog.id.desc()).limit(500)).all()
+    out["logs"] = [
+        {"contact": l.contact_name, "address": l.contact_address, "result": l.result, "at": l.at.isoformat() if l.at else None}
+        for l in logs
+    ]
+    return out
+
+
+@router.post("/campaigns")
+def create_campaign(body: CampaignIn, ctx: Ctx = Depends(require("draft")), mdb: Session = Depends(get_marketing_db), main_db: Session = Depends(get_db)):
+    if mdb.get(MkAudience, body.audience_id) is None:
+        raise HTTPException(404, "Audience not found")
+    c = MkCampaign(name=body.name, audience_id=body.audience_id, subject=body.subject, body=body.body, status="draft", created_by=ctx.user.id)
+    mdb.add(c)
+    commit(main_db, mdb)
+    return _campaign_out(c, mdb.get(MkAudience, c.audience_id).name)
+
+
+@router.put("/campaigns/{campaign_id}")
+def update_campaign(campaign_id: int, body: CampaignIn, ctx: Ctx = Depends(require("draft")), mdb: Session = Depends(get_marketing_db), main_db: Session = Depends(get_db)):
+    c = mdb.get(MkCampaign, campaign_id)
+    if c is None:
+        raise HTTPException(404, "Campaign not found")
+    if c.status != "draft":
+        raise HTTPException(409, "Only a draft campaign can be edited")
+    if mdb.get(MkAudience, body.audience_id) is None:
+        raise HTTPException(404, "Audience not found")
+    c.name, c.audience_id, c.subject, c.body = body.name, body.audience_id, body.subject, body.body
+    commit(main_db, mdb)
+    return _campaign_out(c, mdb.get(MkAudience, c.audience_id).name)
+
+
+@router.delete("/campaigns/{campaign_id}")
+def delete_campaign(campaign_id: int, ctx: Ctx = Depends(require("draft")), mdb: Session = Depends(get_marketing_db), main_db: Session = Depends(get_db)):
+    c = mdb.get(MkCampaign, campaign_id)
+    if c is None:
+        raise HTTPException(404, "Campaign not found")
+    if c.status not in ("draft", "rejected"):
+        raise HTTPException(409, "A campaign that is waiting, approved or already sent cannot be deleted")
+    mdb.delete(c)
+    commit(main_db, mdb)
+    return {"deleted": True}
+
+
+def _send_campaign(mdb: Session, main_db: Session, sales_db: Session, ctx: Ctx, c: MkCampaign) -> None:
+    from app.services.email_service import send_email
+
+    audience = mdb.get(MkAudience, c.audience_id)
+    a = {
+        "source": audience.source, "market": audience.market, "stage": audience.stage, "state": audience.state,
+        "stale_days": audience.stale_days, "heat": audience.heat, "priority": audience.priority,
+    }
+    rows = _audience_rows(main_db, sales_db, ctx, a)
+    stopped = _stopped_keys(mdb, "email")
+    pause_days = int(get_setting(mdb, "pause_days") or 4)
+    cooldown_cutoff = datetime.now(timezone.utc) - timedelta(days=pause_days)
+    already_sent = {
+        r.contact_key for r in mdb.scalars(
+            select(MkCampaignLog).where(MkCampaignLog.campaign_id == c.id, MkCampaignLog.result == "sent")
+        )
+    }
+    sent = skipped = 0
+    seen: set[str] = set()
+    for name, phone, email in rows:
+        key = normalize_contact(email) or normalize_contact(phone)
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        if key in already_sent:
+            continue
+        if not email:
+            mdb.add(MkCampaignLog(campaign_id=c.id, contact_key=key, contact_name=name or "", contact_address="", result="no_email"))
+            skipped += 1
+            continue
+        if normalize_contact(email) in stopped or normalize_contact(phone) in stopped:
+            mdb.add(MkCampaignLog(campaign_id=c.id, contact_key=key, contact_name=name or "", contact_address=email, result="stopped"))
+            skipped += 1
+            continue
+        touch = mdb.get(MkContactTouch, key)
+        if touch is not None and touch.last_sent_at and touch.last_sent_at.replace(tzinfo=timezone.utc) > cooldown_cutoff:
+            mdb.add(MkCampaignLog(campaign_id=c.id, contact_key=key, contact_name=name or "", contact_address=email, result="cooldown"))
+            skipped += 1
+            continue
+        body_html = (c.body or "").replace("{{name}}", name or "there").replace("\n", "<br/>")
+        ok = send_email(email, c.subject, f"<div style='font-family:Arial,sans-serif;font-size:14px;'>{body_html}</div>", template="marketing_campaign")
+        mdb.add(MkCampaignLog(campaign_id=c.id, contact_key=key, contact_name=name or "", contact_address=email, result="sent" if ok else "failed"))
+        if ok:
+            sent += 1
+            if touch is None:
+                mdb.add(MkContactTouch(contact_key=key, last_campaign_id=c.id, last_sent_at=datetime.now(timezone.utc)))
+            else:
+                touch.last_campaign_id = c.id
+                touch.last_sent_at = datetime.now(timezone.utc)
+        else:
+            skipped += 1
+    c.total_count = len(seen)
+    c.sent_count = sent
+    c.skipped_count = skipped
+    c.status = "sent"
+    c.sent_at = datetime.now(timezone.utc)
+
+
+@router.post("/campaigns/{campaign_id}/submit")
+def submit_campaign(campaign_id: int, ctx: Ctx = Depends(require("submit")), mdb: Session = Depends(get_marketing_db), main_db: Session = Depends(get_db), sales_db: Session = Depends(get_sales_db)):
+    c = mdb.get(MkCampaign, campaign_id)
+    if c is None:
+        raise HTTPException(404, "Campaign not found")
+    if c.status not in ("draft", "rejected"):
+        raise HTTPException(409, "Only a draft or rejected campaign can be submitted")
+    if not (c.subject or "").strip() or not (c.body or "").strip():
+        raise HTTPException(400, "Write a subject and a message before sending")
+    audience = mdb.get(MkAudience, c.audience_id)
+    a = {"source": audience.source, "market": audience.market, "stage": audience.stage, "state": audience.state, "stale_days": audience.stale_days, "heat": audience.heat, "priority": audience.priority}
+    count = _audience_count(main_db, sales_db, mdb, ctx, a)
+    limit = int(get_setting(mdb, "approval_min_audience") or 1000)
+    if count <= limit and ctx.has("release_small"):
+        c.approved_by = ctx.user.id
+        c.approved_at = datetime.now(timezone.utc)
+        _send_campaign(mdb, main_db, sales_db, ctx, c)
+        commit(main_db, mdb)
+        return _campaign_out(c, audience.name)
+    c.status = "wait"
+    commit(main_db, mdb)
+    return _campaign_out(c, audience.name)
+
+
+@router.post("/campaigns/{campaign_id}/approve")
+def approve_campaign(campaign_id: int, ctx: Ctx = Depends(require("approve")), mdb: Session = Depends(get_marketing_db), main_db: Session = Depends(get_db), sales_db: Session = Depends(get_sales_db)):
+    c = mdb.get(MkCampaign, campaign_id)
+    if c is None:
+        raise HTTPException(404, "Campaign not found")
+    if c.status != "wait":
+        raise HTTPException(409, "Only a campaign waiting for approval can be approved")
+    c.approved_by = ctx.user.id
+    c.approved_at = datetime.now(timezone.utc)
+    _send_campaign(mdb, main_db, sales_db, ctx, c)
+    commit(main_db, mdb)
+    audience = mdb.get(MkAudience, c.audience_id)
+    return _campaign_out(c, audience.name if audience else None)
+
+
+class RejectIn(BaseModel):
+    reason: str = ""
+
+
+@router.post("/campaigns/{campaign_id}/reject")
+def reject_campaign(campaign_id: int, body: RejectIn, ctx: Ctx = Depends(require("approve")), mdb: Session = Depends(get_marketing_db), main_db: Session = Depends(get_db)):
+    c = mdb.get(MkCampaign, campaign_id)
+    if c is None:
+        raise HTTPException(404, "Campaign not found")
+    if c.status != "wait":
+        raise HTTPException(409, "Only a campaign waiting for approval can be rejected")
+    c.status = "rejected"
+    c.reject_reason = body.reason.strip()
+    commit(main_db, mdb)
+    audience = mdb.get(MkAudience, c.audience_id)
+    return _campaign_out(c, audience.name if audience else None)

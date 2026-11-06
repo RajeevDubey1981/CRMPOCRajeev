@@ -147,6 +147,53 @@ class MkConsent(MarketingBase, Stamped):
     created_by: Mapped[int] = mapped_column(Integer, nullable=False)  # crm user id
 
 
+class MkCampaign(MarketingBase, Stamped):
+    """A message sent once to a saved audience's contacts. The audience is re-counted live at send time, not copied."""
+
+    __tablename__ = "mk_campaign"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    audience_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    channel: Mapped[str] = mapped_column(String(20), nullable=False, default="email")
+    subject: Mapped[str] = mapped_column(String(200), nullable=False, default="")
+    body: Mapped[str] = mapped_column(Text, nullable=False, default="")  # plain text/simple HTML; {{name}} substituted per contact
+    status: Mapped[str] = mapped_column(String(10), nullable=False, default="draft", index=True)
+    # draft | wait (needs approval) | appr (approved, about to send) | sent | rejected | cancelled
+    reject_reason: Mapped[str] = mapped_column(String(300), nullable=False, default="")
+    total_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    sent_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    skipped_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_by: Mapped[int] = mapped_column(Integer, nullable=False)
+    approved_by: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class MkCampaignLog(MarketingBase):
+    """One row per contact a campaign was aimed at -- sent, or the reason it was skipped."""
+
+    __tablename__ = "mk_campaign_log"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    campaign_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    contact_key: Mapped[str] = mapped_column(String(255), nullable=False)
+    contact_name: Mapped[str] = mapped_column(String(255), nullable=False, default="")
+    contact_address: Mapped[str] = mapped_column(String(255), nullable=False, default="")
+    result: Mapped[str] = mapped_column(String(20), nullable=False)  # sent | stopped | cooldown | no_email | failed
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class MkContactTouch(MarketingBase):
+    """The last time a contact received ANY campaign -- the cooldown that stops back-to-back promotions."""
+
+    __tablename__ = "mk_contact_touch"
+
+    contact_key: Mapped[str] = mapped_column(String(255), primary_key=True)
+    last_campaign_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    last_sent_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
 class MkAudience(MarketingBase, Stamped):
     """A saved filter over the CRM's own Sales leads (prospects) or Orders (existing customers).
     Nothing is copied here -- the count and matches are computed live from the CRM database each time."""

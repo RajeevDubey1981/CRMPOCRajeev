@@ -36,6 +36,7 @@ export function MarketingTabs() {
     ["/marketing", "Overview", true],
     ...(m.channels ? [["/marketing/channels", "Channels"]] : []),
     ...(m.audiences ? [["/marketing/audiences", "Audiences"]] : []),
+    ...(m.campaigns ? [["/marketing/campaigns", "Campaigns"]] : []),
     ...(m.banners ? [["/marketing/banners", "Festive banner"]] : []),
     ...(m.consent ? [["/marketing/consent", "Consent / STOP list"]] : []),
     ...(m.settings ? [["/marketing/settings", "Settings"]] : []),

@@ -38,4 +38,12 @@ export const marketingApi = {
   createAudience: (body) => api.post("/api/marketing/audiences", body).then((r) => r.data),
   updateAudience: (id, body) => put(`/api/marketing/audiences/${id}`, body),
   deleteAudience: (id) => api.delete(`/api/marketing/audiences/${id}`).then((r) => r.data),
+  campaigns: () => get("/api/marketing/campaigns"),
+  campaign: (id) => get(`/api/marketing/campaigns/${id}`),
+  createCampaign: (body) => api.post("/api/marketing/campaigns", body).then((r) => r.data),
+  updateCampaign: (id, body) => put(`/api/marketing/campaigns/${id}`, body),
+  deleteCampaign: (id) => api.delete(`/api/marketing/campaigns/${id}`).then((r) => r.data),
+  submitCampaign: (id) => api.post(`/api/marketing/campaigns/${id}/submit`).then((r) => r.data),
+  approveCampaign: (id) => api.post(`/api/marketing/campaigns/${id}/approve`).then((r) => r.data),
+  rejectCampaign: (id, reason) => api.post(`/api/marketing/campaigns/${id}/reject`, { reason }).then((r) => r.data),
 };

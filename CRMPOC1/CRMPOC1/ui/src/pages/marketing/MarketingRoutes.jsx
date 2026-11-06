@@ -2,6 +2,7 @@ import { Navigate, Route, Routes } from "react-router-dom";
 
 import MarketingAudiences from "./MarketingAudiences.jsx";
 import MarketingBanners from "./MarketingBanners.jsx";
+import MarketingCampaigns from "./MarketingCampaigns.jsx";
 import MarketingChannels from "./MarketingChannels.jsx";
 import MarketingConsent from "./MarketingConsent.jsx";
 import MarketingHome from "./MarketingHome.jsx";
@@ -27,6 +28,7 @@ export default function MarketingRoutes() {
         <Route path="audiences" element={<Gate menu="audiences"><MarketingAudiences /></Gate>} />
         <Route path="banners" element={<Gate menu="banners"><MarketingBanners /></Gate>} />
         <Route path="consent" element={<Gate menu="consent"><MarketingConsent /></Gate>} />
+        <Route path="campaigns" element={<Gate menu="campaigns"><MarketingCampaigns /></Gate>} />
         <Route path="settings" element={<Gate menu="settings"><MarketingSettings /></Gate>} />
         <Route path="ticks" element={<Gate admin><MarketingTicks /></Gate>} />
         <Route path="*" element={<Navigate to="/marketing" replace />} />
