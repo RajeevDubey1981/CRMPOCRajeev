@@ -24,6 +24,7 @@ export default function HistoricalInstallation() {
   const [form, setForm] = useState({ installation_date: "", reason: "", payment_total: "0.00", payment_type: "Cash" });
   const [proof, setProof] = useState(null);
   const [operationKey, setOperationKey] = useState("");
+  const [selectedIds, setSelectedIds] = useState(new Set());
   const timer = useRef(null);
 
   useEffect(() => {
@@ -41,6 +42,21 @@ export default function HistoricalInstallation() {
     return () => clearTimeout(timer.current);
   }, [query, preview]);
 
+  function selectableIds(data) {
+    return (data?.items || []).filter((item) => !item.missing_serial).map((item) => item.id);
+  }
+
+  function suggestedTotalFor(data, ids) {
+    let total = 0;
+    for (const item of data?.items || []) {
+      if (!ids.has(item.id)) continue;
+      for (const req of item.installation_requests || []) {
+        if (req.status !== "Completed") total += Number(req.payment_amount_requested || 0);
+      }
+    }
+    return total;
+  }
+
   async function chooseOrder(row) {
     setQuery(row.order_no || "");
     setSuggestions([]);
@@ -49,16 +65,35 @@ export default function HistoricalInstallation() {
     setResult(null);
     try {
       const data = await historicalInstallationsApi.preview(row.order_id);
+      const allIds = new Set(selectableIds(data));
       setPreview(data);
+      setSelectedIds(allIds);
       setOperationKey(crypto.randomUUID());
-      setForm((current) => ({ ...current, payment_total: Number(data.summary.suggested_payment_total || 0).toFixed(2) }));
+      setForm((current) => ({ ...current, payment_total: suggestedTotalFor(data, allIds).toFixed(2) }));
     } catch (e) {
       setError(e.response?.data?.detail || "Could not load the order preview.");
     } finally { setLoading(false); }
   }
 
+  function toggleItem(id) {
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      setForm((f) => ({ ...f, payment_total: suggestedTotalFor(preview, next).toFixed(2) }));
+      return next;
+    });
+  }
+
+  function toggleAll() {
+    const all = new Set(selectableIds(preview));
+    const allSelected = selectedIds.size === all.size;
+    const next = allSelected ? new Set() : all;
+    setSelectedIds(next);
+    setForm((f) => ({ ...f, payment_total: suggestedTotalFor(preview, next).toFixed(2) }));
+  }
+
   function reset() {
-    setQuery(""); setSuggestions([]); setPreview(null); setReviewing(false); setResult(null); setError(""); setProof(null); setOperationKey("");
+    setQuery(""); setSuggestions([]); setPreview(null); setReviewing(false); setResult(null); setError(""); setProof(null); setOperationKey(""); setSelectedIds(new Set());
     setForm({ installation_date: "", reason: "", payment_total: "0.00", payment_type: "Cash" });
   }
 
@@ -66,6 +101,7 @@ export default function HistoricalInstallation() {
     if (!form.installation_date) return "Installation date is required.";
     if (!form.reason.trim()) return "Completion reason is required.";
     if (form.payment_total === "" || Number(form.payment_total) < 0) return "Enter a valid payment total.";
+    if (selectedIds.size === 0) return "Select at least one item to complete.";
     if (preview?.blocking_errors?.length) return preview.blocking_errors[0];
     return "";
   }
@@ -83,6 +119,7 @@ export default function HistoricalInstallation() {
         order_id: preview.order.id,
         preview_token: preview.preview_token,
         operation_key: operationKey,
+        item_ids: Array.from(selectedIds),
         ...form,
         payment_total: Number(form.payment_total),
       }, proof);
@@ -126,6 +163,7 @@ export default function HistoricalInstallation() {
       {result && <section className="rounded-xl border border-emerald-200 bg-emerald-50 p-5">
         <h2 className="font-semibold text-emerald-900">Historical installation completed</h2>
         <p className="mt-1 text-sm text-emerald-800">Audit #{result.audit_id} · {result.created_count} requests created · {result.completed_count} completed · {result.skipped_count} already completed.</p>
+        {result.order_completed === false && <p className="mt-2 text-sm font-medium text-amber-800">Some serial items on this order are still pending — the order itself stays as it was until the rest are completed too.</p>}
         {result.incomplete_count > 0 && <p className="mt-2 text-sm font-medium text-amber-800">{result.incomplete_count} item rows without serials remain unchanged.</p>}
         <div className="mt-3 flex gap-4 text-sm"><Link className="font-medium text-brand-700" to={`/orders/${result.order_id}`}>Open order</Link><button type="button" onClick={reset} className="font-medium text-brand-700">Complete another order</button></div>
       </section>}
@@ -139,21 +177,31 @@ export default function HistoricalInstallation() {
             <div><div className="text-xs uppercase text-slate-500">Current status</div><div className="font-semibold">{preview.order.status}</div></div>
             <div><div className="text-xs uppercase text-slate-500">Order date</div><div className="font-semibold">{preview.order.order_date}</div></div>
           </div>
-          {preview.summary.missing_serial_items > 0 && <div className="mt-4 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800">Warning: {preview.summary.missing_serial_items} rows have no serial and will remain unchanged, although the order will become Completed.</div>}
+          {preview.summary.missing_serial_items > 0 && <div className="mt-4 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800">Warning: {preview.summary.missing_serial_items} rows have no serial and will remain unchanged — they don't count toward the order becoming Completed.</div>}
           {preview.blocking_errors.map((message) => <div key={message} className="mt-3 rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-700">{message}</div>)}
         </section>}
 
         <section className="overflow-hidden rounded-xl bg-white shadow-sm">
+          <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+            <span>{selectedIds.size} of {selectableIds(preview).length} serial items selected to complete</span>
+            <button type="button" onClick={toggleAll} className="font-medium text-brand-700">
+              {selectedIds.size === selectableIds(preview).length ? "Deselect all" : "Select all"}
+            </button>
+          </div>
           <div className="overflow-x-auto"><table className="min-w-full text-sm"><thead className="bg-slate-100 text-left text-slate-600"><tr>
-            <th className="px-3 py-2">Item</th><th className="px-3 py-2">Serial 1</th><th className="px-3 py-2">Serial 2</th><th className="px-3 py-2">Item status</th><th className="px-3 py-2">Installation requests</th>
+            <th className="px-3 py-2"></th><th className="px-3 py-2">Item</th><th className="px-3 py-2">Serial 1</th><th className="px-3 py-2">Serial 2</th><th className="px-3 py-2">Item status</th><th className="px-3 py-2">Installation requests</th>
           </tr></thead><tbody className="divide-y">
-            {preview.items.map((item) => <tr key={item.id} className={item.missing_serial ? "bg-amber-50" : ""}>
+            {preview.items.map((item) => <tr key={item.id} className={item.missing_serial ? "bg-amber-50" : selectedIds.has(item.id) ? "" : "opacity-50"}>
+              <td className="px-3 py-3">
+                <input type="checkbox" disabled={item.missing_serial} checked={selectedIds.has(item.id)} onChange={() => toggleItem(item.id)} className="h-4 w-4" />
+              </td>
               <td className="px-3 py-3"><div className="font-medium">{item.item_name || "Unknown item"}</div><div className="text-xs text-slate-500">{item.item_code || "-"}</div></td>
               <td className="px-3 py-3 font-mono text-xs">{item.serial_no || "Missing"}</td><td className="px-3 py-3 font-mono text-xs">{item.serial_no_2 || "-"}</td><td className="px-3 py-3">{item.installation_status}</td>
               <td className="px-3 py-3">{item.installation_requests.length ? item.installation_requests.map((request) => <div key={request.id}>#{request.id} · {request.status}{request.engineer_name ? ` · ${request.engineer_name}` : ""}</div>) : (item.missing_serial ? "None" : "Will create historical request")}</td>
             </tr>)}
           </tbody></table></div>
         </section>
+        <p className="-mt-3 text-xs text-slate-500">Uncheck any item you don't want completed in this batch — the rest can be completed later, separately. The order only moves to Completed once every serial item on it is done.</p>
 
         <section className="rounded-xl bg-white p-5 shadow-sm">
           <h2 className="mb-4 text-lg font-semibold">Completion details</h2>
@@ -170,8 +218,31 @@ export default function HistoricalInstallation() {
 
       {reviewing && preview && <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4"><div className="max-h-[90vh] w-full max-w-xl overflow-auto rounded-xl bg-white p-6 shadow-xl">
         <h2 className="text-lg font-semibold">Confirm historical completion</h2>
-        <p className="mt-2 text-sm text-slate-600">Order <b>{preview.order.order_no}</b> will become Completed. This creates a permanent audit record.</p>
-        <dl className="mt-4 grid grid-cols-2 gap-3 rounded-lg bg-slate-50 p-4 text-sm"><div><dt className="text-slate-500">Serial items</dt><dd className="font-semibold">{preview.summary.serial_items}</dd></div><div><dt className="text-slate-500">Requests to create</dt><dd className="font-semibold">{preview.summary.requests_to_create}</dd></div><div><dt className="text-slate-500">Requests to complete</dt><dd className="font-semibold">{preview.summary.requests_to_complete}</dd></div><div><dt className="text-slate-500">Already completed</dt><dd className="font-semibold">{preview.summary.requests_already_completed}</dd></div><div><dt className="text-slate-500">Payment</dt><dd className="font-semibold">₹{money(form.payment_total)} {form.payment_type}</dd></div><div><dt className="text-slate-500">Missing serial rows</dt><dd className="font-semibold">{preview.summary.missing_serial_items}</dd></div></dl>
+        <p className="mt-2 text-sm text-slate-600">
+          {(() => {
+            const unselected = selectableIds(preview).filter((id) => !selectedIds.has(id));
+            const willComplete = unselected.every((id) => preview.items.find((i) => i.id === id)?.installation_status === "Completed");
+            return willComplete
+              ? <>Order <b>{preview.order.order_no}</b> will become Completed.</>
+              : <>Only the <b>{selectedIds.size}</b> selected item(s) will be completed. Order <b>{preview.order.order_no}</b> stays as-is until every serial item on it is done.</>;
+          })()} This creates a permanent audit record.
+        </p>
+        <dl className="mt-4 grid grid-cols-2 gap-3 rounded-lg bg-slate-50 p-4 text-sm">
+          {(() => {
+            const selectedItems = preview.items.filter((i) => selectedIds.has(i.id));
+            const toCreate = selectedItems.filter((i) => i.installation_requests.length === 0).length;
+            const toComplete = selectedItems.reduce((n, i) => n + i.installation_requests.filter((r) => r.status !== "Completed").length, 0);
+            const alreadyDone = selectedItems.reduce((n, i) => n + i.installation_requests.filter((r) => r.status === "Completed").length, 0);
+            return <>
+              <div><dt className="text-slate-500">Items selected</dt><dd className="font-semibold">{selectedItems.length}</dd></div>
+              <div><dt className="text-slate-500">Requests to create</dt><dd className="font-semibold">{toCreate}</dd></div>
+              <div><dt className="text-slate-500">Requests to complete</dt><dd className="font-semibold">{toComplete}</dd></div>
+              <div><dt className="text-slate-500">Already completed</dt><dd className="font-semibold">{alreadyDone}</dd></div>
+            </>;
+          })()}
+          <div><dt className="text-slate-500">Payment</dt><dd className="font-semibold">₹{money(form.payment_total)} {form.payment_type}</dd></div>
+          <div><dt className="text-slate-500">Missing serial rows</dt><dd className="font-semibold">{preview.summary.missing_serial_items}</dd></div>
+        </dl>
         <div className="mt-5 flex justify-end gap-3"><button type="button" disabled={submitting} onClick={() => setReviewing(false)} className="rounded-md border px-4 py-2 text-sm">Back</button><button type="button" disabled={submitting} onClick={submit} className="rounded-md bg-rose-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{submitting ? "Completing..." : "Confirm and complete"}</button></div>
       </div></div>}
     </div>

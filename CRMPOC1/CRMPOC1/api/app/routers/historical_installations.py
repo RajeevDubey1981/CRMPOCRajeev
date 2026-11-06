@@ -180,6 +180,8 @@ async def complete(
         reason = str(body["reason"]).strip()
         payment_total = Decimal(str(body["payment_total"])).quantize(Decimal("0.01"))
         payment_type = str(body["payment_type"]).strip()
+        raw_item_ids = body.get("item_ids")
+        selected_item_ids = {int(v) for v in raw_item_ids} if raw_item_ids is not None else None
     except (KeyError, TypeError, ValueError, json.JSONDecodeError):
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Invalid completion details")
     if not operation_key or len(operation_key) > 100 or not reason:
@@ -202,9 +204,15 @@ async def complete(
         before = _snapshot(order, items, requests)
         if _token(before) != preview_token:
             raise HTTPException(status.HTTP_409_CONFLICT, "Order data changed after preview. Reload and review it again.")
-        serial_items = [row for row in items if _serial(row.serial_no) or _serial(row.serial_no_2)]
-        if not serial_items:
+        serial_bearing_items = [row for row in items if _serial(row.serial_no) or _serial(row.serial_no_2)]
+        if not serial_bearing_items:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "The order has no serial-bearing item rows")
+        serial_items = (
+            serial_bearing_items if selected_item_ids is None
+            else [row for row in serial_bearing_items if row.id in selected_item_ids]
+        )
+        if not serial_items:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Select at least one serial item to complete")
         by_item: dict[int, list[InstallationRequest]] = {}
         for request in requests:
             if request.order_item_id:
@@ -276,7 +284,9 @@ async def complete(
                     affected.append(inst)
             item.installation_status = "Completed"
 
-        order.status = "Completed"
+        order_fully_done = all(row.installation_status == "Completed" for row in serial_bearing_items)
+        if order_fully_done:
+            order.status = "Completed"
         allocations = _allocate(payment_total, len(affected))
         transaction = None
         if not affected and payment_total != 0:
@@ -307,7 +317,7 @@ async def complete(
             payment_transaction_id=transaction.id if transaction else None, proof_file_path=proof_path,
             before_json=json.dumps(before, sort_keys=True), after_json="{}",
             created_count=created_count, completed_count=completed_count, skipped_count=skipped_count,
-            incomplete_count=len(items) - len(serial_items),
+            incomplete_count=len(items) - len(serial_bearing_items),
         )
         db.add(audit)
         db.flush()
@@ -329,7 +339,7 @@ async def complete(
         db.commit()
         return {"audit_id": audit.id, "order_id": order.id, "order_no": order.order_no,
                 "created_count": created_count, "completed_count": completed_count,
-                "skipped_count": skipped_count, "incomplete_count": len(items) - len(serial_items),
+                "skipped_count": skipped_count, "incomplete_count": len(items) - len(serial_bearing_items), "order_completed": order_fully_done,
                 "payment_transaction_id": transaction.id if transaction else None, "idempotent": False}
     except Exception:
         db.rollback()
