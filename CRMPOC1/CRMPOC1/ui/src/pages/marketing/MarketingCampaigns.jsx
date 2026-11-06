@@ -4,10 +4,14 @@ import { marketingApi } from "../../api/marketing.js";
 import { HeroArt } from "./marketingArt.jsx";
 import { CountUp, Icon, MarketingTabs, Notice, PageTitle, btn, errText, fieldClass, greeting, useAsync, useMarketing } from "./marketingUi.jsx";
 
+const CAMPAIGN_BATCH_SIZE = 25;
+const CAMPAIGN_BATCH_GAP_MINUTES = 20;
+
 const STATUS_LABEL = {
   draft: ["Draft", "bg-slate-100 text-slate-600"],
   wait: ["Waiting for approval", "bg-amber-100 text-amber-800 s-urgent"],
   appr: ["Approved", "bg-sky-100 text-sky-800"],
+  sending: ["Sending in batches", "bg-sky-100 text-sky-800 s-urgent"],
   sent: ["Sent", "bg-emerald-100 text-emerald-800"],
   rejected: ["Rejected", "bg-rose-100 text-rose-800"],
   cancelled: ["Cancelled", "bg-slate-100 text-slate-500"],
@@ -223,7 +227,10 @@ function CampaignCard({ c, i, canApprove, onChanged }) {
         <button type="button" className={btn.plain} onClick={() => setOpen((v) => !v)}>{open ? "Hide" : "Details"}</button>
       </div>
 
-      {c.status === "sent" && <ProgressBar sent={c.sent_count} skipped={c.skipped_count} total={c.total_count} />}
+      {(c.status === "sent" || c.status === "sending") && <ProgressBar sent={c.sent_count} skipped={c.skipped_count} total={c.total_count} />}
+      {c.status === "sending" && c.next_batch_at && (
+        <p className="mt-2 text-xs text-slate-500">Sending {CAMPAIGN_BATCH_SIZE} at a time, {CAMPAIGN_BATCH_GAP_MINUTES} minutes apart — next batch around {new Date(c.next_batch_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}.</p>
+      )}
       {c.status === "wait" && !canApprove && (
         <p className="mt-2 text-xs text-slate-500">{c.total_count} people — over the no-approval limit. Waiting for a Marketing manager to approve.</p>
       )}
@@ -316,7 +323,7 @@ export default function MarketingCampaigns() {
   const campaigns = list.data || [];
 
   const stats = useMemo(() => {
-    const sent = campaigns.filter((c) => c.status === "sent");
+    const sent = campaigns.filter((c) => c.status === "sent" || c.status === "sending");
     return {
       total: campaigns.length,
       sentCount: sent.reduce((n, c) => n + (c.sent_count || 0), 0),

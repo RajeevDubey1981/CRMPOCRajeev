@@ -802,6 +802,7 @@ def _campaign_out(c: MkCampaign, audience_name: str | None) -> dict:
         "total_count": c.total_count, "sent_count": c.sent_count, "skipped_count": c.skipped_count,
         "created_at": c.created_at.isoformat() if c.created_at else None,
         "sent_at": c.sent_at.isoformat() if c.sent_at else None,
+        "next_batch_at": c.next_batch_at.isoformat() if c.next_batch_at else None,
     }
 
 
@@ -991,7 +992,13 @@ def _campaign_email_html(c: MkCampaign, name: str) -> str:
     )
 
 
-def _send_campaign(mdb: Session, main_db: Session, sales_db: Session, ctx: Ctx, c: MkCampaign) -> None:
+CAMPAIGN_BATCH_SIZE = 25
+CAMPAIGN_BATCH_GAP_MINUTES = 20
+
+
+def _send_campaign_batch(mdb: Session, main_db: Session, sales_db: Session, ctx: Ctx, c: MkCampaign) -> None:
+    """Send up to CAMPAIGN_BATCH_SIZE not-yet-logged contacts, then either finish or schedule the next batch.
+    Safe to call repeatedly for the same campaign (by the cron runner) -- already-logged contacts are skipped."""
     from app.services.email_service import send_email
 
     audience = mdb.get(MkAudience, c.audience_id) if c.audience_id else None
@@ -999,20 +1006,24 @@ def _send_campaign(mdb: Session, main_db: Session, sales_db: Session, ctx: Ctx, 
     stopped = _stopped_keys(mdb, "email")
     pause_days = int(get_setting(mdb, "pause_days") or 4)
     cooldown_cutoff = datetime.now(timezone.utc) - timedelta(days=pause_days)
-    already_sent = {
-        r.contact_key for r in mdb.scalars(
-            select(MkCampaignLog).where(MkCampaignLog.campaign_id == c.id, MkCampaignLog.result == "sent")
-        )
+    already_logged = {
+        r.contact_key for r in mdb.scalars(select(MkCampaignLog.contact_key).where(MkCampaignLog.campaign_id == c.id))
     }
-    sent = skipped = 0
+
     seen: set[str] = set()
+    unique_rows: list[tuple[str, str, str, str | None]] = []
     for name, phone, email in rows:
         key = normalize_contact(email) or normalize_contact(phone)
         if not key or key in seen:
             continue
         seen.add(key)
-        if key in already_sent:
-            continue
+        unique_rows.append((key, name, phone, email))
+    unique_rows.sort(key=lambda r: r[0])
+    pending = [row for row in unique_rows if row[0] not in already_logged]
+    batch = pending[:CAMPAIGN_BATCH_SIZE]
+
+    sent = skipped = 0
+    for key, name, phone, email in batch:
         if not email:
             mdb.add(MkCampaignLog(campaign_id=c.id, contact_key=key, contact_name=name or "", contact_address="", result="no_email"))
             skipped += 1
@@ -1037,11 +1048,18 @@ def _send_campaign(mdb: Session, main_db: Session, sales_db: Session, ctx: Ctx, 
                 touch.last_sent_at = datetime.now(timezone.utc)
         else:
             skipped += 1
-    c.total_count = len(seen)
-    c.sent_count = sent
-    c.skipped_count = skipped
-    c.status = "sent"
-    c.sent_at = datetime.now(timezone.utc)
+
+    c.total_count = len(unique_rows)
+    c.sent_count = (c.sent_count or 0) + sent
+    c.skipped_count = (c.skipped_count or 0) + skipped
+    remaining = len(pending) - len(batch)
+    if remaining > 0:
+        c.status = "sending"
+        c.next_batch_at = datetime.now(timezone.utc) + timedelta(minutes=CAMPAIGN_BATCH_GAP_MINUTES)
+    else:
+        c.status = "sent"
+        c.sent_at = datetime.now(timezone.utc)
+        c.next_batch_at = None
 
 
 @router.post("/campaigns/{campaign_id}/submit")
@@ -1059,7 +1077,7 @@ def submit_campaign(campaign_id: int, ctx: Ctx = Depends(require("submit")), mdb
     if count <= limit and ctx.has("release_small"):
         c.approved_by = ctx.user.id
         c.approved_at = datetime.now(timezone.utc)
-        _send_campaign(mdb, main_db, sales_db, ctx, c)
+        _send_campaign_batch(mdb, main_db, sales_db, ctx, c)
         commit(main_db, mdb)
         return _campaign_out(c, audience.name if audience else None)
     c.status = "wait"
@@ -1076,7 +1094,7 @@ def approve_campaign(campaign_id: int, ctx: Ctx = Depends(require("approve")), m
         raise HTTPException(409, "Only a campaign waiting for approval can be approved")
     c.approved_by = ctx.user.id
     c.approved_at = datetime.now(timezone.utc)
-    _send_campaign(mdb, main_db, sales_db, ctx, c)
+    _send_campaign_batch(mdb, main_db, sales_db, ctx, c)
     commit(main_db, mdb)
     audience = mdb.get(MkAudience, c.audience_id) if c.audience_id else None
     return _campaign_out(c, audience.name if audience else None)

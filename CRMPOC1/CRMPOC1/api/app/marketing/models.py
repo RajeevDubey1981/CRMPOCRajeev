@@ -168,8 +168,9 @@ class MkCampaign(MarketingBase, Stamped):
     subject: Mapped[str] = mapped_column(String(200), nullable=False, default="")
     body: Mapped[str] = mapped_column(Text, nullable=False, default="")  # plain text/simple HTML; {{name}} substituted per contact
     status: Mapped[str] = mapped_column(String(10), nullable=False, default="draft", index=True)
-    # draft | wait (needs approval) | appr (approved, about to send) | sent | rejected | cancelled
+    # draft | wait (needs approval) | appr (approved, about to send) | sending (batching) | sent | rejected | cancelled
     reject_reason: Mapped[str] = mapped_column(String(300), nullable=False, default="")
+    next_batch_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)  # when "sending", when the next batch of 25 goes out
     total_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     sent_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     skipped_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
