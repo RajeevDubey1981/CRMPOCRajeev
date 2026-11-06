@@ -1,11 +1,12 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
 import { marketingApi } from "../../api/marketing.js";
-import { MarketingTabs, Notice, PageTitle, btn, errText, fieldClass, useAsync, useMarketing } from "./marketingUi.jsx";
+import { HeroArt } from "./marketingArt.jsx";
+import { CountUp, Icon, MarketingTabs, Notice, PageTitle, btn, errText, fieldClass, greeting, useAsync, useMarketing } from "./marketingUi.jsx";
 
 const STATUS_LABEL = {
   draft: ["Draft", "bg-slate-100 text-slate-600"],
-  wait: ["Waiting for approval", "bg-amber-100 text-amber-800"],
+  wait: ["Waiting for approval", "bg-amber-100 text-amber-800 s-urgent"],
   appr: ["Approved", "bg-sky-100 text-sky-800"],
   sent: ["Sent", "bg-emerald-100 text-emerald-800"],
   rejected: ["Rejected", "bg-rose-100 text-rose-800"],
@@ -35,8 +36,11 @@ function Form({ audiences, initial, onSaved, onCancel }) {
   }
 
   return (
-    <div className="s-rise mb-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-      <h3 className="mb-3 text-sm font-semibold text-slate-800">{form.id ? "Edit draft" : "New campaign"}</h3>
+    <div className="s-rise s-pop mb-4 rounded-xl border border-violet-200 bg-white p-4 shadow-sm">
+      <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-800">
+        <span className="grid h-7 w-7 place-items-center rounded-full bg-violet-100 text-violet-700"><Icon name="chat" size={14} /></span>
+        {form.id ? "Edit draft" : "New campaign"}
+      </h3>
       {msg && <Notice tone="bad">{msg}</Notice>}
       <div className="grid gap-3 md:grid-cols-2">
         <label className="text-sm text-slate-600">Campaign name
@@ -64,7 +68,23 @@ function Form({ audiences, initial, onSaved, onCancel }) {
   );
 }
 
-function CampaignCard({ c, canApprove, onChanged }) {
+function ProgressBar({ sent, skipped, total }) {
+  if (!total) return null;
+  const sentPct = Math.round((sent / total) * 100);
+  return (
+    <div className="mt-3">
+      <div className="mb-1 flex justify-between text-[11px] text-slate-500"><span>{sent} sent</span><span>{skipped} skipped · {total} total</span></div>
+      <div className="flex h-2 overflow-hidden rounded-full bg-slate-100">
+        <span className="s-grow h-full bg-emerald-500" style={{ "--i": 0, width: `${sentPct}%` }} />
+        <span className="s-grow h-full bg-slate-300" style={{ "--i": 1, width: `${100 - sentPct}%` }} />
+      </div>
+    </div>
+  );
+}
+
+const RESULT_LABEL = { sent: ["Delivered", "bg-emerald-100 text-emerald-700"], stopped: ["On STOP list", "bg-rose-100 text-rose-700"], cooldown: ["Cooldown", "bg-amber-100 text-amber-700"], no_email: ["No email", "bg-slate-100 text-slate-500"], failed: ["Failed", "bg-rose-100 text-rose-700"] };
+
+function CampaignCard({ c, i, canApprove, onChanged }) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
@@ -78,22 +98,28 @@ function CampaignCard({ c, canApprove, onChanged }) {
   }
 
   return (
-    <div className="s-rise rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-semibold text-slate-800">{c.name}</span>
-            <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${cls}`}>{label}</span>
+    <div style={{ "--i": i }} className="s-rise s-lift rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex items-start gap-3">
+          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-violet-100 text-violet-700"><Icon name="mail" size={16} /></span>
+          <div>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-sm font-semibold text-slate-800">{c.name}</span>
+              <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wide ${cls}`}>{label}</span>
+            </div>
+            <div className="text-xs text-slate-500">{c.audience_name || "—"} · {c.subject}</div>
           </div>
-          <div className="text-xs text-slate-500">{c.audience_name || "—"} · {c.subject}</div>
         </div>
-        <div className="flex items-center gap-2 text-xs text-slate-500">
-          {c.status === "sent" && <span>{c.sent_count} sent · {c.skipped_count} skipped (of {c.total_count})</span>}
-          <button type="button" className={btn.plain} onClick={() => setOpen((v) => !v)}>{open ? "Hide" : "Details"}</button>
-        </div>
+        <button type="button" className={btn.plain} onClick={() => setOpen((v) => !v)}>{open ? "Hide" : "Details"}</button>
       </div>
+
+      {c.status === "sent" && <ProgressBar sent={c.sent_count} skipped={c.skipped_count} total={c.total_count} />}
+      {c.status === "wait" && !canApprove && (
+        <p className="mt-2 text-xs text-slate-500">{c.total_count} people — over the no-approval limit. Waiting for a Marketing manager to approve.</p>
+      )}
+
       {msg && <div className="mt-2"><Notice tone="bad">{msg}</Notice></div>}
-      <div className="mt-3 flex flex-wrap gap-2">
+      <div className="mt-3 flex flex-wrap items-center gap-2">
         {(c.status === "draft" || c.status === "rejected") && (
           <button type="button" className={btn.primary} disabled={busy} onClick={() => act(() => marketingApi.submitCampaign(c.id))}>
             {busy ? "Submitting..." : c.status === "rejected" ? "Resubmit" : "Submit / Send"}
@@ -106,26 +132,29 @@ function CampaignCard({ c, canApprove, onChanged }) {
             <button type="button" className={btn.plain} disabled={busy} onClick={() => act(() => marketingApi.rejectCampaign(c.id, rejectReason))}>Reject</button>
           </>
         )}
-        {c.status === "wait" && !canApprove && <span className="text-xs text-slate-500">Waiting for a Marketing manager to approve ({c.total_count} people — over the no-approval limit).</span>}
         {(c.status === "draft" || c.status === "rejected") && (
           <button type="button" className={btn.plain} disabled={busy} onClick={() => act(() => marketingApi.deleteCampaign(c.id))}>Delete</button>
         )}
       </div>
+
       {open && (
-        <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
+        <div className="s-pop mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
           <pre className="whitespace-pre-wrap text-xs text-slate-700">{c.body}</pre>
           {detail.data?.logs && (
             <div className="mt-3 max-h-56 overflow-y-auto">
               <table className="w-full text-xs">
-                <thead className="text-left text-slate-400"><tr><th>Contact</th><th>Address</th><th>Result</th></tr></thead>
+                <thead className="text-left text-slate-400"><tr><th className="pb-1">Contact</th><th className="pb-1">Address</th><th className="pb-1">Result</th></tr></thead>
                 <tbody>
-                  {detail.data.logs.map((l, i) => (
-                    <tr key={i} className="border-t border-slate-200">
-                      <td className="py-1">{l.contact || "—"}</td>
-                      <td className="py-1">{l.address || "—"}</td>
-                      <td className="py-1">{l.result}</td>
-                    </tr>
-                  ))}
+                  {detail.data.logs.map((l, li) => {
+                    const [rl, rc] = RESULT_LABEL[l.result] || [l.result, "bg-slate-100 text-slate-500"];
+                    return (
+                      <tr key={li} className="border-t border-slate-200">
+                        <td className="py-1.5">{l.contact || "—"}</td>
+                        <td className="py-1.5">{l.address || "—"}</td>
+                        <td className="py-1.5"><span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${rc}`}>{rl}</span></td>
+                      </tr>
+                    );
+                  })}
                   {detail.data.logs.length === 0 && <tr><td colSpan={3} className="py-2 text-slate-400">Nobody logged yet.</td></tr>}
                 </tbody>
               </table>
@@ -137,6 +166,32 @@ function CampaignCard({ c, canApprove, onChanged }) {
   );
 }
 
+function EmptyState({ onNew, canCreate }) {
+  const steps = [["users", "Audience"], ["chat", "Message"], ["mail", "Send"]];
+  return (
+    <div className="s-rise s-pop rounded-2xl border border-dashed border-violet-200 bg-white px-6 py-12 text-center">
+      <div className="mx-auto mb-4 grid h-16 w-16 place-items-center rounded-full bg-violet-100 text-violet-600">
+        <Icon name="chat" size={26} />
+      </div>
+      <h3 className="text-base font-semibold text-slate-800">No campaigns yet</h3>
+      <p className="mx-auto mt-1 max-w-sm text-sm text-slate-500">Build an audience, write a message, and send — each step logged, each contact reached once.</p>
+      <div className="mx-auto mt-6 flex max-w-sm items-center justify-center">
+        {steps.map(([icon, label], i) => (
+          <div key={label} className="flex items-center">
+            {i > 0 && <span className="mx-1 h-px w-10 bg-violet-200" />}
+            <div style={{ "--i": i }} className="s-pop flex flex-col items-center gap-1.5">
+              <span className="grid h-10 w-10 place-items-center rounded-full bg-violet-100 text-violet-700"><Icon name={icon} size={16} /></span>
+              <span className="text-[11px] font-semibold text-slate-500">{label}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+      <button type="button" className={`${btn.primary} mt-7`} disabled={!canCreate} onClick={onNew}>+ New campaign</button>
+      {!canCreate && <p className="mt-1 text-xs text-slate-400">Save an audience first, under Audiences.</p>}
+    </div>
+  );
+}
+
 export default function MarketingCampaigns() {
   const { has } = useMarketing();
   const list = useAsync(() => marketingApi.campaigns(), []);
@@ -144,11 +199,52 @@ export default function MarketingCampaigns() {
   const [editing, setEditing] = useState(null);
 
   const canApprove = has("approve");
+  const campaigns = list.data || [];
+
+  const stats = useMemo(() => {
+    const sent = campaigns.filter((c) => c.status === "sent");
+    return {
+      total: campaigns.length,
+      sentCount: sent.reduce((n, c) => n + (c.sent_count || 0), 0),
+      waiting: campaigns.filter((c) => c.status === "wait").length,
+      peopleInAudiences: (audiences.data || []).reduce((n, a) => n + (a.count || 0), 0),
+    };
+  }, [campaigns, audiences.data]);
+
+  const tiles = [
+    [stats.total, "Campaigns", "chat", "#7c3aed"],
+    [stats.sentCount, "Messages sent", "mail", "#059669"],
+    [stats.waiting, "Waiting for approval", "bell", "#d97706"],
+    [stats.peopleInAudiences, "People in saved audiences", "users", "#2f5bb5"],
+  ];
 
   return (
     <div>
       <PageTitle title="Campaigns" sub="Send a message to a saved audience's contacts. Each contact is logged once, and skipped if they're on the STOP list or were messaged recently." />
       <MarketingTabs />
+
+      <div className="s-hero mk-hero s-rise mb-4 flex items-center justify-between gap-4 rounded-xl p-5 shadow-sm">
+        <div>
+          <div className="text-xs font-semibold uppercase tracking-wider text-white/70">{greeting()}</div>
+          <div className="text-2xl font-semibold">Reach your audiences</div>
+          <div className="mt-1 text-sm text-white/80">Pick a saved audience, write the message, and send — approval kicks in automatically above the limit.</div>
+        </div>
+        <HeroArt />
+      </div>
+
+      <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
+        {tiles.map(([value, label, icon, color], i) => (
+          <div key={label} style={{ "--i": i }} className="s-rise s-lift relative overflow-hidden rounded-lg border border-slate-200 bg-white p-3.5">
+            <span style={{ "--i": i, background: color }} className="s-grow absolute inset-x-0 top-0 h-1.5" />
+            <div className="flex items-start justify-between gap-2">
+              <div className="text-2xl font-semibold tabular-nums text-slate-800"><CountUp value={value} /></div>
+              <span style={{ background: `${color}22`, color }} className="grid h-8 w-8 shrink-0 place-items-center rounded-full"><Icon name={icon} size={16} /></span>
+            </div>
+            <div className="mt-1 text-xs font-medium text-slate-600">{label}</div>
+          </div>
+        ))}
+      </div>
+
       {list.error && <Notice tone="bad">{list.error}</Notice>}
 
       {editing ? (
@@ -160,10 +256,13 @@ export default function MarketingCampaigns() {
         </div>
       )}
 
-      <div className="grid gap-3">
-        {(list.data || []).map((c) => <CampaignCard key={c.id} c={c} canApprove={canApprove} onChanged={list.reload} />)}
-        {!list.loading && (list.data || []).length === 0 && <p className="text-sm text-slate-500">No campaigns yet.</p>}
-      </div>
+      {!editing && !list.loading && campaigns.length === 0 ? (
+        <EmptyState onNew={() => setEditing({ ...EMPTY })} canCreate={!!(audiences.data || []).length} />
+      ) : (
+        <div className="grid gap-3">
+          {campaigns.map((c, i) => <CampaignCard key={c.id} c={c} i={i} canApprove={canApprove} onChanged={list.reload} />)}
+        </div>
+      )}
     </div>
   );
 }

@@ -10,10 +10,10 @@ const TICK_LABEL = {
 const KIND = { admin: "Admin", mktm: "Marketing manager", mkt: "Marketing user", mgr: "Sales Manager", team: "Sales Team", oth: "Marketing access" };
 
 const NEXT = [
-  ["Audiences", "Build lists from the CRM customers and the Sales leads, by type, category and place.", "users"],
-  ["Campaigns", "WhatsApp, SMS and email, with approval, schedule and cost.", "chat"],
-  ["Channels", "Connect and publish to Facebook, Instagram, YouTube, LinkedIn and more.", "calendar"],
+  ["WhatsApp & SMS", "Send campaigns on more channels than email, with the same approval rules.", "chat"],
   ["Leads for Sales", "A reply or click becomes a Sales lead with the campaign name.", "phone"],
+  ["GeM outreach", "A standing journey built for GeM bids and tenders.", "trophy"],
+  ["Social channels", "Publish to Facebook, Instagram, YouTube, LinkedIn and more.", "calendar"],
 ];
 
 export default function MarketingHome() {
