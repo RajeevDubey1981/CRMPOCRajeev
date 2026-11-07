@@ -106,6 +106,10 @@ def log(sdb: Session, lead: SalesLead, kind: str, text: str, user: User | None =
     if user is not None and kind in ATTEND_KINDS and user.id == lead.owner_user_id:
         lead.last_action_at = now()
         lead.last_action_by = user.id
+    # an actual attend action (not "give", which just reassigns, and not the automatic write a campaign
+    # reply makes with no user) clears the "new campaign reply" highlight -- it's been seen and acted on.
+    if user is not None and kind in ATTEND_KINDS and lead.campaign_reply_at is not None:
+        lead.campaign_reply_at = None
 
 
 def set_follow_up(sdb: Session, lead: SalesLead, *, day: date, user: User) -> None:
@@ -538,4 +542,6 @@ def lead_out(lead: SalesLead, names: dict[int, str] | None = None) -> dict:
         "closed_at": aware(lead.closed_at).isoformat() if lead.closed_at else None,
         "asked_again_at": aware(lead.asked_again_at).isoformat() if lead.asked_again_at else None,
         "closed": is_closed(lead),
+        "campaign_reply_at": aware(lead.campaign_reply_at).isoformat() if lead.campaign_reply_at else None,
+        "campaign_reply_text": lead.campaign_reply_text,
     }

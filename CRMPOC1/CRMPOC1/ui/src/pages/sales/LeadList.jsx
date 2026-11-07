@@ -7,11 +7,11 @@ import RegisteredCell from "../../components/RegisteredCell.jsx";
 import { AddLeadModal, GiveModal } from "./LeadModals.jsx";
 import UploadModal from "./UploadModal.jsx";
 import {
-  AttendedChip, FirstCallChip, HeatChip, Notice, PageTitle, PriorityChip, SalesTabs, StatusChip, TypeChip, btn, errText, fieldClass, fmtDate, useAsync, useSales, valueText,
+  AttendedChip, FirstCallChip, HeatChip, Icon, Notice, PageTitle, PriorityChip, SalesTabs, StatusChip, TypeChip, btn, errText, fieldClass, fmtDate, useAsync, useSales, valueText,
 } from "./salesUi.jsx";
 
 const KPIS = [
-  ["urgent", "Urgent and high priority", true], ["hot", "Hot: ready to buy", true], ["unassigned", "New, not given to anyone", true],
+  ["campaign_reply", "Replied to a campaign", true], ["urgent", "Urgent and high priority", true], ["hot", "Hot: ready to buy", true], ["unassigned", "New, not given to anyone", true],
   ["due_today", "Follow-ups today"], ["overdue", "Overdue follow-ups", true], ["first_overdue", "First calls late", true], ["not_attended", "Not attended yet", true], ["quo", "Quotes out"], ["rev", "Disposals to approve"],
 ];
 
@@ -84,8 +84,18 @@ export default function LeadList() {
           </thead>
           <tbody className="divide-y divide-slate-100">
             {(data?.items || []).map((l) => (
-              <tr key={l.id} className="align-top hover:bg-sky-50/40">
-                <td className="px-3 py-2"><Link to={`/sales/leads/${l.id}`} className="font-semibold text-indcool-navy hover:underline">{l.name}</Link><div className="text-xs text-slate-500">{l.phone}</div><div className="text-[11px] text-slate-400">{l.lead_no}</div></td>
+              <tr key={l.id} className={`align-top hover:bg-sky-50/40 ${l.campaign_reply_at ? "border-l-4 border-l-amber-400 bg-gradient-to-r from-amber-50 to-transparent" : ""}`}>
+                <td className="px-3 py-2">
+                  {l.campaign_reply_at && (
+                    <div className="s-urgent mb-1 inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-800">
+                      <Icon name="bell" size={10} /> Replied to campaign
+                    </div>
+                  )}
+                  <div><Link to={`/sales/leads/${l.id}`} className="font-semibold text-indcool-navy hover:underline">{l.name}</Link></div>
+                  <div className="text-xs text-slate-500">{l.phone}</div>
+                  <div className="text-[11px] text-slate-400">{l.lead_no}</div>
+                  {l.campaign_reply_at && <div className="mt-0.5 text-[11px] font-medium text-amber-700">{l.campaign_reply_text}</div>}
+                </td>
                 <td className="px-3 py-2"><TypeChip lead={l} /></td>
                 <td className="px-3 py-2"><PriorityChip lead={l} always /></td>
                 <td className="px-3 py-2"><HeatChip lead={l} /></td>

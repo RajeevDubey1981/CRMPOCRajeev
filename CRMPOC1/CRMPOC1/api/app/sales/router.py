@@ -261,6 +261,7 @@ def list_leads(
         "not_attended": len([r for r in rows if open_(r) and r.owner_user_id is not None and r.last_action_at is None]),
         "quo": len([r for r in rows if r.status == "quo"]),
         "rev": len([r for r in rows if r.status == "rev"]),
+        "campaign_reply": len([r for r in rows if open_(r) and r.campaign_reply_at is not None]),
     }
 
     def keep(r: SalesLead) -> bool:
@@ -308,18 +309,21 @@ def list_leads(
             return False
         if kpi == "rev" and r.status != "rev":
             return False
+        if kpi == "campaign_reply" and not (open_(r) and r.campaign_reply_at is not None):
+            return False
         return True
 
     rows = [r for r in rows if keep(r)]
 
     def rank(r: SalesLead):
         if r.status in CLOSED_STATUSES:
-            return (99, 99, -r.id)
+            return (1, 99, 99, -r.id)
+        reply_first = 0 if r.campaign_reply_at is not None else 1
         if sort == "heat":
-            return (HEAT_ORDER[r.heat], PRIORITY_ORDER[r.priority], -r.id)
+            return (reply_first, HEAT_ORDER[r.heat], PRIORITY_ORDER[r.priority], -r.id)
         if sort == "new":
-            return (0, 0, -r.id)
-        return (PRIORITY_ORDER[r.priority], HEAT_ORDER[r.heat], -r.id)
+            return (reply_first, 0, 0, -r.id)
+        return (reply_first, PRIORITY_ORDER[r.priority], HEAT_ORDER[r.heat], -r.id)
 
     rows.sort(key=rank)
     total = len(rows)

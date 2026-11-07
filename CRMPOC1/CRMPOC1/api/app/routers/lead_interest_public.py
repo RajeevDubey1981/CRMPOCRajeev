@@ -83,6 +83,8 @@ def submit_interest_form(token: str, body: InterestIn, mdb: Session = Depends(ge
 
     log(sdb, lead, "note", text)
     lead.last_action_at = datetime.now(timezone.utc)
+    lead.campaign_reply_at = datetime.now(timezone.utc)
+    lead.campaign_reply_text = f"{campaign.offer_name} -- {interest_label}"[:255]
     if body.interest == "yes":
         lead.heat = "hot"
         lead.heat_why = jdump([f"Confirmed interest in {campaign.offer_name} via campaign link"])

@@ -132,6 +132,10 @@ class SalesLead(SalesBase, Stamped):
     # the workflow mark: the person who has the lead did something about it (a call, a stage, a note ...)
     last_action_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
     last_action_by: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # set the moment this lead replies to a Marketing campaign's interest form -- surfaces it in the
+    # leads list with its own highlight, separate from heat/priority, until someone acts on it.
+    campaign_reply_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    campaign_reply_text: Mapped[str | None] = mapped_column(String(255), nullable=True)  # e.g. "Deep Freezer 300L -- Yes"
     attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     # link into the CRM: reference only
     crm_kind: Mapped[str | None] = mapped_column(String(20), nullable=True)  # complaint | partner
