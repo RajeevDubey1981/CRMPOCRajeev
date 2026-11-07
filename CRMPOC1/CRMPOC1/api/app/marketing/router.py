@@ -1050,9 +1050,9 @@ def _send_campaign_batch(mdb: Session, main_db: Session, sales_db: Session, ctx:
     stopped = _stopped_keys(mdb, "email")
     pause_days = int(get_setting(mdb, "pause_days") or 4)
     cooldown_cutoff = datetime.now(timezone.utc) - timedelta(days=pause_days)
-    already_logged = {
-        r.contact_key for r in mdb.scalars(select(MkCampaignLog.contact_key).where(MkCampaignLog.campaign_id == c.id))
-    }
+    already_logged = set(
+        mdb.scalars(select(MkCampaignLog.contact_key).where(MkCampaignLog.campaign_id == c.id))
+    )
 
     seen: set[str] = set()
     unique_rows: list[tuple[str, int | None, str, str, str | None]] = []
