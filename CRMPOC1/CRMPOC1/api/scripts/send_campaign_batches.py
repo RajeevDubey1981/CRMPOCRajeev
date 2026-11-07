@@ -20,6 +20,18 @@ API_DIR = Path(__file__).resolve().parent.parent
 os.chdir(API_DIR)
 sys.path.insert(0, str(API_DIR))
 
+# The running API service gets its DATABASE_URL / etc. from systemd's own EnvironmentFile directive --
+# a plain shell invocation (cron included) never sees those. Load the same .env by hand, same as
+# deploy.py's own migration runner does, before anything imports app.config.
+_env_file = API_DIR / ".env"
+if _env_file.is_file():
+    for _line in _env_file.read_text(encoding="utf-8").splitlines():
+        _line = _line.strip()
+        if not _line or _line.startswith("#") or "=" not in _line:
+            continue
+        _key, _value = _line.split("=", 1)
+        os.environ.setdefault(_key.strip(), _value.strip())
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("send_campaign_batches")
 
