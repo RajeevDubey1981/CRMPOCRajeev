@@ -5,9 +5,8 @@ CAMPAIGN_BATCH_GAP_MINUTES (20) between batches -- so a large campaign never fir
 in one burst, which is what gets a sending domain flagged. Run this on a schedule shorter than the gap
 (every 5 minutes is plenty); it is a no-op whenever nothing is due.
 
-Install once on the server:
-    crontab -e
-    */5 * * * * cd /var/www/indcool/api && venv/bin/python send_campaign_batches.py >> /var/log/indcool/campaign_batches.log 2>&1
+Install once on the server, in www-data's own crontab (sudo -u www-data crontab -e):
+    */5 * * * * cd /var/www/indcool/api && venv/bin/python scripts/send_campaign_batches.py >> /var/log/indcool/campaign_batches.log 2>&1
 """
 from __future__ import annotations
 
@@ -17,7 +16,7 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-API_DIR = Path(__file__).resolve().parent
+API_DIR = Path(__file__).resolve().parent.parent
 os.chdir(API_DIR)
 sys.path.insert(0, str(API_DIR))
 
