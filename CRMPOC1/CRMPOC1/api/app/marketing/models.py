@@ -164,6 +164,9 @@ class MkCampaign(MarketingBase, Stamped):
     offer_mrp: Mapped[str] = mapped_column(String(30), nullable=False, default="")
     offer_image_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
     offer_link: Mapped[str] = mapped_column(String(500), nullable=False, default="")
+    # instead of linking straight to offer_link, each Prospects contact gets their own link to a short
+    # form that writes their answer onto their existing Sales lead -- no public form, no new lead, no dupes.
+    collect_interest: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     channel: Mapped[str] = mapped_column(String(20), nullable=False, default="email")
     subject: Mapped[str] = mapped_column(String(200), nullable=False, default="")
     body: Mapped[str] = mapped_column(Text, nullable=False, default="")  # plain text/simple HTML; {{name}} substituted per contact
@@ -220,3 +223,16 @@ class MkAudience(MarketingBase, Stamped):
     heat: Mapped[str | None] = mapped_column(String(10), nullable=True)
     priority: Mapped[str | None] = mapped_column(String(10), nullable=True)
     created_by: Mapped[int] = mapped_column(Integer, nullable=False)  # crm user id
+
+
+class MkLeadInterestToken(MarketingBase, Stamped):
+    """One per recipient of a collect_interest campaign -- the opaque token in their personal link.
+    Points at an existing Sales lead; a submission writes onto that lead, it never creates a new one."""
+
+    __tablename__ = "mk_lead_interest_token"
+
+    token: Mapped[str] = mapped_column(String(64), primary_key=True)
+    campaign_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    lead_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)  # SalesLead.id, in the Sales database
+    submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    submitted_interest: Mapped[str | None] = mapped_column(String(10), nullable=True)  # yes | maybe

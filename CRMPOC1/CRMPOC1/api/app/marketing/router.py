@@ -20,7 +20,7 @@ from app.marketing import meta, secrets_box
 from app.marketing.db import get_marketing_db, marketing_enabled, new_marketing_session
 from app.marketing.models import (
     MkAudience, MkBanner, MkCampaign, MkCampaignLog, MkChannel, MkChannelAsset, MkConsent, MkContactTouch,
-    MkRoleTick, MkSetting, MkTickHistory, MkUserTick,
+    MkLeadInterestToken, MkRoleTick, MkSetting, MkTickHistory, MkUserTick,
 )
 from app.marketing.rules import ALL_TICKS, KINDS, KINDS_ORDER, LOCKED_TICKS, OPEN_SETTINGS, SETTING_DEFAULTS, TICK_DEFAULTS, TICK_GROUPS
 from app.models.order import Order
@@ -619,11 +619,11 @@ def _count_customers(main_db: Session, mdb: Session, a: dict) -> int:
     return count
 
 
-def _prospect_rows(sales_db: Session | None, ctx: Ctx, a: dict) -> list[tuple[str, str, str | None]]:
-    """[(name, phone, email), ...] for an audience of source=prospects, before consent/cooldown filtering."""
+def _prospect_rows(sales_db: Session | None, ctx: Ctx, a: dict) -> list[tuple[int | None, str, str, str | None]]:
+    """[(lead_id, name, phone, email), ...] for an audience of source=prospects, before consent/cooldown filtering."""
     if sales_db is None or not sales_enabled():
         return []
-    q = sales_db.query(SalesLead.name, SalesLead.phone, SalesLead.email)
+    q = sales_db.query(SalesLead.id, SalesLead.name, SalesLead.phone, SalesLead.email)
     if a.get("market"):
         q = q.filter(SalesLead.lead_type == a["market"])
     if a.get("stage"):
@@ -642,8 +642,9 @@ def _prospect_rows(sales_db: Session | None, ctx: Ctx, a: dict) -> list[tuple[st
     return list(q.all())
 
 
-def _customer_rows(main_db: Session, a: dict) -> list[tuple[str, str, str | None]]:
-    """[(name, phone, email), ...] for an audience of source=customers, deduped by contact, before consent/cooldown filtering."""
+def _customer_rows(main_db: Session, a: dict) -> list[tuple[int | None, str, str, str | None]]:
+    """[(None, name, phone, email), ...] for an audience of source=customers, deduped by contact, before consent/cooldown filtering.
+    The id slot is always None -- a customer row has no Sales lead to link an interest-form submission back to."""
     q = main_db.query(Order.customer_name, Order.customer_contact, Order.customer_email).filter(
         Order.customer_contact.isnot(None), Order.deleted_at.is_(None)
     )
@@ -655,17 +656,17 @@ def _customer_rows(main_db: Session, a: dict) -> list[tuple[str, str, str | None
         cutoff = datetime.now(timezone.utc).date() - timedelta(days=int(a["stale_days"]))
         q = q.filter(Order.order_date <= cutoff)
     seen: set[str] = set()
-    out: list[tuple[str, str, str | None]] = []
+    out: list[tuple[int | None, str, str, str | None]] = []
     for name, contact, email in q.distinct().all():
         key = normalize_contact(contact) or normalize_contact(email)
         if not key or key in seen:
             continue
         seen.add(key)
-        out.append((name, contact, email))
+        out.append((None, name, contact, email))
     return out
 
 
-def _audience_rows(main_db: Session, sales_db: Session | None, ctx: Ctx, a: dict) -> list[tuple[str, str, str | None]]:
+def _audience_rows(main_db: Session, sales_db: Session | None, ctx: Ctx, a: dict) -> list[tuple[int | None, str, str, str | None]]:
     if a.get("source") == "customers":
         return _customer_rows(main_db, a) if ctx.has("aud_all") else []
     return _prospect_rows(sales_db, ctx, a)
@@ -726,7 +727,7 @@ def audience_members(
     stopped = _stopped_keys(mdb, "email")
     seen: set[str] = set()
     out = []
-    for name, phone, email in rows:
+    for _id, name, phone, email in rows:
         key = normalize_contact(email) or normalize_contact(phone)
         if not key or key in seen:
             continue
@@ -788,6 +789,7 @@ class CampaignIn(BaseModel):
     offer_mrp: str = ""
     offer_image_path: Optional[str] = None
     offer_link: str = ""
+    collect_interest: bool = False
     subject: str
     body: str
 
@@ -797,7 +799,7 @@ def _campaign_out(c: MkCampaign, audience_name: str | None) -> dict:
         "id": c.id, "name": c.name, "audience_id": c.audience_id, "audience_name": "Everyone" if c.send_to_all else audience_name,
         "send_to_all": c.send_to_all, "image_path": c.image_path,
         "offer_name": c.offer_name, "offer_price": c.offer_price, "offer_mrp": c.offer_mrp,
-        "offer_image_path": c.offer_image_path, "offer_link": c.offer_link,
+        "offer_image_path": c.offer_image_path, "offer_link": c.offer_link, "collect_interest": c.collect_interest,
         "channel": c.channel, "subject": c.subject, "body": c.body, "status": c.status, "reject_reason": c.reject_reason,
         "total_count": c.total_count, "sent_count": c.sent_count, "skipped_count": c.skipped_count,
         "created_at": c.created_at.isoformat() if c.created_at else None,
@@ -827,7 +829,7 @@ async def upload_campaign_image(file: UploadFile = File(...), ctx: Ctx = Depends
     return {"image_path": to_public_upload_path(path)}
 
 
-def _rows_for_campaign(main_db: Session, sales_db: Session | None, ctx: Ctx, c: MkCampaign, audience: MkAudience | None) -> list[tuple[str, str, str | None]]:
+def _rows_for_campaign(main_db: Session, sales_db: Session | None, ctx: Ctx, c: MkCampaign, audience: MkAudience | None) -> list[tuple[int | None, str, str, str | None]]:
     if c.send_to_all:
         rows = _prospect_rows(sales_db, ctx, {})
         if ctx.has("aud_all"):
@@ -844,7 +846,7 @@ def _count_for_campaign(main_db: Session, sales_db: Session | None, mdb: Session
             rows = rows + _customer_rows(main_db, {})
         stopped = _stopped_keys(mdb, "email")
         seen: set[str] = set()
-        for _name, phone, email in rows:
+        for _id, _name, phone, email in rows:
             key = normalize_contact(email) or normalize_contact(phone)
             if not key or key in seen:
                 continue
@@ -897,13 +899,19 @@ def _validate_campaign_target(body: CampaignIn, ctx: Ctx, mdb: Session) -> MkAud
     return audience
 
 
+def _check_collect_interest(body: CampaignIn, audience: MkAudience | None) -> None:
+    if body.collect_interest and (body.send_to_all or audience is None or audience.source != "prospects"):
+        raise HTTPException(400, "Collecting interest needs a Prospects (Sales leads) audience -- there's no existing lead to write onto otherwise")
+
+
 @router.post("/campaigns")
 def create_campaign(body: CampaignIn, ctx: Ctx = Depends(require("draft")), mdb: Session = Depends(get_marketing_db), main_db: Session = Depends(get_db)):
     audience = _validate_campaign_target(body, ctx, mdb)
+    _check_collect_interest(body, audience)
     c = MkCampaign(
         name=body.name, audience_id=audience.id if audience else None, send_to_all=body.send_to_all, image_path=body.image_path,
         offer_name=body.offer_name, offer_price=body.offer_price, offer_mrp=body.offer_mrp,
-        offer_image_path=body.offer_image_path, offer_link=body.offer_link,
+        offer_image_path=body.offer_image_path, offer_link=body.offer_link, collect_interest=body.collect_interest,
         subject=body.subject, body=body.body, status="draft", created_by=ctx.user.id,
     )
     mdb.add(c)
@@ -919,11 +927,12 @@ def update_campaign(campaign_id: int, body: CampaignIn, ctx: Ctx = Depends(requi
     if c.status != "draft":
         raise HTTPException(409, "Only a draft campaign can be edited")
     audience = _validate_campaign_target(body, ctx, mdb)
+    _check_collect_interest(body, audience)
     c.name, c.audience_id, c.send_to_all, c.image_path, c.subject, c.body = (
         body.name, audience.id if audience else None, body.send_to_all, body.image_path, body.subject, body.body,
     )
-    c.offer_name, c.offer_price, c.offer_mrp, c.offer_image_path, c.offer_link = (
-        body.offer_name, body.offer_price, body.offer_mrp, body.offer_image_path, body.offer_link,
+    c.offer_name, c.offer_price, c.offer_mrp, c.offer_image_path, c.offer_link, c.collect_interest = (
+        body.offer_name, body.offer_price, body.offer_mrp, body.offer_image_path, body.offer_link, body.collect_interest,
     )
     commit(main_db, mdb)
     return _campaign_out(c, audience.name if audience else None)
@@ -948,7 +957,17 @@ def _campaign_asset_url(path: str) -> str:
     return f"{base}{path}" if base else path
 
 
-def _campaign_offer_html(c: MkCampaign) -> str:
+def _build_interest_link(mdb: Session, c: MkCampaign, lead_id: int) -> str:
+    import secrets
+
+    token = secrets.token_urlsafe(24)
+    mdb.add(MkLeadInterestToken(token=token, campaign_id=c.id, lead_id=lead_id))
+    from app.config import settings
+
+    return f"{(settings.app_public_url or '').rstrip('/')}/interest/{token}"
+
+
+def _campaign_offer_html(c: MkCampaign, cta_link: str = "", cta_text: str = "Shop Now") -> str:
     if not (c.offer_name or "").strip():
         return ""
     img = (
@@ -958,10 +977,11 @@ def _campaign_offer_html(c: MkCampaign) -> str:
     )
     price_html = f"<span style='font-size:17px; font-weight:800; color:#1c2230;'>{c.offer_price}</span>" if c.offer_price else ""
     mrp_html = f"<span style='font-size:13px; color:#9aa; text-decoration:line-through; margin-left:8px;'>{c.offer_mrp}</span>" if c.offer_mrp else ""
+    link = cta_link or c.offer_link
     btn_html = (
-        f"<a href='{c.offer_link}' style='display:inline-block; margin-top:10px; background:#1e3a78; color:#fff; "
-        f"font-size:13px; font-weight:700; padding:7px 16px; border-radius:7px; text-decoration:none;'>Shop Now &rarr;</a>"
-        if c.offer_link else ""
+        f"<a href='{link}' style='display:inline-block; margin-top:10px; background:#1e3a78; color:#fff; "
+        f"font-size:13px; font-weight:700; padding:7px 16px; border-radius:7px; text-decoration:none;'>{cta_text} &rarr;</a>"
+        if link else ""
     )
     img_cell = f"<td style='width:110px; padding-right:14px; vertical-align:top;'>{img}</td>" if img else ""
     return (
@@ -977,9 +997,10 @@ def _campaign_offer_html(c: MkCampaign) -> str:
     )
 
 
-def _campaign_email_html(c: MkCampaign, name: str) -> str:
+def _campaign_email_html(c: MkCampaign, name: str, lead_id: int | None, mdb: Session) -> str:
     body_html = (c.body or "").replace("{{name}}", name or "there").replace("\n", "<br/>")
-    offer_html = _campaign_offer_html(c)
+    interest_link = _build_interest_link(mdb, c, lead_id) if (c.collect_interest and lead_id) else ""
+    offer_html = _campaign_offer_html(c, cta_link=interest_link, cta_text="Yes, I'm interested" if interest_link else "Shop Now")
     banner_html = ""
     if c.image_path:
         src = _campaign_asset_url(c.image_path)
@@ -1011,19 +1032,19 @@ def _send_campaign_batch(mdb: Session, main_db: Session, sales_db: Session, ctx:
     }
 
     seen: set[str] = set()
-    unique_rows: list[tuple[str, str, str, str | None]] = []
-    for name, phone, email in rows:
+    unique_rows: list[tuple[str, int | None, str, str, str | None]] = []
+    for lead_id, name, phone, email in rows:
         key = normalize_contact(email) or normalize_contact(phone)
         if not key or key in seen:
             continue
         seen.add(key)
-        unique_rows.append((key, name, phone, email))
+        unique_rows.append((key, lead_id, name, phone, email))
     unique_rows.sort(key=lambda r: r[0])
     pending = [row for row in unique_rows if row[0] not in already_logged]
     batch = pending[:CAMPAIGN_BATCH_SIZE]
 
     sent = skipped = 0
-    for key, name, phone, email in batch:
+    for key, lead_id, name, phone, email in batch:
         if not email:
             mdb.add(MkCampaignLog(campaign_id=c.id, contact_key=key, contact_name=name or "", contact_address="", result="no_email"))
             skipped += 1
@@ -1037,7 +1058,7 @@ def _send_campaign_batch(mdb: Session, main_db: Session, sales_db: Session, ctx:
             mdb.add(MkCampaignLog(campaign_id=c.id, contact_key=key, contact_name=name or "", contact_address=email, result="cooldown"))
             skipped += 1
             continue
-        ok = send_email(email, c.subject, _campaign_email_html(c, name), template="marketing_campaign")
+        ok = send_email(email, c.subject, _campaign_email_html(c, name, lead_id, mdb), template="marketing_campaign")
         mdb.add(MkCampaignLog(campaign_id=c.id, contact_key=key, contact_name=name or "", contact_address=email, result="sent" if ok else "failed"))
         if ok:
             sent += 1

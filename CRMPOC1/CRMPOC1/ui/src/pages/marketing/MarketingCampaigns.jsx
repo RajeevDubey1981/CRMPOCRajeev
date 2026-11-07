@@ -19,12 +19,14 @@ const STATUS_LABEL = {
 
 const EMPTY = {
   name: "", audience_id: "", send_to_all: false, image_path: null,
-  offer_name: "", offer_price: "", offer_mrp: "", offer_image_path: null, offer_link: "",
+  offer_name: "", offer_price: "", offer_mrp: "", offer_image_path: null, offer_link: "", collect_interest: false,
   subject: "", body: "",
 };
 
 function OfferCardPreview({ form }) {
   if (!form.offer_name.trim()) return null;
+  const ctaLabel = form.collect_interest ? "Yes, I'm interested" : "Shop Now";
+  const hasCta = form.collect_interest || form.offer_link;
   return (
     <div className="my-3 flex gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
       {form.offer_image_path ? (
@@ -39,7 +41,7 @@ function OfferCardPreview({ form }) {
           {form.offer_price && <span className="text-base font-extrabold text-slate-800">{form.offer_price}</span>}
           {form.offer_mrp && <span className="text-xs text-slate-400 line-through">{form.offer_mrp}</span>}
         </div>
-        {form.offer_link && <span className="mt-1.5 inline-block rounded-md bg-[#1e3a78] px-3 py-1 text-xs font-bold text-white">Shop Now →</span>}
+        {hasCta && <span className="mt-1.5 inline-block rounded-md bg-[#1e3a78] px-3 py-1 text-xs font-bold text-white">{ctaLabel} →</span>}
       </div>
     </div>
   );
@@ -69,6 +71,8 @@ function Form({ audiences, canAll, initial, onSaved, onCancel }) {
   const [msg, setMsg] = useState("");
   const guide = useAsync(() => marketingApi.campaignImageGuide(), []);
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
+  const selectedAudience = audiences.find((a) => String(a.id) === String(form.audience_id));
+  const canCollectInterest = !form.send_to_all && selectedAudience?.source === "prospects";
 
   async function pickImage(field, e) {
     const file = e.target.files?.[0];
@@ -87,7 +91,7 @@ function Form({ audiences, canAll, initial, onSaved, onCancel }) {
     }
     setBusy(true); setMsg("");
     try {
-      const body = { ...form, audience_id: form.send_to_all ? null : Number(form.audience_id) };
+      const body = { ...form, audience_id: form.send_to_all ? null : Number(form.audience_id), collect_interest: canCollectInterest && form.collect_interest };
       if (form.id) await marketingApi.updateCampaign(form.id, body);
       else await marketingApi.createCampaign(body);
       onSaved();
@@ -159,7 +163,7 @@ function Form({ audiences, canAll, initial, onSaved, onCancel }) {
             <input className={fieldClass} value={form.offer_mrp} onChange={set("offer_mrp")} placeholder="₹17,990" />
           </label>
           <label className="text-sm text-slate-600 md:col-span-2">Product link
-            <input className={fieldClass} value={form.offer_link} onChange={set("offer_link")} placeholder="https://www.indcool.in/product/..." />
+            <input className={fieldClass} value={form.offer_link} onChange={set("offer_link")} placeholder="https://www.indcool.in/product/..." disabled={form.collect_interest} />
           </label>
         </div>
         <div className="mt-2 flex items-center gap-2">
@@ -167,6 +171,25 @@ function Form({ audiences, canAll, initial, onSaved, onCancel }) {
           {uploading === "offer_image_path" && <span className="text-xs text-slate-500">Uploading...</span>}
           {form.offer_image_path && <button type="button" className={btn.plain} onClick={() => setForm((f) => ({ ...f, offer_image_path: null }))}>Remove image</button>}
         </div>
+
+        {canCollectInterest && (
+          <label className="mt-3 flex items-start gap-2 text-sm text-slate-600">
+            <input
+              type="checkbox" className="mt-0.5"
+              checked={form.collect_interest}
+              onChange={(e) => setForm((f) => ({ ...f, collect_interest: e.target.checked }))}
+            />
+            <span>
+              Ask for their interest with a short form instead of linking out.
+              <span className="block text-xs text-slate-400">
+                Each person gets their own link to a short form (Yes/Maybe, quantity, capacity, a note) that writes straight onto their existing Sales lead — no duplicate, no new lead.
+              </span>
+            </span>
+          </label>
+        )}
+        {!canCollectInterest && form.collect_interest && (
+          <p className="mt-2 text-xs text-amber-600">Switched off — this needs a Prospects (Sales leads) audience.</p>
+        )}
       </div>
 
       <div className="mt-4">
