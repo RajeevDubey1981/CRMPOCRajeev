@@ -167,6 +167,9 @@ class MkCampaign(MarketingBase, Stamped):
     # instead of linking straight to offer_link, each Prospects contact gets their own link to a short
     # form that writes their answer onto their existing Sales lead -- no public form, no new lead, no dupes.
     collect_interest: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # JSON list of {key, label, type ("text"|"select"|"yesno"), options?, placeholder?} -- the extra questions
+    # on the interest form, beyond the fixed Yes/Maybe. Admin-defined per campaign, in display order.
+    interest_fields: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
     channel: Mapped[str] = mapped_column(String(20), nullable=False, default="email")
     subject: Mapped[str] = mapped_column(String(200), nullable=False, default="")
     body: Mapped[str] = mapped_column(Text, nullable=False, default="")  # plain text/simple HTML; {{name}} substituted per contact

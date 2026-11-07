@@ -3,6 +3,7 @@ existing Sales lead; a submission writes onto that lead (an activity note + a he
 creates a new lead and needs no phone-matching, because the recipient was already a known contact."""
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -49,6 +50,7 @@ def view_interest_form(token: str, mdb: Session = Depends(get_marketing_db), sdb
             "name": campaign.offer_name, "price": campaign.offer_price, "mrp": campaign.offer_mrp,
             "image_url": _campaign_asset_url(campaign.offer_image_path),
         },
+        "fields": json.loads(campaign.interest_fields or "[]"),
         "already_submitted": row.submitted_at is not None,
         "submitted_interest": row.submitted_interest,
     }
@@ -56,9 +58,7 @@ def view_interest_form(token: str, mdb: Session = Depends(get_marketing_db), sdb
 
 class InterestIn(BaseModel):
     interest: str  # "yes" | "maybe"
-    quantity: str = ""
-    capacity: str = ""
-    note: str = ""
+    answers: dict[str, str] = {}
 
 
 @router.post("/{token}")
@@ -73,14 +73,14 @@ def submit_interest_form(token: str, body: InterestIn, mdb: Session = Depends(ge
     if lead is None:
         raise HTTPException(404, "This link is not valid.")
 
+    fields = json.loads(campaign.interest_fields or "[]")
     interest_label = "Yes, interested" if body.interest == "yes" else "Maybe, send details"
-    text = (
-        f"Replied to the \"{campaign.offer_name}\" campaign link.\n"
-        f"Interest: {interest_label}\n"
-        f"Quantity: {body.quantity.strip() or 'Not specified'}\n"
-        f"Capacity: {body.capacity.strip() or 'Any / not sure'}\n"
-        f"Note: {body.note.strip() or 'None'}"
-    )
+    lines = [f'Replied to the "{campaign.offer_name}" campaign link.', f"Interest: {interest_label}"]
+    for f in fields:
+        value = (body.answers.get(f["key"]) or "").strip()
+        lines.append(f"{f['label']}: {value or 'Not specified'}")
+    text = "\n".join(lines)
+
     log(sdb, lead, "note", text)
     lead.last_action_at = datetime.now(timezone.utc)
     if body.interest == "yes":

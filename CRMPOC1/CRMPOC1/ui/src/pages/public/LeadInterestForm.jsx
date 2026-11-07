@@ -7,9 +7,7 @@ export default function LeadInterestForm() {
   const { token } = useParams();
   const [state, setState] = useState({ loading: true, error: "", data: null });
   const [interest, setInterest] = useState("yes");
-  const [quantity, setQuantity] = useState("");
-  const [capacity, setCapacity] = useState("");
-  const [note, setNote] = useState("");
+  const [answers, setAnswers] = useState({});
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState(false);
   const [submitError, setSubmitError] = useState("");
@@ -25,7 +23,7 @@ export default function LeadInterestForm() {
     setSubmitting(true);
     setSubmitError("");
     try {
-      await api.post(`/api/public/lead-interest/${token}`, { interest, quantity, capacity, note });
+      await api.post(`/api/public/lead-interest/${token}`, { interest, answers });
       setDone(true);
     } catch (err) {
       setSubmitError(err.response?.data?.detail || "Could not send this. Please try again.");
@@ -41,7 +39,8 @@ export default function LeadInterestForm() {
     return <Shell><p className="muted">{state.error}</p></Shell>;
   }
 
-  const { lead, product, already_submitted: alreadySubmitted, submitted_interest: submittedInterest } = state.data;
+  const { lead, product, fields = [], already_submitted: alreadySubmitted, submitted_interest: submittedInterest } = state.data;
+  const setAnswer = (key) => (e) => setAnswers((a) => ({ ...a, [key]: e.target.value }));
   const showConfirm = done || alreadySubmitted;
 
   return (
@@ -75,24 +74,24 @@ export default function LeadInterestForm() {
               </div>
             </fieldset>
 
-            <div className="qty-row">
-              <label className="field">Quantity needed
-                <input type="text" placeholder="e.g. 20 units" value={quantity} onChange={(e) => setQuantity(e.target.value)} />
+            {fields.map((f) => (
+              <label className="field" key={f.key}>{f.label}
+                {f.type === "select" ? (
+                  <select value={answers[f.key] || ""} onChange={setAnswer(f.key)}>
+                    <option value="">Select...</option>
+                    {(f.options || []).map((o) => <option key={o} value={o}>{o}</option>)}
+                  </select>
+                ) : f.type === "yesno" ? (
+                  <select value={answers[f.key] || ""} onChange={setAnswer(f.key)}>
+                    <option value="">Select...</option>
+                    <option value="Yes">Yes</option>
+                    <option value="No">No</option>
+                  </select>
+                ) : (
+                  <input type="text" value={answers[f.key] || ""} onChange={setAnswer(f.key)} />
+                )}
               </label>
-              <label className="field">Preferred capacity
-                <select value={capacity} onChange={(e) => setCapacity(e.target.value)}>
-                  <option value="">Any / not sure</option>
-                  <option>100-200 L</option>
-                  <option>200-300 L</option>
-                  <option>300-500 L</option>
-                  <option>500 L+</option>
-                </select>
-              </label>
-            </div>
-
-            <label className="field">Anything specific we should know
-              <textarea placeholder="e.g. need chest-type, delivery by month-end, etc." value={note} onChange={(e) => setNote(e.target.value)} />
-            </label>
+            ))}
 
             {submitError && <p className="error">{submitError}</p>}
             <button type="submit" className="submit-btn" disabled={submitting}>{submitting ? "Sending..." : "Send to INDcool"}</button>

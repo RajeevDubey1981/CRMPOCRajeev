@@ -20,8 +20,67 @@ const STATUS_LABEL = {
 const EMPTY = {
   name: "", audience_id: "", send_to_all: false, image_path: null,
   offer_name: "", offer_price: "", offer_mrp: "", offer_image_path: null, offer_link: "", collect_interest: false,
+  interest_fields: [],
   subject: "", body: "",
 };
+
+const DEFAULT_INTEREST_FIELDS = [
+  { key: "quantity", label: "Quantity needed", type: "text" },
+  { key: "capacity", label: "Preferred capacity", type: "select", options: ["Any / not sure", "100-200 L", "200-300 L", "300-500 L", "500 L+"] },
+  { key: "note", label: "Anything specific we should know", type: "text" },
+];
+
+const FIELD_TYPES = [["text", "Text answer"], ["select", "Dropdown"], ["yesno", "Yes / No"]];
+
+function InterestFieldsEditor({ fields, onChange }) {
+  function update(i, patch) {
+    onChange(fields.map((f, idx) => (idx === i ? { ...f, ...patch } : f)));
+  }
+  function remove(i) {
+    onChange(fields.filter((_, idx) => idx !== i));
+  }
+  function add() {
+    onChange([...fields, { key: `field_${Date.now()}`, label: "", type: "text" }]);
+  }
+  function move(i, dir) {
+    const j = i + dir;
+    if (j < 0 || j >= fields.length) return;
+    const next = [...fields];
+    [next[i], next[j]] = [next[j], next[i]];
+    onChange(next);
+  }
+
+  return (
+    <div className="mt-3 space-y-2">
+      <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Form questions (besides Yes/Maybe)</div>
+      {fields.map((f, i) => (
+        <div key={f.key} className="rounded-lg border border-slate-200 bg-white p-2.5">
+          <div className="flex items-center gap-2">
+            <input
+              className={`${fieldClass} flex-1`} placeholder="Question label" value={f.label}
+              onChange={(e) => update(i, { label: e.target.value })}
+            />
+            <select className={`${fieldClass} w-auto`} value={f.type} onChange={(e) => update(i, { type: e.target.value, options: e.target.value === "select" ? (f.options || [""]) : undefined })}>
+              {FIELD_TYPES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            </select>
+            <button type="button" className="text-slate-400 hover:text-slate-600" disabled={i === 0} onClick={() => move(i, -1)} title="Move up">↑</button>
+            <button type="button" className="text-slate-400 hover:text-slate-600" disabled={i === fields.length - 1} onClick={() => move(i, 1)} title="Move down">↓</button>
+            <button type="button" className="text-rose-500 hover:text-rose-700" onClick={() => remove(i)} title="Remove">✕</button>
+          </div>
+          {f.type === "select" && (
+            <label className="mt-2 block text-xs text-slate-500">Options (one per line)
+              <textarea
+                className={`${fieldClass} mt-1`} rows={3} value={(f.options || []).join("\n")}
+                onChange={(e) => update(i, { options: e.target.value.split("\n") })}
+              />
+            </label>
+          )}
+        </div>
+      ))}
+      <button type="button" className={btn.plain} onClick={add}>+ Add question</button>
+    </div>
+  );
+}
 
 function OfferCardPreview({ form }) {
   if (!form.offer_name.trim()) return null;
@@ -177,15 +236,21 @@ function Form({ audiences, canAll, initial, onSaved, onCancel }) {
             <input
               type="checkbox" className="mt-0.5"
               checked={form.collect_interest}
-              onChange={(e) => setForm((f) => ({ ...f, collect_interest: e.target.checked }))}
+              onChange={(e) => setForm((f) => ({
+                ...f, collect_interest: e.target.checked,
+                interest_fields: e.target.checked && f.interest_fields.length === 0 ? DEFAULT_INTEREST_FIELDS : f.interest_fields,
+              }))}
             />
             <span>
               Ask for their interest with a short form instead of linking out.
               <span className="block text-xs text-slate-400">
-                Each person gets their own link to a short form (Yes/Maybe, quantity, capacity, a note) that writes straight onto their existing Sales lead — no duplicate, no new lead.
+                Each person gets their own link to a short form (Yes/Maybe, then your own questions below) that writes straight onto their existing Sales lead — no duplicate, no new lead.
               </span>
             </span>
           </label>
+        )}
+        {canCollectInterest && form.collect_interest && (
+          <InterestFieldsEditor fields={form.interest_fields} onChange={(interest_fields) => setForm((f) => ({ ...f, interest_fields }))} />
         )}
         {!canCollectInterest && form.collect_interest && (
           <p className="mt-2 text-xs text-amber-600">Switched off — this needs a Prospects (Sales leads) audience.</p>

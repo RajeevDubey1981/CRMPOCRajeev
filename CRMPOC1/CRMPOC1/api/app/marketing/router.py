@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from datetime import date, datetime, timedelta, timezone
 from typing import Optional
 
@@ -790,6 +791,7 @@ class CampaignIn(BaseModel):
     offer_image_path: Optional[str] = None
     offer_link: str = ""
     collect_interest: bool = False
+    interest_fields: list[dict] = []
     subject: str
     body: str
 
@@ -800,6 +802,7 @@ def _campaign_out(c: MkCampaign, audience_name: str | None) -> dict:
         "send_to_all": c.send_to_all, "image_path": c.image_path,
         "offer_name": c.offer_name, "offer_price": c.offer_price, "offer_mrp": c.offer_mrp,
         "offer_image_path": c.offer_image_path, "offer_link": c.offer_link, "collect_interest": c.collect_interest,
+        "interest_fields": json.loads(c.interest_fields or "[]"),
         "channel": c.channel, "subject": c.subject, "body": c.body, "status": c.status, "reject_reason": c.reject_reason,
         "total_count": c.total_count, "sent_count": c.sent_count, "skipped_count": c.skipped_count,
         "created_at": c.created_at.isoformat() if c.created_at else None,
@@ -904,6 +907,24 @@ def _check_collect_interest(body: CampaignIn, audience: MkAudience | None) -> No
         raise HTTPException(400, "Collecting interest needs a Prospects (Sales leads) audience -- there's no existing lead to write onto otherwise")
 
 
+FIELD_TYPES = {"text", "select", "yesno"}
+
+
+def _clean_interest_fields(raw: list[dict]) -> str:
+    cleaned = []
+    for i, f in enumerate(raw or []):
+        label = str(f.get("label") or "").strip()
+        if not label:
+            continue
+        ftype = f.get("type") if f.get("type") in FIELD_TYPES else "text"
+        field = {"key": str(f.get("key") or f"field_{i}"), "label": label[:120], "type": ftype}
+        if ftype == "select":
+            options = [str(o).strip()[:80] for o in (f.get("options") or []) if str(o).strip()]
+            field["options"] = options[:20]
+        cleaned.append(field)
+    return json.dumps(cleaned[:10])
+
+
 @router.post("/campaigns")
 def create_campaign(body: CampaignIn, ctx: Ctx = Depends(require("draft")), mdb: Session = Depends(get_marketing_db), main_db: Session = Depends(get_db)):
     audience = _validate_campaign_target(body, ctx, mdb)
@@ -912,6 +933,7 @@ def create_campaign(body: CampaignIn, ctx: Ctx = Depends(require("draft")), mdb:
         name=body.name, audience_id=audience.id if audience else None, send_to_all=body.send_to_all, image_path=body.image_path,
         offer_name=body.offer_name, offer_price=body.offer_price, offer_mrp=body.offer_mrp,
         offer_image_path=body.offer_image_path, offer_link=body.offer_link, collect_interest=body.collect_interest,
+        interest_fields=_clean_interest_fields(body.interest_fields),
         subject=body.subject, body=body.body, status="draft", created_by=ctx.user.id,
     )
     mdb.add(c)
@@ -934,6 +956,7 @@ def update_campaign(campaign_id: int, body: CampaignIn, ctx: Ctx = Depends(requi
     c.offer_name, c.offer_price, c.offer_mrp, c.offer_image_path, c.offer_link, c.collect_interest = (
         body.offer_name, body.offer_price, body.offer_mrp, body.offer_image_path, body.offer_link, body.collect_interest,
     )
+    c.interest_fields = _clean_interest_fields(body.interest_fields)
     commit(main_db, mdb)
     return _campaign_out(c, audience.name if audience else None)
 
