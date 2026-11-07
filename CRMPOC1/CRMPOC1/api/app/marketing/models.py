@@ -169,7 +169,7 @@ class MkCampaign(MarketingBase, Stamped):
     collect_interest: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     # JSON list of {key, label, type ("text"|"select"|"yesno"), options?, placeholder?} -- the extra questions
     # on the interest form, beyond the fixed Yes/Maybe. Admin-defined per campaign, in display order.
-    interest_fields: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    interest_fields: Mapped[str | None] = mapped_column(Text, nullable=True, default="[]")  # TEXT can't carry a MySQL server default
     channel: Mapped[str] = mapped_column(String(20), nullable=False, default="email")
     subject: Mapped[str] = mapped_column(String(200), nullable=False, default="")
     body: Mapped[str] = mapped_column(Text, nullable=False, default="")  # plain text/simple HTML; {{name}} substituted per contact

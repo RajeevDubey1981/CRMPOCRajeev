@@ -18,7 +18,9 @@ def upgrade() -> None:
     bind = op.get_bind()
     columns = {c["name"] for c in sa.inspect(bind).get_columns("mk_campaign")}
     if "interest_fields" not in columns:
-        op.add_column("mk_campaign", sa.Column("interest_fields", sa.Text(), nullable=False, server_default="[]"))
+        # MySQL refuses a server DEFAULT on TEXT/BLOB/JSON columns, so this stays nullable; app code
+        # already treats a missing value as "[]" (see json.loads(c.interest_fields or "[]")).
+        op.add_column("mk_campaign", sa.Column("interest_fields", sa.Text(), nullable=True))
 
 
 def downgrade() -> None:
