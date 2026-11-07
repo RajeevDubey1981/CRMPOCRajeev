@@ -49,7 +49,7 @@ export default function LeadInterestForm() {
       <div className="card">
         <div className="hero">
           <span className="tag">New product</span>
-          <h1>Introducing INDcool {product.name || "this product"}</h1>
+          <h1>Introducing {product.name || "this product"}</h1>
           <p>We&rsquo;re extending the range you already carry. Tell us if it&rsquo;s worth adding to your next order.</p>
         </div>
 
