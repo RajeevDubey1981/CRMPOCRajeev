@@ -44,6 +44,16 @@ const MARKET_OPTIONS = [
   { value: "export", label: "Export" },
 ];
 const MARKET_LABELS = Object.fromEntries(MARKET_OPTIONS.map((o) => [o.value, o.label]));
+const CSD_TIER_OPTIONS_BY_MARKET = {
+  csd: [
+    { value: "retailer", label: "Retailer (depot / URC / canteen)" },
+    { value: "end", label: "End customer" },
+  ],
+  gem: [
+    { value: "govt", label: "Govt buyer" },
+  ],
+};
+const CSD_TIER_LABELS = { retailer: "Retailer", end: "End customer", govt: "Govt buyer" };
 const VENDOR_POST_SHIPMENT_STATUSES = new Set(["Shipped", "In Transit", "Delivered", "Returned", "Completed"]);
 const VENDOR_LOCKED_SHIPMENT_STATUSES = new Set(["Shipped", "In Transit"]);
 
@@ -552,6 +562,7 @@ export default function OrderDetail() {
       customer_state: order.customer_state || "",
       customer_address: order.customer_address || "",
       market: order.market || "",
+      csd_tier: order.csd_tier || "",
       courier_id: order.courier_id ?? "",
       freight_amount: order.freight_amount ?? "",
       return_lrn_no: order.return_lrn_no || "",
@@ -991,6 +1002,7 @@ export default function OrderDetail() {
           customer_state: editForm.customer_state || null,
           customer_address: editForm.customer_address || null,
           market: editForm.market || null,
+          csd_tier: editForm.csd_tier || null,
           consignee_addresses: serializeConsigneesForApi(editConsignees),
           expected_delivery_date: editForm.expected_delivery_date || null,
         });
@@ -1030,6 +1042,7 @@ export default function OrderDetail() {
             customer_state: editForm.customer_state || null,
             customer_address: editForm.customer_address || null,
             market: editForm.market || null,
+            csd_tier: editForm.csd_tier || null,
             consignee_addresses: serializeConsigneesForApi(editConsignees),
             courier_id: editForm.courier_id !== "" ? Number(editForm.courier_id) : null,
             freight_amount: editForm.freight_amount !== "" ? Number(editForm.freight_amount) : null,
@@ -1300,6 +1313,9 @@ export default function OrderDetail() {
           <Field label="City" value={order.customer_city} />
           <Field label="State" value={order.customer_state} />
           <Field label="Market" value={MARKET_LABELS[order.market] || order.market || "— Unclassified —"} />
+          {(order.market === "csd" || order.market === "gem") && (
+            <Field label="CSD tier" value={CSD_TIER_LABELS[order.csd_tier] || "Unset — needs a look"} />
+          )}
           <Field label="Address" value={order.customer_address} full />
         </div>
       </section>
@@ -2217,6 +2233,22 @@ export default function OrderDetail() {
                 ))}
               </select>
             </div>
+            {(editForm.market === "csd" || editForm.market === "gem") && (
+              <div>
+                <label className={labelClass}>CSD tier</label>
+                <select
+                  value={editForm.csd_tier}
+                  onChange={(e) => setEF("csd_tier", e.target.value)}
+                  disabled={isVendor && !canVendorEditPendingDetails}
+                  className={fieldClass}
+                >
+                  <option value="">Unset — needs a look</option>
+                  {CSD_TIER_OPTIONS_BY_MARKET[editForm.market].map((t) => (
+                    <option key={t.value} value={t.value}>{t.label}</option>
+                  ))}
+                </select>
+              </div>
+            )}
 
             {(!isVendor || canVendorEditPendingDetails) && (
               <div className="md:col-span-2 space-y-4 border-t border-slate-200 pt-4">

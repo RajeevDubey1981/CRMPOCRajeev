@@ -85,6 +85,7 @@ class OrderCreate(BaseModel):
     customer_state: str | None = None
     customer_address: str | None = None
     market: str | None = None  # gem/csd/retail/spare/dealer/tender/corp/export -- which market this sale came through
+    csd_tier: str | None = None  # only meaningful on market=csd (retailer/end) or market=gem (govt)
     courier_id: int | None = None
     lrn_no: str | None = None
     vendor_bill_no: str | None = None
@@ -148,6 +149,7 @@ class OrderUpdate(BaseModel):
     customer_state: str | None = None
     customer_address: str | None = None
     market: str | None = None
+    csd_tier: str | None = None
     courier_id: int | None = None
     freight_amount: float | None = None
     return_lrn_no: str | None = None
@@ -184,6 +186,7 @@ class OrderOut(BaseModel):
     customer_state: str | None = None
     customer_address: str | None = None
     market: str | None = None
+    csd_tier: str | None = None
     courier_id: int | None
     courier_name: str | None = None  # resolved
     freight_amount: float | None = None

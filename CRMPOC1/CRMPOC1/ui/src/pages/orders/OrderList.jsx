@@ -102,6 +102,23 @@ function DeleteIcon() {
   );
 }
 
+const MARKET_OPTIONS = [
+  { value: "gem", label: "GeM" },
+  { value: "csd", label: "CSD" },
+  { value: "retail", label: "Retail" },
+  { value: "spare", label: "Spare parts" },
+  { value: "dealer", label: "Dealer" },
+  { value: "tender", label: "State tender" },
+  { value: "corp", label: "Corporate / project" },
+  { value: "export", label: "Export" },
+];
+const CSD_TIER_OPTIONS = [
+  { value: "retailer", label: "Retailer (depot / URC / canteen)" },
+  { value: "end", label: "End customer" },
+  { value: "govt", label: "Govt buyer" },
+  { value: "unset", label: "Unset -- needs a look" },
+];
+
 export default function OrderList() {
   const navigate = useNavigate();
   const openOrder = (o) => packOrder(o.order_no || `Order ${o.id}`, () => navigate(`/orders/${o.id}`));
@@ -119,7 +136,7 @@ export default function OrderList() {
   const [err, setErr] = useState("");
   const [searchInput, setSearchInput] = useState("");
   const [activeSearch, setActiveSearch] = useState("");
-  const [filters, setFilters] = useState({ status: "", date_from: "", date_to: "" });
+  const [filters, setFilters] = useState({ status: "", date_from: "", date_to: "", market: "", csd_tier: "" });
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState(20);
   const [confirmDelete, setConfirmDelete] = useState(null);
@@ -131,7 +148,9 @@ export default function OrderList() {
     search: activeSearch || undefined,
     date_from: filters.date_from || undefined,
     date_to: filters.date_to || undefined,
-  }), [page, perPage, filters.status, filters.date_from, filters.date_to, activeSearch]);
+    market: filters.market || undefined,
+    csd_tier: filters.csd_tier || undefined,
+  }), [page, perPage, filters.status, filters.date_from, filters.date_to, filters.market, filters.csd_tier, activeSearch]);
 
   async function load() {
     const requestId = ++listRequestRef.current;
@@ -186,6 +205,8 @@ export default function OrderList() {
       search: activeSearch || undefined,
       date_from: filters.date_from || undefined,
       date_to: filters.date_to || undefined,
+      market: filters.market || undefined,
+      csd_tier: filters.csd_tier || undefined,
     });
     const token = localStorage.getItem("indcool_token");
     const requestUrl = url.startsWith("http") ? url : `${window.location.origin}${url}`;
@@ -247,6 +268,34 @@ export default function OrderList() {
               <option key={s} value={s}>{s}</option>
             ))}
           </select>
+        </div>
+        <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-3">
+          <select
+            value={filters.market}
+            onChange={(e) => { setFilters((f) => ({ ...f, market: e.target.value, csd_tier: "" })); setPage(1); }}
+            disabled={loading}
+            className="rounded-md border border-slate-300 px-3 py-2 text-sm disabled:cursor-not-allowed disabled:bg-slate-50"
+          >
+            <option value="">All markets</option>
+            {MARKET_OPTIONS.map((m) => (
+              <option key={m.value} value={m.value}>{m.label}</option>
+            ))}
+          </select>
+          {(filters.market === "csd" || filters.market === "gem") && (
+            <select
+              value={filters.csd_tier}
+              onChange={(e) => { setFilters((f) => ({ ...f, csd_tier: e.target.value })); setPage(1); }}
+              disabled={loading}
+              className="rounded-md border border-slate-300 px-3 py-2 text-sm disabled:cursor-not-allowed disabled:bg-slate-50"
+            >
+              <option value="">Any tier</option>
+              {CSD_TIER_OPTIONS
+                .filter((t) => filters.market === "gem" ? (t.value === "govt" || t.value === "unset") : t.value !== "govt")
+                .map((t) => (
+                  <option key={t.value} value={t.value}>{t.label}</option>
+                ))}
+            </select>
+          )}
         </div>
         <div className="mt-3">
           <DateRangeFilter from={filters.date_from} to={filters.date_to} onChange={(a, b) => { setFilters((f) => ({ ...f, date_from: a, date_to: b })); setPage(1); }} />

@@ -519,6 +519,7 @@ def _hydrate_order(db: Session, order: Order) -> OrderOut:
         customer_state=order.customer_state,
         customer_address=order.customer_address,
         market=order.market,
+        csd_tier=order.csd_tier,
         courier_id=order.courier_id,
         courier_name=_resolve_courier_name(db, order.courier_id),
         freight_amount=float(order.freight_amount) if order.freight_amount is not None else None,
@@ -1026,6 +1027,8 @@ def autocomplete_orders(
 def export_csv(
     status_filter: Literal[ORDER_STATUSES] | None = Query(None, alias="status"),  # type: ignore[valid-type]
     search: str | None = None,
+    market: str | None = None,
+    csd_tier: str | None = None,
     date_from: date | None = None,
     date_to: date | None = None,
     db: Session = Depends(get_db),
@@ -1044,6 +1047,10 @@ def export_csv(
     stmt = _apply_order_visibility(stmt, user, vendor_ids)
     if status_filter:
         stmt = stmt.where(Order.status == status_filter)
+    if market:
+        stmt = stmt.where(Order.market == market)
+    if csd_tier:
+        stmt = stmt.where(Order.csd_tier == (None if csd_tier == "unset" else csd_tier))
     stmt = _apply_order_search_filter(stmt, search)
     stmt = registered_between(stmt, Order.created_at, date_from, date_to)
     if user.role == "vendor" and not vendor_ids:
@@ -1091,6 +1098,8 @@ def list_orders(
     status_filter: Literal[ORDER_STATUSES] | None = Query(None, alias="status"),  # type: ignore[valid-type]
     search: str | None = None,
     vendor_id: int | None = None,
+    market: str | None = None,
+    csd_tier: str | None = None,
     date_from: date | None = None,
     date_to: date | None = None,
     db: Session = Depends(get_db),
@@ -1113,6 +1122,10 @@ def list_orders(
         stmt = stmt.where(Order.vendor_id == vendor_id)
     if status_filter:
         stmt = stmt.where(Order.status == status_filter)
+    if market:
+        stmt = stmt.where(Order.market == market)
+    if csd_tier:
+        stmt = stmt.where(Order.csd_tier == (None if csd_tier == "unset" else csd_tier))
     stmt = _apply_order_search_filter(stmt, search)
     stmt = registered_between(stmt, Order.created_at, date_from, date_to)
     stmt = stmt.order_by(desc(Order.created_at))
@@ -1293,6 +1306,7 @@ async def create_order(
         customer_state=body.customer_state,
         customer_address=body.customer_address,
         market=body.market,
+        csd_tier=body.csd_tier,
         courier_id=_ensure_active_courier(db, body.courier_id),
         lrn_no=body.lrn_no,
         vendor_bill_no=body.vendor_bill_no,

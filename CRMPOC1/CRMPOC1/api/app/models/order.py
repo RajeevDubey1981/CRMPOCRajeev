@@ -37,6 +37,9 @@ class Order(Base, TimestampMixin, SoftDeleteMixin):
     # Which market this sale came through (gem, csd, retail, service, dealer) -- same keys as SalesLead.lead_type.
     # Set at order creation going forward; older orders are left null (shown as "Unclassified").
     market: Mapped[str | None] = mapped_column(String(20), nullable=True, index=True)
+    # Only meaningful when market="csd": retailer (depot/URC/canteen) or end (serving personnel/dependent).
+    # Only meaningful when market="gem": govt (an actual government buyer, not a dealer applying for GeM).
+    csd_tier: Mapped[str | None] = mapped_column(String(20), nullable=True)
     courier_id: Mapped[int | None] = mapped_column(ForeignKey("couriers.id"), nullable=True)
     # Credits this amount to the courier's ledger (AccountLedgerEntry, source_type="freight") the moment
     # it's set or changed — see _sync_freight_ledger_entry in routers/orders.py.
