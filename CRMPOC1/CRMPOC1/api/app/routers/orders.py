@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 
 from app.database import get_db
+from app.services.csd_tier import valid_csd_tier
 from app.deps import get_current_user
 from app.services.date_range import registered_between
 from app.models.claim import Claim
@@ -1278,6 +1279,12 @@ async def create_order(
             elif not body.market:
                 raise HTTPException(status.HTTP_400_BAD_REQUEST, "Choose which of your markets this order is for")
 
+        # The buyer tier is set by Sales/Admin after the fact, not by the vendor punching the order.
+        body.csd_tier = None
+
+    if not valid_csd_tier(body.market, body.csd_tier):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "That buyer tier does not apply to this market")
+
     # Check order_no uniqueness (only when provided, since it's optional)
     if body.order_no:
         existing = db.scalar(select(Order).where(Order.order_no == body.order_no))
@@ -1842,6 +1849,15 @@ def update_order(
             raise HTTPException(status.HTTP_403_FORBIDDEN, "Your role cannot edit orders")
         if order.status != "Pending" and "oem_bill_no" in data and data["oem_bill_no"] not in (None, ""):
             raise HTTPException(status.HTTP_403_FORBIDDEN, "Vendors cannot update OEM bill details")
+
+    if "market" in data or "csd_tier" in data:
+        next_market = data.get("market", order.market)
+        next_tier = data.get("csd_tier", order.csd_tier)
+        if not valid_csd_tier(next_market, next_tier):
+            if "market" in data and "csd_tier" not in data:
+                data["csd_tier"] = None  # market changed away from csd/gem -- the old tier no longer applies
+            else:
+                raise HTTPException(status.HTTP_400_BAD_REQUEST, "That buyer tier does not apply to this market")
 
     item_updates = data.pop("items", None)
     consignee_updates = data.pop("consignee_addresses", None)

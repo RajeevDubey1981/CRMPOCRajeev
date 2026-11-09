@@ -15,6 +15,7 @@ from app.models.user import User
 from app.sales import crm_link
 from app.services import pending_action_service as pas
 from app.services import coverage as coverage_service
+from app.services.csd_tier import valid_csd_tier
 from app.sales import types as T
 from app.sales.models import SalesLead, SalesLeadActivity, SalesProfile, SalesSetting
 from app.sales.rules import (
@@ -271,6 +272,8 @@ def create_lead(main_db: Session | None, sdb: Session, data: dict, created_by: U
         return dup, False
 
     lead_type = T.usable_type(sdb, data.get("lead_type") if T.valid_type(sdb, data.get("lead_type")) else detect_lead_type(text, data.get("channel", "")))
+    if not valid_csd_tier(lead_type, data.get("csd_tier")):
+        bad("That buyer tier does not apply to this lead type")
     lead = SalesLead(
         name=name, phone=phone, email=(data.get("email") or None), item=(data.get("item") or "")[:500], place=data.get("place"),
         state=data.get("state"), district=data.get("district"), pincode=data.get("pincode"), country=data.get("country"),

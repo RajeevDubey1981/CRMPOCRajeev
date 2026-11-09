@@ -11,6 +11,7 @@ from app.database import get_db
 from app.deps import get_current_user
 from app.models.user import User
 from app.sales import crm_link, leads as L, quotes as Q, types as T
+from app.services.csd_tier import valid_csd_tier
 from app.services.date_range import day_in_range
 from app.sales.access import Ctx, get_ctx, menu_flags, require, role_ticks, user_ticks, has_sales_menu
 from app.sales.db import get_sales_db
@@ -286,6 +287,8 @@ def list_leads(
         if source and r.source != source:
             return False
         if csd_tier:
+            if r.lead_type not in ("csd", "gem"):
+                return False
             if csd_tier == "unset" and r.csd_tier is not None:
                 return False
             if csd_tier != "unset" and r.csd_tier != csd_tier:
@@ -388,6 +391,14 @@ def patch_lead(lead_id: int, body: LeadPatch, ctx: Ctx = Depends(get_ctx), sdb: 
             raise HTTPException(400, "Unknown lead type")
         if not ctx.has("see_all"):
             raise HTTPException(403, "Only the manager changes the lead type")
+    if "lead_type" in data or "csd_tier" in data:
+        next_type = data.get("lead_type", lead.lead_type)
+        next_tier = data.get("csd_tier", lead.csd_tier)
+        if not valid_csd_tier(next_type, next_tier):
+            if "lead_type" in data and "csd_tier" not in data:
+                data["csd_tier"] = None  # lead type changed away from csd/gem -- the old tier no longer applies
+            else:
+                raise HTTPException(400, "That buyer tier does not apply to this lead type")
     for k, v in data.items():
         setattr(lead, k, v)
     L.refresh_priority(lead)

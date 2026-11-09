@@ -2223,7 +2223,7 @@ export default function OrderDetail() {
               <label className={labelClass}>Market</label>
               <select
                 value={editForm.market}
-                onChange={(e) => setEF("market", e.target.value)}
+                onChange={(e) => setEditForm((f) => ({ ...f, market: e.target.value, csd_tier: ["csd", "gem"].includes(e.target.value) ? f.csd_tier : "" }))}
                 disabled={isVendor && !canVendorEditPendingDetails}
                 className={fieldClass}
               >

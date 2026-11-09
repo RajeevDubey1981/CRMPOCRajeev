@@ -13,6 +13,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.services.csd_tier import valid_csd_tier
 from app.deps import get_current_user
 from app.marketing.access import (
     Ctx, NEVER_ROLES, get_ctx, has_marketing_menu, kind_of, kind_ticks, menu_flags, require, user_ticks,
@@ -760,6 +761,8 @@ def create_audience(body: AudienceIn, ctx: Ctx = Depends(get_ctx), mdb: Session 
         raise HTTPException(403, "You do not have this tick in Marketing")
     if body.source == "customers" and not ctx.has("aud_all"):
         raise HTTPException(403, "Building audiences from existing customers needs the 'all CRM data' tick")
+    if not valid_csd_tier(body.market, body.csd_tier):
+        raise HTTPException(400, "That buyer tier does not apply to this market")
     a = MkAudience(**body.model_dump(), created_by=ctx.user.id)
     mdb.add(a)
     commit(main_db, mdb)
@@ -775,6 +778,8 @@ def update_audience(audience_id: int, body: AudienceIn, ctx: Ctx = Depends(get_c
         raise HTTPException(404, "Audience not found")
     if body.source == "customers" and not ctx.has("aud_all"):
         raise HTTPException(403, "Building audiences from existing customers needs the 'all CRM data' tick")
+    if not valid_csd_tier(body.market, body.csd_tier):
+        raise HTTPException(400, "That buyer tier does not apply to this market")
     for key, value in body.model_dump().items():
         setattr(a, key, value)
     commit(main_db, mdb)
