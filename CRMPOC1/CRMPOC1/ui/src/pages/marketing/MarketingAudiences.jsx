@@ -23,11 +23,15 @@ function suggestedTone(market) {
   return TONE[market] || "General outreach";
 }
 
-const EMPTY = { name: "", source: "prospects", market: "", stage: "", state: "", stale_days: "", heat: "", priority: "" };
+const EMPTY = { name: "", source: "prospects", market: "", stage: "", state: "", stale_days: "", heat: "", priority: "", csd_tier: "" };
+const CSD_TIER_OPTIONS = {
+  csd: [["", "Any tier"], ["retailer", "Retailer"], ["end", "End customer"], ["unset", "Unset — needs a look"]],
+  gem: [["", "Any tier"], ["govt", "Govt buyer"], ["unset", "Unset — needs a look"]],
+};
 
 function toParams(f) {
   const p = {};
-  for (const k of ["source", "market", "stage", "state", "stale_days", "heat", "priority"]) {
+  for (const k of ["source", "market", "stage", "state", "stale_days", "heat", "priority", "csd_tier"]) {
     if (f[k]) p[k] = f[k];
   }
   return p;
@@ -89,7 +93,7 @@ function Form({ initial, canAll, onSaved, onCancel }) {
     let alive = true;
     marketingApi.audienceCount(toParams(form)).then((r) => { if (alive) setCount(r.count); }).catch(() => { if (alive) setCount(null); });
     return () => { alive = false; };
-  }, [form.source, form.market, form.stage, form.state, form.stale_days, form.heat, form.priority]);
+  }, [form.source, form.market, form.stage, form.state, form.stale_days, form.heat, form.priority, form.csd_tier]);
 
   async function save() {
     if (!form.name.trim()) { setMsg("Give this audience a name."); return; }
@@ -118,11 +122,18 @@ function Form({ initial, canAll, onSaved, onCancel }) {
           <input className={fieldClass} value={form.name} onChange={set("name")} placeholder="GeM dealers, interested" />
         </label>
         <label className="text-sm text-slate-600">Market
-          <select className={fieldClass} value={form.market} onChange={set("market")}>
+          <select className={fieldClass} value={form.market} onChange={(e) => setForm((f) => ({ ...f, market: e.target.value, csd_tier: "" }))}>
             <option value="">Any market</option>
             {MARKETS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
           </select>
         </label>
+        {(form.market === "csd" || form.market === "gem") && (
+          <label className="text-sm text-slate-600">CSD tier
+            <select className={fieldClass} value={form.csd_tier} onChange={set("csd_tier")}>
+              {CSD_TIER_OPTIONS[form.market].map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+            </select>
+          </label>
+        )}
         {form.source === "prospects" && (
           <label className="text-sm text-slate-600">Stage
             <select className={fieldClass} value={form.stage} onChange={set("stage")}>
@@ -203,7 +214,7 @@ export default function MarketingAudiences() {
                 {a.count}
               </button>
             </div>
-            <div className="mt-1 text-xs text-slate-500">{a.source === "customers" ? "Customers" : "Prospects"} · {MARKETS.find((m) => m[0] === a.market)?.[1] || "Any market"}{a.stage ? ` · ${STAGES.find((s) => s[0] === a.stage)?.[1] || a.stage}` : ""}</div>
+            <div className="mt-1 text-xs text-slate-500">{a.source === "customers" ? "Customers" : "Prospects"} · {MARKETS.find((m) => m[0] === a.market)?.[1] || "Any market"}{a.csd_tier ? ` · ${(CSD_TIER_OPTIONS[a.market] || []).find((t) => t[0] === a.csd_tier)?.[1] || a.csd_tier}` : ""}{a.stage ? ` · ${STAGES.find((s) => s[0] === a.stage)?.[1] || a.stage}` : ""}</div>
             <div className="mt-2 flex gap-2">
               <button type="button" className={btn.plain} onClick={() => setEditing({ ...EMPTY, ...a, stale_days: a.stale_days ?? "" })}>Edit</button>
               <button type="button" className={btn.plain} onClick={() => remove(a)}>Delete</button>

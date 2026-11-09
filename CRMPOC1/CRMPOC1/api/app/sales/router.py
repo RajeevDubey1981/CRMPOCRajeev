@@ -46,6 +46,7 @@ class LeadIn(BaseModel):
     price_basis: Optional[str] = None
     closes_on: Optional[date] = None
     source: Optional[str] = None
+    csd_tier: Optional[str] = None
 
 
 class LeadPatch(BaseModel):
@@ -63,6 +64,7 @@ class LeadPatch(BaseModel):
     value_usd: Optional[float] = None
     price_basis: Optional[str] = None
     closes_on: Optional[date] = None
+    csd_tier: Optional[str] = None
 
 
 class GiveIn(BaseModel):
@@ -233,7 +235,7 @@ def sales_enabled_flag(_: User = Depends(get_current_user)):
 @router.get("/leads")
 def list_leads(
     q: str = "", status_: str = Query("", alias="status"), lead_type: str = "", heat: str = "", priority: str = "", owner: str = "",
-    source: str = "", kpi: str = "", sort: str = "pri", limit: int = Query(200, ge=1, le=500), offset: int = Query(0, ge=0),
+    source: str = "", kpi: str = "", csd_tier: str = "", sort: str = "pri", limit: int = Query(200, ge=1, le=500), offset: int = Query(0, ge=0),
     date_from: Optional[date] = None, date_to: Optional[date] = None,
     ctx: Ctx = Depends(get_ctx), sdb: Session = Depends(get_sales_db), main_db: Session = Depends(get_db),
 ):
@@ -283,6 +285,11 @@ def list_leads(
             return False
         if source and r.source != source:
             return False
+        if csd_tier:
+            if csd_tier == "unset" and r.csd_tier is not None:
+                return False
+            if csd_tier != "unset" and r.csd_tier != csd_tier:
+                return False
         if owner == "none" and r.owner_user_id is not None:
             return False
         if owner == "me" and r.owner_user_id != ctx.user.id:

@@ -277,6 +277,7 @@ def create_lead(main_db: Session | None, sdb: Session, data: dict, created_by: U
         source=source, channel=data.get("channel") or "hand", lead_type=lead_type, details=data.get("details"),
         message=data.get("message"), value_lakh=data.get("value_lakh"), value_usd=data.get("value_usd"),
         price_basis=data.get("price_basis"), closes_on=data.get("closes_on"), is_prospect=bool(data.get("is_prospect")),
+        csd_tier=data.get("csd_tier"),
         crm_kind=data.get("crm_kind"), crm_ref=data.get("crm_ref"), crm_id=data.get("crm_id"),
         created_by=created_by.id if created_by else None, status="new", first_call_due_at=now() + timedelta(hours=FIRST_CALL_HOURS),
     )
@@ -544,4 +545,5 @@ def lead_out(lead: SalesLead, names: dict[int, str] | None = None) -> dict:
         "closed": is_closed(lead),
         "campaign_reply_at": aware(lead.campaign_reply_at).isoformat() if lead.campaign_reply_at else None,
         "campaign_reply_text": lead.campaign_reply_text,
+        "csd_tier": lead.csd_tier,
     }

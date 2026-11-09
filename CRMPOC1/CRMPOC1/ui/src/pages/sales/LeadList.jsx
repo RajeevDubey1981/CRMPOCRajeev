@@ -18,7 +18,7 @@ const KPIS = [
 export default function LeadList() {
   const { has, status } = useSales();
   const [params, setParams] = useSearchParams();
-  const f = { q: params.get("q") || "", status: params.get("status") || "open", type: params.get("type") || "", heat: params.get("heat") || "", priority: params.get("priority") || "", owner: params.get("owner") || "", kpi: params.get("kpi") || "", sort: params.get("sort") || "pri", from: params.get("from") || "", to: params.get("to") || "" };
+  const f = { q: params.get("q") || "", status: params.get("status") || "open", type: params.get("type") || "", heat: params.get("heat") || "", priority: params.get("priority") || "", owner: params.get("owner") || "", kpi: params.get("kpi") || "", sort: params.get("sort") || "pri", from: params.get("from") || "", to: params.get("to") || "", csd_tier: params.get("csd_tier") || "" };
   const setF = (patch) => {
     const next = { ...f, ...patch };
     const p = {};
@@ -27,7 +27,7 @@ export default function LeadList() {
   };
   const [search, setSearch] = useState(f.q);
   useEffect(() => { const t = setTimeout(() => { if (search !== f.q) setF({ q: search }); }, 300); return () => clearTimeout(t); }, [search]); // eslint-disable-line react-hooks/exhaustive-deps
-  const { data, loading, error, reload } = useAsync(() => salesApi.leads({ q: f.q, status: f.status === "all" ? "" : f.status, lead_type: f.type, heat: f.heat, priority: f.priority, owner: f.owner, kpi: f.kpi, sort: f.sort, date_from: f.from || undefined, date_to: f.to || undefined, limit: 300 }), [f.q, f.status, f.type, f.heat, f.priority, f.owner, f.kpi, f.sort, f.from, f.to]);
+  const { data, loading, error, reload } = useAsync(() => salesApi.leads({ q: f.q, status: f.status === "all" ? "" : f.status, lead_type: f.type, heat: f.heat, priority: f.priority, owner: f.owner, kpi: f.kpi, csd_tier: f.csd_tier, sort: f.sort, date_from: f.from || undefined, date_to: f.to || undefined, limit: 300 }), [f.q, f.status, f.type, f.heat, f.priority, f.owner, f.kpi, f.csd_tier, f.sort, f.from, f.to]);
   const team = useAsync(() => (has("give") ? salesApi.team() : Promise.resolve([])), [has("give")]);
   const [adding, setAdding] = useState(false);
   const [giving, setGiving] = useState(null);
@@ -68,13 +68,22 @@ export default function LeadList() {
       <div className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-white p-2">
         <input className={`${fieldClass} !w-64`} type="search" placeholder="Search name, phone, item, place or number" value={search} onChange={(e) => setSearch(e.target.value)} />
         <select className={`${fieldClass} !w-auto`} value={f.status} onChange={(e) => setF({ status: e.target.value })}><option value="open">Open</option><option value="closed">Closed</option><option value="all">All</option></select>
-        <select className={`${fieldClass} !w-auto`} value={f.type} onChange={(e) => setF({ type: e.target.value })}><option value="">All types</option>{(status?.lead_types || []).map((t) => <option key={t.key} value={t.key}>{t.label}</option>)}</select>
+        <select className={`${fieldClass} !w-auto`} value={f.type} onChange={(e) => setF({ type: e.target.value, csd_tier: "" })}><option value="">All types</option>{(status?.lead_types || []).map((t) => <option key={t.key} value={t.key}>{t.label}</option>)}</select>
+        {(f.type === "csd" || f.type === "gem") && (
+          <select className={`${fieldClass} !w-auto`} value={f.csd_tier} onChange={(e) => setF({ csd_tier: e.target.value })}>
+            <option value="">Any tier</option>
+            {f.type === "csd" && <option value="retailer">Retailer</option>}
+            {f.type === "csd" && <option value="end">End customer</option>}
+            {f.type === "gem" && <option value="govt">Govt buyer</option>}
+            <option value="unset">Unset — needs a look</option>
+          </select>
+        )}
         <select className={`${fieldClass} !w-auto`} value={f.heat} onChange={(e) => setF({ heat: e.target.value })}><option value="">Hot, warm, cold</option><option value="hot">Hot only</option><option value="warm">Warm only</option><option value="cold">Cold only</option></select>
         <select className={`${fieldClass} !w-auto`} value={f.priority} onChange={(e) => setF({ priority: e.target.value })}><option value="">All priorities</option><option value="urgent">Urgent</option><option value="high">High</option><option value="normal">Normal</option><option value="low">Low</option></select>
         {has("see_all") && <select className={`${fieldClass} !w-auto`} value={f.owner} onChange={(e) => setF({ owner: e.target.value })}><option value="">All owners</option><option value="none">Not given yet</option>{people.map((p) => <option key={p.crm_user_id} value={p.crm_user_id}>{p.name}</option>)}</select>}
         <select className={`${fieldClass} !w-auto`} value={f.sort} onChange={(e) => setF({ sort: e.target.value })}><option value="pri">Priority first, then heat</option><option value="heat">Hottest first</option><option value="new">Newest first</option></select>
         <DateRangeFilter from={f.from} to={f.to} onChange={(from, to) => setF({ from, to })} />
-        {(f.kpi || f.q || f.type || f.heat || f.priority || f.owner || f.from || f.to || f.status !== "open") && <button type="button" className={btn.plain} onClick={() => { setSearch(""); setParams({}, { replace: true }); }}>Clear</button>}
+        {(f.kpi || f.q || f.type || f.csd_tier || f.heat || f.priority || f.owner || f.from || f.to || f.status !== "open") && <button type="button" className={btn.plain} onClick={() => { setSearch(""); setParams({}, { replace: true }); }}>Clear</button>}
       </div>
       <DateRangeTag from={f.from} to={f.to} onClear={() => setF({ from: "", to: "" })} count={data?.items?.length} />
       <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white shadow-sm">

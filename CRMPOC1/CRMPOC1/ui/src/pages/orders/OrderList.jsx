@@ -361,7 +361,21 @@ export default function OrderList() {
                 <td className={ORDER_TABLE_COL.status}><StatusBadge value={o.status} /></td>
                 <td className={`${ORDER_TABLE_COL.vendor} text-slate-600`} title={o.vendor_name || ""}>{o.vendor_name || "-"}</td>
                 <td className={`${ORDER_TABLE_COL.courier} text-slate-600`} title={o.courier_name || ""}>{o.courier_name || "-"}</td>
-                <td className={`${ORDER_TABLE_COL.customer} text-slate-600`} title={o.customer_name || ""}>{o.customer_name || "-"}</td>
+                <td className={`${ORDER_TABLE_COL.customer} text-slate-600`} title={o.customer_name || ""}>
+                  {o.customer_name || "-"}
+                  {o.market && (
+                    <div className="mt-0.5 flex flex-wrap gap-1">
+                      <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-600">
+                        {MARKET_OPTIONS.find((m) => m.value === o.market)?.label || o.market}
+                      </span>
+                      {(o.market === "csd" || o.market === "gem") && (
+                        <span className={`rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ${o.csd_tier ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}>
+                          {CSD_TIER_OPTIONS.find((t) => t.value === o.csd_tier)?.label.split(" (")[0] || "Unset"}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </td>
                 <td className={`${ORDER_TABLE_COL.city} text-slate-600`} title={o.customer_city || ""}>{o.customer_city || "-"}</td>
                 <td className={`${ORDER_TABLE_COL.exp} text-slate-600`}>{fmtDate(o.expected_delivery_date)}</td>
                 <td className={ORDER_TABLE_COL.actions}>

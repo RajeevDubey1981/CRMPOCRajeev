@@ -572,6 +572,16 @@ class AudienceIn(BaseModel):
     stale_days: Optional[int] = None
     heat: Optional[str] = None
     priority: Optional[str] = None
+    csd_tier: Optional[str] = None  # only meaningful when market is "csd" or "gem"
+
+
+def _apply_csd_tier(q, column, a: dict):
+    tier = a.get("csd_tier")
+    if not tier or a.get("market") not in ("csd", "gem"):
+        return q
+    if tier == "unset":
+        return q.filter(column.is_(None))
+    return q.filter(column == tier)
 
 
 def _count_prospects(sales_db: Session | None, mdb: Session, ctx: Ctx, a: dict) -> int:
@@ -580,6 +590,7 @@ def _count_prospects(sales_db: Session | None, mdb: Session, ctx: Ctx, a: dict) 
     q = sales_db.query(SalesLead.phone, SalesLead.email)
     if a.get("market"):
         q = q.filter(SalesLead.lead_type == a["market"])
+    q = _apply_csd_tier(q, SalesLead.csd_tier, a)
     if a.get("stage"):
         q = q.filter(SalesLead.status == a["stage"])
     if a.get("state"):
@@ -601,6 +612,7 @@ def _count_customers(main_db: Session, mdb: Session, a: dict) -> int:
     q = main_db.query(Order.customer_contact, Order.customer_email).filter(Order.customer_contact.isnot(None), Order.deleted_at.is_(None))
     if a.get("market"):
         q = q.filter(Order.market == a["market"])
+    q = _apply_csd_tier(q, Order.csd_tier, a)
     if a.get("state"):
         q = q.filter(Order.customer_state == a["state"])
     if a.get("stale_days"):
@@ -627,6 +639,7 @@ def _prospect_rows(sales_db: Session | None, ctx: Ctx, a: dict) -> list[tuple[in
     q = sales_db.query(SalesLead.id, SalesLead.name, SalesLead.phone, SalesLead.email)
     if a.get("market"):
         q = q.filter(SalesLead.lead_type == a["market"])
+    q = _apply_csd_tier(q, SalesLead.csd_tier, a)
     if a.get("stage"):
         q = q.filter(SalesLead.status == a["stage"])
     if a.get("state"):
@@ -651,6 +664,7 @@ def _customer_rows(main_db: Session, a: dict) -> list[tuple[int | None, str, str
     )
     if a.get("market"):
         q = q.filter(Order.market == a["market"])
+    q = _apply_csd_tier(q, Order.csd_tier, a)
     if a.get("state"):
         q = q.filter(Order.customer_state == a["state"])
     if a.get("stale_days"):
@@ -684,7 +698,7 @@ def _audience_count(main_db: Session, sales_db: Session | None, mdb: Session, ct
 def _audience_out(a: MkAudience, count: int) -> dict:
     return {
         "id": a.id, "name": a.name, "source": a.source, "market": a.market, "stage": a.stage, "state": a.state,
-        "stale_days": a.stale_days, "heat": a.heat, "priority": a.priority, "count": count,
+        "stale_days": a.stale_days, "heat": a.heat, "priority": a.priority, "csd_tier": a.csd_tier, "count": count,
     }
 
 
@@ -695,7 +709,7 @@ def list_audiences(ctx: Ctx = Depends(get_ctx), mdb: Session = Depends(get_marke
     rows = mdb.scalars(select(MkAudience).order_by(MkAudience.id.desc())).all()
     out = []
     for r in rows:
-        a = {"source": r.source, "market": r.market, "stage": r.stage, "state": r.state, "stale_days": r.stale_days, "heat": r.heat, "priority": r.priority}
+        a = {"source": r.source, "market": r.market, "stage": r.stage, "state": r.state, "stale_days": r.stale_days, "heat": r.heat, "priority": r.priority, "csd_tier": r.csd_tier}
         out.append(_audience_out(r, _audience_count(main_db, sales_db, mdb, ctx, a)))
     return out
 
@@ -703,19 +717,19 @@ def list_audiences(ctx: Ctx = Depends(get_ctx), mdb: Session = Depends(get_marke
 @router.get("/audiences/count")
 def count_audience(
     source: str = Query("prospects"), market: Optional[str] = None, stage: Optional[str] = None, state: Optional[str] = None,
-    stale_days: Optional[int] = None, heat: Optional[str] = None, priority: Optional[str] = None,
+    stale_days: Optional[int] = None, heat: Optional[str] = None, priority: Optional[str] = None, csd_tier: Optional[str] = None,
     ctx: Ctx = Depends(get_ctx), mdb: Session = Depends(get_marketing_db), main_db: Session = Depends(get_db), sales_db: Session = Depends(get_sales_db),
 ):
     if not ctx.any("aud_own", "aud_all"):
         raise HTTPException(403, "You do not have this tick in Marketing")
-    a = {"source": source, "market": market, "stage": stage, "state": state, "stale_days": stale_days, "heat": heat, "priority": priority}
+    a = {"source": source, "market": market, "stage": stage, "state": state, "stale_days": stale_days, "heat": heat, "priority": priority, "csd_tier": csd_tier}
     return {"count": _audience_count(main_db, sales_db, mdb, ctx, a)}
 
 
 @router.get("/audiences/members")
 def audience_members(
     source: str = Query("prospects"), market: Optional[str] = None, stage: Optional[str] = None, state: Optional[str] = None,
-    stale_days: Optional[int] = None, heat: Optional[str] = None, priority: Optional[str] = None,
+    stale_days: Optional[int] = None, heat: Optional[str] = None, priority: Optional[str] = None, csd_tier: Optional[str] = None,
     limit: int = Query(500, ge=1, le=2000),
     ctx: Ctx = Depends(get_ctx), mdb: Session = Depends(get_marketing_db), main_db: Session = Depends(get_db), sales_db: Session = Depends(get_sales_db),
 ):
@@ -723,7 +737,7 @@ def audience_members(
         raise HTTPException(403, "You do not have this tick in Marketing")
     if source == "customers" and not ctx.has("aud_all"):
         raise HTTPException(403, "Building audiences from existing customers needs the 'all CRM data' tick")
-    a = {"source": source, "market": market, "stage": stage, "state": state, "stale_days": stale_days, "heat": heat, "priority": priority}
+    a = {"source": source, "market": market, "stage": stage, "state": state, "stale_days": stale_days, "heat": heat, "priority": priority, "csd_tier": csd_tier}
     rows = _audience_rows(main_db, sales_db, ctx, a)
     stopped = _stopped_keys(mdb, "email")
     seen: set[str] = set()

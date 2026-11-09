@@ -108,6 +108,9 @@ class SalesLead(SalesBase, Stamped):
     # Who this contact is within their market (dealer, distributor, customer, engineer, franchisee) --
     # steers the default outreach channel/tone for Marketing Audiences. Optional, Sales-editable.
     party_role: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    # Only meaningful when lead_type="csd": retailer (depot/URC/canteen) or end (serving personnel/dependent).
+    # Only meaningful when lead_type="gem": govt (an actual government buyer, not a dealer applying for GeM).
+    csd_tier: Mapped[str | None] = mapped_column(String(20), nullable=True)
     details: Mapped[str | None] = mapped_column(Text, nullable=True)
     message: Mapped[str | None] = mapped_column(Text, nullable=True)  # the customer's own words, copied
     status: Mapped[str] = mapped_column(String(10), nullable=False, default="new", index=True)

@@ -225,6 +225,7 @@ class MkAudience(MarketingBase, Stamped):
     stale_days: Mapped[int | None] = mapped_column(Integer, nullable=True)  # no action in at least this many days
     heat: Mapped[str | None] = mapped_column(String(10), nullable=True)
     priority: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    csd_tier: Mapped[str | None] = mapped_column(String(20), nullable=True)  # only meaningful when market is csd or gem
     created_by: Mapped[int] = mapped_column(Integer, nullable=False)  # crm user id
 
 

@@ -169,9 +169,21 @@ export function PriorityChip({ lead, always = false }) {
   return <span className={`inline-block whitespace-nowrap rounded-full border px-2 py-0.5 text-[11px] font-semibold ${p.cls}`}>{p.label}</span>;
 }
 
+const CSD_TIER_LABEL = { retailer: "Retailer", end: "End customer", govt: "Govt buyer" };
+
 export function TypeChip({ lead }) {
   const color = lead.lead_type_color || TYPE_COLOR[lead.lead_type] || "#64748b";
-  return <span className="inline-block whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-semibold" style={{ background: `${color}1f`, color }}>{lead.lead_type_label}</span>;
+  const showsTier = lead.lead_type === "csd" || lead.lead_type === "gem";
+  return (
+    <span className="inline-flex flex-wrap items-center gap-1">
+      <span className="inline-block whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-semibold" style={{ background: `${color}1f`, color }}>{lead.lead_type_label}</span>
+      {showsTier && (
+        <span className={`inline-block whitespace-nowrap rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${lead.csd_tier ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}>
+          {CSD_TIER_LABEL[lead.csd_tier] || "Unset"}
+        </span>
+      )}
+    </span>
+  );
 }
 
 export function StatusChip({ status }) {
