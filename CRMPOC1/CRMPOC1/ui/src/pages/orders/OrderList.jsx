@@ -115,7 +115,8 @@ const MARKET_OPTIONS = [
 const CSD_TIER_OPTIONS = [
   { value: "retailer", label: "Retailer (depot / URC / canteen)" },
   { value: "end", label: "End customer" },
-  { value: "govt", label: "Govt buyer" },
+  { value: "vendor", label: "GeM Vendor" },
+  { value: "customer", label: "GeM Customer" },
   { value: "unset", label: "Unset -- needs a look" },
 ];
 
@@ -290,7 +291,7 @@ export default function OrderList() {
             >
               <option value="">Any tier</option>
               {CSD_TIER_OPTIONS
-                .filter((t) => filters.market === "gem" ? (t.value === "govt" || t.value === "unset") : t.value !== "govt")
+                .filter((t) => filters.market === "gem" ? ["vendor", "customer", "unset"].includes(t.value) : !["vendor", "customer"].includes(t.value))
                 .map((t) => (
                   <option key={t.value} value={t.value}>{t.label}</option>
                 ))}

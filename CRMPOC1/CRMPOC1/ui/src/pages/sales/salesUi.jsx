@@ -169,7 +169,7 @@ export function PriorityChip({ lead, always = false }) {
   return <span className={`inline-block whitespace-nowrap rounded-full border px-2 py-0.5 text-[11px] font-semibold ${p.cls}`}>{p.label}</span>;
 }
 
-const CSD_TIER_LABEL = { retailer: "Retailer", end: "End customer", govt: "Govt buyer" };
+const CSD_TIER_LABEL = { retailer: "Retailer", end: "End customer", vendor: "GeM Vendor", customer: "GeM Customer" };
 
 export function TypeChip({ lead }) {
   const color = lead.lead_type_color || TYPE_COLOR[lead.lead_type] || "#64748b";

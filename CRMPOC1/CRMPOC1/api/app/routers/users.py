@@ -341,6 +341,13 @@ async def update_user(
     sync_vendor_for_user_email_update(db, user, previous_email)
     db.commit()
     db.refresh(user)
+    if "vendor_types" in data or "email" in data:
+        # A vendor's own profile tag is the single source of truth for their orders' market --
+        # re-tag their existing orders the moment that profile changes, not just new ones.
+        from app.services.vendor_market import retag_vendor_orders
+
+        if retag_vendor_orders(db, user):
+            db.commit()
     return _user_out(db, user)
 
 

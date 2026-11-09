@@ -1,6 +1,5 @@
 import csv
 import io
-import json
 import re
 from datetime import date, datetime, timezone
 from typing import Literal
@@ -13,6 +12,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.database import get_db
 from app.services.csd_tier import valid_csd_tier
+from app.services.vendor_market import vendor_profile_markets
 from app.deps import get_current_user
 from app.services.date_range import registered_between
 from app.models.claim import Claim
@@ -643,22 +643,7 @@ def _can_submit_serials(db: Session, user: User, order: Order) -> bool:
     return order.vendor_id in _vendor_ids_for_user(db, user)
 
 
-# What a vendor login's own profile (vendor_types, e.g. "GeM"/"CSD"/"Retail"/"SSD") maps to on Order.market.
-# "SSD" has no single market of its own, so it is left unmapped -- that vendor still sets market by hand.
-VENDOR_TYPE_TO_MARKET = {"gem": "gem", "csd": "csd", "retail": "retail"}
-
-
-def _vendor_profile_markets(user: User) -> list[str]:
-    try:
-        labels = [str(s) for s in json.loads(user.vendor_types)] if user.vendor_types else []
-    except ValueError:
-        return []
-    out = []
-    for label in labels:
-        key = VENDOR_TYPE_TO_MARKET.get(label.strip().lower())
-        if key and key not in out:
-            out.append(key)
-    return out
+_vendor_profile_markets = vendor_profile_markets  # shared with the retag-on-profile-change logic
 
 
 VENDOR_PENDING_ORDER_FIELDS = {

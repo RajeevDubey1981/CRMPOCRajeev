@@ -74,7 +74,8 @@ export default function LeadList() {
             <option value="">Any tier</option>
             {f.type === "csd" && <option value="retailer">Retailer</option>}
             {f.type === "csd" && <option value="end">End customer</option>}
-            {f.type === "gem" && <option value="govt">Govt buyer</option>}
+            {f.type === "gem" && <option value="vendor">GeM Vendor</option>}
+            {f.type === "gem" && <option value="customer">GeM Customer</option>}
             <option value="unset">Unset — needs a look</option>
           </select>
         )}

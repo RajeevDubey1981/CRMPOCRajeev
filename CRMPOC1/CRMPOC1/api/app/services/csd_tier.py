@@ -4,7 +4,7 @@ tier/market combination can never be written, no matter which write path it come
 
 CSD_TIERS_BY_MARKET = {
     "csd": {"retailer", "end"},
-    "gem": {"govt"},
+    "gem": {"vendor", "customer"},
 }
 
 

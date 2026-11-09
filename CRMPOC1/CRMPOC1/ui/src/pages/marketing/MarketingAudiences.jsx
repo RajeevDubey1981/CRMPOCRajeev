@@ -26,7 +26,7 @@ function suggestedTone(market) {
 const EMPTY = { name: "", source: "prospects", market: "", stage: "", state: "", stale_days: "", heat: "", priority: "", csd_tier: "" };
 const CSD_TIER_OPTIONS = {
   csd: [["", "Any tier"], ["retailer", "Retailer"], ["end", "End customer"], ["unset", "Unset — needs a look"]],
-  gem: [["", "Any tier"], ["govt", "Govt buyer"], ["unset", "Unset — needs a look"]],
+  gem: [["", "Any tier"], ["vendor", "GeM Vendor"], ["customer", "GeM Customer"], ["unset", "Unset — needs a look"]],
 };
 
 function toParams(f) {

@@ -50,10 +50,11 @@ const CSD_TIER_OPTIONS_BY_MARKET = {
     { value: "end", label: "End customer" },
   ],
   gem: [
-    { value: "govt", label: "Govt buyer" },
+    { value: "vendor", label: "GeM Vendor" },
+    { value: "customer", label: "GeM Customer" },
   ],
 };
-const CSD_TIER_LABELS = { retailer: "Retailer", end: "End customer", govt: "Govt buyer" };
+const CSD_TIER_LABELS = { retailer: "Retailer", end: "End customer", vendor: "GeM Vendor", customer: "GeM Customer" };
 const VENDOR_POST_SHIPMENT_STATUSES = new Set(["Shipped", "In Transit", "Delivered", "Returned", "Completed"]);
 const VENDOR_LOCKED_SHIPMENT_STATUSES = new Set(["Shipped", "In Transit"]);
 
