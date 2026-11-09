@@ -179,6 +179,10 @@ class OrderOut(BaseModel):
     accounts_return_processed_at: datetime | None = None
     vendor_id: int | None
     vendor_name: str | None = None  # resolved
+    vendor_code: str | None = None  # resolved
+    vendor_gst_no: str | None = None  # resolved
+    vendor_email: str | None = None  # resolved
+    vendor_contact_mobile: str | None = None  # resolved
     customer_name: str | None
     customer_contact: str | None
     customer_email: str | None

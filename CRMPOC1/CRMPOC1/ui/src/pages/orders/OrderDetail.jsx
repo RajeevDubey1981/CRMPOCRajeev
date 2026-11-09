@@ -1303,6 +1303,23 @@ export default function OrderDetail() {
         )}
       </section>
 
+      {(order.market === "csd" || order.market === "gem") && (
+        <section className="rounded-lg bg-white p-6 shadow-sm">
+          <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-slate-700">
+            {order.market === "gem" ? "GeM Vendor Information" : "CSD Vendor Information"}
+          </h2>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <Field label="Vendor Name" value={order.vendor_name} />
+            <Field label="Vendor Code" value={order.vendor_code} mono />
+            <Field label="GST No" value={order.vendor_gst_no} mono />
+            <Field label="Contact" value={order.vendor_contact_mobile} mono />
+            <Field label="Email" value={order.vendor_email} />
+            <Field label="Market" value={MARKET_LABELS[order.market] || order.market} />
+            <Field label="Buyer tier" value={CSD_TIER_LABELS[order.csd_tier] || "Unset — needs a look"} />
+          </div>
+        </section>
+      )}
+
       <section className="rounded-lg bg-white p-6 shadow-sm">
         <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-slate-700">
           {order.market === "gem" ? "GeM Customer Information" : order.market === "csd" ? "CSD Customer Information" : "Customer Information"}
@@ -1313,9 +1330,8 @@ export default function OrderDetail() {
           <Field label="Email" value={order.customer_email} />
           <Field label="City" value={order.customer_city} />
           <Field label="State" value={order.customer_state} />
-          <Field label="Market" value={MARKET_LABELS[order.market] || order.market || "— Unclassified —"} />
-          {(order.market === "csd" || order.market === "gem") && (
-            <Field label="Buyer tier" value={CSD_TIER_LABELS[order.csd_tier] || "Unset — needs a look"} />
+          {order.market !== "csd" && order.market !== "gem" && (
+            <Field label="Market" value={MARKET_LABELS[order.market] || order.market || "— Unclassified —"} />
           )}
           <Field label="Address" value={order.customer_address} full />
         </div>

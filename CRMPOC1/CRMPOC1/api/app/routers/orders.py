@@ -68,6 +68,10 @@ def _resolve_vendor_name(db: Session, vendor_id: int | None) -> str | None:
     return v.name_of_firm if v else None
 
 
+def _resolve_vendor(db: Session, vendor_id: int | None) -> Vendor | None:
+    return db.get(Vendor, vendor_id) if vendor_id is not None else None
+
+
 def _resolve_user_name(db: Session, user_id: int | None) -> str | None:
     if user_id is None:
         return None
@@ -499,6 +503,7 @@ def _load_consignee_addresses(db: Session, order_id: int) -> list[OrderConsignee
 
 
 def _hydrate_order(db: Session, order: Order) -> OrderOut:
+    vendor = _resolve_vendor(db, order.vendor_id)
     return OrderOut(
         id=order.id,
         installation_required=order.installation_required,
@@ -513,7 +518,11 @@ def _hydrate_order(db: Session, order: Order) -> OrderOut:
         material_receipt_confirmed_by=_resolve_user_name(db, order.material_receipt_confirmed_by_user_id),
         accounts_return_processed_at=order.accounts_return_processed_at,
         vendor_id=order.vendor_id,
-        vendor_name=_resolve_vendor_name(db, order.vendor_id),
+        vendor_name=vendor.name_of_firm if vendor else None,
+        vendor_code=vendor.vendor_code if vendor else None,
+        vendor_gst_no=vendor.gst_no if vendor else None,
+        vendor_email=vendor.email if vendor else None,
+        vendor_contact_mobile=vendor.contact_mobile if vendor else None,
         customer_name=order.customer_name,
         customer_contact=order.customer_contact,
         customer_email=order.customer_email,
