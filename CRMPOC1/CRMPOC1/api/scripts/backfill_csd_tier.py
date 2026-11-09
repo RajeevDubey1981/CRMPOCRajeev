@@ -4,13 +4,13 @@ Pass 1 -- market was only ever set on NEW orders going forward, so most old orde
 even when the order number makes the market obvious. Any order number containing "GEMC-" (the GeM
 contract-number pattern) is an unambiguous GeM order, so those get market="gem" filled in first.
 
-Pass 2 -- csd_tier. GeM's buyer tier is "vendor" (a dealer/reseller registered to sell via GeM) or
-"customer" (the actual government buyer) -- every GeM order seen in this CRM so far is a real
-government department/PSU buying directly, so the default here is "customer"; tag a dealer-looking
-one "vendor" by hand afterwards if one ever shows up. CSD's own tier still needs its customer name
-scanned for depot/URC/canteen wording, since CSD genuinely mixes two kinds of recipient (retailers
-and end customers). Every other market is never touched, and nothing already tagged (by this script
-or by hand) is ever overwritten.
+Pass 2 -- csd_tier. GeM's buyer tier defaults to "vendor" -- the vendor who punched the order is,
+by definition, our own registered GeM reseller (that's what market="gem" on their profile already
+means), so every GeM order is tagged "vendor" directly. "customer" is left available for the rare
+case a GeM order is ever placed with no reseller involved; tag that one by hand. CSD's own tier
+still needs its customer name scanned for depot/URC/canteen wording, since CSD genuinely mixes two
+kinds of recipient (retailers and end customers). Every other market is never touched, and nothing
+already tagged (by this script or by hand) is ever overwritten.
 
 Usage:
     venv/bin/python scripts/backfill_csd_tier.py          # apply the changes
@@ -78,7 +78,7 @@ tagged = 0
 left_unset = 0
 for order in orders:
     if order.market == "gem":
-        tier = "customer"
+        tier = "vendor"
     else:
         name = (order.customer_name or "").lower()
         tier = "retailer" if any(k in name for k in CSD_RETAILER_KEYWORDS) else None

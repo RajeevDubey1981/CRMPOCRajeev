@@ -1305,7 +1305,7 @@ export default function OrderDetail() {
 
       <section className="rounded-lg bg-white p-6 shadow-sm">
         <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-slate-700">
-          Customer Information
+          {order.market === "gem" ? "GeM Customer Information" : order.market === "csd" ? "CSD Customer Information" : "Customer Information"}
         </h2>
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <Field label="Customer Name" value={order.customer_name} />
