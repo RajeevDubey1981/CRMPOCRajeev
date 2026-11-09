@@ -148,8 +148,31 @@ def incoming_from_flat(record: dict, mapping: dict | None = None) -> Incoming | 
 
 
 # ---------------- the web (one place, so a test can replace it) ----------------
+def _reject_private_target(url: str) -> None:
+    """A non-locked "connect" tick can already reach any https:// address it types in, with the
+    response (or an error echoing part of it) sent back to whoever is testing the connection --
+    block internal/private targets so this can't be used to probe the server's own network
+    (security review)."""
+    import ipaddress
+    import socket
+    from urllib.parse import urlparse
+
+    host = (urlparse(url).hostname or "").strip().lower()
+    if not host:
+        raise ValueError("The address has no host to connect to")
+    try:
+        addrs = {info[4][0] for info in socket.getaddrinfo(host, None)}
+    except OSError:
+        raise ValueError(f"Could not resolve host '{host}'")
+    for addr in addrs:
+        ip = ipaddress.ip_address(addr)
+        if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or ip.is_multicast:
+            raise ValueError("That address points at a private or internal network and cannot be used here")
+
+
 def http(method: str, url: str, *, params=None, headers=None, json_body=None, data=None):
-    r = requests.request(method, url, params=params, headers=headers, json=json_body, data=data, timeout=HTTP_TIMEOUT)
+    _reject_private_target(url)
+    r = requests.request(method, url, params=params, headers=headers, json=json_body, data=data, timeout=HTTP_TIMEOUT, allow_redirects=False)
     return r
 
 

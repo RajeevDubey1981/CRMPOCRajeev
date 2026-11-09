@@ -409,7 +409,7 @@ def patch_lead(lead_id: int, body: LeadPatch, ctx: Ctx = Depends(get_ctx), sdb: 
 
 @router.post("/leads/{lead_id}/give")
 def give_lead(lead_id: int, body: GiveIn, ctx: Ctx = Depends(require("give")), sdb: Session = Depends(get_sales_db), main_db: Session = Depends(get_db)):
-    lead = get_lead(sdb, lead_id)
+    lead = get_visible_lead(sdb, ctx, lead_id)
     owner_name = ""
     if body.owner_user_id:
         u = crm_link.user_basics(main_db, body.owner_user_id)
@@ -516,7 +516,7 @@ def dispose(lead_id: int, body: DisposeIn, ctx: Ctx = Depends(get_ctx), sdb: Ses
 
 @router.post("/leads/{lead_id}/disposal/approve")
 def approve_disposal(lead_id: int, ctx: Ctx = Depends(require("approve_disp")), sdb: Session = Depends(get_sales_db), main_db: Session = Depends(get_db)):
-    lead = get_lead(sdb, lead_id)
+    lead = get_visible_lead(sdb, ctx, lead_id)
     L.approve_disposal(main_db, sdb, lead, ctx.user)
     commit(main_db, sdb)
     return L.lead_out(lead, names_for(main_db, [lead.owner_user_id]))
@@ -524,7 +524,7 @@ def approve_disposal(lead_id: int, ctx: Ctx = Depends(require("approve_disp")), 
 
 @router.post("/leads/{lead_id}/disposal/reopen")
 def reopen(lead_id: int, ctx: Ctx = Depends(require("approve_disp")), sdb: Session = Depends(get_sales_db), main_db: Session = Depends(get_db)):
-    lead = get_lead(sdb, lead_id)
+    lead = get_visible_lead(sdb, ctx, lead_id)
     L.reopen(sdb, lead, ctx.user)
     commit(main_db, sdb)
     return L.lead_out(lead, names_for(main_db, [lead.owner_user_id]))

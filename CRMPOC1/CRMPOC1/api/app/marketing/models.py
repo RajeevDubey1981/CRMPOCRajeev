@@ -190,6 +190,7 @@ class MkCampaignLog(MarketingBase):
     """One row per contact a campaign was aimed at -- sent, or the reason it was skipped."""
 
     __tablename__ = "mk_campaign_log"
+    __table_args__ = (UniqueConstraint("campaign_id", "contact_key", name="uq_mk_campaign_log_campaign_contact"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     campaign_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)

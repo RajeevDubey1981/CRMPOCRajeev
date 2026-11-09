@@ -1128,13 +1128,15 @@ def bulk_assign(
         if inst is None:
             not_found.append({"installation_id": pair.installation_id, "order_item_id": pair.order_item_id})
             continue
+        # Same Service-Desk ownership scoping _load_visible applies to every other installation
+        # endpoint -- not just the call-center-sourced branch below (security review).
+        if is_service_desk_user(user) and inst.assigned_service_user_id != user.id:
+            skipped_wrong_status.append({"installation_id": inst.id, "status": "not assigned to you"})
+            continue
         assignable_statuses = ("Submitted", "Assigned")
         if is_callcenter_source(inst):
             if not callcenter_can_assign_engineer(inst):
                 skipped_wrong_status.append({"installation_id": inst.id, "status": inst.status})
-                continue
-            if is_service_desk_user(user) and inst.assigned_service_user_id != user.id:
-                skipped_wrong_status.append({"installation_id": inst.id, "status": "not assigned to you"})
                 continue
         elif inst.status not in assignable_statuses:
             skipped_wrong_status.append({"installation_id": inst.id, "status": inst.status})
@@ -1407,6 +1409,11 @@ def update_installation(
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Your role cannot edit installation requests")
 
     data = body.model_dump(exclude_unset=True)
+    # Status changes have their own workflow (serial verification, payment chain, etc.) in the
+    # dedicated /status endpoint -- this one is for the plain detail fields only (security review).
+    if data.get("status") is not None and data["status"] != inst.status:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Use the status endpoint to change the installation's status")
+    data.pop("status", None)
     for field, value in data.items():
         setattr(inst, field, value)
     db.commit()
@@ -1881,6 +1888,9 @@ async def bulk_update_status(
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "No installation requests selected")
 
     rows = [_load_visible(db, user, installation_id) for installation_id in parsed_ids]
+    old_status_by_id = {row.id: row.status for row in rows}  # for the payment-idempotency check below
+    if assigned_engineer is not None and canonical_role_key(user.role) == "engineer":
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Engineers cannot reassign installation requests")
     item_codes = {
         ((_canonical_order_item_code(db, db.get(OrderItem, row.order_item_id)) if row.order_item_id else None) or "").strip()
         or "UNASSIGNED"
@@ -1991,7 +2001,13 @@ async def bulk_update_status(
         updated.append(InstallationOut(**_hydrate(db, inst, viewer=user)))
 
     if is_operations_admin(user) and new_status == "Completed":
-        completed_rows = [inst for inst in rows if inst.status == "Completed" and inst.payment_recorded_at]
+        completed_rows = [
+            inst for inst in rows
+            if inst.status == "Completed"
+            and inst.payment_recorded_at
+            and not inst.payment_transaction_id
+            and old_status_by_id.get(inst.id) == "Payment Pending"
+        ]
         if completed_rows:
             _create_payment_transaction(
                 db,

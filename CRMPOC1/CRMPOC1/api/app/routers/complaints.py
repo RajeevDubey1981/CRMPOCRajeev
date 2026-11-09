@@ -343,7 +343,7 @@ def _with_owners(owners: dict, items: list[ComplaintListItem]) -> list[Complaint
     return items
 
 
-def _hydrate(db: Session, c: Complaint) -> dict:
+def _hydrate(db: Session, c: Complaint, viewer: User | None = None) -> dict:
     engineer_name = None
     if c.assigned_engineer:
         u = db.get(User, c.assigned_engineer)
@@ -352,14 +352,18 @@ def _hydrate(db: Session, c: Complaint) -> dict:
     if c.created_by:
         u = db.get(User, c.created_by)
         created_by_name = u.name if u else None
+    # The access code is meant to be read off the customer on site, then typed in to resolve --
+    # showing it to the engineer in the API would let them skip ever visiting (security review).
+    show_access_code = viewer is None or canonical_role_key(viewer.role) != "engineer"
     return {
         **{k: getattr(c, k) for k in (
             "id", "comp_no", "comp_date", "customer_name", "customer_mobile",
             "customer_email", "customer_address", "pincode", "state", "district", "model_details",
             "problem_description", "query_type", "status", "status_date",
-            "assigned_engineer", "remark", "service_proof_path", "access_code",
+            "assigned_engineer", "remark", "service_proof_path",
             "send_sms", "created_by", "order_id", "order_item_id", "serial_no", "source", "created_at", "updated_at",
         )},
+        "access_code": c.access_code if show_access_code else None,
         "assigned_engineer_name": engineer_name,
         "created_by_name": created_by_name,
         **_bounce_fields(db, c.customer_email),
@@ -971,7 +975,7 @@ def create_complaint(
     _queue_complaint_confirmation_email(background_tasks, complaint, linked_service, extra_email=_complaint_order_email(db, complaint))
     # NOTE: spec mentions firing an SMS here when send_sms is true.
     # SMS provider integration is Sprint 6 — wire-up point lives in this code path.
-    return ComplaintOut(**_hydrate(db, complaint))
+    return ComplaintOut(**_hydrate(db, complaint, viewer=user))
 
 
 @router.post("/{complaint_id}/resend-confirmation-email")
@@ -1007,6 +1011,8 @@ def export_csv(
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Your role cannot export complaints")
     stmt = select(Complaint).where(Complaint.deleted_at.is_(None))
     stmt = apply_complaint_assignment_scope(stmt, user)
+    if canonical_role_key(user.role) == "engineer":
+        stmt = stmt.where(engineer_visible_complaint_filter(user.id))
     if export_scope is not None:
         stmt = stmt.where(Complaint.query_type.in_(export_scope))
     if status_filter:
@@ -1131,6 +1137,8 @@ def search_customers_for_complaint(
     complaint_stmt = apply_complaint_assignment_scope(
         select(Complaint).where(Complaint.deleted_at.is_(None)), user
     )
+    if canonical_role_key(user.role) == "engineer":
+        complaint_stmt = complaint_stmt.where(engineer_visible_complaint_filter(user.id))
     complaint_terms = []
     if mobile and mobile.strip():
         complaint_terms.append(Complaint.customer_mobile.ilike(f"%{mobile.strip()}%"))
@@ -1172,7 +1180,7 @@ def get_complaint(
     user: User = Depends(get_current_user),
 ):
     c = _load_visible(db, user, complaint_id)
-    return ComplaintOut(**_hydrate(db, c))
+    return ComplaintOut(**_hydrate(db, c, viewer=user))
 
 
 @router.post("/{complaint_id}/link-customer", response_model=ComplaintOut)
@@ -1253,7 +1261,7 @@ def link_complaint_customer(
         _sync_installation_order_from_complaint(db, c, order, item, user)
     db.commit()
     db.refresh(c)
-    return ComplaintOut(**_hydrate(db, c))
+    return ComplaintOut(**_hydrate(db, c, viewer=user))
 
 
 @router.get("/{complaint_id}/installation-request")
@@ -1550,6 +1558,13 @@ def update_complaint(
     if new_status is not None and new_status != old_status:
         if new_status not in STATUSES:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid status")
+        if new_status == "Resolved":
+            # Same verification gate the dedicated /status endpoint enforces -- this generic edit
+            # endpoint must not be a way to skip the on-site access-code check (security review).
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                "Use the status endpoint with the access code to resolve a complaint",
+            )
         c.status = new_status
         c.status_date = datetime.now(timezone.utc)
         db.add(
@@ -1567,7 +1582,7 @@ def update_complaint(
     sync_complaint_pending_actions(db, c)
     db.commit()
     db.refresh(c)
-    return ComplaintOut(**_hydrate(db, c))
+    return ComplaintOut(**_hydrate(db, c, viewer=user))
 
 
 @router.put("/{complaint_id}/priority", response_model=ComplaintOut)
@@ -1587,7 +1602,7 @@ def set_complaint_priority(
     sync_complaint_pending_actions(db, c)
     db.commit()
     db.refresh(c)
-    return ComplaintOut(**_hydrate(db, c))
+    return ComplaintOut(**_hydrate(db, c, viewer=user))
 
 
 @router.delete("/{complaint_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -1652,7 +1667,9 @@ async def update_status(
     old_status = c.status
     c.status = new_status
     c.status_date = datetime.now(timezone.utc)
-    engineer_assigned_id = assigned_engineer
+    # Only notify when the engineer is actually new -- re-submitting the same value on every
+    # status update used to re-send the "complaint assigned" email every time (security review).
+    engineer_assigned_id = assigned_engineer if assigned_engineer != c.assigned_engineer else None
     if assigned_engineer is not None:
         c.assigned_engineer = assigned_engineer
         _sync_linked_service_engineer(db, c)
@@ -1699,7 +1716,7 @@ async def update_status(
         engineer = db.get(User, engineer_assigned_id)
         if engineer is not None:
             notify_engineer_complaint_assigned(background_tasks, engineer=engineer, complaint=c)
-    return ComplaintOut(**_hydrate(db, c))
+    return ComplaintOut(**_hydrate(db, c, viewer=user))
 
 
 @router.post("/{complaint_id}/action", status_code=status.HTTP_201_CREATED)

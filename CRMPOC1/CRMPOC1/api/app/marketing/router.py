@@ -776,6 +776,8 @@ def update_audience(audience_id: int, body: AudienceIn, ctx: Ctx = Depends(get_c
     a = mdb.get(MkAudience, audience_id)
     if a is None:
         raise HTTPException(404, "Audience not found")
+    if not ctx.has("aud_all") and not _owns_or_manages(ctx, a.created_by):
+        raise HTTPException(403, "You can only edit an audience you created")
     if body.source == "customers" and not ctx.has("aud_all"):
         raise HTTPException(403, "Building audiences from existing customers needs the 'all CRM data' tick")
     if not valid_csd_tier(body.market, body.csd_tier):
@@ -793,6 +795,8 @@ def delete_audience(audience_id: int, ctx: Ctx = Depends(get_ctx), mdb: Session 
     a = mdb.get(MkAudience, audience_id)
     if a is None:
         raise HTTPException(404, "Audience not found")
+    if not ctx.has("aud_all") and not _owns_or_manages(ctx, a.created_by):
+        raise HTTPException(403, "You can only delete an audience you created")
     mdb.delete(a)
     commit(main_db, mdb)
     return {"deleted": True}
@@ -960,11 +964,20 @@ def create_campaign(body: CampaignIn, ctx: Ctx = Depends(require("draft")), mdb:
     return _campaign_out(c, audience.name if audience else None)
 
 
+def _owns_or_manages(ctx: Ctx, created_by: int | None) -> bool:
+    """The "draft"/"aud_own" tick is in the default set for the lowest-privilege roles, so it must
+    not be enough on its own to edit or delete someone ELSE's draft campaign or saved audience --
+    only its own creator, or a manager/admin kind, may (security review)."""
+    return created_by is None or created_by == ctx.user.id or kind_of(ctx.user) in {"mktm", "mgr", "oth"}
+
+
 @router.put("/campaigns/{campaign_id}")
 def update_campaign(campaign_id: int, body: CampaignIn, ctx: Ctx = Depends(require("draft")), mdb: Session = Depends(get_marketing_db), main_db: Session = Depends(get_db)):
     c = mdb.get(MkCampaign, campaign_id)
     if c is None:
         raise HTTPException(404, "Campaign not found")
+    if not _owns_or_manages(ctx, c.created_by):
+        raise HTTPException(403, "You can only edit a campaign you created")
     if c.status != "draft":
         raise HTTPException(409, "Only a draft campaign can be edited")
     audience = _validate_campaign_target(body, ctx, mdb)
@@ -985,6 +998,8 @@ def delete_campaign(campaign_id: int, ctx: Ctx = Depends(require("draft")), mdb:
     c = mdb.get(MkCampaign, campaign_id)
     if c is None:
         raise HTTPException(404, "Campaign not found")
+    if not _owns_or_manages(ctx, c.created_by):
+        raise HTTPException(403, "You can only delete a campaign you created")
     if c.status not in ("draft", "rejected"):
         raise HTTPException(409, "A campaign that is waiting, approved or already sent cannot be deleted")
     mdb.delete(c)
@@ -1063,6 +1078,11 @@ def _send_campaign_batch(mdb: Session, main_db: Session, sales_db: Session, ctx:
     """Send up to CAMPAIGN_BATCH_SIZE not-yet-logged contacts, then either finish or schedule the next batch.
     Safe to call repeatedly for the same campaign (by the cron runner) -- already-logged contacts are skipped."""
     from app.services.email_service import send_email
+
+    # Lock the campaign row for the rest of this call so an overlapping cron tick or a double
+    # click can't both read an empty "already sent" set and send the same batch twice -- the
+    # second caller blocks here until the first one commits (security review).
+    c = mdb.execute(select(MkCampaign).where(MkCampaign.id == c.id).with_for_update()).scalar_one()
 
     audience = mdb.get(MkAudience, c.audience_id) if c.audience_id else None
     rows = _rows_for_campaign(main_db, sales_db, ctx, c, audience)

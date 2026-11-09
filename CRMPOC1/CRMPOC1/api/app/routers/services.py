@@ -1863,6 +1863,12 @@ def cancel_assignment(service_id: int, db: Session = Depends(get_db), user: User
         else:
             raise HTTPException(status.HTTP_403_FORBIDDEN, "Your role cannot cancel assignments")
 
+    if service.status in SERVICE_DELETE_LOCKED_STATUSES:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "Assignment cannot be cancelled after completion or once payment has started",
+        )
+
     active_assignments = db.scalars(
         select(ServiceAssignment).where(
             ServiceAssignment.service_request_id == service.id,
@@ -3253,6 +3259,15 @@ async def approve_service_payment(
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "No payment request found to approve")
     if latest_payment.approval_status in {"Approved", "Rejected"} or latest_payment.status == "Processed":
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "This payment request is already finalized")
+    if (
+        body.decision == "Approved"
+        and latest_payment.total_requested_amount is not None
+        and body.approved_amount > float(latest_payment.total_requested_amount)
+    ):
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "Approved amount cannot exceed the amount that was actually requested",
+        )
     payment_stages = installation_payment_approval_stages(
         float(latest_payment.total_requested_amount) if latest_payment.total_requested_amount is not None else None
     )
@@ -3415,7 +3430,10 @@ async def approve_service_payment(
         total_amount=body.approved_amount,
         request_count=1,
         recorded_by_user_id=user.id,
-        engineer_user_id=service.assigned_engineer_id,
+        # The payment request's own requester, not the request's current assigned_engineer_id --
+        # that field is mutable and can be overwritten by a later unit (re)assignment on the same
+        # multi-unit request before this payment is approved (security review).
+        engineer_user_id=latest_payment.requested_by_user_id or service.assigned_engineer_id,
     )
     db.add(transaction)
     db.flush()

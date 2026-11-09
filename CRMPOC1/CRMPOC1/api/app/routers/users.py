@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.deps import get_current_user, require_roles
 from app.services.permissions import can_act_on
-from app.services.role_access import PROTECTED_USER_ROLES, is_system_admin, role_key
+from app.services.role_access import OPERATIONS_ADMIN_ROLES, is_system_admin, role_key
 from app.models.user import User
 from app.schemas.user import BankDetailsOut, ResetPasswordRequest, UserCreate, UserOut, UserUpdate
 from app.security import hash_password
@@ -48,11 +48,11 @@ def user_manager(flag: str):
 
 
 def _guard_protected(actor: User, *roles: str | None) -> None:
-    if actor.role == "admin":
+    if is_system_admin(actor):
         return
     for r in roles:
-        if r is not None and role_key(r) in PROTECTED_USER_ROLES:
-            raise HTTPException(status.HTTP_403_FORBIDDEN, "Only an Admin can create or change Admin and Sub Admin accounts")
+        if r is not None and role_key(r) in OPERATIONS_ADMIN_ROLES:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "Only an Admin can create or change an Admin, Sub Admin, or operations-admin account")
 
 
 def _normalized_email(value: str | None) -> str:

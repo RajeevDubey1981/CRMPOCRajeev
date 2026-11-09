@@ -558,7 +558,10 @@ def _load_order(db: Session, user: User, order_id: int) -> Order:
 
 def _load_order_operations_edit(db: Session, user: User, order_id: int) -> Order:
     order = _load_order(db, user, order_id)
-    if not is_operations_admin(user) and not (user.role == "vendor" and order.vendor_id in _vendor_ids_for_user(db, user)):
+    # A vendor may only touch the ship-to address while the order hasn't shipped yet -- same phase
+    # gate the general order-edit path already enforces for customer/delivery fields, which this
+    # dedicated consignee-address path had been skipping entirely (security review).
+    if not is_operations_admin(user) and not _can_vendor_edit_pending_line_items(db, user, order):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Your role cannot change this order")
     # Serialize selection and address-list changes for this order.
     db.refresh(order, with_for_update=True)
@@ -682,7 +685,10 @@ VENDOR_SHIPPED_ORDER_FIELDS = {
 
 VENDOR_PRE_SHIPMENT_STATUSES = ("Pending",)
 VENDOR_POST_SHIPMENT_STATUSES = ("Shipped", "In Transit", "Delivered", "Returned", "Completed")
-VENDOR_LOCKED_SHIPMENT_STATUSES = ("Shipped", "In Transit")
+# Every post-shipment status is locked against a vendor reverting to Pending (security review --
+# this used to cover only Shipped/In Transit, so a vendor could revert from Delivered/Returned/
+# Completed and regain customer/delivery edit rights on an order that may already be settled).
+VENDOR_LOCKED_SHIPMENT_STATUSES = VENDOR_POST_SHIPMENT_STATUSES
 
 
 def _vendor_cannot_revert_to_pending(order: Order, new_status: str | None) -> bool:
@@ -916,11 +922,15 @@ def lookup_vendors(
     db: Session = Depends(get_db),
     _user: User = Depends(get_current_user),
 ):
-    rows = db.scalars(
-        select(Vendor)
-        .where(Vendor.deleted_at.is_(None), Vendor.is_active == True)
-        .order_by(Vendor.name_of_firm)
-    ).all()
+    # Every vendor's GST number and email go out here with no scoping -- fine for staff who pick a
+    # vendor when creating an order, but a vendor login has no business reason to see every other
+    # (competing) vendor's details, so it's scoped down to just their own record (still needed
+    # client-side to auto-fill their own vendor_id/market) (security review).
+    stmt = select(Vendor).where(Vendor.deleted_at.is_(None), Vendor.is_active == True)
+    if _user.role == "vendor":
+        own_ids = _vendor_ids_for_user(db, _user)
+        stmt = stmt.where(Vendor.id.in_(own_ids)) if own_ids else stmt.where(False)
+    rows = db.scalars(stmt.order_by(Vendor.name_of_firm)).all()
     return [
         {
             "id": v.id,

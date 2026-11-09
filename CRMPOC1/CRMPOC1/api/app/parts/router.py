@@ -350,6 +350,8 @@ def approve_request(request_id: int, ctx: Ctx = Depends(get_ctx), db: Session = 
     req = _load_request(pdb, request_id)
     if not ctx.can_act_on_stage(req.stage):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "You cannot approve this request at its current stage")
+    if req.crm_raised_by_user_id == ctx.user.id:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "You cannot approve a request you raised yourself")
     claims = _claims_for_request(db, req)
     if req.stage == "svm":
         # The Service Manager must say to whom a claim is given before passing the request on, so Admin can see it.

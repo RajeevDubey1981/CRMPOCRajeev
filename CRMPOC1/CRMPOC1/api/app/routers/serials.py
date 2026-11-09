@@ -38,6 +38,15 @@ def _require_history_access(user: User):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Only Admin or Indcool users can access serial history.")
 
 
+def _require_not_vendor(user: User):
+    # /search and /lookup return a customer's name and phone for any serial, with no further
+    # scoping -- fine for internal staff who may legitimately need it, but a vendor login is an
+    # external party with no business reason to pull up an arbitrary customer's contact details
+    # (security review).
+    if (user.role or "").strip().lower() == "vendor":
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Vendors cannot look up serial numbers")
+
+
 def _add_years(base_date: date | None, years: int | None) -> date | None:
     if base_date is None or years is None:
         return None
@@ -98,10 +107,11 @@ class SerialSuggestion:
 def search(
     query: str = Query(..., min_length=1),
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    user: User = Depends(get_current_user),
 ):
     """Search for serials matching the query string -- either slot, since a split unit's
     second (often outdoor) serial is just as findable as the first."""
+    _require_not_vendor(user)
     search_pattern = f"%{query}%"
     items = db.query(OrderItem).where(
         or_(
@@ -167,8 +177,9 @@ def search_history_serials(
 def lookup(
     serial_no: str = Query(..., min_length=1),
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    user: User = Depends(get_current_user),
 ):
+    _require_not_vendor(user)
     item = db.scalar(
         select(OrderItem).where(
             or_(

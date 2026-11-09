@@ -220,6 +220,14 @@ def _detail(db: Session, party_type: PartyType, party_id: int, party, can_edit: 
     }
 
 
+def _block_vendor_and_engineer(user: User) -> None:
+    """For a ledger view with no per-party "own row" to scope down to (couriers, the dashboard,
+    pending returns) -- a vendor or engineer login has no legitimate reason to see it at all, no
+    matter how its can_edit/can_view ticks happen to be set (security review)."""
+    if role_key(user.role) in ("vendor", "engineer"):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Your role cannot view this")
+
+
 def _enforce_self_scope(db: Session, user: User, party_type: PartyType, party_id: int) -> None:
     """A vendor or engineer account only ever gets their OWN party record here, never another's, no
     matter how the vendor_ledger/engineer_ledger can_view/can_edit flags on their role happen to be
@@ -282,6 +290,7 @@ def list_pending_returns(db: Session = Depends(get_db), user: User = Depends(get
     processed. Nothing here has touched the vendor's ledger -- see process_return below."""
     if not can_act_on(db, user, "vendor_ledger", "can_edit", None):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Your role cannot view this")
+    _block_vendor_and_engineer(user)
     orders = db.scalars(
         select(Order)
         .where(Order.status.in_(["Returned", "Cancelled"]), Order.accounts_return_processed_at.is_(None), Order.deleted_at.is_(None))
@@ -752,6 +761,11 @@ def list_vendors(
 ):
     _require(db, user, "vendor", "can_view")
     stmt = select(Vendor).where(Vendor.deleted_at.is_(None))
+    if role_key(user.role) == "vendor":
+        # A vendor_ledger can_view tick is meant to let a vendor see their OWN ledger, not browse
+        # every other vendor's balance and GST number -- same reasoning as _enforce_self_scope
+        # below, which this list endpoint had no equivalent of (security review).
+        stmt = stmt.where(Vendor.email == user.email)
     if state:
         stmt = stmt.where(Vendor.state == state)
     if district:
@@ -784,6 +798,8 @@ def list_engineers(
     _require(db, user, "engineer", "can_view")
     stmt = select(User).where(User.deleted_at.is_(None))
     stmt = stmt.where(func.lower(func.trim(User.role)).in_(["engineer", "engineer non gst", "engineer_non_gst", "engineer non-gst", "engineer nongst"]))
+    if role_key(user.role) == "engineer":
+        stmt = stmt.where(User.id == user.id)  # self-scope, same reasoning as the vendor list above
     if state:
         stmt = stmt.where(User.state == state)
     if district:
@@ -808,6 +824,7 @@ def list_engineers(
 @router.get("/couriers")
 def list_couriers(q: Optional[str] = None, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     _require(db, user, "courier", "can_view")
+    _block_vendor_and_engineer(user)
     stmt = select(Courier).where(Courier.deleted_at.is_(None))
     if q:
         stmt = stmt.where(Courier.courier_name.ilike(f"%{q.strip()}%"))
@@ -847,11 +864,16 @@ def set_opening_balance(
     _require(db, user, party_type, "can_edit")
     _enforce_self_scope(db, user, party_type, party_id)
     party = _load_party(db, party_type, party_id)
+    # Lock this party's own row for the rest of the call, same pattern as the order/approval locks
+    # above -- without it, a double-click/retry could both miss the same not-yet-committed
+    # "existing" row and insert two opening entries (security review).
+    db.refresh(party, with_for_update=True)
     existing = db.scalar(
         select(AccountLedgerEntry).where(
             AccountLedgerEntry.party_type == party_type, AccountLedgerEntry.party_id == party_id,
             AccountLedgerEntry.source_type == "opening",
         )
+        .with_for_update()
     )
     entry_date = body.as_of or (existing.entry_date if existing else datetime.now(timezone.utc).date())
     if existing:
@@ -923,6 +945,7 @@ def add_entry(
 
 @router.get("/dashboard")
 def dashboard(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    _block_vendor_and_engineer(user)
     if not (can_act_on(db, user, "vendor_ledger", "can_edit", None) or can_act_on(db, user, "engineer_ledger", "can_edit", None)):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Your role cannot view the ledger dashboard")
 

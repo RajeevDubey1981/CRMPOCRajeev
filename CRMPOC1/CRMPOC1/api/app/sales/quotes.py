@@ -117,6 +117,16 @@ def set_lines(main_db: Session | None, sdb: Session, q: SalesQuotation, items: l
         disc = d(it.get("discount_pct") or 0)
         if qty <= 0:
             bad("The quantity must be more than zero")
+        if gst < 0 or gst > 28:
+            bad("GST must be between 0 and 28%")
+        # The high-discount approval gate only ever looked at discount_pct, so a rep could set
+        # discount_pct=0 while quietly pricing the line far below catalogue MRP via rate -- the
+        # real discount here is whichever is bigger, not just what was typed in (security review).
+        if base is not None and base.get("mrp"):
+            mrp_val = d(base["mrp"]) / fx if usd else d(base["mrp"])
+            if mrp_val > 0 and rate < mrp_val:
+                implied_disc = (mrp_val - rate) * 100 / mrp_val
+                disc = max(disc, implied_disc)
         if disc < 0 or disc > 40:
             bad("The discount must be between 0 and 40%")
         sdb.add(SalesQuotationLine(quotation_id=q.id, position=pos, item_code=code or (base or {}).get("item_code", ""), item_name=name, hsn=hsn, qty=qty, rate=q2(rate), discount_pct=disc, gst_pct=gst))

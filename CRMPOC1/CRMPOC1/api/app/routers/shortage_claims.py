@@ -452,6 +452,7 @@ def reject(claim_id: int, body: RejectIn, db: Session = Depends(get_db), user: U
     role = role_key(user.role)
     if not can_act_on_stage(role, claim.stage) or not can_act_on(db, user, "claims", "can_edit", None):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "You cannot reject this claim at its current stage")
+    forbid_self_decision(claim, user, role)
     if claim.stage not in ("svm", "sub"):
         raise HTTPException(status.HTTP_409_CONFLICT, f"This claim is already {claim.stage}")
     claim.stage = "rejected"
