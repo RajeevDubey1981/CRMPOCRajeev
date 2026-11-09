@@ -60,6 +60,8 @@ for order in unmarketed:
         order.market = "gem"
     market_tagged += 1
 
+db.flush()  # so pass 2's query below sees pass 1's market="gem" updates in this same run
+
 # --- Pass 2: csd_tier. Every gem order is a government buyer by definition; CSD still needs scanning. ---
 orders = (
     db.query(Order)
