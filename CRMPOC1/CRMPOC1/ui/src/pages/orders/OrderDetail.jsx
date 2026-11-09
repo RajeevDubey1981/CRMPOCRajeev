@@ -1314,7 +1314,7 @@ export default function OrderDetail() {
           <Field label="State" value={order.customer_state} />
           <Field label="Market" value={MARKET_LABELS[order.market] || order.market || "— Unclassified —"} />
           {(order.market === "csd" || order.market === "gem") && (
-            <Field label="CSD tier" value={CSD_TIER_LABELS[order.csd_tier] || "Unset — needs a look"} />
+            <Field label="Buyer tier" value={CSD_TIER_LABELS[order.csd_tier] || "Unset — needs a look"} />
           )}
           <Field label="Address" value={order.customer_address} full />
         </div>
@@ -2235,7 +2235,7 @@ export default function OrderDetail() {
             </div>
             {(editForm.market === "csd" || editForm.market === "gem") && (
               <div>
-                <label className={labelClass}>CSD tier</label>
+                <label className={labelClass}>Buyer tier</label>
                 <select
                   value={editForm.csd_tier}
                   onChange={(e) => setEF("csd_tier", e.target.value)}

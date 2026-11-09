@@ -128,7 +128,7 @@ function Form({ initial, canAll, onSaved, onCancel }) {
           </select>
         </label>
         {(form.market === "csd" || form.market === "gem") && (
-          <label className="text-sm text-slate-600">CSD tier
+          <label className="text-sm text-slate-600">Buyer tier
             <select className={fieldClass} value={form.csd_tier} onChange={set("csd_tier")}>
               {CSD_TIER_OPTIONS[form.market].map(([k, l]) => <option key={k} value={k}>{l}</option>)}
             </select>
