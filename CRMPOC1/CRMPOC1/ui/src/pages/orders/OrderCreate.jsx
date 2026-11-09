@@ -18,6 +18,9 @@ const MARKET_OPTIONS = [
   { value: "corp", label: "Corporate / project" },
   { value: "export", label: "Export" },
 ];
+// What a vendor login's own profile (vendor_types) maps to on Order.market. "SSD" has no single
+// market of its own, so a vendor who is only SSD still picks their market by hand.
+const VENDOR_TYPE_TO_MARKET = { gem: "gem", csd: "csd", retail: "retail" };
 const YEAR_OPTIONS = Array.from({ length: 10 }, (_, i) => i + 1);
 const FREE_SERVICE_COUNT_OPTIONS = [0, 1, 2, 3, 4].map((value) => ({ value, label: String(value) }));
 
@@ -116,6 +119,25 @@ export default function OrderCreate() {
     () => (isVendor ? vendors.find((vendor) => vendor.email === user?.email || String(vendor.id) === String(form.vendor_id)) : null),
     [form.vendor_id, isVendor, user?.email, vendors]
   );
+  // Markets this vendor login's own profile is marked for (vendor_types), mapped to Order.market keys.
+  const vendorProfileMarkets = useMemo(() => {
+    if (!isVendor) return [];
+    const out = [];
+    for (const label of user?.vendor_types || []) {
+      const key = VENDOR_TYPE_TO_MARKET[String(label).trim().toLowerCase()];
+      if (key && !out.includes(key)) out.push(key);
+    }
+    return out;
+  }, [isVendor, user?.vendor_types]);
+  const marketOptions = vendorProfileMarkets.length
+    ? MARKET_OPTIONS.filter((m) => vendorProfileMarkets.includes(m.value))
+    : MARKET_OPTIONS;
+
+  useEffect(() => {
+    if (vendorProfileMarkets.length === 1) {
+      setForm((prev) => (prev.market === vendorProfileMarkets[0] ? prev : { ...prev, market: vendorProfileMarkets[0] }));
+    }
+  }, [vendorProfileMarkets]);
 
   useEffect(() => {
     if (!isVendor || vendors.length === 0) return;
@@ -453,11 +475,18 @@ export default function OrderCreate() {
             <div>
               <RequiredLabel>Market</RequiredLabel>
               <SearchableSelect
-                options={MARKET_OPTIONS}
+                options={marketOptions}
                 value={form.market}
                 onChange={(v) => set("market", v)}
                 placeholder="Select market..."
+                disabled={vendorProfileMarkets.length === 1}
               />
+              {vendorProfileMarkets.length === 1 && (
+                <p className="mt-1 text-xs text-slate-500">Set from your vendor profile.</p>
+              )}
+              {isVendor && vendorProfileMarkets.length > 1 && (
+                <p className="mt-1 text-xs text-slate-500">Choose which of your vendor profile's markets this order is for.</p>
+              )}
             </div>
           </div>
         </section>

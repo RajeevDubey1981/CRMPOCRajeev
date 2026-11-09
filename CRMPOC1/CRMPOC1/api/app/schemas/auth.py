@@ -36,6 +36,7 @@ class UserOut(BaseModel):
     is_active: bool
     can_manage_bids: bool = False
     can_manage_marketing: bool = False
+    vendor_types: list[str] = Field(default_factory=list)  # GeM, CSD, Retail, SSD -- what this vendor login works as
     permissions: list[UserPermissionOut] = Field(default_factory=list)
 
     class Config:

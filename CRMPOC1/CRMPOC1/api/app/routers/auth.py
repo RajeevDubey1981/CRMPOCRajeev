@@ -1,3 +1,4 @@
+import json
 from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
@@ -40,8 +41,19 @@ def _all_permission_keys() -> list[tuple[str, str | None]]:
     return keys
 
 
+def _vendor_types_of(user: User) -> list[str]:
+    try:
+        return [str(s) for s in json.loads(user.vendor_types)] if user.vendor_types else []
+    except ValueError:
+        return []
+
+
 def _user_out(db: Session, user: User) -> UserOut:
-    out = UserOut.model_validate(user)
+    out = UserOut(
+        id=user.id, name=user.name, email=user.email, role=user.role, phone=user.phone,
+        is_active=user.is_active, can_manage_bids=user.can_manage_bids, can_manage_marketing=user.can_manage_marketing,
+        vendor_types=_vendor_types_of(user),
+    )
     role_name = permission_role_name(user.role)
     role = db.scalar(select(Role).where(func.lower(func.trim(Role.name)) == role_name))
     rows = []

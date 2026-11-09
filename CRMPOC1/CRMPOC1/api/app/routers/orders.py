@@ -1,5 +1,6 @@
 import csv
 import io
+import json
 import re
 from datetime import date, datetime, timezone
 from typing import Literal
@@ -638,6 +639,24 @@ def _can_submit_serials(db: Session, user: User, order: Order) -> bool:
     return order.vendor_id in _vendor_ids_for_user(db, user)
 
 
+# What a vendor login's own profile (vendor_types, e.g. "GeM"/"CSD"/"Retail"/"SSD") maps to on Order.market.
+# "SSD" has no single market of its own, so it is left unmapped -- that vendor still sets market by hand.
+VENDOR_TYPE_TO_MARKET = {"gem": "gem", "csd": "csd", "retail": "retail"}
+
+
+def _vendor_profile_markets(user: User) -> list[str]:
+    try:
+        labels = [str(s) for s in json.loads(user.vendor_types)] if user.vendor_types else []
+    except ValueError:
+        return []
+    out = []
+    for label in labels:
+        key = VENDOR_TYPE_TO_MARKET.get(label.strip().lower())
+        if key and key not in out:
+            out.append(key)
+    return out
+
+
 VENDOR_PENDING_ORDER_FIELDS = {
     "order_no",
     "order_date",
@@ -1248,6 +1267,17 @@ async def create_order(
         else:
             vendor_id = linked_vendor_ids[0]
 
+        # Market comes from this vendor login's own profile, not picked by hand -- they are the only
+        # people who punch orders, so their profile is the one place that needs to be marked.
+        profile_markets = _vendor_profile_markets(user)
+        if profile_markets:
+            if body.market and body.market not in profile_markets:
+                raise HTTPException(status.HTTP_400_BAD_REQUEST, "That market is not set on your vendor profile")
+            if len(profile_markets) == 1:
+                body.market = profile_markets[0]
+            elif not body.market:
+                raise HTTPException(status.HTTP_400_BAD_REQUEST, "Choose which of your markets this order is for")
+
     # Check order_no uniqueness (only when provided, since it's optional)
     if body.order_no:
         existing = db.scalar(select(Order).where(Order.order_no == body.order_no))
@@ -1781,6 +1811,10 @@ def update_order(
             disallowed_fields = [field for field in data if field not in VENDOR_PENDING_ORDER_FIELDS]
             for field in disallowed_fields:
                 data.pop(field, None)
+            if "market" in data:
+                profile_markets = _vendor_profile_markets(user)
+                if profile_markets and data["market"] and data["market"] not in profile_markets:
+                    raise HTTPException(status.HTTP_400_BAD_REQUEST, "That market is not set on your vendor profile")
             if "status" in data and data["status"] != order.status:
                 raise HTTPException(status.HTTP_403_FORBIDDEN, "Vendors cannot change delivery status before the order is shipped")
             if data.get("items") is not None:
