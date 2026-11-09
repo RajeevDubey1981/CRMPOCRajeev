@@ -12,6 +12,17 @@ from sqlalchemy.exc import IntegrityError
 
 from app.database import get_db
 from app.services.csd_tier import valid_csd_tier
+
+
+def _apply_csd_tier_filter(stmt, market: str | None, csd_tier: str | None):
+    """Every GeM order carries its own customer details regardless of its stored buyer tier, so
+    filtering GeM + "GeM Customer" shows the full GeM set (a view of those details), not a
+    partition -- only "GeM Vendor" and "Unset" actually narrow the GeM list by the stored tier."""
+    if not csd_tier:
+        return stmt
+    if market == "gem" and csd_tier == "customer":
+        return stmt
+    return stmt.where(Order.csd_tier == (None if csd_tier == "unset" else csd_tier))
 from app.services.vendor_market import vendor_profile_markets
 from app.deps import get_current_user
 from app.services.date_range import registered_between
@@ -1073,8 +1084,7 @@ def export_csv(
         stmt = stmt.where(Order.status == status_filter)
     if market:
         stmt = stmt.where(Order.market == market)
-    if csd_tier:
-        stmt = stmt.where(Order.csd_tier == (None if csd_tier == "unset" else csd_tier))
+    stmt = _apply_csd_tier_filter(stmt, market, csd_tier)
     stmt = _apply_order_search_filter(stmt, search)
     stmt = registered_between(stmt, Order.created_at, date_from, date_to)
     if user.role == "vendor" and not vendor_ids:
@@ -1148,8 +1158,7 @@ def list_orders(
         stmt = stmt.where(Order.status == status_filter)
     if market:
         stmt = stmt.where(Order.market == market)
-    if csd_tier:
-        stmt = stmt.where(Order.csd_tier == (None if csd_tier == "unset" else csd_tier))
+    stmt = _apply_csd_tier_filter(stmt, market, csd_tier)
     stmt = _apply_order_search_filter(stmt, search)
     stmt = registered_between(stmt, Order.created_at, date_from, date_to)
     stmt = stmt.order_by(desc(Order.created_at))
