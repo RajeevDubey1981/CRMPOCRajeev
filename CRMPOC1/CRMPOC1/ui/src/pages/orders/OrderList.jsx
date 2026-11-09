@@ -39,7 +39,7 @@ const ORDER_TABLE_COL = {
   status: "min-w-[7.5rem] whitespace-nowrap px-3 py-2",
   vendor: "max-w-[9rem] truncate px-3 py-2",
   courier: "hidden max-w-[6rem] truncate px-3 py-2 xl:table-cell",
-  customer: "min-w-[8rem] max-w-[11rem] truncate px-3 py-2",
+  customer: "min-w-[8rem] max-w-[11rem] px-3 py-2",
   city: "hidden max-w-[6rem] truncate px-3 py-2 md:table-cell",
   exp: "hidden whitespace-nowrap px-3 py-2 lg:table-cell",
   actions: "min-w-[11.5rem] whitespace-nowrap px-3 py-2 text-right",
@@ -362,7 +362,7 @@ export default function OrderList() {
                 <td className={`${ORDER_TABLE_COL.vendor} text-slate-600`} title={o.vendor_name || ""}>{o.vendor_name || "-"}</td>
                 <td className={`${ORDER_TABLE_COL.courier} text-slate-600`} title={o.courier_name || ""}>{o.courier_name || "-"}</td>
                 <td className={`${ORDER_TABLE_COL.customer} text-slate-600`} title={o.customer_name || ""}>
-                  {o.customer_name || "-"}
+                  <div className="truncate">{o.customer_name || "-"}</div>
                   {o.market && (
                     <div className="mt-0.5 flex flex-wrap gap-1">
                       <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-600">
