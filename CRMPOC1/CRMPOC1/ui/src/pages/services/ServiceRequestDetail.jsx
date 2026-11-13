@@ -1,3 +1,4 @@
+import { hasPermission } from "../../utils/permissions.js";
 import { roleKey as canonicalRoleKey } from "../../utils/roles.js";
 import { useEffect, useMemo, useState } from "react";
 import { BOUNCED_BUTTON, BounceBanner } from "../../components/EmailBounceNotice.jsx";
@@ -141,6 +142,7 @@ export default function ServiceRequestDetail() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const role = user?.role?.toLowerCase?.() || "";
+  const canViewHappyCode = canonicalRoleKey(role) === "admin";
   const [service, setService] = useState(null);
   const [history, setHistory] = useState([]);
   const [engineers, setEngineers] = useState([]);
@@ -365,7 +367,11 @@ export default function ServiceRequestDetail() {
   const roleIsPaymentAdmin = isSystemAdminRole(role);
   const roleIsEngineer = canonicalRoleKey(role) === "engineer";
   const roleIsVendor = role === "vendor";
-  const canEditWorkflow = roleIsAdminLike;
+  const workflowRole = ["admin", "service_manager"].includes(canonicalRoleKey(role));
+  const workflowPermission = (action) => workflowRole && (user?.permissions || []).some((p) => p.module === "service_workflow" && !p.sub_module && p[action]);
+  const canEditWorkflow = workflowPermission("can_view");
+  const canUpdateWorkflow = canEditWorkflow && workflowPermission("can_edit");
+  const canDeleteWorkflow = canEditWorkflow && workflowPermission("can_delete");
   const deleteDisabledByStatus = SERVICE_DELETE_LOCKED_STATUSES.has(service?.status);
   const documentsWorkflowUnlocked = Boolean(service?.customer_documents_approved);
   const engineerWorkUnits = useMemo(() => {
@@ -693,6 +699,7 @@ export default function ServiceRequestDetail() {
           </p>
           <div className="mt-3 grid gap-3 md:grid-cols-[1fr_2fr_auto_auto]">
             <select
+              disabled={!canUpdateWorkflow}
               value={workflowStatus || service.status}
               onChange={(event) => setWorkflowStatus(event.target.value)}
               className="rounded-md border border-amber-300 bg-white px-3 py-2 text-sm"
@@ -704,6 +711,7 @@ export default function ServiceRequestDetail() {
               ))}
             </select>
             <input
+              disabled={!canUpdateWorkflow}
               value={workflowRemarks}
               onChange={(event) => setWorkflowRemarks(event.target.value)}
               placeholder="Reason for changing workflow step"
@@ -711,8 +719,9 @@ export default function ServiceRequestDetail() {
             />
             <button
               type="button"
-              disabled={busy}
+              disabled={busy || !canUpdateWorkflow}
               onClick={() => {
+                if (!canUpdateWorkflow) return;
                 const step = workflowStatus || service.status;
                 const sameStep = step === service.status;
                 if (sameStep && !window.confirm(
@@ -738,7 +747,7 @@ export default function ServiceRequestDetail() {
             </button>
             <button
               type="button"
-              disabled={busy || deleteDisabledByStatus}
+              disabled={busy || !canDeleteWorkflow || deleteDisabledByStatus}
               onClick={deleteCurrentServiceRequest}
               title={deleteDisabledByStatus ? "Cannot delete after completion or payment is started" : "Delete service request"}
               className="rounded-md bg-rose-700 px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
@@ -798,13 +807,13 @@ export default function ServiceRequestDetail() {
           <Field label="Service user" value={service.assigned_service_user_name} />
           <Field label="Engineer" value={assignedEngineerDisplay} />
           <Field label="Vendor" value={service.assigned_vendor_name} />
-          {isServiceTeam && service.completion_code ? (
+          {canViewHappyCode && service.completion_code ? (
             <Field label="Happy Code (sent to customer)" value={service.completion_code} />
           ) : null}
-          {isServiceTeam && latestCompletion?.engineer_completion_code ? (
+          {canViewHappyCode && latestCompletion?.engineer_completion_code ? (
             <Field label="Happy Code (entered by engineer)" value={latestCompletion.engineer_completion_code} />
           ) : null}
-          {isServiceTeam && (service.completions || []).filter((c) => c.engineer_completion_code).length > 1 && (
+          {canViewHappyCode && (service.completions || []).filter((c) => c.engineer_completion_code).length > 1 && (
             <div className="md:col-span-3">
               <div className="text-xs uppercase tracking-wide text-slate-500">Happy codes by completion</div>
               <ul className="mt-1 space-y-1 text-sm text-slate-800">
@@ -1300,7 +1309,7 @@ export default function ServiceRequestDetail() {
                   {completionPendingApproval
                     ? "Completion is pending admin approval."
                     : "Service completion submitted. Cancel completion if you need to edit it."}
-                  {isServiceTeam && latestCompletion?.engineer_completion_code && (
+                  {canViewHappyCode && latestCompletion?.engineer_completion_code && (
                     <div className="mt-1">
                       Happy code entered by engineer:{" "}
                       <span className="font-mono font-semibold">{latestCompletion.engineer_completion_code}</span>

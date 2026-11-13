@@ -1,3 +1,4 @@
+import { roleKey } from "../../utils/roles.js";
 import { useEffect, useMemo, useState } from "react";
 
 import { servicesApi } from "../../api/services.js";
@@ -1525,7 +1526,7 @@ export default function EngineerUnitWorkflowPanel({
             {unit.final_amount != null && unit.final_amount !== "" && (
               <div><strong>Final amount:</strong> {unit.final_amount}</div>
             )}
-            {unit.engineer_completion_code && (
+            {roleKey(role) === "admin" && unit.engineer_completion_code && (
               <div>
                 <strong>Happy code:</strong>{" "}
                 <span className="font-mono font-semibold">{unit.engineer_completion_code}</span>
@@ -2217,7 +2218,7 @@ export default function EngineerUnitWorkflowPanel({
               <strong>Work performed:</strong> {unit.work_performed}
             </div>
           )}
-          {isServiceTeam && unit.engineer_completion_code && (
+          {roleKey(role) === "admin" && unit.engineer_completion_code && (
             <div className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-900">
               <strong>Happy code entered by engineer:</strong>{" "}
               <span className="font-mono font-semibold">{unit.engineer_completion_code}</span>

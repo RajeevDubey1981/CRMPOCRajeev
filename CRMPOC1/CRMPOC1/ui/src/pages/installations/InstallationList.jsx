@@ -107,7 +107,7 @@ export default function InstallationList() {
     service_user: "",
   });
   const [page, setPage] = useState(1);
-  const [perPage, setPerPage] = useState(50);
+  const [perPage, setPerPage] = useState(100);
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [cancelBusyId, setCancelBusyId] = useState(null);
   const [serviceUserOptions, setServiceUserOptions] = useState([]);

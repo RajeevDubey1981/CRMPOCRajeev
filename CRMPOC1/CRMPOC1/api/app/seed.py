@@ -363,6 +363,8 @@ def seed_roles(db) -> None:
             _ensure_perm(db, role.id, module, None, flags)
         for (module, sub), flags in entry.get("sub_perms", {}).items():
             _ensure_perm(db, role.id, module, sub, flags)
+        workflow_flags = (True, False, True, True, False) if entry["name"] in {"admin", "service_manager"} else (False, False, False, False, False)
+        _ensure_perm(db, role.id, "service_workflow", None, workflow_flags)
         # Existing rows are left as-is — the matrix UI is the source of truth post-seed.
     db.commit()
     print(f"[seed] roles ensured ({len(DEFAULT_ROLES)} roles)")

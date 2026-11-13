@@ -182,7 +182,7 @@ export default function Dashboard() {
     query_type: "", service_type: "", mobile: "", source: "", date_from: "", date_to: "", priority: "",
   });
   const [page, setPage]     = useState(1);
-  const [perPage, setPerPage] = useState(20);
+  const [perPage, setPerPage] = useState(100);
   const [viewTarget, setViewTarget] = useState(null);
   const [editTarget, setEditTarget] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(null);

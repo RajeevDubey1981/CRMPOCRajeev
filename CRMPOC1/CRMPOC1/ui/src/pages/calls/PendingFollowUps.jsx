@@ -28,7 +28,7 @@ export default function PendingFollowUps() {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
   const [page, setPage] = useState(1);
-  const [perPage, setPerPage] = useState(20);
+  const [perPage, setPerPage] = useState(100);
 
   const params = useMemo(() => ({
     page, per_page: perPage,

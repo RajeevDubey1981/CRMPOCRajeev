@@ -40,7 +40,7 @@ export default function ClaimList() {
   const [err, setErr] = useState("");
   const [filters, setFilters] = useState({ status: "", search: "", date_from: "", date_to: "" });
   const [page, setPage] = useState(1);
-  const [perPage, setPerPage] = useState(20);
+  const [perPage, setPerPage] = useState(100);
 
   // Status update modal
   const [statusTarget, setStatusTarget] = useState(null);

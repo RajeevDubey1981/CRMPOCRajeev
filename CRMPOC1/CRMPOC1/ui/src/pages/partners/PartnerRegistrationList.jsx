@@ -136,7 +136,7 @@ export default function PartnerRegistrationList() {
   const [err, setErr] = useState("");
   const [filters, setFilters] = useState({ partner_type: "", form_status: "", status: "", search: "", date_from: "", date_to: "" });
   const [page, setPage] = useState(1);
-  const [perPage, setPerPage] = useState(20);
+  const [perPage, setPerPage] = useState(100);
 
   const [detail, setDetail] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);

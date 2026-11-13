@@ -71,3 +71,12 @@ def can_act_on(db: Session, user: User, module: str, flag: Flag, sub_module: str
     if sub_module is None:
         return False
     return sub_module in scope
+
+
+def can_manage_service_workflow(db: Session, user: User, flag: Flag) -> bool:
+    """Workflow overrides require an eligible role and explicit view/action grants."""
+    if (user.role or "").strip().lower() not in {"admin", "service_manager"}:
+        return False
+    return can_act_on(db, user, "service_workflow", "can_view", None) and can_act_on(
+        db, user, "service_workflow", flag, None
+    )

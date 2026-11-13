@@ -139,7 +139,7 @@ export default function OrderList() {
   const [activeSearch, setActiveSearch] = useState("");
   const [filters, setFilters] = useState({ status: "", date_from: "", date_to: "", market: "", csd_tier: "" });
   const [page, setPage] = useState(1);
-  const [perPage, setPerPage] = useState(20);
+  const [perPage, setPerPage] = useState(100);
   const [confirmDelete, setConfirmDelete] = useState(null);
 
   const params = useMemo(() => ({

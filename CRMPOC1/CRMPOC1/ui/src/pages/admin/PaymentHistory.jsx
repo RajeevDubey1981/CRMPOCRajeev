@@ -28,7 +28,7 @@ export default function PaymentHistory() {
   const [search, setSearch] = useState("");
   const [engineerSearch, setEngineerSearch] = useState("");
   const [page, setPage] = useState(1);
-  const [perPage, setPerPage] = useState(20);
+  const [perPage, setPerPage] = useState(100);
 
   const params = useMemo(() => ({
     page,

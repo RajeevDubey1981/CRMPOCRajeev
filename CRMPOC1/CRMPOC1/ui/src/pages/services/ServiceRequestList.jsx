@@ -41,7 +41,7 @@ export default function ServiceRequestList() {
     service_type: "", service_user: "", date_from: "", date_to: "",
   });
   const [page, setPage] = useState(1);
-  const [perPage, setPerPage] = useState(20);
+  const [perPage, setPerPage] = useState(100);
 
   useEffect(() => {
     servicesApi.summary().then(setSummary).catch(() => null);

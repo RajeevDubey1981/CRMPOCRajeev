@@ -18,6 +18,7 @@ MODULES = (
     "roles",
     "dashboard",
     "services",
+    "service_workflow",  # Admin/Service Manager workflow overrides (view, edit, delete)
     "partner_registrations",
     "payments",     # Payment History page (view only)
     "email_logs",   # email send logs and bounced addresses (view only)
