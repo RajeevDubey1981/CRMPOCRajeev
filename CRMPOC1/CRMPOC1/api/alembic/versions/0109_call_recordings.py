@@ -1,15 +1,15 @@
 """calls: Sarvam interaction id, and a call_recordings table for the call audio
 
-Revision ID: 0108_call_recordings
-Revises: 0107_order_csd_tier
+Revision ID: 0109_call_recordings
+Revises: 0108_historical_completion_snapshot_longtext
 """
 from typing import Sequence, Union
 
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "0108_call_recordings"
-down_revision: Union[str, Sequence[str], None] = "0107_order_csd_tier"
+revision: str = "0109_call_recordings"
+down_revision: Union[str, Sequence[str], None] = "0108_historical_completion_snapshot_longtext"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
