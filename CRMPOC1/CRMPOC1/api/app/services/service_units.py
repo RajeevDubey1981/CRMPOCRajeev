@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from app.services.role_access import can_view_happy_code
+
 from app.services.role_access import role_key as canonical_role_key
 
 import json
@@ -531,7 +533,7 @@ def build_unit_rows(
             "final_amount": float(completion.final_amount) if completion and completion.final_amount is not None else None,
             "completion_proof_path": completion.customer_acknowledgement_path if completion else None,
             "completed_at": completion.completed_at if completion else None,
-            "engineer_completion_code": completion.engineer_completion_code if completion else None,
+            "engineer_completion_code": completion.engineer_completion_code if completion and can_view_happy_code(user) else None,
             "payment_request_id": payment.id if payment else None,
             "payment_status": payment.status if payment else None,
             "payment_type": payment.payment_type if payment else None,

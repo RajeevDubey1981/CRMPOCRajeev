@@ -1,3 +1,5 @@
+from app.services.permissions import can_manage_service_workflow
+from app.services.role_access import can_view_happy_code
 import json
 import secrets
 import time
@@ -684,7 +686,7 @@ def _approval_out(db: Session, row: ServiceApproval) -> ServiceApprovalOut:
     )
 
 
-def _completion_out(db: Session, row: ServiceCompletion) -> ServiceCompletionOut:
+def _completion_out(db: Session, row: ServiceCompletion, user: User | None = None) -> ServiceCompletionOut:
     return ServiceCompletionOut(
         id=row.id,
         performed_by_type=row.performed_by_type,
@@ -701,7 +703,7 @@ def _completion_out(db: Session, row: ServiceCompletion) -> ServiceCompletionOut
         customer_acknowledgement_path=row.customer_acknowledgement_path,
         final_amount=float(row.final_amount) if row.final_amount is not None else None,
         completion_remarks=row.completion_remarks,
-        engineer_completion_code=row.engineer_completion_code,
+        engineer_completion_code=row.engineer_completion_code if can_view_happy_code(user) else None,
         completed_at=row.completed_at,
     )
 
@@ -830,14 +832,14 @@ def _hydrate_service(db: Session, service: ServiceRequest, user: User | None = N
         approved_at=service.approved_at,
         completed_at=service.completed_at,
         closed_at=service.closed_at,
-        completion_code=service.completion_code,
+        completion_code=service.completion_code if can_view_happy_code(user) else None,
         created_at=service.created_at,
         updated_at=service.updated_at,
         documents=[_doc_out(db, row) for row in documents],
         assignments=[_assignment_out(db, row) for row in assignments],
         observations=[_observation_out(db, row) for row in observations],
         approvals=[_approval_out(db, row) for row in approvals],
-        completions=[_completion_out(db, row) for row in completions],
+        completions=[_completion_out(db, row, user=user) for row in completions],
         payment_requests=[_payment_out(db, row) for row in payment_requests],
         payment_approval_history=[_payment_approval_log_out(db, row) for row in payment_approval_logs],
         order_items=[ServiceOrderItemSummary(**row) for row in build_order_item_summaries(db, service.id)],
@@ -1312,8 +1314,8 @@ def update_service(service_id: int, body: ServiceUpdate, db: Session = Depends(g
 @router.delete("/{service_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_service(service_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     service = _load_visible_service(db, service_id, user)
-    if not _is_workflow_admin(user):
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only admins can delete service requests")
+    if not can_manage_service_workflow(db, user, "can_delete"):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Service workflow delete permission is required for Admin or Service Manager")
     if service.status in SERVICE_DELETE_LOCKED_STATUSES:
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST,
@@ -1469,7 +1471,7 @@ def list_service_units(
     engineer_filter = user.id if _is_engineer(user) else None
     return [
         ServiceRequestUnitOut(**row)
-        for row in build_unit_rows(db, service.id, item_code=item_code, engineer_id=engineer_filter)
+        for row in build_unit_rows(db, service.id, item_code=item_code, engineer_id=engineer_filter, user=user)
     ]
 
 
@@ -3669,9 +3671,9 @@ def update_service_status(
     user: User = Depends(get_current_user),
 ):
     service = _load_visible_service(db, service_id, user)
-    if not _is_workflow_admin(user):
-        _enforce_transition(service.status, new_status)
-    elif new_status not in SERVICE_STATUSES:
+    if not can_manage_service_workflow(db, user, "can_edit"):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Service workflow edit permission is required for Admin or Service Manager")
+    if new_status not in SERVICE_STATUSES:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid status")
     old_status = service.status
     entering_team_review = (
@@ -3682,9 +3684,9 @@ def update_service_status(
             or service_workflow_is_revert(old_status, new_status)
         )
     )
-    if _is_workflow_admin(user) and entering_team_review:
+    if entering_team_review:
         on_enter_service_team_review(db, service)
-    elif _is_workflow_admin(user) and (
+    elif (
         service_workflow_is_revert(old_status, new_status) or new_status == old_status
     ):
         reset_service_workflow_from_status(db, service, new_status)

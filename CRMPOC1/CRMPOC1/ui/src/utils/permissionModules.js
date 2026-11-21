@@ -1,9 +1,10 @@
-export const REQUIRED_PERMISSION_MODULES = ["partner_registrations", "payments", "email_logs", "historical_installations"];
+export const REQUIRED_PERMISSION_MODULES = ["partner_registrations", "payments", "email_logs", "historical_installations", "service_workflow"];
 
 // These modules only have a "View" right (nothing to create, edit or delete).
 export const VIEW_ONLY_MODULES = ["payments", "email_logs"];
 
 export const MODULE_LABELS = {
+  service_workflow: "Service workflow control (Admin / Service Manager only)",
   partner_registrations: "Partner Registrations",
   payments: "Payment History (view only)",
   email_logs: "Email logs & bounces (view only)",

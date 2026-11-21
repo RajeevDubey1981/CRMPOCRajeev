@@ -155,7 +155,7 @@ export default function MarketUsers() {
   const [statusTab, setStatusTab] = useState("All");
   const [filters, setFilters] = useState({ search: "", role: "" });
   const [page, setPage] = useState(1);
-  const [perPage, setPerPage] = useState(20);
+  const [perPage, setPerPage] = useState(100);
 
   const [createOpen, setCreateOpen] = useState(false);
   const [createForm, setCreateForm] = useState(EMPTY_FORM);

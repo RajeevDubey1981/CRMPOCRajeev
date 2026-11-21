@@ -23,7 +23,7 @@ export default function CourierList() {
   const [successMsg, setSuccessMsg] = useState(location.state?.success || "");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
-  const [perPage, setPerPage] = useState(20);
+  const [perPage, setPerPage] = useState(100);
   const [confirmDelete, setConfirmDelete] = useState(null);
 
   const params = useMemo(() => ({

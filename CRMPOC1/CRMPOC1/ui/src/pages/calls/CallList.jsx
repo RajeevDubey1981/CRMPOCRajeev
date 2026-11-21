@@ -42,7 +42,7 @@ export default function CallList() {
     date_to: "",
   });
   const [page, setPage] = useState(1);
-  const [perPage, setPerPage] = useState(20);
+  const [perPage, setPerPage] = useState(100);
   const [editTarget, setEditTarget] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [transferTarget, setTransferTarget] = useState(null);

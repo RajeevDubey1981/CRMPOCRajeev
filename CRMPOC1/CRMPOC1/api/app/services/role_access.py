@@ -63,3 +63,8 @@ def is_system_admin(user: User) -> bool:
 
 def is_sub_admin(user: User) -> bool:
     return role_key(user.role) == SUB_ADMIN_ROLE
+
+
+def can_view_happy_code(user: User | None) -> bool:
+    """Only the Admin role may read customer or engineer happy codes."""
+    return user is not None and role_key(user.role) == "admin"

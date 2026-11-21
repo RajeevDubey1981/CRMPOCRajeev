@@ -288,7 +288,7 @@ export default function MarketOrders() {
   const [err, setErr] = useState("");
   const [filters, setFilters] = useState({ search: "", status: "" });
   const [page, setPage] = useState(1);
-  const [perPage, setPerPage] = useState(20);
+  const [perPage, setPerPage] = useState(100);
 
   const [marketUsers, setMarketUsers] = useState([]);
   const [marketItems, setMarketItems] = useState([]);

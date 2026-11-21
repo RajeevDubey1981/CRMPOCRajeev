@@ -31,7 +31,7 @@ export default function ItemMasterList() {
   const [filters, setFilters] = useState({ search: "", category: "", is_active: "" });
   const [addCategoryOpen, setAddCategoryOpen] = useState(false);
   const [page, setPage] = useState(1);
-  const [perPage, setPerPage] = useState(20);
+  const [perPage, setPerPage] = useState(100);
   const [confirmDelete, setConfirmDelete] = useState(null);
 
   const params = useMemo(() => ({

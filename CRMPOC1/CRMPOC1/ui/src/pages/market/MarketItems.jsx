@@ -163,7 +163,7 @@ export default function MarketItems() {
   const [categories, setCategories] = useState([]);
   const [filters, setFilters] = useState({ search: "", status: "", category_id: "" });
   const [page, setPage] = useState(1);
-  const [perPage, setPerPage] = useState(20);
+  const [perPage, setPerPage] = useState(100);
 
   const [createOpen, setCreateOpen] = useState(false);
   const [createForm, setCreateForm] = useState(EMPTY_FORM);
