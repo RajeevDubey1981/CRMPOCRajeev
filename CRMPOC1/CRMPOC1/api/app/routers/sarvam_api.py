@@ -8,15 +8,18 @@ Routes (all under /api/sarvam):
   GET  /complaints/track          ?comp_no=...&mobile=... (mobile optional but recommended)
   GET  /complaints/{comp_no}      same as track
 """
+import hashlib
 import hmac
+import json
 import threading
+import time
 import os
 import re
 _EMAIL_RE = 1
 from datetime import date, datetime, timedelta, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Body, Depends, Header, HTTPException
+from fastapi import APIRouter, Body, Depends, Header, HTTPException, Request
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -25,6 +28,7 @@ from app.services.complaint_whatsapp import send_complaint_registered_whatsapp
 from app.services.complaint_intake import link_and_sync, send_confirmation_email
 from app.models.complaint import Complaint, ComplaintStatusLog
 from app.routers.complaints import _generate_access_code, _generate_comp_no
+from app.services.sarvam_recordings import store_recording, valid_interaction_id
 
 router = APIRouter(prefix="/api/sarvam", tags=["sarvam"])
 
@@ -115,7 +119,8 @@ def _int_or_none(raw: Optional[str]) -> Optional[int]:
 
 
 def _log_call(db: Session, complaint: Complaint, qtype: str, name: str, mobile: str, email: Optional[str],
-              summary: Optional[str], interest_line: str, duration: Optional[int]) -> None:
+              summary: Optional[str], interest_line: str, duration: Optional[int],
+              interaction_id: Optional[str] = None) -> None:
     """Add the Sarvam conversation to the CRM call log. Sales and Installation leads get a follow-up for tomorrow.
     Never blocks the registration: any problem is only logged."""
     try:
@@ -146,6 +151,7 @@ def _log_call(db: Session, complaint: Complaint, qtype: str, name: str, mobile: 
                 follow_up_notes=("Call back the customer about this " + qtype.lower() + " enquiry.") if follow else None,
                 follow_up_status="Pending" if follow else None,
                 complaint_id=complaint.id,
+                sarvam_interaction_id=interaction_id,
             )
             db.add(call)
             db.flush()
@@ -198,6 +204,9 @@ def register_complaint(data: dict = Body(...), db: Session = Depends(get_db)):
     preferred = _pick(data, "preferred_time", "callback_time", "best_time")
     call_summary = _pick(data, "call_summary", "conversation_summary", "transcript_summary")
     duration = _int_or_none(_pick(data, "call_duration", "duration", "duration_secs"))
+    interaction_id = _pick(data, "interaction_id", "call_id", "session_id")
+    if not valid_interaction_id(interaction_id):
+        interaction_id = None
     qtype = _refine_type(qtype, problem, remark, " ".join(x for x in (interest, call_summary) if x))
     if not model and (interest or capacity):
         model = " ".join(x for x in (interest, capacity) if x)[:255]
@@ -271,7 +280,7 @@ def register_complaint(data: dict = Body(...), db: Session = Depends(get_db)):
         changed_by=None, remark="Complaint created from Sarvam call",
     ))
     linked_service = link_and_sync(db, complaint)
-    _log_call(db, complaint, qtype, name, mobile, email, call_summary or remark, interest_line, duration)
+    _log_call(db, complaint, qtype, name, mobile, email, call_summary or remark, interest_line, duration, interaction_id)
     service_request_no = linked_service.request_no if linked_service is not None else None
     db.commit()
     db.refresh(complaint)
@@ -292,6 +301,116 @@ def register_complaint(data: dict = Body(...), db: Session = Depends(get_db)):
     except Exception:
         pass
     return _ok("Complaint registered successfully", {"comp_no": complaint.comp_no, "comp_date": str(complaint.comp_date), "query_type": qtype, "status": complaint.status})
+
+
+def _webhook_authorized(raw: bytes, x_api_key: Optional[str], authorization: Optional[str],
+                        signature: Optional[str], timestamp: Optional[str]) -> bool:
+    """Our API key (as a custom header on Sarvam's webhook config), or Sarvam's own HMAC signature when
+    SARVAM_WEBHOOK_SECRET is set: sha256 over "<timestamp>.<raw body>", delivery no older than 5 minutes."""
+    try:
+        require_key(x_api_key, authorization)
+        return True
+    except HTTPException:
+        pass
+    secret = os.environ.get("SARVAM_WEBHOOK_SECRET", "")
+    if not secret or not signature or not timestamp:
+        return False
+    try:
+        if abs(time.time() - int(timestamp)) > 300:
+            return False
+    except ValueError:
+        return False
+    expected = "sha256=" + hmac.new(secret.encode(), timestamp.encode() + b"." + raw, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(expected, signature.strip())
+
+
+def _fetch_recording_later(call_id: int) -> None:
+    """The audio is rarely ready the instant a call ends: try again a few times, quietly."""
+    from app.database import SessionLocal
+    from app.models.call import Call
+
+    for wait in (20, 60, 180):
+        time.sleep(wait)
+        db = SessionLocal()
+        try:
+            call = db.get(Call, call_id)
+            if call is not None and store_recording(db, call) is not None:
+                db.commit()
+                return
+        except Exception:
+            import logging
+
+            logging.getLogger(__name__).exception("could not keep the Sarvam recording for call %s", call_id)
+        finally:
+            db.close()
+
+
+@router.post("/call-completed")
+async def call_completed(
+    request: Request,
+    db: Session = Depends(get_db),
+    x_api_key: Optional[str] = Header(None),
+    authorization: Optional[str] = Header(None),
+    sarvam_signature: Optional[str] = Header(None),
+    sarvam_timestamp: Optional[str] = Header(None),
+):
+    """Sarvam's post-call webhook. Ties the call's interaction id to the call-log row made while the call was
+    on, so its recording can be played beside the complaint. Matches by phone number and time."""
+    raw = await request.body()
+    if not _webhook_authorized(raw, x_api_key, authorization, sarvam_signature, sarvam_timestamp):
+        raise HTTPException(status_code=401, detail="Invalid webhook credentials")
+    try:
+        data = json.loads(raw or b"{}")
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Body is not JSON")
+    if not isinstance(data, dict):
+        raise HTTPException(status_code=422, detail="Body must be a JSON object")
+    interaction_id = _pick(data, "interaction_id")
+    if not valid_interaction_id(interaction_id):
+        raise HTTPException(status_code=422, detail="interaction_id is missing or malformed")
+
+    from app.models.call import Call
+
+    call = db.execute(select(Call).where(Call.sarvam_interaction_id == interaction_id)).scalars().first()
+    if call is None:
+        mobile = _mobile10(_pick(data, "user_phone_number"))
+
+        def _utc(raw_dt: Optional[str]) -> Optional[datetime]:
+            try:
+                dt = datetime.fromisoformat((raw_dt or "").replace("Z", "+00:00"))
+                return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+            except ValueError:
+                return None
+
+        start, end = _utc(_pick(data, "start_datetime")), _utc(_pick(data, "end_datetime"))
+        if mobile and start:
+            end = end or start + timedelta(minutes=30)
+            cands = db.execute(
+                select(Call).where(
+                    Call.phone == mobile,
+                    Call.sarvam_interaction_id.is_(None),
+                    Call.notes.like("Sarvam voice agent call%"),
+                    Call.call_datetime >= start - timedelta(minutes=2),
+                    Call.call_datetime <= end + timedelta(minutes=10),
+                )
+            ).scalars().all()
+            if cands:
+                def _gap(c: Call) -> float:
+                    at = c.call_datetime if c.call_datetime.tzinfo else c.call_datetime.replace(tzinfo=timezone.utc)
+                    return abs((at - start).total_seconds())
+
+                call = min(cands, key=_gap)
+    if call is None:
+        return {"success": True, "matched": False}
+
+    call.sarvam_interaction_id = interaction_id
+    duration = _int_or_none(_pick(data, "duration"))
+    if duration:
+        call.duration_secs = duration
+    db.commit()
+    threading.Thread(target=_fetch_recording_later, args=(call.id,), daemon=True).start()
+    return {"success": True, "matched": True, "call_ref": call.ref_no}
+
 
 
 def _track_by_mobile(mobile: Optional[str], db: Session) -> dict:

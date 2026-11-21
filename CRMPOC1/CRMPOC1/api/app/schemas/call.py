@@ -53,6 +53,7 @@ class CallListItem(BaseModel):
     followup_date: datetime | None
     follow_up_status: str | None
     complaint_id: int | None
+    has_recording: bool = False
 
 
 class CallListResponse(BaseModel):
@@ -86,3 +87,4 @@ class CallOut(BaseModel):
     complaint_id: int | None
     created_at: datetime
     updated_at: datetime
+    has_recording: bool = False

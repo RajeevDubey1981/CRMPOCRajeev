@@ -578,10 +578,9 @@ def _load_order(db: Session, user: User, order_id: int) -> Order:
 
 def _load_order_operations_edit(db: Session, user: User, order_id: int) -> Order:
     order = _load_order(db, user, order_id)
-    # A vendor may only touch the ship-to address while the order hasn't shipped yet -- same phase
-    # gate the general order-edit path already enforces for customer/delivery fields, which this
-    # dedicated consignee-address path had been skipping entirely (security review).
-    if not is_operations_admin(user) and not _can_vendor_edit_pending_line_items(db, user, order):
+    # A vendor may set the consignee on their own order at any status, including after delivery: the
+    # ship-to decides where the engineer goes for installation, which is requested after delivery.
+    if not is_operations_admin(user) and not (user.role == "vendor" and order.vendor_id in _vendor_ids_for_user(db, user)):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Your role cannot change this order")
     # Serialize selection and address-list changes for this order.
     db.refresh(order, with_for_update=True)

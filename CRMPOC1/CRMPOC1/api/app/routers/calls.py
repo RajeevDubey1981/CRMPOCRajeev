@@ -1,13 +1,13 @@
 from datetime import date, datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy import and_, desc, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.deps import get_current_user
-from app.models.call import Call
+from app.models.call import Call, CallRecording
 from app.models.user import User
 from app.schemas.call import (
     CallCreate,
@@ -67,6 +67,7 @@ def _list_row(db: Session, call: Call) -> CallListItem:
         followup_date=call.followup_date,
         follow_up_status=call.follow_up_status,
         complaint_id=call.complaint_id,
+        has_recording=bool(call.sarvam_interaction_id),
     )
 
 
@@ -88,6 +89,7 @@ def _hydrate(db: Session, call: Call) -> dict:
         )},
         "assigned_to_name": assigned_to_name,
         "transferred_to_name": transferred_to_name,
+        "has_recording": bool(call.sarvam_interaction_id),
     }
 
 
@@ -272,6 +274,30 @@ def calendar_events(
         })
 
     return events
+
+
+@router.get("/{call_id}/recording")
+def get_call_recording(
+    call_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """The call's audio. Kept in the CRM on first play: the first request downloads it from Sarvam."""
+    from app.services.sarvam_recordings import store_recording
+
+    call = _load_visible(db, user, call_id)
+    row = db.query(CallRecording).filter(CallRecording.call_id == call.id).first()
+    if row is None:
+        row = store_recording(db, call)
+        if row is not None:
+            db.commit()
+    if row is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No recording is available for this call yet")
+    return Response(
+        content=row.audio,
+        media_type=row.content_type,
+        headers={"Cache-Control": "private, max-age=3600", "Content-Disposition": f'inline; filename="{call.ref_no}.wav"'},
+    )
 
 
 @router.get("/{call_id}", response_model=CallOut)

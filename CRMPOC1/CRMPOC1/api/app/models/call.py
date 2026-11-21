@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import String, Text, DateTime, Integer, ForeignKey
+from sqlalchemy import DateTime, ForeignKey, Integer, LargeBinary, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -28,3 +28,17 @@ class Call(Base, TimestampMixin):
     follow_up_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     follow_up_status: Mapped[str | None] = mapped_column(String(30), nullable=True)
     complaint_id: Mapped[int | None] = mapped_column(ForeignKey("complaints.id"), nullable=True)
+    # Sarvam's id for this call ("<YYYYMMDD>/<uuid>"); the key to download its recording.
+    sarvam_interaction_id: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True)
+
+
+class CallRecording(Base, TimestampMixin):
+    """The audio of one call, kept apart from the calls table so list queries never load it."""
+
+    __tablename__ = "call_recordings"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    call_id: Mapped[int] = mapped_column(ForeignKey("calls.id", ondelete="CASCADE"), unique=True, nullable=False)
+    content_type: Mapped[str] = mapped_column(String(100), nullable=False, default="audio/wav")
+    size_bytes: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    audio: Mapped[bytes] = mapped_column(LargeBinary().with_variant(LargeBinary(length=(2**32) - 1), "mysql"), nullable=False)

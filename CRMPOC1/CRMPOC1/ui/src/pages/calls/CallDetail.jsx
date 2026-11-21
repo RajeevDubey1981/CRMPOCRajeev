@@ -4,6 +4,7 @@ import { Link, useParams } from "react-router-dom";
 import StatusBadge from "../../components/StatusBadge.jsx";
 import { callsApi } from "../../api/calls.js";
 import CallStatusEdit from "./CallStatusEdit.jsx";
+import CallRecordingPlayer from "../../components/CallRecordingPlayer.jsx";
 
 function fmt(s) { return s ? new Date(s).toLocaleString() : "—"; }
 
@@ -110,6 +111,12 @@ export default function CallDetail() {
           )}
           {call.notes && (
             <Field label="Call Notes" value={call.notes} full />
+          )}
+          {call.has_recording && (
+            <div className="md:col-span-2">
+              <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">Call Recording</p>
+              <CallRecordingPlayer callId={call.id} />
+            </div>
           )}
           {call.follow_up_notes && (
             <Field label="Follow-up Notes" value={call.follow_up_notes} full />

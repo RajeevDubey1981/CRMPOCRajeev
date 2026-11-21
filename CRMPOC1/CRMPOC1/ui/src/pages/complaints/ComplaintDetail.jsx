@@ -15,6 +15,7 @@ import { formatApiError } from "../../utils/apiError.js";
 import { getInstallationWorkflowPath, getServiceRequestPath } from "../../utils/complaintLinks.js";
 import { canAssignCallcenterEngineer } from "../../utils/installationWorkflowSteps.js";
 import { callsApi } from "../../api/calls.js";
+import CallRecordingPlayer from "../../components/CallRecordingPlayer.jsx";
 import { useAuth } from "../../auth/AuthContext.jsx";
 import { isOperationsAdminRole, isServiceTeamRole } from "../../utils/roles.js";
 import { ENGINEER_ASSIGNMENT_HINT, formatEngineerOptionLabel } from "../../utils/engineerAssignment.js";
@@ -985,6 +986,7 @@ export default function ComplaintDetail() {
                         </p>
                       )}
                       {call.notes && <p className="mt-2 text-sm text-slate-700">{call.notes}</p>}
+                      {call.has_recording && <div className="mt-3"><CallRecordingPlayer callId={call.id} compact /></div>}
                     </div>
                     <div className="text-right text-xs text-slate-500">
                       <div>{new Date(call.call_datetime).toLocaleString()}</div>
