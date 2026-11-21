@@ -105,7 +105,7 @@ def mobile10(raw: str | None) -> str | None:
     return m if re.fullmatch(r"[6-9]\d{9}", m) else None
 
 
-def match_call(db: Session, mobile: str | None, start, end, taken: set[int] | None = None) -> Call | None:
+def match_call(db: Session, mobile: str | None, start, end, taken: set[int] | None = None, allow_time_only: bool = True) -> Call | None:
     """The still-unlinked Sarvam call-log row for a Sarvam interaction.
 
     The CRM row is made while the call is on (when the agent registers the complaint), so its time falls
@@ -132,10 +132,10 @@ def match_call(db: Session, mobile: str | None, start, end, taken: set[int] | No
     same_phone = [c for c in rows if mobile and c.phone == mobile]
     if same_phone:
         return min(same_phone, key=gap)
-    return rows[0] if len(rows) == 1 else None
+    return rows[0] if (allow_time_only and len(rows) == 1) else None
 
 
-def link_interactions(db: Session, items: list[dict], dry_run: bool = False) -> dict:
+def link_interactions(db: Session, items: list[dict], dry_run: bool = False, allow_time_only: bool = True) -> dict:
     """Tie Sarvam call-history items to CRM call-log rows. Returns counts and the matched pairs (call ref and
     interaction id only, never a phone number). Commits nothing."""
     stats = {"interactions": 0, "already_linked": 0, "matched": 0, "no_crm_call": 0, "pairs": [], "time_only": []}
@@ -149,7 +149,7 @@ def link_interactions(db: Session, items: list[dict], dry_run: bool = False) -> 
             stats["already_linked"] += 1
             continue
         mobile = mobile10(item.get("user_contact"))
-        call = match_call(db, mobile, _utc(item.get("start_datetime")), _utc(item.get("end_datetime")), taken)
+        call = match_call(db, mobile, _utc(item.get("start_datetime")), _utc(item.get("end_datetime")), taken, allow_time_only)
         if call is not None and call.phone != mobile:
             stats["time_only"].append((call.ref_no, iid))  # a different number than the caller rang from: worth a look
         if call is None:

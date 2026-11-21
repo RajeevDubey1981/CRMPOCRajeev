@@ -8,6 +8,7 @@ calls already linked are skipped, and nothing but the link (and a missing durati
 Usage (on the server, from the api folder):
     sudo venv/bin/python scripts/backfill_sarvam_recordings.py --dry-run   # show what would be linked
     sudo venv/bin/python scripts/backfill_sarvam_recordings.py             # link them
+    sudo venv/bin/python scripts/backfill_sarvam_recordings.py --phone-only # only calls whose phone number also matches
     sudo venv/bin/python scripts/backfill_sarvam_recordings.py --days 120  # look further back (default 90)
 """
 from __future__ import annotations
@@ -36,6 +37,7 @@ def main(argv: list[str]) -> int:
     from app.services.sarvam_recordings import link_interactions, list_interactions
 
     dry_run = "--dry-run" in argv
+    phone_only = "--phone-only" in argv
     days = 90
     if "--days" in argv:
         days = int(argv[argv.index("--days") + 1])
@@ -50,7 +52,7 @@ def main(argv: list[str]) -> int:
 
     db = SessionLocal()
     try:
-        stats = link_interactions(db, inbound, dry_run=dry_run)
+        stats = link_interactions(db, inbound, dry_run=dry_run, allow_time_only=not phone_only)
         for ref, iid in stats["pairs"]:
             print(f"  {ref}  <-  {iid}")
         left = db.query(Call).filter(Call.notes.like("Sarvam voice agent call%"), Call.sarvam_interaction_id.is_(None)).count()

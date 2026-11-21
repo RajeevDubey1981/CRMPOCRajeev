@@ -118,6 +118,16 @@ class SarvamRecordingTests(unittest.TestCase):
         r = self.hook(user_phone_number="+919000000000")
         self.assertEqual(r.json(), {"success": True, "matched": False})
 
+    def test_phone_only_skips_a_time_only_match(self):
+        with self.Session() as db:
+            item = {"interaction_id": IID, "user_contact": "+919000000000", "duration_in_seconds": 90,
+                    "start_datetime": (self.at - timedelta(seconds=40)).replace(tzinfo=None).isoformat(),
+                    "end_datetime": (self.at + timedelta(seconds=55)).replace(tzinfo=None).isoformat()}
+            strict = sarvam_recordings.link_interactions(db, [item], dry_run=True, allow_time_only=False)
+            self.assertEqual((strict["matched"], strict["no_crm_call"]), (0, 1))
+            loose = sarvam_recordings.link_interactions(db, [item], dry_run=True)
+            self.assertEqual((loose["matched"], len(loose["time_only"])), (1, 1))
+
     def test_two_overlapping_calls_each_go_to_their_own_phone(self):
         with self.Session() as db:
             db.add(Call(ref_no="CALL-2", phone="9111111111", call_type="Inbound", status="Completed", priority="Medium",
