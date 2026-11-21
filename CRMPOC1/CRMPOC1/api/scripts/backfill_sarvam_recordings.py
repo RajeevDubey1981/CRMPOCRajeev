@@ -63,8 +63,7 @@ def main(argv: list[str]) -> int:
         db.close()
 
     if stats["time_only"]:
-        print(f"
-{len(stats['time_only'])} of these matched on time alone (the caller gave the agent a different number than they rang from) -- worth a spot check:")
+        print(f"\n{len(stats['time_only'])} of these matched on time alone (the caller gave the agent a different number than they rang from) -- worth a spot check:")
         for ref, iid in stats["time_only"]:
             print(f"  {ref}  <-  {iid}")
     verb = "Would link" if dry_run else "Linked"

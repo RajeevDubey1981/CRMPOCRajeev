@@ -222,5 +222,14 @@ class SarvamRecordingTests(unittest.TestCase):
         self.assertEqual(r.status_code, 404)
 
 
+class ShippedScriptsCompile(unittest.TestCase):
+    def test_the_sarvam_scripts_compile(self):
+        import py_compile
+
+        root = Path(__file__).resolve().parents[1]
+        for name in ("scripts/backfill_sarvam_recordings.py", "../scripts/set_sarvam_recording_keys.py"):
+            py_compile.compile(str(root / name), doraise=True)
+
+
 if __name__ == "__main__":
     unittest.main()
