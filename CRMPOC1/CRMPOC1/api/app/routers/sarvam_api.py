@@ -370,36 +370,11 @@ async def call_completed(
         raise HTTPException(status_code=422, detail="interaction_id is missing or malformed")
 
     from app.models.call import Call
+    from app.services.sarvam_recordings import _utc, match_call
 
     call = db.execute(select(Call).where(Call.sarvam_interaction_id == interaction_id)).scalars().first()
     if call is None:
-        mobile = _mobile10(_pick(data, "user_phone_number"))
-
-        def _utc(raw_dt: Optional[str]) -> Optional[datetime]:
-            try:
-                dt = datetime.fromisoformat((raw_dt or "").replace("Z", "+00:00"))
-                return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
-            except ValueError:
-                return None
-
-        start, end = _utc(_pick(data, "start_datetime")), _utc(_pick(data, "end_datetime"))
-        if mobile and start:
-            end = end or start + timedelta(minutes=30)
-            cands = db.execute(
-                select(Call).where(
-                    Call.phone == mobile,
-                    Call.sarvam_interaction_id.is_(None),
-                    Call.notes.like("Sarvam voice agent call%"),
-                    Call.call_datetime >= start - timedelta(minutes=2),
-                    Call.call_datetime <= end + timedelta(minutes=10),
-                )
-            ).scalars().all()
-            if cands:
-                def _gap(c: Call) -> float:
-                    at = c.call_datetime if c.call_datetime.tzinfo else c.call_datetime.replace(tzinfo=timezone.utc)
-                    return abs((at - start).total_seconds())
-
-                call = min(cands, key=_gap)
+        call = match_call(db, _mobile10(_pick(data, "user_phone_number")), _utc(_pick(data, "start_datetime")), _utc(_pick(data, "end_datetime")))
     if call is None:
         return {"success": True, "matched": False}
 

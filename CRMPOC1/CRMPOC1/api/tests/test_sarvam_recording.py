@@ -105,9 +105,55 @@ class SarvamRecordingTests(unittest.TestCase):
         call = self.Session().get(Call, self.call_id)
         self.assertEqual((call.sarvam_interaction_id, call.duration_secs), (IID, 95))
 
-    def test_webhook_for_an_unknown_caller_matches_nothing(self):
+    def test_a_different_phone_still_links_when_it_is_the_only_call_in_that_time_window(self):
+        r = self.hook(user_phone_number="+919000000000")
+        self.assertEqual(r.json()["call_ref"], "CALL-1")
+
+    def test_a_different_phone_with_two_calls_in_the_window_matches_nothing(self):
+        with self.Session() as db:
+            db.add(Call(ref_no="CALL-2", phone="9111111111", call_type="Inbound", status="Completed", priority="Medium",
+                        call_datetime=self.at + timedelta(seconds=20), notes="Sarvam voice agent call (Sales), complaint IDC_2."))
+            db.commit()
         r = self.hook(user_phone_number="+919000000000")
         self.assertEqual(r.json(), {"success": True, "matched": False})
+
+    def test_two_overlapping_calls_each_go_to_their_own_phone(self):
+        with self.Session() as db:
+            db.add(Call(ref_no="CALL-2", phone="9111111111", call_type="Inbound", status="Completed", priority="Medium",
+                        call_datetime=self.at + timedelta(seconds=20), notes="Sarvam voice agent call (Sales), complaint IDC_2."))
+            db.commit()
+        r = self.hook(interaction_id="20261121/aaaaaaaa-1111", user_phone_number="+919111111111")
+        self.assertEqual(r.json()["call_ref"], "CALL-2")
+        r = self.hook(interaction_id="20261121/bbbbbbbb-2222", user_phone_number="+919876543210")
+        self.assertEqual(r.json()["call_ref"], "CALL-1")
+
+    def test_backfill_links_past_calls_once_and_never_twice(self):
+        with self.Session() as db:
+            old = self.at - timedelta(days=9)
+            db.add(Call(ref_no="CALL-OLD", phone="9222222222", call_type="Inbound", status="Completed", priority="Medium",
+                        call_datetime=old, notes="Sarvam voice agent call (Service), complaint IDC_9."))
+            db.add(Call(ref_no="CALL-MANUAL", phone="9333333333", call_type="Outbound", status="Completed", priority="Medium",
+                        call_datetime=old, notes="Manual call by the service desk."))
+            db.commit()
+            items = [
+                {"interaction_id": "20261112/cccccccc-3333", "user_contact": "+919222222222", "duration_in_seconds": 71.4,
+                 "start_datetime": (old - timedelta(seconds=30)).replace(tzinfo=None).isoformat(),
+                 "end_datetime": (old + timedelta(seconds=40)).replace(tzinfo=None).isoformat()},
+                {"interaction_id": "20261110/dddddddd-4444", "user_contact": "+919444444444", "duration_in_seconds": 5,
+                 "start_datetime": (old - timedelta(days=2)).replace(tzinfo=None).isoformat(),
+                 "end_datetime": (old - timedelta(days=2) + timedelta(seconds=5)).replace(tzinfo=None).isoformat()},
+            ]
+            dry = sarvam_recordings.link_interactions(db, items, dry_run=True)
+            self.assertEqual((dry["matched"], dry["no_crm_call"]), (1, 1))
+            self.assertIsNone(db.query(Call).filter(Call.ref_no == "CALL-OLD").one().sarvam_interaction_id)  # dry run changes nothing
+            done = sarvam_recordings.link_interactions(db, items)
+            db.commit()
+            self.assertEqual(done["pairs"], [("CALL-OLD", "20261112/cccccccc-3333")])
+            row = db.query(Call).filter(Call.ref_no == "CALL-OLD").one()
+            self.assertEqual((row.sarvam_interaction_id, row.duration_secs), ("20261112/cccccccc-3333", 71))
+            self.assertIsNone(db.query(Call).filter(Call.ref_no == "CALL-MANUAL").one().sarvam_interaction_id)
+            again = sarvam_recordings.link_interactions(db, items)
+            self.assertEqual((again["matched"], again["already_linked"]), (0, 1))
 
     def test_webhook_rejects_a_malformed_interaction_id(self):
         self.assertEqual(self.hook(interaction_id="../../etc/passwd").status_code, 422)

@@ -83,3 +83,111 @@ def store_recording(db: Session, call: Call) -> CallRecording | None:
     db.add(row)
     db.flush()
     return row
+
+
+# ---------------------------------------------------------------- matching a Sarvam interaction to a CRM call
+
+def _utc(value: str | None):
+    from datetime import datetime, timezone
+
+    try:
+        dt = datetime.fromisoformat((value or "").replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+
+def mobile10(raw: str | None) -> str | None:
+    digits = re.sub(r"\D", "", raw or "")
+    if len(digits) < 10:
+        return None
+    m = digits[-10:]
+    return m if re.fullmatch(r"[6-9]\d{9}", m) else None
+
+
+def match_call(db: Session, mobile: str | None, start, end, taken: set[int] | None = None) -> Call | None:
+    """The still-unlinked Sarvam call-log row for a Sarvam interaction.
+
+    The CRM row is made while the call is on (when the agent registers the complaint), so its time falls
+    between the call's start and end. Same phone number first; the caller may have given the agent a
+    different number than the one they rang from, so failing that, accept a time match only when it is the
+    one and only unlinked Sarvam call in that window."""
+    from datetime import timedelta, timezone
+
+    if start is None:
+        return None
+    end = end or start + timedelta(minutes=30)
+    rows = db.query(Call).filter(
+        Call.sarvam_interaction_id.is_(None),
+        Call.notes.like("Sarvam voice agent call%"),
+        Call.call_datetime >= start - timedelta(minutes=2),
+        Call.call_datetime <= end + timedelta(minutes=10),
+    ).all()
+    rows = [c for c in rows if not taken or c.id not in taken]
+
+    def gap(c: Call) -> float:
+        at = c.call_datetime if c.call_datetime.tzinfo else c.call_datetime.replace(tzinfo=timezone.utc)
+        return abs((at - start).total_seconds())
+
+    same_phone = [c for c in rows if mobile and c.phone == mobile]
+    if same_phone:
+        return min(same_phone, key=gap)
+    return rows[0] if len(rows) == 1 else None
+
+
+def link_interactions(db: Session, items: list[dict], dry_run: bool = False) -> dict:
+    """Tie Sarvam call-history items to CRM call-log rows. Returns counts and the matched pairs (call ref and
+    interaction id only, never a phone number). Commits nothing."""
+    stats = {"interactions": 0, "already_linked": 0, "matched": 0, "no_crm_call": 0, "pairs": []}
+    taken: set[int] = set()
+    for item in sorted(items, key=lambda i: i.get("start_datetime") or ""):
+        iid = item.get("interaction_id")
+        if not valid_interaction_id(iid):
+            continue
+        stats["interactions"] += 1
+        if db.query(Call.id).filter(Call.sarvam_interaction_id == iid).first() is not None:
+            stats["already_linked"] += 1
+            continue
+        call = match_call(db, mobile10(item.get("user_contact")), _utc(item.get("start_datetime")), _utc(item.get("end_datetime")), taken)
+        if call is None:
+            stats["no_crm_call"] += 1
+            continue
+        taken.add(call.id)
+        stats["matched"] += 1
+        stats["pairs"].append((call.ref_no, iid))
+        if not dry_run:
+            call.sarvam_interaction_id = iid
+            duration = int(float(item.get("duration_in_seconds") or 0))
+            if duration and not call.duration_secs:
+                call.duration_secs = duration
+    return stats
+
+
+def list_interactions(days: int) -> list[dict]:
+    """Sarvam's call history for the last N days (every page). Raises on a rejected key or ids."""
+    from datetime import datetime, timedelta, timezone
+
+    if not recordings_configured():
+        raise RuntimeError("The Sarvam settings are not in this server's .env")
+    s = _settings()
+    url = f"{BASE_URL}/{quote(s['org'], safe='')}/{quote(s['workspace'], safe='')}/{quote(s['app'], safe='')}/interactions"
+    now = datetime.now(timezone.utc).replace(tzinfo=None, microsecond=0)
+    params = {
+        "start_datetime": (now - timedelta(days=days)).isoformat(),
+        "end_datetime": now.isoformat(),
+        "limit": 1000,
+        "offset": 0,
+        "sort_by": "start_datetime",
+        "sort_order": "asc",
+    }
+    items: list[dict] = []
+    while True:
+        r = requests.get(url, headers={"X-API-Key": s["key"]}, params=params, timeout=TIMEOUT, allow_redirects=False)
+        if r.status_code != 200:
+            raise RuntimeError(f"Sarvam answered HTTP {r.status_code} for the call history")
+        body = r.json()
+        page = body.get("items") or []
+        items.extend(page)
+        params["offset"] += len(page)
+        if not page or params["offset"] >= int(body.get("total") or 0):
+            return items
