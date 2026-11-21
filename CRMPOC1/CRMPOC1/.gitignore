@@ -34,3 +34,5 @@ uploads/
 
 # Docker
 .docker/
+
+scripts/sarvam-recording.env
