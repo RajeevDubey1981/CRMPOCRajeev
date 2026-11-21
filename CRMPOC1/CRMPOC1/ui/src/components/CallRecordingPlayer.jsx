@@ -4,7 +4,7 @@ import { callsApi } from "../api/calls.js";
 
 // The recording needs the login token, which an <audio src> can't send, so it is fetched as a file
 // the first time it is asked for and played from memory. Nothing is loaded until someone presses play.
-export default function CallRecordingPlayer({ callId, compact = false }) {
+export default function CallRecordingPlayer({ callId, compact = false, icon = false }) {
   const [state, setState] = useState("idle"); // idle | loading | ready | missing | error
   const [url, setUrl] = useState("");
   const urlRef = useRef("");
@@ -27,9 +27,24 @@ export default function CallRecordingPlayer({ callId, compact = false }) {
 
   if (state === "ready") {
     return (
-      <audio controls autoPlay src={url} className={compact ? "h-8 w-full max-w-xs" : "w-full max-w-md"} onClick={(e) => e.stopPropagation()}>
+      <audio controls autoPlay src={url} className={icon ? "h-8 w-52" : compact ? "h-8 w-full max-w-xs" : "w-full max-w-md"} onClick={(e) => e.stopPropagation()}>
         Your browser cannot play this recording.
       </audio>
+    );
+  }
+  if (icon) {
+    const tip = state === "missing" ? "The recording is not ready yet. Try again in a few minutes." : state === "error" ? "Could not load the recording. Try again." : "Play call recording";
+    return (
+      <button
+        type="button"
+        onClick={load}
+        disabled={state === "loading"}
+        title={tip}
+        aria-label={tip}
+        className={`inline-flex h-8 w-8 items-center justify-center rounded-full border text-sm transition-colors ${state === "missing" || state === "error" ? "border-amber-300 bg-amber-50 text-amber-700" : "border-sky-300 bg-sky-50 text-sky-700 hover:bg-sky-100"} disabled:opacity-60`}
+      >
+        {state === "loading" ? "…" : "▶"}
+      </button>
     );
   }
   return (

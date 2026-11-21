@@ -374,6 +374,22 @@ def _hydrate(db: Session, c: Complaint, viewer: User | None = None) -> dict:
     }
 
 
+def _with_recordings(db: Session, user: User, complaint_ids: list[int], items: list[ComplaintListItem]) -> list[ComplaintListItem]:
+    """Point each complaint at the latest call of its that has a recording, for people who can see calls."""
+    if not complaint_ids or not can_act_on(db, user, "calls", "can_view", None):
+        return items
+    latest: dict[int, int] = {}
+    for call_id, complaint_id in db.execute(
+        select(Call.id, Call.complaint_id)
+        .where(Call.complaint_id.in_(complaint_ids), Call.sarvam_interaction_id.is_not(None))
+        .order_by(Call.call_datetime, Call.id)
+    ).all():
+        latest[complaint_id] = call_id
+    for i in items:
+        i.recording_call_id = latest.get(i.id)
+    return items
+
+
 def _list_row(
     db: Session,
     c: Complaint,
@@ -900,7 +916,7 @@ def list_complaints(
     owners = _service_owner_map(db, complaint_ids)
 
     return ComplaintListResponse(
-        items=_with_owners(owners, _with_bounce_flags(db, [
+        items=_with_recordings(db, user, complaint_ids, _with_owners(owners, _with_bounce_flags(db, [
             _list_row(
                 db, c,
                 call_counts.get(c.id, 0),
@@ -912,7 +928,7 @@ def list_complaints(
                 *(linked_installations.get(c.id) or (None, None)),
             )
             for c in rows
-        ])),
+        ]))),
         total=total,
         page=page,
         per_page=per_page,

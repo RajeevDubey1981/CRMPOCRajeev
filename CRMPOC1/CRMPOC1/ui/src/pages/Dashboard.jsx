@@ -16,6 +16,7 @@ import Modal from "../components/Modal.jsx";
 import Pagination from "../components/Pagination.jsx";
 import StatusBadge from "../components/StatusBadge.jsx";
 import ComplaintQuickViewModal from "../components/complaints/ComplaintQuickViewModal.jsx";
+import CallRecordingPlayer from "../components/CallRecordingPlayer.jsx";
 import LinkedRequestCell from "../components/complaints/LinkedRequestCell.jsx";
 import ReferenceChip from "../components/complaints/ReferenceChip.jsx";
 import { api } from "../api/client.js";
@@ -120,6 +121,7 @@ const GRID_COLUMNS = [
   { key: "query_type", label: "Query Type" },
   { key: "linked_request", label: "Linked Request" },
   { key: "workflow_action", label: "Action" },
+  { key: "recording", label: "Recording" },
   { key: "remark", label: "Remark", gridHidden: true },
   { key: "assigned_engineer_name", label: "Assigned Engineer" },
   { key: "customer_mobile", label: "Mobile" },
@@ -138,6 +140,7 @@ const GRID_COLUMN_CELL_CLASS = {
   linked_request: "min-w-[10.5rem] whitespace-nowrap align-middle",
   status: "min-w-[11rem] whitespace-nowrap align-middle",
   workflow_action: "min-w-[10.5rem] whitespace-nowrap align-middle",
+  recording: "whitespace-nowrap align-middle text-center",
   customer_mobile: "whitespace-nowrap align-middle tabular-nums",
   customer_email: "max-w-[11rem] truncate align-middle",
 };
@@ -506,6 +509,8 @@ export default function Dashboard() {
         );
       case "remark":
         return <span className="max-w-[120px] truncate" title={c.remark || ""}>{trunc(c.remark)}</span>;
+      case "recording":
+        return c.recording_call_id ? <CallRecordingPlayer callId={c.recording_call_id} icon /> : <span className="text-slate-300">—</span>;
       case "assigned_engineer_name":
         return <span className="whitespace-nowrap">{c.assigned_engineer_name || "—"}</span>;
       case "customer_mobile":

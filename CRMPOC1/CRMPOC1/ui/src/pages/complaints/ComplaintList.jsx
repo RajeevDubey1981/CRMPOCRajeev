@@ -16,6 +16,7 @@ import StatusBadge from "../../components/StatusBadge.jsx";
 import ComplaintQuickViewModal from "../../components/complaints/ComplaintQuickViewModal.jsx";
 import LinkedRequestCell from "../../components/complaints/LinkedRequestCell.jsx";
 import ReferenceChip from "../../components/complaints/ReferenceChip.jsx";
+import CallRecordingPlayer from "../../components/CallRecordingPlayer.jsx";
 import PageLoader from "../../components/PageLoader.jsx";
 import { complaintsApi } from "../../api/complaints.js";
 import { servicesApi } from "../../api/services.js";
@@ -617,6 +618,7 @@ export default function ComplaintList() {
                       onClick={() => setViewTarget(c)}
                     />
                     {c.priority === "High" && <div><PriorityBadge at={c.priority_at} /></div>}
+                    {c.recording_call_id && <div className="pt-1"><CallRecordingPlayer callId={c.recording_call_id} icon /></div>}
                   </td>
                   <td className="px-3 py-2"><RegisteredCell at={c.created_at} /></td>
                   <td className="space-y-1 break-words px-3 py-2">

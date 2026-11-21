@@ -24,6 +24,7 @@ from app.database import Base, get_db
 from app.main import app
 from app.models import User
 from app.models.call import Call, CallRecording
+from app.models.complaint import Complaint
 from app.routers import sarvam_api
 from app.security import create_access_token, hash_password
 from app.seed import seed_roles
@@ -193,6 +194,22 @@ class SarvamRecordingTests(unittest.TestCase):
         self.hook()
         r = self.client.get(f"/api/calls/{self.call_id}", headers=self.admin_h())
         self.assertTrue(r.json()["has_recording"])
+
+    def test_the_complaints_list_points_at_the_call_with_a_recording(self):
+        with self.Session() as db:
+            with_rec = Complaint(comp_no="IDC_A", customer_name="A", customer_mobile="9876543210", query_type="Service", status="Pending", source="callcenter")
+            without = Complaint(comp_no="IDC_B", customer_name="B", customer_mobile="9000000001", query_type="Service", status="Pending", source="callcenter")
+            db.add_all([with_rec, without])
+            db.flush()
+            call = db.get(Call, self.call_id)
+            call.complaint_id, call.sarvam_interaction_id = with_rec.id, IID
+            db.commit()
+            a_id, b_id = with_rec.id, without.id
+        r = self.client.get("/api/complaints", headers=self.admin_h())
+        self.assertEqual(r.status_code, 200, r.text)
+        rows = {i["id"]: i for i in r.json()["items"]}
+        self.assertEqual(rows[a_id]["recording_call_id"], self.call_id)
+        self.assertIsNone(rows[b_id]["recording_call_id"])
 
     def test_recording_needs_a_login(self):
         self.assertEqual(self.client.get(f"/api/calls/{self.call_id}/recording").status_code, 401)

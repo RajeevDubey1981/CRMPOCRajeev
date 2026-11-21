@@ -149,6 +149,7 @@ class ComplaintListItem(BaseModel):
     email_bounce_reason: str | None = None
     priority: str = "Normal"
     priority_at: datetime | None = None
+    recording_call_id: int | None = None  # the call whose recording can be played, when there is one
 
 
 class ComplaintListResponse(BaseModel):
