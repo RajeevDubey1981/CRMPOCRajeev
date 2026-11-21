@@ -19,7 +19,7 @@ from app.models.call import Call, CallRecording
 logger = logging.getLogger(__name__)
 
 BASE_URL = "https://apps.sarvam.ai/api/analytics/v1"
-INTERACTION_ID_RE = re.compile(r"^\d{8}/[A-Za-z0-9_-]{6,80}$")
+INTERACTION_ID_RE = re.compile(r"^\d{8}/[A-Za-z0-9_:\-]{6,100}$")  # real ids look like 20261023/bf9c14fd-10:08:55-5023b492
 MAX_AUDIO_BYTES = 100 * 1024 * 1024
 TIMEOUT = (10, 60)
 
@@ -46,7 +46,7 @@ def download_recording(interaction_id: str) -> tuple[bytes, str] | None:
     if not valid_interaction_id(interaction_id) or not recordings_configured():
         return None
     s = _settings()
-    url = f"{BASE_URL}/{quote(s['org'], safe='')}/{quote(s['workspace'], safe='')}/{quote(s['app'], safe='')}/recordings/{quote(interaction_id, safe='/')}"
+    url = f"{BASE_URL}/{quote(s['org'], safe='')}/{quote(s['workspace'], safe='')}/{quote(s['app'], safe='')}/recordings/{quote(interaction_id, safe='/:')}"
     try:
         with requests.get(url, headers={"X-API-Key": s["key"]}, timeout=TIMEOUT, stream=True, allow_redirects=False) as r:
             if r.status_code == 404:
@@ -138,7 +138,7 @@ def match_call(db: Session, mobile: str | None, start, end, taken: set[int] | No
 def link_interactions(db: Session, items: list[dict], dry_run: bool = False) -> dict:
     """Tie Sarvam call-history items to CRM call-log rows. Returns counts and the matched pairs (call ref and
     interaction id only, never a phone number). Commits nothing."""
-    stats = {"interactions": 0, "already_linked": 0, "matched": 0, "no_crm_call": 0, "pairs": []}
+    stats = {"interactions": 0, "already_linked": 0, "matched": 0, "no_crm_call": 0, "pairs": [], "time_only": []}
     taken: set[int] = set()
     for item in sorted(items, key=lambda i: i.get("start_datetime") or ""):
         iid = item.get("interaction_id")
@@ -148,7 +148,10 @@ def link_interactions(db: Session, items: list[dict], dry_run: bool = False) -> 
         if db.query(Call.id).filter(Call.sarvam_interaction_id == iid).first() is not None:
             stats["already_linked"] += 1
             continue
-        call = match_call(db, mobile10(item.get("user_contact")), _utc(item.get("start_datetime")), _utc(item.get("end_datetime")), taken)
+        mobile = mobile10(item.get("user_contact"))
+        call = match_call(db, mobile, _utc(item.get("start_datetime")), _utc(item.get("end_datetime")), taken)
+        if call is not None and call.phone != mobile:
+            stats["time_only"].append((call.ref_no, iid))  # a different number than the caller rang from: worth a look
         if call is None:
             stats["no_crm_call"] += 1
             continue

@@ -145,6 +145,7 @@ class SarvamRecordingTests(unittest.TestCase):
             ]
             dry = sarvam_recordings.link_interactions(db, items, dry_run=True)
             self.assertEqual((dry["matched"], dry["no_crm_call"]), (1, 1))
+            self.assertEqual(dry["time_only"], [])  # matched on phone, not on time alone
             self.assertIsNone(db.query(Call).filter(Call.ref_no == "CALL-OLD").one().sarvam_interaction_id)  # dry run changes nothing
             done = sarvam_recordings.link_interactions(db, items)
             db.commit()
@@ -157,6 +158,13 @@ class SarvamRecordingTests(unittest.TestCase):
 
     def test_webhook_rejects_a_malformed_interaction_id(self):
         self.assertEqual(self.hook(interaction_id="../../etc/passwd").status_code, 422)
+
+    def test_real_sarvam_interaction_ids_with_colons_are_accepted_and_traversal_is_not(self):
+        for good in ("20261023/bf9c14fd-10:08:55-5023b492", "20261121/9fc85ebc-21:35:39-aw188953", IID):
+            self.assertTrue(sarvam_recordings.valid_interaction_id(good), good)
+        for bad in ("../../etc/passwd", "20261023/../x", "20261023/a/b", "20261023/..", "x/abcdef", "20261023/ab cdef", ""):
+            self.assertFalse(sarvam_recordings.valid_interaction_id(bad), bad)
+        self.assertEqual(self.hook(interaction_id="20261121/9fc85ebc-21:35:39-aw188953").status_code, 200)
 
     def test_first_play_downloads_keeps_and_then_serves_from_the_crm(self):
         self.hook()
