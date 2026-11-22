@@ -17,6 +17,7 @@ from app.schemas.call import (
     CallTransfer,
     CallUpdate,
 )
+from app.services.call_purpose import clean_purpose, infer_purpose
 from app.services.permissions import can_act_on
 
 router = APIRouter(prefix="/api/calls", tags=["calls"])
@@ -68,6 +69,7 @@ def _list_row(db: Session, call: Call) -> CallListItem:
         follow_up_status=call.follow_up_status,
         complaint_id=call.complaint_id,
         has_recording=bool(call.sarvam_interaction_id or call.recording_url),
+        purpose=call.purpose,
     )
 
 
@@ -90,6 +92,7 @@ def _hydrate(db: Session, call: Call) -> dict:
         "assigned_to_name": assigned_to_name,
         "transferred_to_name": transferred_to_name,
         "has_recording": bool(call.sarvam_interaction_id or call.recording_url),
+        "purpose": call.purpose,
     }
 
 
@@ -99,6 +102,7 @@ def list_calls(
     per_page: int = Query(20, ge=1, le=200),
     status_filter: str | None = Query(None, alias="status"),
     call_type_filter: str | None = Query(None, alias="call_type"),
+    purpose_filter: str | None = Query(None, alias="purpose"),
     search: str | None = None,
     date_from: date | None = None,
     date_to: date | None = None,
@@ -115,6 +119,8 @@ def list_calls(
         stmt = stmt.where(Call.status == status_filter)
     if call_type_filter and call_type_filter in CALL_TYPES:
         stmt = stmt.where(Call.call_type == call_type_filter)
+    if purpose_filter and clean_purpose(purpose_filter):
+        stmt = stmt.where(Call.purpose == clean_purpose(purpose_filter))
     if complaint_id:
         stmt = stmt.where(Call.complaint_id == complaint_id)
     if search:
@@ -178,6 +184,7 @@ def create_call(
         follow_up_notes=body.follow_up_notes,
         follow_up_status="Pending" if body.followup_date else None,
         complaint_id=body.complaint_id,
+        purpose=clean_purpose(body.purpose) or infer_purpose(body.notes),
         assigned_to=user.id,
     )
     db.add(call)
@@ -338,6 +345,8 @@ def update_call(
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Your role cannot edit calls")
 
     data = body.model_dump(exclude_unset=True)
+    if "purpose" in data:
+        data["purpose"] = clean_purpose(data["purpose"])
     for field, value in data.items():
         setattr(call, field, value)
     db.commit()

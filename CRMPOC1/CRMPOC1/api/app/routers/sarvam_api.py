@@ -28,6 +28,7 @@ from app.services.complaint_whatsapp import send_complaint_registered_whatsapp
 from app.services.complaint_intake import link_and_sync, send_confirmation_email
 from app.models.complaint import Complaint, ComplaintStatusLog
 from app.routers.complaints import _generate_access_code, _generate_comp_no
+from app.services.call_purpose import infer_purpose
 from app.services.sarvam_recordings import store_recording, valid_interaction_id
 
 router = APIRouter(prefix="/api/sarvam", tags=["sarvam"])
@@ -145,6 +146,7 @@ def _log_call(db: Session, complaint: Complaint, qtype: str, name: str, mobile: 
                 status="Completed",
                 priority="High" if follow else "Medium",
                 call_datetime=now,
+                purpose={"Sales": "Sales enquiry", "Installation": "Installation request", "Service": "Service complaint"}.get(qtype) or infer_purpose(summary),
                 duration_secs=duration,
                 followup_date=(now + timedelta(days=1)) if follow else None,
                 notes=notes[:4000],

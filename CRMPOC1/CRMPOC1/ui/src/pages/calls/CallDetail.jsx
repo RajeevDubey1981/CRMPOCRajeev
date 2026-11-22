@@ -93,6 +93,7 @@ export default function CallDetail() {
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <Field label="Call Type" value={call.call_type} />
           <Field label="Status" value={call.status} />
+          <Field label="Purpose" value={call.purpose} />
           <Field label="Priority" value={call.priority} />
           <Field label="Customer Name" value={call.customer_name} />
           <Field label="Phone" value={call.phone} mono />

@@ -1,3 +1,4 @@
+import { CALL_PURPOSES } from "../../utils/callPurposes.js";
 import { useEffect, useState } from "react";
 
 import Modal from "../../components/Modal.jsx";
@@ -13,6 +14,7 @@ export default function CallStatusEdit({ call, onClose, onSaved }) {
   const [form, setForm] = useState({
     status: call.status || "Completed",
     priority: call.priority || "Medium",
+    purpose: call.purpose || "",
     assigned_to: call.assigned_to || "",
     duration_secs: call.duration_secs || "",
     followup_date: call.followup_date ? new Date(call.followup_date).toISOString().slice(0, 16) : "",
@@ -38,6 +40,7 @@ export default function CallStatusEdit({ call, onClose, onSaved }) {
       const body = {
         status: form.status,
         priority: form.priority,
+        purpose: form.purpose || null,
         assigned_to: form.assigned_to ? parseInt(form.assigned_to, 10) : null,
         duration_secs: form.duration_secs ? parseInt(form.duration_secs, 10) : null,
         followup_date: form.followup_date ? new Date(form.followup_date).toISOString() : null,
@@ -73,6 +76,13 @@ export default function CallStatusEdit({ call, onClose, onSaved }) {
             </select>
           </div>
 
+          <div>
+            <label className={labelClass}>Purpose</label>
+            <select value={form.purpose} onChange={(e) => set("purpose", e.target.value)} className={fieldClass}>
+              <option value="">Not set</option>
+              {CALL_PURPOSES.map((p) => <option key={p} value={p}>{p}</option>)}
+            </select>
+          </div>
           <div>
             <label className={labelClass}>Priority</label>
             <select value={form.priority} onChange={(e) => set("priority", e.target.value)} className={fieldClass}>

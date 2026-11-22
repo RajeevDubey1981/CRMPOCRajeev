@@ -15,6 +15,7 @@ class CallCreate(BaseModel):
     notes: str | None = None
     follow_up_notes: str | None = None
     complaint_id: int | None = None
+    purpose: str | None = None
 
 
 class CallUpdate(BaseModel):
@@ -30,6 +31,7 @@ class CallUpdate(BaseModel):
     notes: str | None = None
     follow_up_notes: str | None = None
     follow_up_status: str | None = None
+    purpose: str | None = None
 
 
 class CallTransfer(BaseModel):
@@ -54,6 +56,7 @@ class CallListItem(BaseModel):
     follow_up_status: str | None
     complaint_id: int | None
     has_recording: bool = False
+    purpose: str | None = None
 
 
 class CallListResponse(BaseModel):
@@ -88,3 +91,4 @@ class CallOut(BaseModel):
     created_at: datetime
     updated_at: datetime
     has_recording: bool = False
+    purpose: str | None = None

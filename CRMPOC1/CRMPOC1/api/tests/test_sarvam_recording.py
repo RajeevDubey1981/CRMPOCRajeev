@@ -261,3 +261,16 @@ class SheetSyncTests(unittest.TestCase):
     def test_drive_file_id_is_taken_from_a_share_link(self):
         self.assertEqual(sarvam_recordings.drive_file_id("https://drive.google.com/file/d/1Ycuyix5jGyXaJGwv4REJmjbsSM9m9bXk/view?usp=drivesdk"), "1Ycuyix5jGyXaJGwv4REJmjbsSM9m9bXk")
         self.assertIsNone(sarvam_recordings.drive_file_id("https://example.com/x"))
+
+
+class CallPurposeTests(unittest.TestCase):
+    def test_purpose_is_read_from_the_call_summary(self):
+        from app.services.call_purpose import clean_purpose, infer_purpose
+
+        self.assertEqual(infer_purpose("Wants a dealership for Noida"), "Business or dealer enquiry")
+        self.assertEqual(infer_purpose("AC shows E6 error, technician needed"), "Service complaint")
+        self.assertEqual(infer_purpose("Asked the price of a 1.5 ton split"), "Sales enquiry")
+        self.assertEqual(infer_purpose("Applying for a job"), "Job or HR")
+        self.assertEqual(infer_purpose(""), "Other")
+        self.assertEqual(clean_purpose(" sales enquiry "), "Sales enquiry")
+        self.assertIsNone(clean_purpose("nonsense"))

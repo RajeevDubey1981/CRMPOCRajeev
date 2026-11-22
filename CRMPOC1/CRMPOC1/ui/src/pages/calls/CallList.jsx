@@ -11,6 +11,7 @@ import StatusBadge from "../../components/StatusBadge.jsx";
 import { callsApi } from "../../api/calls.js";
 import { usersApi } from "../../api/complaints.js";
 import CallStatusEdit from "./CallStatusEdit.jsx";
+import { CALL_PURPOSES } from "../../utils/callPurposes.js";
 import { fmtIST } from "../../utils/time.js";
 
 const CALL_TYPES = ["Inbound", "Outbound", "Callback"];
@@ -38,6 +39,7 @@ export default function CallList() {
   const [filters, setFilters] = useState({
     status: "",
     call_type: "",
+    purpose: "",
     search: "",
     date_from: "",
     date_to: "",
@@ -55,6 +57,7 @@ export default function CallList() {
     page, per_page: perPage,
     status: filters.status || undefined,
     call_type: filters.call_type || undefined,
+    purpose: filters.purpose || undefined,
     search: filters.search || undefined,
     date_from: filters.date_from || undefined,
     date_to: filters.date_to || undefined,
@@ -199,6 +202,14 @@ export default function CallList() {
             <option value="">All Types</option>
             {CALL_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
           </select>
+          <select
+            value={filters.purpose}
+            onChange={(e) => applyFilter({ purpose: e.target.value })}
+            className="rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          >
+            <option value="">All Purposes</option>
+            {CALL_PURPOSES.map((p) => <option key={p} value={p}>{p}</option>)}
+          </select>
           <DateRangeFilter from={filters.date_from} to={filters.date_to} onChange={(a, b) => applyFilter({ date_from: a, date_to: b })} />
           <div className="flex gap-2">
             <button
@@ -208,7 +219,7 @@ export default function CallList() {
               🔍 Filter
             </button>
             <button
-              onClick={() => { setFilters({ status: "", call_type: "", search: "", date_from: "", date_to: "" }); setPage(1); }}
+              onClick={() => { setFilters({ status: "", call_type: "", purpose: "", search: "", date_from: "", date_to: "" }); setPage(1); }}
               className="flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm font-medium hover:bg-slate-50"
             >
               ↺ Reset
@@ -228,6 +239,7 @@ export default function CallList() {
               <th className="px-4 py-3 text-left font-semibold text-slate-700">Customer</th>
               <th className="px-4 py-3 text-left font-semibold text-slate-700">Phone</th>
               <th className="px-4 py-3 text-left font-semibold text-slate-700">Type</th>
+              <th className="px-4 py-3 text-left font-semibold text-slate-700">Purpose</th>
               <th className="px-4 py-3 text-left font-semibold text-slate-700">Status</th>
               <th className="px-4 py-3 text-left font-semibold text-slate-700">Assigned To</th>
               <th className="px-4 py-3 text-left font-semibold text-slate-700">Duration</th>
@@ -253,6 +265,7 @@ export default function CallList() {
                     {call.call_type || "—"}
                   </span>
                 </td>
+                <td className="px-4 py-3 text-xs text-slate-700">{call.purpose || "—"}</td>
                 <td className="px-4 py-3">
                   <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${
                     call.status === "Completed" ? "bg-green-100 text-green-800" :

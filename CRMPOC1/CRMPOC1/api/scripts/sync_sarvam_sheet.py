@@ -82,6 +82,7 @@ def main(argv: list[str]) -> int:
     from app.models.call import Call
     from app.models.complaint import Complaint
     from app.routers.calls import _generate_ref_no
+    from app.services.call_purpose import infer_purpose
     from app.services.sarvam_recordings import match_call, mobile10
 
     args = [a for a in argv if not a.startswith("--")]
@@ -162,6 +163,7 @@ def main(argv: list[str]) -> int:
                         call_datetime=item["start"],
                         duration_secs=item["duration"],
                         notes=notes[:4000],
+                        purpose=infer_purpose(item["reason"], item["disposition"]),
                         sarvam_interaction_id=item["attempt"],
                         recording_url=item["url"],
                     )

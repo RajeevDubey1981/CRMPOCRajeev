@@ -32,6 +32,8 @@ class Call(Base, TimestampMixin):
     sarvam_interaction_id: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True)
     # Where the recording lives in Google Drive. The CRM keeps only this link, never the audio.
     recording_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    # What the call was about (see app/services/call_purpose.py).
+    purpose: Mapped[str | None] = mapped_column(String(40), nullable=True, index=True)
 
 
 class CallRecording(Base, TimestampMixin):

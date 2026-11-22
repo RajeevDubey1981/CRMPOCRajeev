@@ -1,3 +1,4 @@
+import { CALL_PURPOSES } from "../../utils/callPurposes.js";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 
@@ -25,6 +26,7 @@ export default function CallCreate() {
     phone: "",
     call_type: "Outbound",
     priority: "Medium",
+    purpose: "",
     duration_secs: "",
     followup_date: "",
     notes: "",
@@ -52,6 +54,7 @@ export default function CallCreate() {
         phone: form.phone || null,
         call_type: form.call_type,
         priority: form.priority,
+        purpose: form.purpose || null,
         status: "Completed",
         duration_secs: form.duration_secs ? parseInt(form.duration_secs, 10) : null,
         followup_date: form.followup_date ? new Date(form.followup_date).toISOString() : null,
@@ -103,6 +106,13 @@ export default function CallCreate() {
             <label className={labelClass}>Call Type</label>
             <select value={form.call_type} onChange={(e) => set("call_type", e.target.value)} className={fieldClass}>
               {CALL_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className={labelClass}>Purpose</label>
+            <select value={form.purpose} onChange={(e) => set("purpose", e.target.value)} className={fieldClass}>
+              <option value="">Pick from the notes</option>
+              {CALL_PURPOSES.map((p) => <option key={p} value={p}>{p}</option>)}
             </select>
           </div>
           <div>
