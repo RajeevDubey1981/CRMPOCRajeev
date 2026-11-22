@@ -18,7 +18,7 @@ import deploy  # noqa: E402
 SRC = Path(__file__).resolve().parent / "sms-config.env"
 KEYS = (
     "SMS_ENABLED", "SMS_USER", "SMS_PASSWORD", "SMS_SENDER_ID", "SMS_PE_ID",
-    "SMS_HAPPY_CODE_TEMPLATE_ID", "SMS_EMAIL_LINK_TEMPLATE_ID", "SMS_CHANNEL", "SMS_ROUTE",
+    "SMS_HAPPY_CODE_TEMPLATE_ID", "SMS_EMAIL_LINK_TEMPLATE_ID", "SMS_EMAIL_LINK_TEXT", "SMS_CHANNEL", "SMS_ROUTE",
 )
 SAFE_RE = re.compile(r"[^\r\n]{1,200}")  # any single line; special characters are quoted for the .env below
 

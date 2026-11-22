@@ -96,7 +96,7 @@ class Settings(BaseSettings):
     )
 
     sms_email_link_text: str = (
-        "Dear {name}, to confirm your email for INDcool complaint {ref}, open https://indcoolapplainces.com/email "
+        "Dear {name}, to confirm your email for INDcool complaint {ref}. open https://indcoolapplainces.com/email "
         "and enter code {code}. -TEAM INDcool, COMTECH ENTERPRISES"
     )
 

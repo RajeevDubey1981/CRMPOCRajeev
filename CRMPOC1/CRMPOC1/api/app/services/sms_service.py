@@ -91,7 +91,7 @@ def send_email_link_sms(to_mobile: str | None, *, name: str | None, ref: str, co
         return False
     try:
         text = settings.sms_email_link_text.format(
-            name=re.sub(r"[^A-Za-z0-9 ]", "", _clean(name, 30)) or "Customer", ref=_clean(ref, 30) or "query", code=_clean(code, 10)
+            name=re.sub(r"[^A-Za-z0-9 ]", "", _clean(name, 30)) or "Customer", ref=re.sub(r"[^A-Za-z0-9]", "", _clean(ref, 40)) or "query", code=_clean(code, 10)
         )
     except (KeyError, IndexError, ValueError):
         logger.error("sms email link text is invalid: use only {name}, {ref} and {code}")
