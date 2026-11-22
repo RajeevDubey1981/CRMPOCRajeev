@@ -36,3 +36,4 @@ uploads/
 .docker/
 
 scripts/sarvam-recording.env
+ui/.env.development.local
