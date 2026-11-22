@@ -88,6 +88,7 @@ class Settings(BaseSettings):
     sms_route: str = ""
     sms_pe_id: str = ""
     sms_happy_code_template_id: str = ""
+    sms_email_link_template_id: str = ""  # the "confirm your email" message, once registered on DLT
     sms_happy_code_text: str = (
         "Dear {name}, your INDcool service request {service} has an engineer assigned. "
         "Your Happy Code is {code}. Please give it to our engineer on completion of your service request. "
