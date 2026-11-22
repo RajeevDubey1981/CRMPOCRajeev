@@ -11,6 +11,7 @@ import StatusBadge from "../../components/StatusBadge.jsx";
 import { callsApi } from "../../api/calls.js";
 import { usersApi } from "../../api/complaints.js";
 import CallStatusEdit from "./CallStatusEdit.jsx";
+import CallRecordingPlayer from "../../components/CallRecordingPlayer.jsx";
 import { CALL_PURPOSES } from "../../utils/callPurposes.js";
 import { fmtIST } from "../../utils/time.js";
 
@@ -256,7 +257,12 @@ export default function CallList() {
             )}
             {!loading && data.items.map((call) => (
               <tr key={call.id} className="border-b border-slate-100 hover:bg-slate-50">
-                <td className="px-4 py-3 font-mono text-xs font-medium text-slate-900">{call.ref_no}</td>
+                <td className="px-4 py-3 font-mono text-xs font-medium text-slate-900">
+                  <div className="flex flex-col items-start gap-1">
+                    {call.ref_no}
+                    {call.has_recording && <CallRecordingPlayer callId={call.id} icon />}
+                  </div>
+                </td>
                 <td className="px-4 py-3"><RegisteredCell at={call.call_datetime} /></td>
                 <td className="px-4 py-3 text-sm text-slate-900">{call.customer_name || "—"}</td>
                 <td className="px-4 py-3 font-mono text-xs text-slate-700">{call.phone || "—"}</td>
