@@ -11,6 +11,7 @@ time is checked against the time inside the Attempt ID, which is UTC, and the ID
 Usage (on the server, from the api folder):
     sudo venv/bin/python scripts/sync_sarvam_sheet.py export.csv            # dry run: counts and examples
     sudo venv/bin/python scripts/sync_sarvam_sheet.py export.csv --apply    # write the changes
+    add --skip-short=15 to leave out calls under 15 seconds that have no reason for calling
 """
 from __future__ import annotations
 
@@ -54,9 +55,11 @@ def parse_row(row: list[str]) -> dict | None:
         from_id = day.replace(hour=int(m.group(1)), minute=int(m.group(2)), second=int(m.group(3)), tzinfo=timezone.utc)
         if abs((from_id - start).total_seconds()) > 300:
             start = from_id
-    mins, _, secs = row[2].strip().partition(":")
     try:
-        duration = int(mins) * 60 + int(secs or 0)
+        parts = [int(x) for x in row[2].strip().split(":")]
+        duration = 0
+        for part in parts:  # m:ss or h:mm:ss
+            duration = duration * 60 + part
     except ValueError:
         duration = None
     return {
@@ -83,6 +86,10 @@ def main(argv: list[str]) -> int:
 
     args = [a for a in argv if not a.startswith("--")]
     apply = "--apply" in argv
+    skip_short = 0  # --skip-short=15: do not add new rows for calls under 15 seconds that have no reason for calling
+    for a in argv:
+        if a.startswith("--skip-short="):
+            skip_short = int(a.split("=", 1)[1])
     if not args:
         print(__doc__)
         return 2
@@ -124,6 +131,8 @@ def main(argv: list[str]) -> int:
                             call.recording_url = item["url"]
                         if call.duration_secs is None:
                             call.duration_secs = item["duration"]
+            elif skip_short and (item["duration"] or 0) < skip_short and not item["reason"]:
+                stats["short_not_added"] = stats.get("short_not_added", 0) + 1
             else:
                 stats["new_calls"] += 1
                 if len(examples) < 5:
