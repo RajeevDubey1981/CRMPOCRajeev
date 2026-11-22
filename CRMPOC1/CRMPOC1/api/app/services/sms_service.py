@@ -13,21 +13,21 @@ def _clean(value, limit: int) -> str:
     return re.sub(r"\s+", " ", str(value or "")).strip()[:limit]
 
 
-def sms_is_configured() -> bool:
+def sms_is_configured(template_id: str | None = None) -> bool:
     return bool(
         settings.sms_enabled
         and settings.sms_user.strip()
         and settings.sms_password.strip()
         and settings.sms_sender_id.strip()
         and settings.sms_pe_id.strip()
-        and settings.sms_happy_code_template_id.strip()
+        and (template_id if template_id is not None else settings.sms_happy_code_template_id).strip()
     )
 
 
 def send_sms(to_mobile: str | None, text: str, *, dlt_template_id: str) -> bool:
     """Send one SMS through SMS India Hub (GET /api/mt/SendSMS). The text must match the DLT-approved template."""
     recipient = _normalize_indian_mobile(to_mobile)
-    if not recipient or not sms_is_configured():
+    if not recipient or not sms_is_configured(dlt_template_id):
         return False
     params = {
         "user": settings.sms_user.strip(),
@@ -82,3 +82,18 @@ def send_service_happy_code_sms(
         logger.error("sms happy code text is invalid: use only {name}, {service} and {code}")
         return False
     return send_sms(to_mobile, text, dlt_template_id=settings.sms_happy_code_template_id)
+
+
+def send_email_link_sms(to_mobile: str | None, *, name: str | None, ref: str, code: str) -> bool:
+    """The "confirm your email" SMS. Text comes from SMS_EMAIL_LINK_TEXT so it can match the DLT template exactly."""
+    template = settings.sms_email_link_template_id
+    if not sms_is_configured(template):
+        return False
+    try:
+        text = settings.sms_email_link_text.format(
+            name=re.sub(r"[^A-Za-z0-9 ]", "", _clean(name, 30)) or "Customer", ref=_clean(ref, 30) or "query", code=_clean(code, 10)
+        )
+    except (KeyError, IndexError, ValueError):
+        logger.error("sms email link text is invalid: use only {name}, {ref} and {code}")
+        return False
+    return send_sms(to_mobile, text, dlt_template_id=template)

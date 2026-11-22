@@ -20,7 +20,16 @@ KEYS = (
     "SMS_ENABLED", "SMS_USER", "SMS_PASSWORD", "SMS_SENDER_ID", "SMS_PE_ID",
     "SMS_HAPPY_CODE_TEMPLATE_ID", "SMS_EMAIL_LINK_TEMPLATE_ID", "SMS_CHANNEL", "SMS_ROUTE",
 )
-SAFE_RE = re.compile(r"[^\s\"'`$\;&|<>]{1,200}")  # one word, nothing the shell or .env could misread
+SAFE_RE = re.compile(r"[^\r\n]{1,200}")  # any single line; special characters are quoted for the .env below
+
+
+def env_quote(v: str) -> str:
+    """A value as it must be written in a .env file: plain when it is simple, otherwise single-quoted."""
+    if re.fullmatch(r"[A-Za-z0-9_./@:+,=-]+", v):
+        return v
+    if "'" not in v:
+        return "'" + v + "'"
+    return '"' + v.replace(chr(92), chr(92) * 2).replace('"', chr(92) + '"') + '"'
 
 
 def read_values() -> dict[str, str]:
@@ -83,7 +92,7 @@ def main() -> int:
         print("A copy of the server .env is kept as .env.before-sms")
         pattern = " ".join(f"-e '/^{k}=/d'" for k in values)
         run_quiet(f"sudo sed -i {pattern} {api}/.env")
-        body = "\n" + "".join(f"{k}={v}\n" for k, v in values.items())
+        body = "\n" + "".join(f"{k}={env_quote(v)}\n" for k, v in values.items())
         code, _, err = run_quiet(f"sudo tee -a {api}/.env > /dev/null", stdin_text=body)
         if code != 0:
             print(f"The settings could not be added: {err.strip()[:200]}")

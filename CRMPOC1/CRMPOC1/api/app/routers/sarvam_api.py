@@ -168,6 +168,41 @@ def _ok(message: str, data: dict) -> dict:
     return {"success": True, "message": message, "data": data}
 
 
+@router.post("/email-link", dependencies=[Depends(require_key)])
+def send_email_link(data: dict = Body(...), db: Session = Depends(get_db)):
+    """The agent calls this when the caller must type their email: an SMS with a link and a 6-digit code goes to the
+    caller's mobile. Body: mobile (required), name, comp_no (optional)."""
+    from app.services.email_confirmation import create_request
+    from app.services.sms_service import send_email_link_sms
+
+    mobile = _mobile10(_pick(data, "customer_mobile", "mobile", "phone"))
+    if not mobile:
+        raise HTTPException(status_code=422, detail="A valid 10-digit Indian mobile number is required")
+    name = _pick(data, "customer_name", "name")
+    comp_no = _pick(data, "comp_no", "complaint_no")
+    row = create_request(db, mobile, comp_no)
+    sent = send_email_link_sms(mobile, name=name, ref=comp_no or "query", code=row.code)
+    if not sent:
+        db.rollback()
+        raise HTTPException(status_code=502, detail="The SMS could not be sent. Please take the email by voice and mark it unconfirmed.")
+    db.commit()
+    return _ok("SMS sent. Ask the caller to open the link, type the email and the code, then check the status.", {"request_id": row.id, "valid_minutes": 60})
+
+
+@router.get("/email-link/status", dependencies=[Depends(require_key)])
+def email_link_status(mobile: str, db: Session = Depends(get_db)):
+    """Has the caller typed their email yet? Returns the confirmed email once they have."""
+    from app.services.email_confirmation import latest_for_mobile
+
+    m = _mobile10(mobile)
+    row = latest_for_mobile(db, m) if m else None
+    if row is None:
+        return _ok("No request for this number", {"status": "none", "email": None})
+    if row.confirmed_at is not None:
+        return _ok("Confirmed by the caller", {"status": "confirmed", "email": row.email})
+    return _ok("Waiting for the caller to type it", {"status": "waiting", "email": None})
+
+
 def _find(db: Session, comp_no: str, mobile: Optional[str]) -> Optional[Complaint]:
     stmt = select(Complaint).where(Complaint.comp_no == comp_no.strip(), Complaint.deleted_at.is_(None))
     c = db.execute(stmt).scalars().first()
@@ -239,6 +274,11 @@ def register_complaint(data: dict = Body(...), db: Session = Depends(get_db)):
         remark = ((remark + " | ") if remark else "") + " | ".join(extra)
     if interest_line:
         remark = ((remark + " | ") if remark else "") + interest_line
+    from app.services.email_confirmation import confirmed_recently
+
+    remark = ((remark + " | ") if remark else "") + (
+        "Email typed and confirmed by the customer" if confirmed_recently(db, mobile, email) else "Email NOT confirmed by the customer (heard on the call, may be wrong)"
+    )
     sms = (_pick(data, "smsreq", "send_sms") or "").lower() in ("1", "true", "yes", "y")
 
     # Duplicate guard: same mobile + type + problem in the last 10 minutes returns the existing record.

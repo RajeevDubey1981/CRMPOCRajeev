@@ -95,6 +95,11 @@ class Settings(BaseSettings):
         "-TEAM INDcool"
     )
 
+    sms_email_link_text: str = (
+        "Dear {name}, to confirm your email for INDcool complaint {ref}, open https://indcoolapplainces.com/email "
+        "and enter code {code}. -TEAM INDcool, COMTECH ENTERPRISES"
+    )
+
     seed_admin_email: str = "admin@indcool.com"
     seed_admin_password: str = "admin123"
     seed_admin_name: str = "Administrator"

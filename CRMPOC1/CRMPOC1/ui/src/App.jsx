@@ -62,6 +62,7 @@ import PartnerRegistrationReview from "./pages/partners/PartnerRegistrationRevie
 import PartnerRegistrationPublic from "./pages/partners/PartnerRegistrationPublic.jsx";
 import PartnerAgreementSign from "./pages/partners/PartnerAgreementSign.jsx";
 import LeadInterestForm from "./pages/public/LeadInterestForm.jsx";
+import EmailConfirm from "./pages/public/EmailConfirm.jsx";
 import BidsHome from "./pages/bids/BidsHome.jsx";
 import BidForm from "./pages/bids/BidForm.jsx";
 import BidDetail from "./pages/bids/BidDetail.jsx";
@@ -188,6 +189,7 @@ export default function App() {
       <Route path="/partner-agreement/:token" element={<PartnerAgreementSign />} />
       <Route path="/services/public-upload/:token" element={<ServiceDocumentUploadPublic />} />
       <Route path="/interest/:token" element={<LeadInterestForm />} />
+      <Route path="/email" element={<EmailConfirm />} />
       <Route
         element={
           <ProtectedRoute>
