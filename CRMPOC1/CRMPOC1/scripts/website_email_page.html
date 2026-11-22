@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>Confirm your email | INDcool</title>
+<style>
+  body{margin:0;background:#f8fafc;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#0f172a}
+  .wrap{display:flex;justify-content:center;padding:40px 16px}
+  .card{width:100%;max-width:380px;background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:24px;box-shadow:0 1px 2px rgba(0,0,0,.04)}
+  .brand{font-size:13px;font-weight:700;letter-spacing:.08em;color:#c2410c;margin-bottom:14px}
+  h1{font-size:19px;margin:0 0 6px}
+  p{font-size:14px;color:#475569;margin:0 0 16px}
+  label{display:block;font-size:14px;font-weight:600;margin-bottom:14px}
+  input{display:block;width:100%;box-sizing:border-box;margin-top:6px;padding:10px 12px;font-size:16px;border:1px solid #cbd5e1;border-radius:8px}
+  input#code{letter-spacing:.3em}
+  button{width:100%;padding:11px;border:0;border-radius:8px;background:#c2410c;color:#fff;font-size:15px;font-weight:600;cursor:pointer}
+  button:disabled{opacity:.6}
+  .err{color:#e11d48;font-size:14px;margin:0 0 12px}
+</style>
+</head>
+<body>
+<div class="wrap"><div class="card">
+  <div class="brand">INDCOOL</div>
+  <div id="form">
+    <h1>Confirm your email</h1>
+    <p>Type your email address and the 6-digit code from our SMS.</p>
+    <label>Email address
+      <input id="email" type="email" inputmode="email" autocomplete="email" autocapitalize="none" required>
+    </label>
+    <label>Code from the SMS
+      <input id="code" inputmode="numeric" maxlength="6" pattern="[0-9]{6}" required>
+    </label>
+    <div id="err" class="err" hidden></div>
+    <button id="go" type="button">Confirm email</button>
+  </div>
+  <div id="done" hidden>
+    <h1>Email confirmed</h1>
+    <p id="doneMsg">Thank you. You can close this page.</p>
+  </div>
+</div></div>
+<script>
+(function () {
+  var API = "https://indcoolapplainces.com/api/public/email-confirm";
+  var email = document.getElementById("email"), code = document.getElementById("code");
+  var go = document.getElementById("go"), err = document.getElementById("err");
+  code.addEventListener("input", function () { code.value = code.value.replace(/[^0-9]/g, ""); });
+  go.addEventListener("click", function () {
+    err.hidden = true;
+    if (!email.value.trim() || code.value.length !== 6) { err.textContent = "Please enter your email and the 6-digit code."; err.hidden = false; return; }
+    go.disabled = true; go.textContent = "Saving...";
+    fetch(API, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code: code.value, email: email.value.trim() }) })
+      .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+      .then(function (res) {
+        if (!res.ok) throw new Error(typeof res.j.detail === "string" ? res.j.detail : "Could not save this. Please try again.");
+        document.getElementById("form").hidden = true;
+        document.getElementById("doneMsg").textContent = "Thank you. We will send your updates to " + email.value.trim() + ". You can close this page.";
+        document.getElementById("done").hidden = false;
+      })
+      .catch(function (e) { err.textContent = e.message || "Could not save this. Please try again."; err.hidden = false; })
+      .then(function () { go.disabled = false; go.textContent = "Confirm email"; });
+  });
+})();
+</script>
+</body>
+</html>

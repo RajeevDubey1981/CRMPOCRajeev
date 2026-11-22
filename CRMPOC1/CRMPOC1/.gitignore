@@ -38,3 +38,5 @@ uploads/
 scripts/sarvam-recording.env
 ui/.env.development.local
 scripts/sms-config.env
+
+scripts/website-server.env
