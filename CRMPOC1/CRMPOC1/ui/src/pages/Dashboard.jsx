@@ -121,7 +121,6 @@ const GRID_COLUMNS = [
   { key: "query_type", label: "Query Type" },
   { key: "linked_request", label: "Linked Request" },
   { key: "workflow_action", label: "Action" },
-  { key: "recording", label: "Recording" },
   { key: "remark", label: "Remark", gridHidden: true },
   { key: "assigned_engineer_name", label: "Assigned Engineer" },
   { key: "customer_mobile", label: "Mobile" },
@@ -140,7 +139,6 @@ const GRID_COLUMN_CELL_CLASS = {
   linked_request: "min-w-[10.5rem] whitespace-nowrap align-middle",
   status: "min-w-[11rem] whitespace-nowrap align-middle",
   workflow_action: "min-w-[10.5rem] whitespace-nowrap align-middle",
-  recording: "whitespace-nowrap align-middle text-center",
   customer_mobile: "whitespace-nowrap align-middle tabular-nums",
   customer_email: "max-w-[11rem] truncate align-middle",
 };
@@ -475,6 +473,7 @@ export default function Dashboard() {
               onClick={() => setViewTarget(c)}
             />
             {c.priority === "High" && <PriorityBadge at={c.priority_at} />}
+            {c.recording_call_id && <CallRecordingPlayer callId={c.recording_call_id} icon />}
           </span>
         );
       case "customer_name":
@@ -509,8 +508,6 @@ export default function Dashboard() {
         );
       case "remark":
         return <span className="max-w-[120px] truncate" title={c.remark || ""}>{trunc(c.remark)}</span>;
-      case "recording":
-        return c.recording_call_id ? <CallRecordingPlayer callId={c.recording_call_id} icon /> : <span className="text-slate-300">—</span>;
       case "assigned_engineer_name":
         return <span className="whitespace-nowrap">{c.assigned_engineer_name || "—"}</span>;
       case "customer_mobile":
