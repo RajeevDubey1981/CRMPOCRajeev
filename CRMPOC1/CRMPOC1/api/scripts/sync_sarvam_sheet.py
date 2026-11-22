@@ -100,6 +100,12 @@ def main(argv: list[str]) -> int:
     stats = {"rows": 0, "skipped_bad_row": 0, "already_synced": 0, "linked_by_id": 0, "linked_by_phone_time": 0,
              "new_calls": 0, "no_drive_link": 0, "complaint_linked": 0, "complaint_not_found": 0}
     taken: set[int] = set()
+
+    def squash(v: str) -> str:
+        return re.sub(r"[^A-Za-z0-9]", "", v or "").upper()
+
+    # The sheet writes IDC20260801081859B4C4A7 where the CRM has IDC_20260801_081859_B4C4A7: compare without punctuation.
+    comp_by_key = {squash(c.comp_no): c for c in db.query(Complaint).all()}
     missing_complaints: list[str] = []
     examples: list[str] = []
     try:
@@ -164,7 +170,8 @@ def main(argv: list[str]) -> int:
                     taken.add(call.id)
 
             if item["complaint_no"]:
-                comp = db.query(Complaint).filter(Complaint.comp_no == item["complaint_no"]).first()
+                key = squash(item["complaint_no"])
+                comp = comp_by_key.get(key) or (comp_by_key.get("IDC" + key) if key.isdigit() else None)
                 if comp is None:
                     stats["complaint_not_found"] += 1
                     if item["complaint_no"] not in missing_complaints:
