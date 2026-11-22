@@ -147,7 +147,7 @@ def main(argv: list[str]) -> int:
                         notes += f" Escalation: {item['escalation']}"
                     call = Call(
                         ref_no=_generate_ref_no(db),
-                        customer_name=item["name"],
+                        customer_name=item["name"] or "Unknown caller",
                         customer_email=item["email"],
                         phone=mobile or (item["phone_raw"] or None),
                         call_type="Inbound",
