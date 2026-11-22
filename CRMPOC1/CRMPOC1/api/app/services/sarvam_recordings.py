@@ -68,12 +68,22 @@ def download_recording(interaction_id: str) -> tuple[bytes, str] | None:
         return None
 
 
+def keep_audio_in_crm() -> bool:
+    """Recordings live in Google Drive. Keeping a copy of the audio in the CRM database is off unless asked for."""
+    return os.environ.get("SARVAM_KEEP_AUDIO_IN_CRM", "").strip().lower() in ("1", "true", "yes")
+
+
+def drive_file_id(url: str | None) -> str | None:
+    m = re.search(r"/file/d/([A-Za-z0-9_-]{10,})", url or "") or re.search(r"[?&]id=([A-Za-z0-9_-]{10,})", url or "")
+    return m.group(1) if m else None
+
+
 def store_recording(db: Session, call: Call) -> CallRecording | None:
     """Download and keep the audio for this call if it isn't kept yet. Commits nothing; the caller does."""
     existing = db.query(CallRecording).filter(CallRecording.call_id == call.id).first()
     if existing is not None:
         return existing
-    if not call.sarvam_interaction_id:
+    if not call.sarvam_interaction_id or not keep_audio_in_crm():
         return None
     got = download_recording(call.sarvam_interaction_id)
     if got is None:

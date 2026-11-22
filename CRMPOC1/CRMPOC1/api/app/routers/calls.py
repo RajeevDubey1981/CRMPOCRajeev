@@ -67,7 +67,7 @@ def _list_row(db: Session, call: Call) -> CallListItem:
         followup_date=call.followup_date,
         follow_up_status=call.follow_up_status,
         complaint_id=call.complaint_id,
-        has_recording=bool(call.sarvam_interaction_id),
+        has_recording=bool(call.sarvam_interaction_id or call.recording_url),
     )
 
 
@@ -89,7 +89,7 @@ def _hydrate(db: Session, call: Call) -> dict:
         )},
         "assigned_to_name": assigned_to_name,
         "transferred_to_name": transferred_to_name,
-        "has_recording": bool(call.sarvam_interaction_id),
+        "has_recording": bool(call.sarvam_interaction_id or call.recording_url),
     }
 
 
@@ -274,6 +274,22 @@ def calendar_events(
         })
 
     return events
+
+
+@router.get("/{call_id}/recording-link")
+def get_call_recording_link(
+    call_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Where the call's recording is kept in Google Drive. The audio itself is never held by the CRM."""
+    from app.services.sarvam_recordings import drive_file_id
+
+    call = _load_visible(db, user, call_id)
+    fid = drive_file_id(call.recording_url)
+    if not fid:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No recording link for this call")
+    return {"preview_url": f"https://drive.google.com/file/d/{fid}/preview", "open_url": f"https://drive.google.com/file/d/{fid}/view"}
 
 
 @router.get("/{call_id}/recording")

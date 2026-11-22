@@ -381,7 +381,7 @@ def _with_recordings(db: Session, user: User, complaint_ids: list[int], items: l
     latest: dict[int, int] = {}
     for call_id, complaint_id in db.execute(
         select(Call.id, Call.complaint_id)
-        .where(Call.complaint_id.in_(complaint_ids), Call.sarvam_interaction_id.is_not(None))
+        .where(Call.complaint_id.in_(complaint_ids), or_(Call.sarvam_interaction_id.is_not(None), Call.recording_url.is_not(None)))
         .order_by(Call.call_datetime, Call.id)
     ).all():
         latest[complaint_id] = call_id

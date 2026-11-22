@@ -30,6 +30,8 @@ class Call(Base, TimestampMixin):
     complaint_id: Mapped[int | None] = mapped_column(ForeignKey("complaints.id"), nullable=True)
     # Sarvam's id for this call ("<YYYYMMDD>/<uuid>"); the key to download its recording.
     sarvam_interaction_id: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True)
+    # Where the recording lives in Google Drive. The CRM keeps only this link, never the audio.
+    recording_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
 
 class CallRecording(Base, TimestampMixin):

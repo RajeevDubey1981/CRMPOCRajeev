@@ -13,6 +13,7 @@ os.environ["SARVAM_ORG_ID"] = "org1"
 os.environ["SARVAM_WORKSPACE_ID"] = "ws1"
 os.environ["SARVAM_APP_ID"] = "app1"
 os.environ["SARVAM_WORKSPACE_API_KEY"] = "ws-secret"
+os.environ["SARVAM_KEEP_AUDIO_IN_CRM"] = "1"  # these tests cover the copy-in-CRM path; Drive links are tested below
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from fastapi.testclient import TestClient
@@ -243,3 +244,20 @@ class ShippedScriptsCompile(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SheetSyncTests(unittest.TestCase):
+    def test_a_sheet_row_is_read_with_the_corrected_time_and_the_drive_link(self):
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+        import sync_sarvam_sheet as sync
+
+        row = ["2026-07-31 1:16:16", "+919891572565", "0:29", "connected", "https://drive.google.com/file/d/1Ycuyix5jGyXaJGwv4REJmjbsSM9m9bXk/view",
+               "20260731/2ec24523-06:46:10-02d3051c", "", "", "", "", "", "reason", "Resolved", "", "", "422"]
+        item = sync.parse_row(row)
+        self.assertEqual(item["start"], datetime(2026, 7, 31, 6, 46, 16, tzinfo=timezone.utc))  # sheet time + 5:30 = UTC
+        self.assertEqual((item["duration"], item["complaint_no"]), (29, "422"))
+        self.assertIsNone(sync.parse_row(["x"] * 16))
+
+    def test_drive_file_id_is_taken_from_a_share_link(self):
+        self.assertEqual(sarvam_recordings.drive_file_id("https://drive.google.com/file/d/1Ycuyix5jGyXaJGwv4REJmjbsSM9m9bXk/view?usp=drivesdk"), "1Ycuyix5jGyXaJGwv4REJmjbsSM9m9bXk")
+        self.assertIsNone(sarvam_recordings.drive_file_id("https://example.com/x"))

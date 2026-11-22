@@ -50,6 +50,7 @@ export default function CallRecordingPlayer({ callId, compact = false, icon = fa
   const [pos, setPos] = useState(0);
   const [dur, setDur] = useState(0);
   const [url, setUrl] = useState("");
+  const [drive, setDrive] = useState(null); // { preview_url, open_url } when the recording is kept in Google Drive
   const urlRef = useRef("");
   const audioRef = useRef(null);
 
@@ -59,6 +60,17 @@ export default function CallRecordingPlayer({ callId, compact = false, icon = fa
     e?.stopPropagation?.();
     setState("loading");
     try {
+      // Recordings are kept in Google Drive; only calls without a Drive link fall back to a copy held by the CRM.
+      try {
+        const link = await callsApi.recordingLink(callId);
+        if (link?.preview_url) {
+          setDrive(link);
+          setState("idle");
+          return;
+        }
+      } catch (linkErr) {
+        if (linkErr?.response && linkErr.response.status !== 404) throw linkErr;
+      }
       const blob = await callsApi.recording(callId);
       if (!blob || blob.size === 0) {
         setState("missing");
@@ -99,6 +111,22 @@ export default function CallRecordingPlayer({ callId, compact = false, icon = fa
         ? "This browser cannot play the recording. Try again or use another browser."
         : "Could not load the recording. Try again.";
 
+  const driveModal = drive ? (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={(e) => { e.stopPropagation(); setDrive(null); }}>
+      <div className="w-full max-w-md rounded-lg bg-white p-3 shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="mb-2 flex items-center justify-between text-sm">
+          <span className="font-medium text-slate-800">Call recording</span>
+          <button type="button" onClick={() => setDrive(null)} className="rounded px-2 py-0.5 text-slate-500 hover:bg-slate-100">Close</button>
+        </div>
+        <iframe title="Call recording" src={drive.preview_url} allow="autoplay" className="h-24 w-full rounded border border-slate-200" />
+        <p className="mt-2 text-xs text-slate-500">
+          Plays from Google Drive. If it asks you to sign in, use the Google account that has access.{" "}
+          <a href={drive.open_url} target="_blank" rel="noreferrer" className="text-sky-700 underline">Open in Drive</a>
+        </p>
+      </div>
+    </div>
+  ) : null;
+
   if (icon) {
     const base = "inline-flex items-center rounded-full border transition-colors";
     const size = mini ? "h-6 gap-0 p-[2px]" : "h-[30px] gap-1.5 py-[3px] pl-[3px] pr-2.5";
@@ -119,6 +147,7 @@ export default function CallRecordingPlayer({ callId, compact = false, icon = fa
 
     return (
       <span className="inline-flex items-center" onClick={(e) => e.stopPropagation()}>
+        {driveModal}
         <button
           type="button"
           onClick={state === "ready" ? toggle : load}
@@ -169,6 +198,7 @@ export default function CallRecordingPlayer({ callId, compact = false, icon = fa
   }
   return (
     <div className="flex flex-wrap items-center gap-2" onClick={(e) => e.stopPropagation()}>
+      {driveModal}
       <button
         type="button"
         onClick={load}
