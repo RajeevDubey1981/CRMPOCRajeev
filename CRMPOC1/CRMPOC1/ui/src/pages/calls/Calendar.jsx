@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { callsApi } from "../../api/calls.js";
+import { fmtIST } from "../../utils/time.js";
 
 function getDaysInMonth(date) {
   return new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
@@ -147,7 +148,7 @@ export default function Calendar() {
                 onClick={() => navigate(`/calls/${event.id}`)}
                 className="block w-full truncate text-left text-slate-700 hover:text-blue-600"
               >
-                <span className="font-mono text-xs">{new Date(event.start).toLocaleDateString()}</span> — {event.title}
+                <span className="font-mono text-xs">{fmtIST(event.start, "Date")}</span> — {event.title}
               </button>
             ))}
           </div>

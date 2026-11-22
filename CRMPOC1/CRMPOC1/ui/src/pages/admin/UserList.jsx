@@ -11,10 +11,11 @@ import CoveragePicker, { coverageProblem, coverageText, startCoverage } from "..
 import { DEFAULT_ITEM_CATEGORIES } from "../../data/itemCategories.js";
 import { itemsApi } from "../../api/items.js";
 import { INDCOOL_CATEGORY_GROUPS, VENDOR_TYPES } from "../../data/vendorTypes.js";
+import { fmtIST } from "../../utils/time.js";
 
 function fmtDate(s) {
   if (!s) return "—";
-  try { return new Date(s).toLocaleString(); } catch { return s; }
+  try { return fmtIST(s, "String"); } catch { return s; }
 }
 
 const BID_TICK_EXCLUDED = ["admin", "incool", "sub_admin", "vendor"];

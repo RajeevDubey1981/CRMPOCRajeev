@@ -10,6 +10,7 @@ import ParcelIntro from "../../components/ParcelIntro.jsx";
 import { packOrder } from "../../components/parcelPack.js";
 import { ordersApi } from "../../api/orders.js";
 import { useAuth } from "../../auth/AuthContext.jsx";
+import { fmtIST } from "../../utils/time.js";
 
 const ORDER_STATUSES = ["Pending", "Shipped", "In Transit", "Delivered", "Returned", "Cancelled"];
 
@@ -47,7 +48,7 @@ const ORDER_TABLE_COL = {
 
 function fmtDate(s) {
   if (!s) return "-";
-  try { return new Date(s).toLocaleDateString(); } catch { return s; }
+  try { return fmtIST(s, "Date"); } catch { return s; }
 }
 
 function buildFileUrl(path) {

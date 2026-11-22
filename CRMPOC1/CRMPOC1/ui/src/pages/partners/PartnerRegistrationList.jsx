@@ -7,6 +7,7 @@ import { partnerRegistrationsApi } from "../../api/partnerRegistrations.js";
 import { useAuth } from "../../auth/AuthContext.jsx";
 import Modal from "../../components/Modal.jsx";
 import Pagination from "../../components/Pagination.jsx";
+import { fmtIST } from "../../utils/time.js";
 
 const PARTNER_TYPE_COLORS = {
   "Gem Partner": "bg-blue-100 text-blue-800",
@@ -51,7 +52,7 @@ const FORM_STEP_NAMES = {
 function fmtDateTime(value) {
   if (!value) return "—";
   try {
-    return new Date(value).toLocaleString("en-IN");
+    return fmtIST(value, "String", "en-IN");
   } catch {
     return value;
   }

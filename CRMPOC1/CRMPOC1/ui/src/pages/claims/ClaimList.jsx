@@ -8,6 +8,7 @@ import { Link, useNavigate } from "react-router-dom";
 import Modal from "../../components/Modal.jsx";
 import Pagination from "../../components/Pagination.jsx";
 import { claimsApi } from "../../api/claims.js";
+import { fmtIST } from "../../utils/time.js";
 
 const STATUSES = ["Processing", "Completed", "Rejected"];
 
@@ -28,7 +29,7 @@ function StatusBadge({ value }) {
 
 function fmtDateTime(s) {
   if (!s) return "—";
-  try { return new Date(s).toLocaleString(); } catch { return s; }
+  try { return fmtIST(s, "String"); } catch { return s; }
 }
 
 export default function ClaimList() {

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { marketApi } from "../../api/market.js";
 import Modal from "../../components/Modal.jsx";
 import Pagination from "../../components/Pagination.jsx";
+import { fmtIST } from "../../utils/time.js";
 
 const ROLES = ["Retailer", "Distributor", "Sales", "Admin"];
 const STATUS_TABS = ["All", "Pending", "Active"];
@@ -12,7 +13,7 @@ const labelClass = "mb-1 block text-sm font-medium text-slate-700";
 
 function fmtDate(s) {
   if (!s) return "—";
-  try { return new Date(s).toLocaleDateString("en-IN"); } catch { return s; }
+  try { return fmtIST(s, "Date", "en-IN"); } catch { return s; }
 }
 
 function StatusBadge({ value }) {

@@ -4,11 +4,12 @@ import { useNavigate } from "react-router-dom";
 import Pagination from "../../components/Pagination.jsx";
 import StatusBadge from "../../components/StatusBadge.jsx";
 import { installationsApi } from "../../api/installations.js";
+import { fmtIST } from "../../utils/time.js";
 
 function fmtDate(value) {
   if (!value) return "-";
   try {
-    return new Date(value).toLocaleDateString();
+    return fmtIST(value, "Date");
   } catch {
     return value;
   }

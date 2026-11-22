@@ -5,8 +5,9 @@ import StatusBadge from "../../components/StatusBadge.jsx";
 import { callsApi } from "../../api/calls.js";
 import CallStatusEdit from "./CallStatusEdit.jsx";
 import CallRecordingPlayer from "../../components/CallRecordingPlayer.jsx";
+import { fmtIST } from "../../utils/time.js";
 
-function fmt(s) { return s ? new Date(s).toLocaleString() : "—"; }
+function fmt(s) { return s ? fmtIST(s, "String") : "—"; }
 
 function fmtDuration(secs) {
   if (!secs) return "—";

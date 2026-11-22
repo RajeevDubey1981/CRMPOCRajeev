@@ -4,6 +4,7 @@ import { useParams, Link } from "react-router-dom";
 import { accountLedgerApi } from "../../api/accountLedger.js";
 import { ordersApi } from "../../api/orders.js";
 import { useAuth } from "../../auth/AuthContext.jsx";
+import { fmtIST } from "../../utils/time.js";
 
 function inputClass() {
   return "mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-100 disabled:text-slate-500";
@@ -15,7 +16,7 @@ function fmtMoney(n) {
 
 function fmtDate(d) {
   if (!d) return "—";
-  try { return new Date(d).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }); } catch { return d; }
+  try { return fmtIST(d, "Date", "en-IN", { day: "2-digit", month: "short", year: "numeric" }); } catch { return d; }
 }
 
 // "Credit" = owed to the party (an OEM bill, a payout). "Debit" = already paid to them. Plain English

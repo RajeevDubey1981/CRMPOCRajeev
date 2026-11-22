@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 
 import { accountLedgerApi } from "../../api/accountLedger.js";
 import { api } from "../../api/client.js";
+import { fmtIST } from "../../utils/time.js";
 
 const PAYMENT_STAGE_COLORS = {
   service_role: "#2563c7",
@@ -63,19 +64,19 @@ function fmtMoney(n) {
 
 function fmtDate(d) {
   if (!d) return "—";
-  try { return new Date(d).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }); } catch { return d; }
+  try { return fmtIST(d, "Date", "en-IN", { day: "2-digit", month: "short", year: "numeric" }); } catch { return d; }
 }
 
 function monthLabel(ym) {
   try {
     const [y, m] = ym.split("-");
-    return new Date(Number(y), Number(m) - 1, 1).toLocaleDateString("en-IN", { month: "short" });
+    return fmtIST(Number(y), Number(m) - 1, 1, "Date", "en-IN", { month: "short" });
   } catch { return ym; }
 }
 
 function fmtDateTime(d) {
   if (!d) return "—";
-  try { return new Date(d).toLocaleString("en-IN", { day: "2-digit", month: "short", hour: "numeric", minute: "2-digit" }); } catch { return d; }
+  try { return fmtIST(d, "String", "en-IN", { day: "2-digit", month: "short", hour: "numeric", minute: "2-digit" }); } catch { return d; }
 }
 
 function isThisMonth(d) {

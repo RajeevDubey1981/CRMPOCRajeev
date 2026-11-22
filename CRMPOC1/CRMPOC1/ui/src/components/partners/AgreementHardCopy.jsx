@@ -2,11 +2,12 @@ import { useRef, useState } from "react";
 
 import { partnerRegistrationsApi } from "../../api/partnerRegistrations.js";
 import { toDownloadUrl } from "../../utils/downloadUrl.js";
+import { fmtIST } from "../../utils/time.js";
 
 const ACCEPT = ".pdf,.jpg,.jpeg,.png";
 const MAX_MB = 10;
 
-const fmtDay = (v) => (v ? new Date(`${v}T00:00`).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : "—");
+const fmtDay = (v) => (v ? fmtIST(`${v}T00:00`, "Date", "en-IN", { day: "numeric", month: "short", year: "numeric" }) : "—");
 const fmtAt = (v) => (v ? new Date(/[zZ]|[+-]\d\d:?\d\d$/.test(String(v)) ? v : `${v}Z`).toLocaleString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit", timeZone: "Asia/Kolkata" }) : "");
 const sizeText = (b) => (b > 1048576 ? `${(b / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1024))} KB`);
 const today = () => new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });

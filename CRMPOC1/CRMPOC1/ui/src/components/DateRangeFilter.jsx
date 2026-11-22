@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { fmtIST } from "../utils/time.js";
 
 // One date filter for every list and dashboard: a button that opens quick choices and From and To boxes.
 // The choice is remembered in this browser, so the same dates stay when you move between screens.
@@ -27,7 +28,7 @@ function readSaved() {
 }
 function save(v) { try { if (v) localStorage.setItem(KEY, JSON.stringify(v)); else localStorage.removeItem(KEY); } catch { /* the choice is simply not remembered */ } }
 
-const show = (iso) => (iso ? new Date(`${iso}T00:00`).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : "");
+const show = (iso) => (iso ? fmtIST(`${iso}T00:00`, "Date", "en-IN", { day: "numeric", month: "short", year: "numeric" }) : "");
 
 // from and to are "YYYY-MM-DD" or "". onChange(from, to) is called with the new range.
 export default function DateRangeFilter({ from = "", to = "", onChange, label = "Registered", remember = true, className = "" }) {

@@ -8,6 +8,7 @@ import { installationSerialReady, isAssignedToUser } from "../../utils/installat
 import WorkflowStepSection from "./WorkflowStepSection.jsx";
 import RaisePartRequestPanel from "../parts/RaisePartRequestPanel.jsx";
 import RaiseClaimPanel from "../claims/RaiseClaimPanel.jsx";
+import { fmtIST } from "../../utils/time.js";
 
 const PAYMENT_TYPES = ["Cash", "UPI"];
 
@@ -606,7 +607,7 @@ export default function InstallationPostVerifyWorkflow({
           borderClass="border-emerald-200"
           bgClass="bg-emerald-50"
           summary={installation.work_report_file_path
-            ? `Installation completed on ${installation.installation_date ? new Date(installation.installation_date).toLocaleDateString() : "—"}.`
+            ? `Installation completed on ${installation.installation_date ? fmtIST(installation.installation_date, "Date") : "—"}.`
             : "Installation completion recorded."}
         >
           <p className="text-xs text-emerald-800">
@@ -760,7 +761,7 @@ export default function InstallationPostVerifyWorkflow({
             <Field
               label="Installation date"
               value={installation.installation_date
-                ? new Date(installation.installation_date).toLocaleDateString()
+                ? fmtIST(installation.installation_date, "Date")
                 : "—"}
             />
             <Field label="Billing" value={installation.admin_billing_type || "Free"} />

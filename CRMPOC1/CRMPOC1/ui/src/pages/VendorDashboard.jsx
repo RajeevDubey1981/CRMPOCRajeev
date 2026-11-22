@@ -11,6 +11,7 @@ import { BidStatCard, useVendorBids } from "../components/bids/VendorBidsPanel.j
 import QueriesPanel from "../components/queries/QueriesPanel.jsx";
 import VendorExpenseApprovalsPanel from "../components/vendor/VendorExpenseApprovalsPanel.jsx";
 import VendorApprovalHistoryCard from "../components/vendor/VendorApprovalHistoryCard.jsx";
+import { fmtIST } from "../utils/time.js";
 
 const ORDER_STATUSES = ["Pending", "In Transit", "Delivered", "Returned"];
 
@@ -44,7 +45,7 @@ const SORT_COLS = [
 function fmtDate(s) {
   if (!s) return "—";
   try {
-    return new Date(s).toLocaleDateString("en-IN", {
+    return fmtIST(s, "Date", "en-IN", {
       day: "2-digit", month: "2-digit", year: "numeric",
     });
   } catch { return s; }

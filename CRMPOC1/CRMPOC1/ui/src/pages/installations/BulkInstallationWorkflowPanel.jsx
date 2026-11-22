@@ -13,6 +13,7 @@ import {
 import { useAuth } from "../../auth/AuthContext.jsx";
 import { isOperationsAdminRole, roleKey } from "../../utils/roles.js";
 import { formatApiError } from "../../utils/apiError.js";
+import { fmtIST } from "../../utils/time.js";
 
 const PAYMENT_TYPES = ["Cash", "UPI"];
 
@@ -529,7 +530,7 @@ export default function BulkInstallationWorkflowPanel({ rows, onSaved, showClose
                     <div className="font-medium text-slate-800">{completionApprovalStatus(row)}</div>
                     {row.admin_approved_at && (
                       <div className="mt-1 text-slate-500">
-                        Approved {new Date(row.admin_approved_at).toLocaleDateString()}
+                        Approved {fmtIST(row.admin_approved_at, "Date")}
                       </div>
                     )}
                     {(row.admin_approval_remark || "").trim() ? (

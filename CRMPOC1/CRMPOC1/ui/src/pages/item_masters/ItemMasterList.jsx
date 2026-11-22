@@ -8,10 +8,11 @@ import Pagination from "../../components/Pagination.jsx";
 import { itemsApi } from "../../api/items.js";
 import AddItemCategoryModal from "../../components/items/AddItemCategoryModal.jsx";
 import ItemCategorySelect from "../../components/items/ItemCategorySelect.jsx";
+import { fmtIST } from "../../utils/time.js";
 
 function fmtDate(s) {
   if (!s) return "—";
-  try { return new Date(s).toLocaleDateString(); } catch { return s; }
+  try { return fmtIST(s, "Date"); } catch { return s; }
 }
 
 function fmtMrp(v) {

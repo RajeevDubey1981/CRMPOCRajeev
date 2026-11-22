@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { servicesApi } from "../../api/services.js";
+import { fmtIST } from "../../utils/time.js";
 
 const STATUS_PILL = {
   "Pending Service Team Review": "bg-teal-100 text-teal-800",
@@ -12,7 +13,7 @@ const STATUS_PILL = {
 
 function fmtDate(s) {
   if (!s) return "—";
-  try { return new Date(s).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }); } catch { return s; }
+  try { return fmtIST(s, "String", "en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }); } catch { return s; }
 }
 
 const FILTERS = ["All", "Pending Service Team Review", "Pending Service Approval", "Approved for Service", "Rejected"];

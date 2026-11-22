@@ -23,9 +23,10 @@ import EngineerSelect from "../../components/EngineerSelect.jsx";
 import ComplaintEdit from "./ComplaintEdit.jsx";
 import InstallationEngineerSerialWorkflow from "../../components/installations/InstallationEngineerSerialWorkflow.jsx";
 import InstallationPostVerifyWorkflow from "../../components/installations/InstallationPostVerifyWorkflow.jsx";
+import { fmtIST } from "../../utils/time.js";
 
 function fmt(value) {
-  return value ? new Date(value).toLocaleString() : "-";
+  return value ? fmtIST(value, "String") : "-";
 }
 
 function Field({ label, value, mono = false, full = false }) {
@@ -982,14 +983,14 @@ export default function ComplaintDetail() {
                       </div>
                       {hasPendingFollowup && (
                         <p className="mt-1 text-xs font-medium text-red-700">
-                          Due: {new Date(call.followup_date).toLocaleString()}
+                          Due: {fmtIST(call.followup_date, "String")}
                         </p>
                       )}
                       {call.notes && <p className="mt-2 text-sm text-slate-700">{call.notes}</p>}
                       {call.has_recording && <div className="mt-3"><CallRecordingPlayer callId={call.id} compact /></div>}
                     </div>
                     <div className="text-right text-xs text-slate-500">
-                      <div>{new Date(call.call_datetime).toLocaleString()}</div>
+                      <div>{fmtIST(call.call_datetime, "String")}</div>
                       {call.assigned_to_name && <div className="mt-1">{call.assigned_to_name}</div>}
                     </div>
                   </div>

@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
 import { marketApi } from "../../api/market.js";
 import StatCard from "../../components/StatCard.jsx";
+import { fmtIST } from "../../utils/time.js";
 
 function fmtDate(s) {
   if (!s) return "—";
-  try { return new Date(s).toLocaleDateString("en-IN"); } catch { return s; }
+  try { return fmtIST(s, "Date", "en-IN"); } catch { return s; }
 }
 
 function fmtRupee(v) {

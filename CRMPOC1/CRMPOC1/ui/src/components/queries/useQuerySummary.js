@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { queriesApi } from "../../api/queries.js";
+import { fmtIST } from "../../utils/time.js";
 
 /** The query counts for the person logged in (open, answered, new for me), refreshed every minute and when asked. */
 export default function useQuerySummary() {
@@ -39,7 +40,7 @@ export function timeAgo(value) {
   if (hours < 24) return `${hours} h ago`;
   const days = Math.round(hours / 24);
   if (days < 7) return `${days} d ago`;
-  return then.toLocaleDateString();
+  return fmtIST(then, "Date");
 }
 
 export const STATUS_STYLE = {

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { projectsApi } from "../../api/projects.js";
+import { fmtIST } from "../../utils/time.js";
 
 const TASK_TYPES = [
   "Add Advisor",
@@ -28,7 +29,7 @@ const TASK_STATUS_STYLE = {
 
 function fmt(s) {
   if (!s) return null;
-  try { return new Date(s).toLocaleString(); } catch { return s; }
+  try { return fmtIST(s, "String"); } catch { return s; }
 }
 
 function JsonBlock({ label, data }) {

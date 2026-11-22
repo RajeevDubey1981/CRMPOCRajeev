@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import { marketingApi } from "../../api/marketing.js";
 import { HeroArt } from "./marketingArt.jsx";
 import { CountUp, Icon, MarketingTabs, Notice, PageTitle, btn, errText, fieldClass, greeting, useAsync, useMarketing } from "./marketingUi.jsx";
+import { fmtIST } from "../../utils/time.js";
 
 const CAMPAIGN_BATCH_SIZE = 25;
 const CAMPAIGN_BATCH_GAP_MINUTES = 20;
@@ -317,7 +318,7 @@ function CampaignCard({ c, i, canApprove, onChanged }) {
 
       {(c.status === "sent" || c.status === "sending") && <ProgressBar sent={c.sent_count} skipped={c.skipped_count} total={c.total_count} />}
       {c.status === "sending" && c.next_batch_at && (
-        <p className="mt-2 text-xs text-slate-500">Sending {CAMPAIGN_BATCH_SIZE} at a time, {CAMPAIGN_BATCH_GAP_MINUTES} minutes apart — next batch around {new Date(c.next_batch_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}.</p>
+        <p className="mt-2 text-xs text-slate-500">Sending {CAMPAIGN_BATCH_SIZE} at a time, {CAMPAIGN_BATCH_GAP_MINUTES} minutes apart — next batch around {fmtIST(c.next_batch_at, "Time", [], { hour: "2-digit", minute: "2-digit" })}.</p>
       )}
       {c.status === "wait" && !canApprove && (
         <p className="mt-2 text-xs text-slate-500">{c.total_count} people — over the no-approval limit. Waiting for a Marketing manager to approve.</p>

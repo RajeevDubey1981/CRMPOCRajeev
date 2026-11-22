@@ -4,15 +4,16 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import Pagination from "../../components/Pagination.jsx";
 import StatusBadge from "../../components/StatusBadge.jsx";
 import { callsApi } from "../../api/calls.js";
+import { fmtIST } from "../../utils/time.js";
 
 function fmtDateTime(s) {
   if (!s) return "—";
-  try { return new Date(s).toLocaleString(); } catch { return s; }
+  try { return fmtIST(s, "String"); } catch { return s; }
 }
 
 function fmtFollowupDate(s) {
   if (!s) return "—";
-  try { return new Date(s).toLocaleDateString(); } catch { return s; }
+  try { return fmtIST(s, "Date"); } catch { return s; }
 }
 
 function isOverdue(s) {

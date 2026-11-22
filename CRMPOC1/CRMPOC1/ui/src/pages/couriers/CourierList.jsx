@@ -6,10 +6,11 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import Modal from "../../components/Modal.jsx";
 import Pagination from "../../components/Pagination.jsx";
 import { couriersApi } from "../../api/couriers.js";
+import { fmtIST } from "../../utils/time.js";
 
 function fmtDate(s) {
   if (!s) return "—";
-  try { return new Date(s).toLocaleDateString(); } catch { return s; }
+  try { return fmtIST(s, "Date"); } catch { return s; }
 }
 
 export default function CourierList() {

@@ -2,6 +2,7 @@ import { useState } from "react";
 
 import { marketingApi } from "../../api/marketing.js";
 import { MarketingTabs, Notice, PageTitle, btn, errText, fieldClass, useAsync, useMarketing } from "./marketingUi.jsx";
+import { fmtIST } from "../../utils/time.js";
 
 const CHANNELS = [
   ["all", "All channels"],
@@ -78,7 +79,7 @@ export default function MarketingConsent() {
                 <td className="px-4 py-2.5 text-slate-600">{CHANNELS.find(([k]) => k === c.channel)?.[1] || c.channel}</td>
                 <td className="px-4 py-2.5 text-slate-600">{c.reason || "—"}</td>
                 <td className="px-4 py-2.5 text-slate-500">{c.source === "reply_stop" ? "Auto (replied STOP)" : "Manual"}</td>
-                <td className="px-4 py-2.5 text-slate-500">{c.created_at ? new Date(c.created_at).toLocaleDateString() : "—"}</td>
+                <td className="px-4 py-2.5 text-slate-500">{c.created_at ? fmtIST(c.created_at, "Date") : "—"}</td>
                 <td className="px-4 py-2.5 text-right">
                   <button type="button" className={btn.plain} onClick={() => remove(c)}>Remove</button>
                 </td>

@@ -6,10 +6,11 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import Modal from "../../components/Modal.jsx";
 import { itemsApi } from "../../api/items.js";
 import ItemCategorySelect from "../../components/items/ItemCategorySelect.jsx";
+import { fmtIST } from "../../utils/time.js";
 
 const UNITS = ["Pcs", "Set", "Nos", "Kit", "Kg", "Ltr"];
 
-function fmt(s) { return s ? new Date(s).toLocaleString() : "—"; }
+function fmt(s) { return s ? fmtIST(s, "String") : "—"; }
 
 function fmtMrp(v) {
   if (v === null || v === undefined) return "—";

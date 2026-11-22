@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router-dom";
 
 import Modal from "../../components/Modal.jsx";
 import { claimsApi } from "../../api/claims.js";
+import { fmtIST } from "../../utils/time.js";
 
 const STATUSES = ["Processing", "Completed", "Rejected"];
 
@@ -34,7 +35,7 @@ function Field({ label, value, mono = false, full = false }) {
 
 function fmt(s) {
   if (!s) return null;
-  try { return new Date(s).toLocaleString(); } catch { return s; }
+  try { return fmtIST(s, "String"); } catch { return s; }
 }
 
 const fieldClass =

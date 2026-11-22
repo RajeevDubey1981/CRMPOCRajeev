@@ -34,6 +34,7 @@ import {
   getComplaintWorkflowStatus,
   WORKFLOW_ACTION_STYLE,
 } from "../utils/complaintWorkflowAction.js";
+import { fmtIST } from "../utils/time.js";
 
 /* ─── constants ─────────────────────────────────────────────────── */
 
@@ -73,7 +74,7 @@ const EMPTY_PARTNER_INVITE = {
 
 function fmtDate(s) {
   if (!s) return "—";
-  try { return new Date(s).toLocaleDateString("en-IN", { day: "2-digit", month: "2-digit", year: "numeric" }); }
+  try { return fmtIST(s, "Date", "en-IN", { day: "2-digit", month: "2-digit", year: "numeric" }); }
   catch { return s; }
 }
 function trunc(s, n = 26) {

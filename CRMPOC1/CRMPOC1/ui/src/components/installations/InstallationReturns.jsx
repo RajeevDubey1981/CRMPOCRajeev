@@ -2,6 +2,7 @@ import { Link } from "react-router-dom";
 import { useEffect, useRef, useState } from "react";
 import { api } from "../../api/client.js";
 import { useAuth } from "../../auth/AuthContext.jsx";
+import { fmtIST } from "../../utils/time.js";
 
 export default function InstallationReturns({ rows = [], orderId, installationId, onUpdated }) {
   const { user } = useAuth();
@@ -57,7 +58,7 @@ export default function InstallationReturns({ rows = [], orderId, installationId
       <div className="font-mono">{row.serial_no} / {row.serial_no_2 || "-"}</div>
       <div>Engineer: {row.engineer_name}</div>
       {row.status === "Return Approved - Closed" && <p className="text-sm font-medium text-slate-700">This installation row is closed. The serial remains on the order and can be used in a new installation request.</p>}
-      {row.history.map((h, i) => <p key={i}>{new Date(h.at).toLocaleString()} - {h.action} by {h.actor_name || (h.actor_id ? `User #${h.actor_id}` : "System")}: {h.remark}</p>)}
+      {row.history.map((h, i) => <p key={i}>{fmtIST(h.at, "String")} - {h.action} by {h.actor_name || (h.actor_id ? `User #${h.actor_id}` : "System")}: {h.remark}</p>)}
       {row.can_review && row.status === "Pending Return Approval" && <div className="flex flex-wrap gap-2">
         <label className="block w-full text-sm font-medium text-slate-700">
           Review remark <span className="text-rose-600">* (required)</span>

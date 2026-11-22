@@ -3,11 +3,12 @@ import { useNavigate } from "react-router-dom";
 import Modal from "../Modal.jsx";
 import StatusBadge from "../StatusBadge.jsx";
 import { getComplaintOpenPath, getLinkedRequestInfo, isInstallationEngineerAssigned, linkedRequestColumnLabel } from "../../utils/complaintLinks.js";
+import { fmtIST } from "../../utils/time.js";
 
 function fmtDate(s) {
   if (!s) return "—";
   try {
-    return new Date(s).toLocaleDateString("en-IN", { day: "2-digit", month: "2-digit", year: "numeric" });
+    return fmtIST(s, "Date", "en-IN", { day: "2-digit", month: "2-digit", year: "numeric" });
   } catch {
     return s;
   }

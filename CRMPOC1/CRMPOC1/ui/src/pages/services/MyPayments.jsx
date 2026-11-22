@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { servicesApi } from "../../api/services.js";
+import { fmtIST } from "../../utils/time.js";
 
 function fmtMoney(n) {
   return `₹${Number(n || 0).toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
@@ -9,7 +10,7 @@ function fmtMoney(n) {
 
 function fmtDate(value) {
   if (!value) return "—";
-  return new Date(value).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+  return fmtIST(value, "Date", "en-IN", { day: "2-digit", month: "short", year: "numeric" });
 }
 
 function StatusPill({ label }) {

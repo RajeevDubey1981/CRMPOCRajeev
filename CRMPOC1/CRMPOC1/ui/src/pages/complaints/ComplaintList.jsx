@@ -25,6 +25,7 @@ import { useAuth } from "../../auth/AuthContext.jsx";
 import { isOperationsAdminRole } from "../../utils/roles.js";
 import ComplaintEdit from "./ComplaintEdit.jsx";
 import { getComplaintWorkflowStatus } from "../../utils/complaintWorkflowAction.js";
+import { fmtIST } from "../../utils/time.js";
 
 const STATUSES   = ["Pending", "Under Process", "In Process", "Resolved", "Rejected"];
 const QUERY_TYPES = ["Service", "Installation", "Sales", "Others"];
@@ -63,7 +64,7 @@ const CHART_FILL = {
 
 function fmtDate(s) {
   if (!s) return "—";
-  try { return new Date(s).toLocaleDateString("en-IN", { day: "2-digit", month: "2-digit", year: "numeric" }); }
+  try { return fmtIST(s, "Date", "en-IN", { day: "2-digit", month: "2-digit", year: "numeric" }); }
   catch { return s; }
 }
 

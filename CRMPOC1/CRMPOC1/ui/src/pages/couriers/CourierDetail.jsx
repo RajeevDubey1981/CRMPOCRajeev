@@ -5,8 +5,9 @@ import { Link, useLocation, useNavigate, useParams, useSearchParams } from "reac
 
 import Modal from "../../components/Modal.jsx";
 import { couriersApi } from "../../api/couriers.js";
+import { fmtIST } from "../../utils/time.js";
 
-function fmt(s) { return s ? new Date(s).toLocaleString() : "—"; }
+function fmt(s) { return s ? fmtIST(s, "String") : "—"; }
 
 function Field({ label, value, full = false }) {
   return (

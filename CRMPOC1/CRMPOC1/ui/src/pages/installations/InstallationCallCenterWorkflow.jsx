@@ -10,6 +10,7 @@ import WorkflowStepSection from "../../components/installations/WorkflowStepSect
 import { ENGINEER_ASSIGNMENT_HINT, formatEngineerOptionLabel } from "../../utils/engineerAssignment.js";
 import EngineerSelect from "../../components/EngineerSelect.jsx";
 import { isMissingItemCode } from "../../utils/installationItemCode.js";
+import { fmtIST } from "../../utils/time.js";
 
 function Field({ label, value, mono = false }) {
   return (
@@ -31,7 +32,7 @@ function CustomerDocumentList({ documents }) {
             <div className="font-medium text-slate-800">{doc.document_type}</div>
             <div className="text-slate-500">
               {doc.uploaded_by_type}
-              {doc.uploaded_at ? ` • ${new Date(doc.uploaded_at).toLocaleString()}` : ""}
+              {doc.uploaded_at ? ` • ${fmtIST(doc.uploaded_at, "String")}` : ""}
             </div>
             <a
               href={toDownloadUrl(doc.file_path)}
@@ -254,7 +255,7 @@ export default function InstallationCallCenterWorkflow({
                 <li key={entry.id} className="rounded border border-slate-200 bg-white p-2">
                   <div className="font-medium">{entry.action}</div>
                   <div>{entry.old_status} → {entry.new_status}</div>
-                  <div className="text-slate-500">{entry.performed_by_name || entry.performed_role} · {new Date(entry.created_at).toLocaleString()}</div>
+                  <div className="text-slate-500">{entry.performed_by_name || entry.performed_role} · {fmtIST(entry.created_at, "String")}</div>
                   {entry.remarks && <div className="mt-1">{entry.remarks}</div>}
                 </li>
               ))}
@@ -431,7 +432,7 @@ export default function InstallationCallCenterWorkflow({
           locked={workflowSteps.steps[3].locked}
           borderClass="border-emerald-200"
           summary={installation.document_request_sent_at
-            ? `Customer upload link sent on ${new Date(installation.document_request_sent_at).toLocaleString()}.`
+            ? `Customer upload link sent on ${fmtIST(installation.document_request_sent_at, "String")}.`
             : "Customer document request recorded."}
           footer={<CustomerDocumentList documents={documents} />}
         >

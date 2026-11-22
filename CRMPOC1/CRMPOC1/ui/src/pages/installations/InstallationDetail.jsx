@@ -15,13 +15,14 @@ import InstallationCallCenterWorkflow from "./InstallationCallCenterWorkflow.jsx
 import EngineerOrderSerialEditor from "../../components/installations/EngineerOrderSerialEditor.jsx";
 import SerialReviewPanel from "../../components/installations/SerialReviewPanel.jsx";
 import { toDownloadUrl } from "../../utils/downloadUrl.js";
+import { fmtIST } from "../../utils/time.js";
 
 function fmt(value) {
-  return value ? new Date(value).toLocaleString() : "-";
+  return value ? fmtIST(value, "String") : "-";
 }
 
 function fmtDate(value) {
-  return value ? new Date(value).toLocaleDateString() : "-";
+  return value ? fmtIST(value, "Date") : "-";
 }
 
 function Field({ label, value, mono = false, full = false }) {

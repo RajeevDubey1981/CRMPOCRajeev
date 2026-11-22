@@ -6,10 +6,11 @@ import { installationsApi } from "../../api/installations.js";
 import { servicesApi } from "../../api/services.js";
 import { formatApiError } from "../../utils/apiError.js";
 import PaymentFlowModal from "../../components/installations/PaymentFlowModal.jsx";
+import { fmtIST } from "../../utils/time.js";
 
 function fmtDate(d) {
   if (!d) return "—";
-  try { return new Date(d).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }); } catch { return d; }
+  try { return fmtIST(d, "Date", "en-IN", { day: "2-digit", month: "short", year: "numeric" }); } catch { return d; }
 }
 
 const URGENCY = {

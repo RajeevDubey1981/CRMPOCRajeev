@@ -11,13 +11,14 @@ import StatusBadge from "../../components/StatusBadge.jsx";
 import { callsApi } from "../../api/calls.js";
 import { usersApi } from "../../api/complaints.js";
 import CallStatusEdit from "./CallStatusEdit.jsx";
+import { fmtIST } from "../../utils/time.js";
 
 const CALL_TYPES = ["Inbound", "Outbound", "Callback"];
 const STATUSES = ["Completed", "Busy", "No Answer", "Call Back", "Not Interested"];
 
 function fmtDateTime(s) {
   if (!s) return "—";
-  try { return new Date(s).toLocaleString(); } catch { return s; }
+  try { return fmtIST(s, "String"); } catch { return s; }
 }
 
 function fmtDuration(secs) {
@@ -115,7 +116,7 @@ export default function CallList() {
 
   function fmtFollowupDate(s) {
     if (!s) return "—";
-    try { return new Date(s).toLocaleDateString(); } catch { return s; }
+    try { return fmtIST(s, "Date"); } catch { return s; }
   }
 
   return (

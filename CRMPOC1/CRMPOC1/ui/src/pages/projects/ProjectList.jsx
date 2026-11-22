@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { projectsApi } from "../../api/projects.js";
+import { fmtIST } from "../../utils/time.js";
 
 const STATUS_COLORS = {
   Draft: "bg-slate-100 text-slate-700",
@@ -11,7 +12,7 @@ const STATUS_COLORS = {
 
 function fmt(s) {
   if (!s) return "—";
-  try { return new Date(s).toLocaleDateString(); } catch { return s; }
+  try { return fmtIST(s, "Date"); } catch { return s; }
 }
 
 export default function ProjectList() {

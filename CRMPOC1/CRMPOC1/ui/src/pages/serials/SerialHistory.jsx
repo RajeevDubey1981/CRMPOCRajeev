@@ -4,6 +4,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { serialApi } from "../../api/serials.js";
 import { useAuth } from "../../auth/AuthContext.jsx";
 import { hasPermission } from "../../utils/permissions.js";
+import { fmtIST } from "../../utils/time.js";
 
 function EventBadge({ type }) {
   const styles = {
@@ -20,12 +21,12 @@ function EventBadge({ type }) {
 
 function fmt(value) {
   if (!value) return "-";
-  try { return new Date(value).toLocaleString(); } catch { return value; }
+  try { return fmtIST(value, "String"); } catch { return value; }
 }
 
 function fmtDate(value) {
   if (!value) return "-";
-  try { return new Date(value).toLocaleDateString(); } catch { return value; }
+  try { return fmtIST(value, "Date"); } catch { return value; }
 }
 
 function fmtWarranty(years, endDate) {

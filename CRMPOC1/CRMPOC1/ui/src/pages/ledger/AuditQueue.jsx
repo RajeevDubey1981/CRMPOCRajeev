@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 
 import { accountLedgerApi } from "../../api/accountLedger.js";
+import { fmtIST } from "../../utils/time.js";
 
 function fmtMoney(n) {
   return `₹${Number(n || 0).toLocaleString("en-IN")}`;
@@ -8,7 +9,7 @@ function fmtMoney(n) {
 
 function fmtDateTime(d) {
   if (!d) return "—";
-  try { return new Date(d).toLocaleString("en-IN", { day: "2-digit", month: "short", hour: "numeric", minute: "2-digit" }); } catch { return d; }
+  try { return fmtIST(d, "String", "en-IN", { day: "2-digit", month: "short", hour: "numeric", minute: "2-digit" }); } catch { return d; }
 }
 
 const SOURCE_LABEL = {

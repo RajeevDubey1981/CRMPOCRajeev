@@ -9,6 +9,7 @@ import { partsApi, REQUEST_KINDS } from "../../api/parts.js";
 import { RESP_LABEL, shortageClaimsApi } from "../../api/shortageClaims.js";
 import { useAuth } from "../../auth/AuthContext.jsx";
 import { roleKey } from "../../utils/roles.js";
+import { fmtIST } from "../../utils/time.js";
 
 // Service Team, Service Manager, Admin, Incool, Sub Admin — the same roles that can act on a parts
 // request's approval — can also claim it out from there. The engineer who raised it never can.
@@ -27,7 +28,7 @@ function stagePill(stage) {
 
 function fmtDate(s) {
   if (!s) return "—";
-  try { return new Date(s).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }); } catch { return s; }
+  try { return fmtIST(s, "String", "en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }); } catch { return s; }
 }
 
 export default function PartsApprovals() {

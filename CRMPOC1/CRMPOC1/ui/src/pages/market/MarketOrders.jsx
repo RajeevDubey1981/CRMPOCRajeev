@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { marketApi } from "../../api/market.js";
 import Modal from "../../components/Modal.jsx";
 import Pagination from "../../components/Pagination.jsx";
+import { fmtIST } from "../../utils/time.js";
 
 const fieldClass =
   "w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500";
@@ -11,7 +12,7 @@ const ORDER_STATUSES = ["Pending", "Processing", "Delivered", "Cancelled"];
 
 function fmtDate(s) {
   if (!s) return "—";
-  try { return new Date(s).toLocaleDateString("en-IN"); } catch { return s; }
+  try { return fmtIST(s, "Date", "en-IN"); } catch { return s; }
 }
 
 function fmtRupee(v) {

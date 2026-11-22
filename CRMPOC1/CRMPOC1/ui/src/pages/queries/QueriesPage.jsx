@@ -11,6 +11,7 @@ import { AddPeopleModal, ForwardModal, roleLabel } from "../../components/querie
 import { Mark, isTypedDay, isTypedNumber } from "../../components/queries/queryHighlight.jsx";
 import { STATUS_STYLE, timeAgo } from "../../components/queries/useQuerySummary.js";
 import { isQueryStaffRole } from "../../utils/roles.js";
+import { fmtIST } from "../../utils/time.js";
 
 const FILTERS = [
   { key: "Active", label: "Active" },
@@ -28,7 +29,7 @@ const EVENT_DOT = { forward: "bg-violet-500", member: "bg-sky-500", cc: "bg-sky-
 function dayText(iso) {
   const [y, m, d] = String(iso || "").split("-").map(Number);
   if (!y || !m || !d) return "";
-  return new Date(y, m - 1, d).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+  return fmtIST(y, m - 1, d, "Date", "en-IN", { day: "numeric", month: "short", year: "numeric" });
 }
 
 function QueryNo({ no, hit = false }) {
@@ -413,7 +414,7 @@ function Thread({ id, staff, onChanged }) {
 
       {thread.delete_on && (
         <div className="border-t border-amber-200 bg-amber-50 px-4 py-1.5 text-xs text-amber-900">
-          This conversation is closed. It will be deleted for good on {new Date(thread.delete_on).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}, six months after it was closed. Reopen it to keep it.
+          This conversation is closed. It will be deleted for good on {fmtIST(thread.delete_on, "Date", "en-IN", { day: "numeric", month: "short", year: "numeric" })}, six months after it was closed. Reopen it to keep it.
         </div>
       )}
 

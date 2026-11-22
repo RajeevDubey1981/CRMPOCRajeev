@@ -3,11 +3,12 @@ import { useEffect, useState } from "react";
 import { installationsApi } from "../../api/installations.js";
 import { servicesApi } from "../../api/services.js";
 import { formatApiError } from "../../utils/apiError.js";
+import { fmtIST } from "../../utils/time.js";
 
 function fmtWhen(d) {
   if (!d) return "—";
   try {
-    return new Date(d).toLocaleString("en-IN", { day: "2-digit", month: "short", hour: "numeric", minute: "2-digit" });
+    return fmtIST(d, "String", "en-IN", { day: "2-digit", month: "short", hour: "numeric", minute: "2-digit" });
   } catch {
     return d;
   }

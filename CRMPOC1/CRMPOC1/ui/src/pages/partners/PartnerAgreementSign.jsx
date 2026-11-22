@@ -2,13 +2,14 @@ import { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 
 import { partnerAgreementPublicApi } from "../../api/partnerAgreementPublic.js";
+import { fmtIST } from "../../utils/time.js";
 
 const STEPS = ["Review", "Send OTP", "Enter OTP", "Signed"];
 
 function fmtDateTime(value) {
   if (!value) return "—";
   try {
-    return new Date(value).toLocaleString("en-IN", { dateStyle: "long", timeStyle: "medium" });
+    return fmtIST(value, "String", "en-IN", { dateStyle: "long", timeStyle: "medium" });
   } catch {
     return value;
   }

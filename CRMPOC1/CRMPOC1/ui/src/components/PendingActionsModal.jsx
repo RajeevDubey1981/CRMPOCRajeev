@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { fmtIST, serverDate } from "../utils/time.js";
 
 import "./pending-actions.css";
 
@@ -58,7 +59,7 @@ function Icon({ name, className = "" }) {
 
 function formatWhen(value) {
   if (!value) return "";
-  const date = new Date(value);
+  const date = serverDate(value);
   if (Number.isNaN(date.getTime())) return "";
   const diffMs = Date.now() - date.getTime();
   const minutes = Math.floor(diffMs / 60000);
@@ -68,7 +69,7 @@ function formatWhen(value) {
   if (hours < 24) return `${hours}h ago`;
   const days = Math.floor(hours / 24);
   if (days < 7) return `${days}d ago`;
-  return date.toLocaleString();
+  return fmtIST(date, "String");
 }
 
 // the server sends times in UTC without a zone mark

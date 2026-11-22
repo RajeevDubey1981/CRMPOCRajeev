@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 
 import { partsApi, REQUEST_KINDS } from "../../api/parts.js";
 import { RequestDetail } from "./PartsApprovals.jsx";
+import { fmtIST } from "../../utils/time.js";
 
 const KIND_LABEL = Object.fromEntries(REQUEST_KINDS.map((k) => [k.value, k.label]));
 
@@ -14,7 +15,7 @@ function stagePill(stage) {
 
 function fmtDate(s) {
   if (!s) return "—";
-  try { return new Date(s).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }); } catch { return s; }
+  try { return fmtIST(s, "String", "en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }); } catch { return s; }
 }
 
 // Every part/expense/unit request this engineer has raised — rejected ones were previously

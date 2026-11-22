@@ -6,6 +6,7 @@ import PartySummary from "../../components/claims/PartySummary.jsx";
 import { shortageClaimsApi, ITEMS_MISSING, RESP_LABEL } from "../../api/shortageClaims.js";
 import { useAuth } from "../../auth/AuthContext.jsx";
 import { roleKey } from "../../utils/roles.js";
+import { fmtIST } from "../../utils/time.js";
 
 const APPROVAL_CAP_AMOUNT = 2500;
 
@@ -22,7 +23,7 @@ function respPill(c) {
 }
 function fmtDate(s) {
   if (!s) return "—";
-  try { return new Date(s).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }); } catch { return s; }
+  try { return fmtIST(s, "Date", "en-IN", { day: "numeric", month: "short", year: "numeric" }); } catch { return s; }
 }
 
 export default function ShortageClaimsTab() {
@@ -241,7 +242,7 @@ function ClaimDetail({ id, onClose, onChanged }) {
           <span className="text-xs uppercase tracking-wide text-slate-500">Timeline</span>
           <ul className="mt-1 space-y-1 border-l-2 border-slate-200 pl-3">
             {(claim.timeline || []).map((e) => (
-              <li key={e.id} className="text-sm"><span className="text-xs text-slate-400">{new Date(e.at).toLocaleString()}</span> — {e.text}</li>
+              <li key={e.id} className="text-sm"><span className="text-xs text-slate-400">{fmtIST(e.at, "String")}</span> — {e.text}</li>
             ))}
           </ul>
         </div>

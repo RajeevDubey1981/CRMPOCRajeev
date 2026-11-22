@@ -16,6 +16,7 @@ import BulkInstallationEditModal from "./BulkInstallationEditModal.jsx";
 import { canAssignCallcenterEngineer, isBulkWorkflowEligibleRow, isNonVendorSource } from "../../utils/installationWorkflowSteps.js";
 import InstallationStageChips from "../../components/installations/InstallationStageChips.jsx";
 import { INSTALLATION_STAGES, stageLabel } from "../../utils/installationStages.js";
+import { fmtIST } from "../../utils/time.js";
 
 const STATUSES = ["Pending", "Submitted", "Assigned", "In Progress", "Serial Pending Verification", "Completion Pending Approval", "Installation Completed", "Payment Pending", "Completed", "Settlement Pending", "Settlement Approved", "Returned", "Rejected"];
 const BULK_ASSIGNABLE_STATUSES = new Set(["Submitted", "Assigned"]);
@@ -27,7 +28,7 @@ const STAGE_COLUMNS = INSTALLATION_STAGES.filter((s) => ["na", "as", "ip", "in",
 function fmtDate(value) {
   if (!value) return "-";
   try {
-    return new Date(value).toLocaleDateString();
+    return fmtIST(value, "Date");
   } catch {
     return value;
   }

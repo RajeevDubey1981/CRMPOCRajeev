@@ -27,6 +27,7 @@ import {
 import { INDIAN_STATES_UTS } from "../../data/indianStates.js";
 import InstallationStatusEdit from "../installations/InstallationStatusEdit.jsx";
 import { ENGINEER_ASSIGNMENT_HINT, formatEngineerOptionLabel } from "../../utils/engineerAssignment.js";
+import { fmtIST } from "../../utils/time.js";
 
 const WORK_STARTED_STATUSES = new Set([
   "In Progress", "Completed", "Settlement Pending", "Settlement Approved", "Rejected",
@@ -146,7 +147,7 @@ function Field({ label, value, mono = false, full = false }) {
 function fmtDate(s) {
   if (!s) return null;
   try {
-    return new Date(s).toLocaleDateString();
+    return fmtIST(s, "Date");
   } catch {
     return s;
   }
@@ -155,7 +156,7 @@ function fmtDate(s) {
 function fmtDateTime(s) {
   if (!s) return null;
   try {
-    return new Date(s).toLocaleString();
+    return fmtIST(s, "String");
   } catch {
     return s;
   }

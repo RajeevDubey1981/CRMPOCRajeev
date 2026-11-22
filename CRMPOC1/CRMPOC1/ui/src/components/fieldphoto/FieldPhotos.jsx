@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../../api/client.js";
 import { toDownloadUrl } from "../../utils/downloadUrl.js";
 import Modal from "../Modal.jsx";
+import { fmtIST } from "../../utils/time.js";
 
 // Photos of the machine found in the field, taken against one serial, each saved with the phone's location.
 // kind is "service-units" or "installation-serials"; id is the unit or serial row id.
@@ -18,7 +19,7 @@ const POSITION_MAX_AGE_MS = 10 * 60 * 1000; // a location fix up to 10 minutes o
 function fmtWhen(iso) {
   if (!iso) return "";
   try {
-    return new Date(iso).toLocaleString("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+    return fmtIST(iso, "String", "en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
   } catch {
     return iso;
   }

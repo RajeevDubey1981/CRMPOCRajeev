@@ -8,13 +8,14 @@ import AgreementHardCopy from "../../components/partners/AgreementHardCopy.jsx";
 import PartnerOnboardingStepper from "../../components/partners/PartnerOnboardingStepper.jsx";
 import FilePick from "../../components/FilePick.jsx";
 import { PARTNER_DOCUMENTS, buildShopPhotoDocuments } from "./partnerFormConstants.js";
+import { fmtIST } from "../../utils/time.js";
 
 const fieldClass = "w-full rounded-md border border-slate-300 px-3 py-2 text-sm";
 
 function fmtDateTime(value) {
   if (!value) return "—";
   try {
-    return new Date(value).toLocaleString("en-IN");
+    return fmtIST(value, "String", "en-IN");
   } catch {
     return value;
   }

@@ -24,6 +24,7 @@ import ServiceUnitAssignmentPanel from "./ServiceUnitAssignmentPanel.jsx";
 import EngineerUnitWorkflowPanel from "./EngineerUnitWorkflowPanel.jsx";
 import { engineerIdsMatch, formatEngineerOptionLabel, ENGINEER_ASSIGNMENT_HINT } from "../../utils/engineerAssignment.js";
 import EngineerSelect from "../../components/EngineerSelect.jsx";
+import { fmtIST } from "../../utils/time.js";
 
 const PAYMENT_TYPES = ["Cash", "UPI"];
 const SERVICE_STATUSES = [
@@ -102,7 +103,7 @@ function formatDate(value) {
   if (!value) {
     return "-";
   }
-  return new Date(value).toLocaleDateString();
+  return fmtIST(value, "Date");
 }
 
 function formatDateInput(value) {
@@ -767,7 +768,7 @@ export default function ServiceRequestDetail() {
       {service.status === "Closed" && (
         <div className="rounded-md border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
           This service request is closed
-          {service.closed_at ? ` on ${new Date(service.closed_at).toLocaleString()}` : ""}.
+          {service.closed_at ? ` on ${fmtIST(service.closed_at, "String")}` : ""}.
         </div>
       )}
 
@@ -822,13 +823,13 @@ export default function ServiceRequestDetail() {
                   .map((c) => (
                     <li key={c.id}>
                       <span className="font-mono font-semibold">{c.engineer_completion_code}</span>
-                      {c.completed_at ? ` — ${new Date(c.completed_at).toLocaleString()}` : ""}
+                      {c.completed_at ? ` — ${fmtIST(c.completed_at, "String")}` : ""}
                     </li>
                   ))}
               </ul>
             </div>
           )}
-          <Field label="Document Request Sent" value={service.document_request_sent_at ? new Date(service.document_request_sent_at).toLocaleString() : "Not sent"} />
+          <Field label="Document Request Sent" value={service.document_request_sent_at ? fmtIST(service.document_request_sent_at, "String") : "Not sent"} />
         </div>
         <div className="mt-4 grid gap-4 md:grid-cols-2">
           <Field label="Problem Description" value={service.problem_description} />
@@ -897,7 +898,7 @@ export default function ServiceRequestDetail() {
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <div className="text-sm font-medium text-slate-800">{document.document_type}</div>
-                    <div className="text-xs text-slate-500">{document.uploaded_by_type} • {new Date(document.uploaded_at).toLocaleString()}</div>
+                    <div className="text-xs text-slate-500">{document.uploaded_by_type} • {fmtIST(document.uploaded_at, "String")}</div>
                     <a href={toDownloadUrl(document.file_path)} download target="_blank" rel="noreferrer" className="mt-1 block text-xs text-sky-700 underline">
                       View / download document
                     </a>
@@ -1590,7 +1591,7 @@ export default function ServiceRequestDetail() {
                   <div className="flex flex-wrap items-center gap-2 text-sm">
                     <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700">{entry.action}</span>
                     {entry.new_status && <StatusBadge value={entry.new_status} />}
-                    <span className="text-xs text-slate-500">{new Date(entry.created_at).toLocaleString()}</span>
+                    <span className="text-xs text-slate-500">{fmtIST(entry.created_at, "String")}</span>
                     <span className="text-xs text-slate-500">by {entry.performed_by_name || entry.performed_role || "System"}</span>
                   </div>
                   {entry.remarks && <div className="mt-2 text-sm text-slate-700">{entry.remarks}</div>}
