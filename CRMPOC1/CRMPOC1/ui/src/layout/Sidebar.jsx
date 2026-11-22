@@ -23,6 +23,7 @@ const NAV = [
     ],
   },
   { to: "/complaints", label: "Complaints", module: "complaints" },
+  { to: "/calls", label: "Calls", module: "calls" },
   { to: "/services", label: "Service Requests", module: "services" },
   { to: "/partner-registrations", label: "Partner Registrations", module: "partner_registrations" },
   { to: "/services/my-units", label: "My Assigned Units", engineerOnly: true },
