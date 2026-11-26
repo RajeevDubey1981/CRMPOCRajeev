@@ -895,6 +895,20 @@ def service_summary(db: Session = Depends(get_db), user: User = Depends(get_curr
     )
 
 
+def _returned_info(db: Session, rows) -> dict[int, tuple[str | None, str | None, datetime | None]]:
+    """For requests a service user handed back and nobody has picked up yet: (who returned it, why, when)."""
+    ids = [r.id for r in rows if r.assigned_service_user_id is None and r.status == "Service Team Review"]
+    if not ids:
+        return {}
+    logs = db.scalars(
+        select(ServiceStatusLog)
+        .where(ServiceStatusLog.service_request_id.in_(ids), ServiceStatusLog.action == "Returned to Service Manager")
+        .order_by(ServiceStatusLog.id)
+    ).all()
+    latest = {log.service_request_id: log for log in logs}
+    return {sid: (_user_name(db, log.performed_by), (log.remarks or "").strip() or None, log.created_at) for sid, log in latest.items()}
+
+
 @router.get("", response_model=ServiceListResponse)
 def list_services(
     page: int = Query(1, ge=1),
@@ -907,6 +921,7 @@ def list_services(
     vendor_id: int | None = None,
     service_user_id: int | None = None,
     service_user_unassigned: bool = False,
+    returned: bool = False,
     date_from: date | None = None,
     date_to: date | None = None,
     db: Session = Depends(get_db),
@@ -936,6 +951,13 @@ def list_services(
             stmt = stmt.where(ServiceRequest.assigned_service_user_id.is_(None))
         elif service_user_id is not None:
             stmt = stmt.where(ServiceRequest.assigned_service_user_id == service_user_id)
+    if returned and can_view_all_service_requests(user):
+        # Handed back by a service user and still waiting for the manager to give it to someone.
+        stmt = stmt.where(
+            ServiceRequest.assigned_service_user_id.is_(None),
+            ServiceRequest.status == "Service Team Review",
+            exists().where(ServiceStatusLog.service_request_id == ServiceRequest.id, ServiceStatusLog.action == "Returned to Service Manager"),
+        )
     if date_from:
         stmt = stmt.where(ServiceRequest.request_date >= date_from)
     if date_to:
@@ -954,6 +976,7 @@ def list_services(
     rows = db.scalars(stmt.order_by(desc(ServiceRequest.created_at)).offset((page - 1) * per_page).limit(per_page)).all()
     items: list[ServiceListItem] = []
     flagged = bounced_map(db, [r.customer_email for r in rows])
+    returned_info = _returned_info(db, rows)
     for row in rows:
         order = db.get(Order, row.order_id) if row.order_id else None
         complaint = db.get(Complaint, row.complaint_id) if row.complaint_id else None
@@ -979,6 +1002,9 @@ def list_services(
                 created_at=row.created_at,
                 email_bounced=(row.customer_email or "").strip().lower() in flagged,
                 email_bounce_reason=flagged.get((row.customer_email or "").strip().lower()),
+                returned_by_name=returned_info.get(row.id, (None, None, None))[0],
+                returned_reason=returned_info.get(row.id, (None, None, None))[1],
+                returned_at=returned_info.get(row.id, (None, None, None))[2],
             )
         )
     return ServiceListResponse(items=items, total=total, page=page, per_page=per_page)
@@ -1820,6 +1846,23 @@ def assign_service_desk_user(
     return _hydrate_service(db, service, user=user)
 
 
+def _notify_service_managers_of_return(db: Session, service: ServiceRequest, user: User, remarks: str | None) -> None:
+    """Tell the service managers (and admins) that a service user handed this request back."""
+    from app.services.pending_action_service import get_operations_admin_users, notify_users
+    managers = list(db.scalars(select(User).where(
+        User.is_active.is_(True), User.deleted_at.is_(None), func.lower(func.trim(User.role)).in_(("service_manager", "service manager"))
+    )))
+    recipients = {u.id: u for u in [*managers, *get_operations_admin_users(db)]}
+    why = (remarks or "").strip()
+    notify_users(
+        db, list(recipients.values()),
+        module="services", entity_id=service.id, action_type="returned_service",
+        title=f"Service {service.request_no} returned",
+        message=f"Returned by {user.name}" + (f": {why[:200]}" if why else "."),
+        action_label="Assign again", href=f"/services/{service.id}", entity_status=service.status, occurred_at=_now(),
+    )
+
+
 @router.post("/{service_id}/return-to-service-manager", response_model=ServiceOut)
 def return_service_to_manager(
     service_id: int,
@@ -1846,6 +1889,7 @@ def return_service_to_manager(
         new_status=service.status,
         remarks=body.remarks,
     )
+    _notify_service_managers_of_return(db, service, user, body.remarks)
     db.commit()
     db.refresh(service)
     return _hydrate_service(db, service, user=user)
