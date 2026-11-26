@@ -73,6 +73,9 @@ class Settings(BaseSettings):
     wa_phone_number_id: str = ""
     wa_access_token: str = ""
     wa_verify_token: str = ""
+    whatsapp_api_version: str = "v21.0"
+    whatsapp_business_account_id: str = ""
+    whatsapp_ai_enabled: bool = False  # phase 2: stays off until approved
     wa_template_name: str = "otp_verification"
     wa_template_language: str = "en_US"
     wa_happy_code_template: str = "service_happy_code_otp"

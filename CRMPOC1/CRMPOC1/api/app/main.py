@@ -8,7 +8,7 @@ from app.config import settings
 from app.release_build import RELEASE_BUILD
 from app.services.input_security import sanitize_json
 from app.routers import account_ledger, assistant, auth, bids, calls, field_photos, claims, complaints, couriers, courier_rate_profiles, dashboard, email_send_logs, historical_installations, insurance, installation_callcenter, installations, item_master, lead_interest_public, manufacturers, market, orders, partner_agreements_public, partner_registrations, partner_registrations_public, pending_actions, projects, queries, roles, serials, services, shortage_claims, users
-from app.routers import email_confirm_public, places, sarvam_api
+from app.routers import email_confirm_public, places, sarvam_api, whatsapp_inbox
 from app.marketing.router import router as marketing_router
 from app.parts.router import router as parts_router
 from app.sales.router import router as sales_router
@@ -91,6 +91,7 @@ app.include_router(marketing_router)
 app.include_router(parts_router)
 app.include_router(sarvam_api.router)
 app.include_router(email_confirm_public.router)
+app.include_router(whatsapp_inbox.router)
 app.include_router(site_api.router)
 class PublicUploads(StaticFiles):
     """The uploads folder, except the files attached to conversations: those are only given to the people in them.

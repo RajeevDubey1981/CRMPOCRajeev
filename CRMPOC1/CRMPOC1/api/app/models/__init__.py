@@ -8,6 +8,7 @@ from app.models.complaint import Complaint, ComplaintStatusLog
 from app.models.installation import HistoricalInstallationCompletion, InstallationRequest
 from app.models.call import Call
 from app.models.email_confirmation import EmailConfirmation
+from app.models.whatsapp import WaConversation, WaMessage, WaNote, WaWebhookEvent
 from app.models.claim import Claim, ClaimPhoto
 from app.models.shortage_claim import ShortageClaim, ShortageClaimEvent, ShortageClaimItem, ShortageClaimPhoto
 from app.models.serial_history import SerialHistoryEvent
