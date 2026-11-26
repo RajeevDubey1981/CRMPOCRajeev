@@ -114,6 +114,13 @@ class WhatsAppInboxTests(unittest.TestCase):
         self.assertEqual(self.post(payload(), sig=None).status_code, 401)
         self.assertEqual(self.db.scalar(select(WaMessage.id)), None)
 
+    def test_the_whatsapp_app_secret_is_accepted_too(self):
+        with mock.patch.object(settings, "wa_app_secret", "other-app-secret"):
+            raw = json.dumps(payload("wamid.W1")).encode()
+            sig = "sha256=" + hmac.new(b"other-app-secret", raw, hashlib.sha256).hexdigest()
+            r = self.client.post("/api/whatsapp/webhook", content=raw, headers={"Content-Type": "application/json", "X-Hub-Signature-256": sig})
+            self.assertEqual(r.status_code, 200)
+
     def test_without_an_app_secret_the_webhook_refuses(self):
         with mock.patch.object(settings, "meta_app_secret", ""):
             self.assertEqual(self.post(payload()).status_code, 503)

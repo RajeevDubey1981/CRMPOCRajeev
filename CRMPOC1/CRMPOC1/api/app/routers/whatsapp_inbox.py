@@ -39,7 +39,7 @@ def verify_webhook(request: Request):
 
 @router.post("/webhook")
 async def receive_webhook(request: Request, db: Session = Depends(get_db)):
-    if not (settings.meta_app_secret or "").strip():
+    if not ((settings.wa_app_secret or "").strip() or (settings.meta_app_secret or "").strip()):
         raise HTTPException(503, "WhatsApp webhook is not configured")
     raw = await request.body()
     if not wa.signature_ok(raw, request.headers.get("x-hub-signature-256")):
@@ -66,7 +66,7 @@ def integration_status(db: Session = Depends(get_db), user: User = Depends(get_c
     return {
         "sending_enabled": bool(settings.whatsapp_enabled),
         "configured": configured,
-        "app_secret_set": bool((settings.meta_app_secret or "").strip()),
+        "app_secret_set": bool((settings.wa_app_secret or "").strip() or (settings.meta_app_secret or "").strip()),
         "verify_token_set": bool((settings.wa_verify_token or "").strip()),
         "phone_number_id": (settings.wa_phone_number_id[:3] + "***" + settings.wa_phone_number_id[-3:]) if settings.wa_phone_number_id else None,
         "api_version": settings.whatsapp_api_version,

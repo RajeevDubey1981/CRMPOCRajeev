@@ -38,11 +38,12 @@ def _aware(value: datetime | None) -> datetime | None:
 
 def signature_ok(raw: bytes, header: str | None) -> bool:
     """Meta signs the exact request body with the app secret: X-Hub-Signature-256: sha256=<hex>."""
-    secret = (settings.meta_app_secret or "").strip()
-    if not secret or not header or not header.startswith("sha256="):
+    # The WhatsApp number may belong to a different Meta app than the marketing one, so accept either secret.
+    secrets = [x.strip() for x in (settings.wa_app_secret, settings.meta_app_secret) if (x or "").strip()]
+    if not secrets or not header or not header.startswith("sha256="):
         return False
-    expected = hmac.new(secret.encode("utf-8"), raw, hashlib.sha256).hexdigest()
-    return hmac.compare_digest(expected, header[7:].strip())
+    given = header[7:].strip()
+    return any(hmac.compare_digest(hmac.new(sec.encode("utf-8"), raw, hashlib.sha256).hexdigest(), given) for sec in secrets)
 
 
 def verify_token_ok(token: str | None) -> bool:

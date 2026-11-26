@@ -73,6 +73,7 @@ class Settings(BaseSettings):
     wa_phone_number_id: str = ""
     wa_access_token: str = ""
     wa_verify_token: str = ""
+    wa_app_secret: str = ""  # secret of the Meta app that owns the WhatsApp number (signs its webhooks)
     whatsapp_api_version: str = "v21.0"
     whatsapp_business_account_id: str = ""
     whatsapp_ai_enabled: bool = False  # phase 2: stays off until approved
