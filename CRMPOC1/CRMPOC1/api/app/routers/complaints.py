@@ -829,7 +829,12 @@ def list_complaints(
     if id is not None:
         stmt = stmt.where(Complaint.id == id)
     if comp_no:
-        stmt = stmt.where(Complaint.comp_no.ilike(f"%{comp_no.strip()}%"))
+        # The box is labelled "Service Request Number": match the complaint number and the linked SRV_ number.
+        like_no = f"%{comp_no.strip()}%"
+        linked_no = select(ServiceRequest.complaint_id).where(
+            ServiceRequest.complaint_id.is_not(None), ServiceRequest.deleted_at.is_(None), ServiceRequest.request_no.ilike(like_no)
+        )
+        stmt = stmt.where(or_(Complaint.comp_no.ilike(like_no), Complaint.id.in_(linked_no)))
     if status_filter:
         stmt = stmt.where(Complaint.status == status_filter)
     if query_type:
@@ -1042,6 +1047,11 @@ def export_csv(
                 Complaint.customer_name.ilike(like),
                 Complaint.customer_mobile.ilike(like),
                 Complaint.comp_no.ilike(like),
+                Complaint.id.in_(
+                    select(ServiceRequest.complaint_id).where(
+                        ServiceRequest.complaint_id.is_not(None), ServiceRequest.deleted_at.is_(None), ServiceRequest.request_no.ilike(like)
+                    )
+                ),
             )
         )
     if date_from:
