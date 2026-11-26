@@ -38,7 +38,7 @@ export default function ServiceRequestList() {
   // below (it's an OR of two statuses, which a single-select can't represent), only applied to the query.
   const [filters, setFilters] = useState({
     search: "", status: searchParams.get("status") || "", status_in: searchParams.get("status_in") || "",
-    service_type: "", service_user: "", date_from: "", date_to: "",
+    service_type: "", service_user: searchParams.get("service_user") || "", date_from: "", date_to: "",
   });
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState(100);
