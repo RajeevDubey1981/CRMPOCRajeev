@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { whatsappApi } from "../../api/whatsapp.js";
+import { useAuth } from "../../auth/AuthContext.jsx";
+import { isSystemAdminRole } from "../../utils/roles.js";
 import { fmtIST } from "../../utils/time.js";
 
 const FILTERS = [
@@ -27,6 +29,8 @@ function Tick({ status }) {
 }
 
 export default function WhatsAppInbox() {
+  const { user } = useAuth();
+  const isAdmin = isSystemAdminRole(user?.role);
   const [filter, setFilter] = useState("");
   const [search, setSearch] = useState("");
   const [list, setList] = useState({ items: [], total: 0 });
@@ -131,6 +135,18 @@ export default function WhatsAppInbox() {
             <span className="rounded-full bg-slate-100 px-2.5 py-1 text-slate-600">
               {status.conversations} chats &middot; {status.unread} unread
             </span>
+            <span className={`rounded-full px-2.5 py-1 ${status.ai_active ? "bg-emerald-100 text-emerald-800" : "bg-slate-100 text-slate-600"}`}>
+              Automatic replies {status.ai_active ? "on" : status.ai_switch ? "waiting for the server" : "off"}
+            </span>
+            {isAdmin && (
+              <button
+                type="button"
+                onClick={() => whatsappApi.aiSwitch(!status.ai_switch).then(() => whatsappApi.status().then(setStatus)).catch((e) => setErr(e.response?.data?.detail || "Could not change the switch"))}
+                className="rounded-full border border-slate-300 px-2.5 py-1 text-slate-700 hover:bg-slate-50"
+              >
+                {status.ai_switch ? "Turn automatic replies off" : "Turn automatic replies on"}
+              </button>
+            )}
           </div>
         )}
       </div>
@@ -195,6 +211,11 @@ export default function WhatsAppInbox() {
                   </div>
                 </div>
                 <div className="flex gap-1.5 text-xs">
+                  {(conv.assigned_to || conv.status === "needs_staff" || conv.ai_paused) && status?.ai_switch && (
+                    <button type="button" onClick={() => act(() => whatsappApi.resume(conv.id))} className="rounded border border-emerald-300 px-2 py-1 text-emerald-700 hover:bg-emerald-50">
+                      Resume automatic replies
+                    </button>
+                  )}
                   <button type="button" onClick={() => act(() => whatsappApi.assign(conv.id, !conv.assigned_to))} className="rounded border border-slate-300 px-2 py-1 hover:bg-slate-50">
                     {conv.assigned_to ? "Unassign" : "Take it"}
                   </button>
@@ -215,7 +236,7 @@ export default function WhatsAppInbox() {
                       )}
                       <div className="whitespace-pre-wrap break-words">{m.body}</div>
                       <div className={`mt-1 text-[10px] ${m.direction === "out" ? "text-blue-200" : "text-slate-400"}`}>
-                        {m.sent_by ? `${m.sent_by} · ` : ""}
+                        {m.direction === "out" ? `${m.sent_by || "Auto reply"} · ` : ""}
                         {short(m.created_at)}
                         {m.direction === "out" && <Tick status={m.status} />}
                       </div>
@@ -303,7 +324,7 @@ export default function WhatsAppInbox() {
               </section>
               <section>
                 <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">Automatic replies</h3>
-                <p className="mb-1 text-xs text-slate-500">Not active yet. This switch will pause them for this chat once they are.</p>
+                <p className="mb-1 text-xs text-slate-500">A staff reply, a handoff or this switch stops them for this chat. &ldquo;Resume&rdquo; hands the chat back.</p>
                 <label className="flex items-center gap-2 text-xs">
                   <input type="checkbox" checked={conv.ai_paused} onChange={(e) => act(() => whatsappApi.aiPause(conv.id, e.target.checked))} /> Pause for this chat
                 </label>

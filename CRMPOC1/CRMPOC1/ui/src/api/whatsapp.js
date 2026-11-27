@@ -9,5 +9,7 @@ export const whatsappApi = {
   assign: (id, toMe) => api.post(`/api/whatsapp/conversations/${id}/assign`, { to_me: toMe }).then((r) => r.data),
   setStatus: (id, status) => api.post(`/api/whatsapp/conversations/${id}/status`, { status }).then((r) => r.data),
   aiPause: (id, paused) => api.post(`/api/whatsapp/conversations/${id}/ai-pause`, { paused }).then((r) => r.data),
+  aiSwitch: (on) => api.post("/api/whatsapp/ai-switch", { on }).then((r) => r.data),
+  resume: (id) => api.post(`/api/whatsapp/conversations/${id}/resume`).then((r) => r.data),
   addNote: (id, body) => api.post(`/api/whatsapp/conversations/${id}/notes`, { body }).then((r) => r.data),
 };

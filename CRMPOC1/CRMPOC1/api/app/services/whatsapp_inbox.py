@@ -69,13 +69,13 @@ def get_or_create_conversation(db: Session, wa_phone: str, name: str | None = No
     return conv
 
 
-def _store_inbound(db: Session, message: dict, contact_names: dict[str, str]) -> None:
+def _store_inbound(db: Session, message: dict, contact_names: dict[str, str]) -> WaMessage | None:
     wa_id = message.get("id")
     if wa_id and db.scalar(select(WaMessage.id).where(WaMessage.wa_message_id == wa_id)):
-        return  # a retry of something already stored
+        return None  # a retry of something already stored
     phone = _normalize_indian_mobile(message.get("from")) or str(message.get("from") or "")
     if not phone:
-        return
+        return None
     msg_type = message.get("type") or "text"
     body, media = None, {}
     if msg_type == "text":
@@ -97,11 +97,13 @@ def _store_inbound(db: Session, message: dict, contact_names: dict[str, str]) ->
         sent_at = _now()
 
     conv = get_or_create_conversation(db, phone, contact_names.get(message.get("from") or ""))
-    db.add(WaMessage(
+    inbound = WaMessage(
         conversation_id=conv.id, direction="in", wa_message_id=wa_id, msg_type=msg_type, body=body,
         media_id=media.get("id"), media_mime=media.get("mime_type"), media_name=media.get("filename"),
         status="received", created_at=sent_at,
-    ))
+    )
+    db.add(inbound)
+    db.flush()
     conv.unread_count = (conv.unread_count or 0) + 1
     last_in = _aware(conv.last_inbound_at)
     if last_in is None or sent_at > last_in:
@@ -114,6 +116,7 @@ def _store_inbound(db: Session, message: dict, contact_names: dict[str, str]) ->
         conv.status = "open"
     if msg_type == "text" and (body or "").strip().lower() in STOP_WORDS:
         conv.opted_out = True  # consent: never send proactive messages to this number again
+    return inbound
 
 
 # A status can only move forward: a late "sent" must not undo "delivered".
@@ -135,10 +138,10 @@ def _apply_status(db: Session, status: dict) -> None:
         msg.status = new
 
 
-def process_payload(db: Session, payload: dict) -> int:
-    """Store the messages and statuses in a Meta webhook body. Returns how many messages were new."""
+def process_payload(db: Session, payload: dict) -> list[tuple[int, int]]:
+    """Store the messages and statuses in a Meta webhook body. Returns (conversation id, message id) of each new incoming message."""
     configured = (settings.wa_phone_number_id or "").strip()
-    stored = 0
+    new: list[tuple[int, int]] = []
     for entry in payload.get("entry") or []:
         for change in entry.get("changes") or []:
             value = change.get("value") or {}
@@ -149,12 +152,12 @@ def process_payload(db: Session, payload: dict) -> int:
                 continue  # meant for another number
             names = {c.get("wa_id"): ((c.get("profile") or {}).get("name") or "") for c in value.get("contacts") or []}
             for message in value.get("messages") or []:
-                before = db.scalar(select(WaMessage.id).where(WaMessage.wa_message_id == message.get("id")))
-                _store_inbound(db, message, names)
-                stored += 0 if before else 1
+                stored_msg = _store_inbound(db, message, names)
+                if stored_msg is not None:
+                    new.append((stored_msg.conversation_id, stored_msg.id))
             for status in value.get("statuses") or []:
                 _apply_status(db, status)
-    return stored
+    return new
 
 
 def handle_webhook(db: Session, raw: bytes) -> None:
@@ -163,15 +166,27 @@ def handle_webhook(db: Session, raw: bytes) -> None:
     db.add(event)
     db.commit()
     try:
-        process_payload(db, json.loads(event.payload))
+        new = process_payload(db, json.loads(event.payload))
         event.processed = True
         db.commit()
+        for conv_id, msg_id in new:
+            _auto_reply(conv_id, msg_id)
     except Exception as exc:  # noqa: BLE001
         db.rollback()
         event = db.get(WaWebhookEvent, event.id)
         event.error = str(exc)[:500]
         db.commit()
         logger.exception("whatsapp webhook processing failed")
+
+
+def _auto_reply(conv_id: int, msg_id: int) -> None:
+    """Hand a new incoming message to the automatic-reply engine. Never lets a failure break the webhook."""
+    try:
+        from app.services import wa_ai
+
+        wa_ai.schedule(conv_id, msg_id)
+    except Exception:  # noqa: BLE001
+        logger.exception("could not start the automatic reply")
 
 
 def window_open(conv: WaConversation) -> bool:

@@ -280,6 +280,9 @@ def register_complaint(data: dict = Body(...), db: Session = Depends(get_db)):
         "Email typed and confirmed by the customer" if confirmed_recently(db, mobile, email) else "Email NOT confirmed by the customer (heard on the call, may be wrong)"
     )
     sms = (_pick(data, "smsreq", "send_sms") or "").lower() in ("1", "true", "yes", "y")
+    channel = (_pick(data, "channel") or "").lower()
+    if channel == "whatsapp":
+        remark = ((remark + " | ") if remark else "") + "Registered on WhatsApp"
 
     # Duplicate guard: same mobile + type + problem in the last 10 minutes returns the existing record.
     since = datetime.now(timezone.utc) - timedelta(minutes=10)
@@ -319,10 +322,11 @@ def register_complaint(data: dict = Body(...), db: Session = Depends(get_db)):
     db.flush()
     db.add(ComplaintStatusLog(
         complaint_id=complaint.id, old_status=None, new_status="Pending",
-        changed_by=None, remark="Complaint created from Sarvam call",
+        changed_by=None, remark="Complaint created from WhatsApp chat" if channel == "whatsapp" else "Complaint created from Sarvam call",
     ))
     linked_service = link_and_sync(db, complaint)
-    _log_call(db, complaint, qtype, name, mobile, email, call_summary or remark, interest_line, duration, interaction_id)
+    if channel != "whatsapp":
+        _log_call(db, complaint, qtype, name, mobile, email, call_summary or remark, interest_line, duration, interaction_id)
     service_request_no = linked_service.request_no if linked_service is not None else None
     db.commit()
     db.refresh(complaint)

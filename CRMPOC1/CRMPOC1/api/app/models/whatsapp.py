@@ -23,6 +23,7 @@ class WaConversation(Base, TimestampMixin):
     last_message_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
     last_message_preview: Mapped[str | None] = mapped_column(String(200), nullable=True)
     opted_out: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    pending_action: Mapped[str | None] = mapped_column(Text, nullable=True)  # an action waiting for the customer to say yes (JSON)
 
 
 class WaMessage(Base):
@@ -65,3 +66,29 @@ class WaNote(Base):
     body: Mapped[str] = mapped_column(Text, nullable=False)
     created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class WaAiRun(Base):
+    """One automatic-reply attempt for one incoming message. The unique message id means a retry never answers twice."""
+
+    __tablename__ = "wa_ai_runs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    conversation_id: Mapped[int] = mapped_column(ForeignKey("wa_conversations.id"), nullable=False, index=True)
+    inbound_message_id: Mapped[int] = mapped_column(ForeignKey("wa_messages.id"), unique=True, nullable=False)
+    outcome: Mapped[str | None] = mapped_column(String(30), nullable=True)  # replied | handoff | skipped | error
+    action: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    detail: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class WaSetting(Base):
+    """Small on/off switches managed from the inbox (the automatic-reply master switch)."""
+
+    __tablename__ = "wa_settings"
+
+    key: Mapped[str] = mapped_column(String(60), primary_key=True)
+    value: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    updated_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

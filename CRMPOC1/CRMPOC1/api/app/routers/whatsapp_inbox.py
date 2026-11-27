@@ -2,7 +2,7 @@
 and the whatsapp permission."""
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, Response
@@ -16,9 +16,11 @@ from app.deps import get_current_user
 from app.models.complaint import Complaint
 from app.models.service import ServiceRequest
 from app.models.user import User
-from app.models.whatsapp import WaConversation, WaMessage, WaNote, WaWebhookEvent
-from app.services import whatsapp_inbox as wa
+from app.models.whatsapp import WaAiRun, WaConversation, WaMessage, WaNote, WaWebhookEvent
+from app.services import wa_ai, whatsapp_inbox as wa
 from app.services.permissions import can_act_on
+from app.services.role_access import is_system_admin
+from app.services.sarvam_chat import chat_configured
 
 router = APIRouter(prefix="/api/whatsapp", tags=["whatsapp"])
 
@@ -71,6 +73,10 @@ def integration_status(db: Session = Depends(get_db), user: User = Depends(get_c
         "phone_number_id": (settings.wa_phone_number_id[:3] + "***" + settings.wa_phone_number_id[-3:]) if settings.wa_phone_number_id else None,
         "api_version": settings.whatsapp_api_version,
         "ai_enabled": bool(settings.whatsapp_ai_enabled),
+        "ai_key_set": chat_configured(),
+        "ai_switch": wa_ai.switch_on(db),
+        "ai_active": wa_ai.server_allows() and wa_ai.switch_on(db),
+        "ai_runs_24h": {o: n for o, n in db.execute(select(WaAiRun.outcome, func.count()).where(WaAiRun.created_at >= datetime.now(timezone.utc) - timedelta(hours=24)).group_by(WaAiRun.outcome)).all()},
         "webhook_url": f"{(settings.app_public_url or '').rstrip('/')}/api/whatsapp/webhook" if settings.app_public_url else "/api/whatsapp/webhook",
         "conversations": db.scalar(select(func.count()).select_from(WaConversation)) or 0,
         "unread": db.scalar(select(func.coalesce(func.sum(WaConversation.unread_count), 0))) or 0,
@@ -185,6 +191,32 @@ def ai_pause(conv_id: int, body: dict = Body(...), db: Session = Depends(get_db)
     _need(db, user, "can_edit")
     conv = _load(db, conv_id)
     conv.ai_paused = bool(body.get("paused"))
+    db.commit()
+    return _conv_out(conv, db)
+
+
+@router.post("/ai-switch")
+def ai_switch(body: dict = Body(...), db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """The master switch for automatic replies. Administrators only."""
+    if not is_system_admin(user):
+        raise HTTPException(403, "Only an administrator can switch automatic replies on or off")
+    on = bool(body.get("on"))
+    if on and not wa_ai.server_allows():
+        raise HTTPException(409, "Automatic replies are not allowed on this server yet (the Sarvam key or WHATSAPP_AI_ENABLED is missing)")
+    wa_ai.set_switch(db, on, user.id)
+    return {"ai_switch": wa_ai.switch_on(db)}
+
+
+@router.post("/conversations/{conv_id}/resume")
+def resume_auto(conv_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Give the chat back to the automatic replies after staff have dealt with it."""
+    _need(db, user, "can_edit")
+    conv = _load(db, conv_id)
+    conv.assigned_to = None
+    conv.ai_paused = False
+    conv.pending_action = None
+    if conv.status == "needs_staff":
+        conv.status = "open"
     db.commit()
     return _conv_out(conv, db)
 
