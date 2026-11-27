@@ -261,6 +261,10 @@ class AutoReplyTests(unittest.TestCase):
         self.assertIn("Hi, I'm Shubh from INDcool Support.", wa_ai.SYSTEM_PROMPT)
         self.assertIn("Never claim to be a human", wa_ai.SYSTEM_PROMPT)
 
+    def test_the_prompt_tells_it_to_list_matching_models_instead_of_asking_for_a_model_code(self):
+        self.assertIn("do NOT start by asking for a model code", wa_ai.SYSTEM_PROMPT)
+        self.assertIn("Never repeat a question", wa_ai.SYSTEM_PROMPT)
+
     def _staff_reply(self, hours_ago):
         self.db.add(WaMessage(conversation_id=self.conv.id, direction="out", msg_type="text", body="staff", status="sent",
                               sent_by=self.admin.id, created_at=datetime.now(timezone.utc) - timedelta(hours=hours_ago)))
