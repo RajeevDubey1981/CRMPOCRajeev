@@ -85,3 +85,17 @@ class OffersTests(unittest.TestCase):
         for q in ("any offer on AC", "EMI available?", "what is the free electricity scheme", "CSD canteen price"):
             _, blocks = k.select_blocks(q)
             self.assertTrue(blocks and blocks[0].startswith("[Offers and schemes]"), q)
+
+
+class RateCardTests(unittest.TestCase):
+    def test_service_price_questions_reach_the_customer_rate_card_without_partner_content(self):
+        from app.services import wa_knowledge as k
+
+        _, blocks = k.select_blocks("what is the price of gas charging in split ac?")
+        self.assertTrue(blocks[0].startswith("[Service rates and policy]"))
+        self.assertIn("3,304.00", blocks[0])
+        _, blocks = k.select_blocks("installation charges for split AC")
+        self.assertIn("1,414.82", blocks[0])
+        everything = " ".join(b for q in ("gas charging", "installation", "service charges", "visit charge", "fridge gas charging", "gst") for b in k.select_blocks(q)[1])
+        for internal in ("Franchise", "ASC", "penalty", "payout", "Code of Conduct"):
+            self.assertNotIn(internal, everything)

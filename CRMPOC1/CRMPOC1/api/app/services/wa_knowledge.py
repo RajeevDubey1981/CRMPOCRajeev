@@ -24,6 +24,7 @@ DATA = Path(__file__).resolve().parent.parent / "data"
 KNOWLEDGE_FILE = DATA / "wa_knowledge.md"
 EXTRA_FILE = DATA / "wa_knowledge_extra.md"
 OFFERS_FILE = DATA / "wa_knowledge_offers.md"
+RATES_FILE = DATA / "wa_knowledge_rates.md"
 HEAD_LIMIT = 14000
 PRODUCT_LIMIT = 7000
 PER_PRODUCT = 2200
@@ -59,7 +60,7 @@ def parse_files() -> tuple[list[tuple[str, str]], list[tuple[str, str, str]]]:
     """([(title, text)] general sections, [(category, title, text)] searchable entries) from the two built-in files."""
     heads: list[tuple[str, str]] = []
     blocks: list[tuple[str, str, str]] = []
-    for f in (KNOWLEDGE_FILE, EXTRA_FILE, OFFERS_FILE):
+    for f in (KNOWLEDGE_FILE, EXTRA_FILE, OFFERS_FILE, RATES_FILE):
         if not f.is_file():
             continue
         text = f.read_text(encoding="utf-8")
@@ -136,7 +137,7 @@ def load(db: Session | None = None) -> tuple[str, list[tuple[str, set[str]]]]:
         found = _from_db(db)
         if found is not None:
             return found
-    key = ("files", tuple(f.stat().st_mtime for f in (KNOWLEDGE_FILE, EXTRA_FILE, OFFERS_FILE) if f.is_file()))
+    key = ("files", tuple(f.stat().st_mtime for f in (KNOWLEDGE_FILE, EXTRA_FILE, OFFERS_FILE, RATES_FILE) if f.is_file()))
     if _CACHE["sig"] != key:
         head, products = _from_files()
         _CACHE.update({"sig": key, "head": head, "products": products})
