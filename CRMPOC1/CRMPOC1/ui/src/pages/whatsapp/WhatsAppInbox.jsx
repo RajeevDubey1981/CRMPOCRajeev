@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 
 import { whatsappApi } from "../../api/whatsapp.js";
 import { useAuth } from "../../auth/AuthContext.jsx";
@@ -34,7 +34,8 @@ export default function WhatsAppInbox() {
   const [filter, setFilter] = useState("");
   const [search, setSearch] = useState("");
   const [list, setList] = useState({ items: [], total: 0 });
-  const [activeId, setActiveId] = useState(null);
+  const [searchParams] = useSearchParams();
+  const [activeId, setActiveId] = useState(Number(searchParams.get("conv")) || null);
   const [thread, setThread] = useState(null);
   const [text, setText] = useState("");
   const [note, setNote] = useState("");

@@ -316,6 +316,59 @@ class AutoReplyTests(unittest.TestCase):
         self.assertEqual(self.conv_now().status, "needs_staff")
         self.assertEqual(len(self.sent), 1)
 
+    # --- tied into the CRM ---
+    def _alerts(self, active_only=True):
+        from app.models.pending_action import UserPendingAction
+
+        self.db.expire_all()
+        q = select(UserPendingAction).where(UserPendingAction.module == "whatsapp")
+        rows = self.db.scalars(q).all()
+        return [r for r in rows if r.is_active] if active_only else rows
+
+    def test_a_handoff_raises_a_bell_alert_for_staff_and_a_reply_clears_it(self):
+        m = self.incoming("I want a refund")
+        with self.model(action="handoff", reply="A team member will reply.", handoff_reason="refund request"):
+            self.run_msg(m)
+        alerts = self._alerts()
+        self.assertTrue(alerts)
+        self.assertIn(self.admin.id, {a.recipient_user_id for a in alerts})
+        self.assertIn(f"/whatsapp?conv={self.conv.id}", alerts[0].href)
+        r = self.client.post(f"/api/whatsapp/conversations/{self.conv.id}/reply", json={"text": "Hello, I am on it"}, headers=self.h(self.admin))
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual(self._alerts(), [])
+
+    def test_resuming_or_closing_a_chat_also_clears_the_alert(self):
+        m = self.incoming("refund please")
+        with self.model(action="handoff", reply="Team will reply.", handoff_reason="refund"):
+            self.run_msg(m)
+        self.assertTrue(self._alerts())
+        self.client.post(f"/api/whatsapp/conversations/{self.conv.id}/status", json={"status": "closed"}, headers=self.h(self.admin))
+        self.assertEqual(self._alerts(), [])
+
+    def test_a_registered_complaint_carries_the_customers_words_and_the_chat_gets_a_note(self):
+        details = dict(action="register_complaint", name="Ravi Kumar", problem="AC is not cooling", email="ravi@example.com", query_type="Service")
+        with self.model(**details):
+            self.run_msg(self.incoming("my split AC is not cooling at all"))
+        with self.model():
+            self.run_msg(self.incoming("YES"))
+        self.db.expire_all()
+        c = self.db.query(Complaint).one()
+        self.assertIn("WhatsApp chat, customer wrote", c.remark)
+        self.assertIn("my split AC is not cooling at all", c.remark)
+        notes = [n.body for n in self.db.query(WaNote).all()]
+        self.assertTrue(any(c.comp_no in n for n in notes))
+
+    def test_the_complaint_page_can_find_the_customers_chat(self):
+        self._complaint("9891572565", "IDC_LINK_1")
+        self.db.expire_all()
+        cid = self.db.query(Complaint).one().id
+        r = self.client.get(f"/api/whatsapp/for-complaint/{cid}", headers=self.h(self.admin)).json()
+        self.assertEqual(r["conversation_id"], self.conv.id)
+        self.assertEqual(self.client.get(f"/api/whatsapp/for-complaint/{cid}", headers=self.h(self.eng)).json()["conversation_id"], None)
+        self._complaint("9000000000", "IDC_LINK_2")
+        other = self.db.query(Complaint).filter(Complaint.comp_no == "IDC_LINK_2").one().id
+        self.assertIsNone(self.client.get(f"/api/whatsapp/for-complaint/{other}", headers=self.h(self.admin)).json()["conversation_id"])
+
     # --- wiring ---
     def test_a_new_incoming_message_is_handed_to_the_engine_once(self):
         body = {"entry": [{"changes": [{"field": "messages", "value": {

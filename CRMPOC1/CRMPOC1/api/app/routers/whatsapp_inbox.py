@@ -18,6 +18,7 @@ from app.models.service import ServiceRequest
 from app.models.user import User
 from app.models.whatsapp import WaAiRun, WaConversation, WaKnowledge, WaMessage, WaNote, WaWebhookEvent
 from app.services import wa_ai, wa_knowledge, whatsapp_inbox as wa
+from app.services.pending_action_service import resolve_all_for_entity
 from app.services.permissions import can_act_on
 from app.services.role_access import is_system_admin
 from app.services.sarvam_chat import chat_configured
@@ -141,6 +142,21 @@ def get_conversation(conv_id: int, db: Session = Depends(get_db), user: User = D
     }
 
 
+@router.get("/for-complaint/{complaint_id}")
+def chat_for_complaint(complaint_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Is there a WhatsApp chat with this complaint's customer? Used by the complaint page."""
+    if not can_act_on(db, user, "whatsapp", "can_view", None):
+        return {"conversation_id": None}
+    c = db.get(Complaint, complaint_id)
+    if c is None or not (c.customer_mobile or "").strip():
+        return {"conversation_id": None}
+    conv = db.scalar(select(WaConversation).where(WaConversation.wa_phone.like("%" + c.customer_mobile.strip()[-10:])))
+    if conv is None:
+        return {"conversation_id": None}
+    count = db.scalar(select(func.count()).select_from(WaMessage).where(WaMessage.conversation_id == conv.id)) or 0
+    return {"conversation_id": conv.id, "messages": count, "status": conv.status, "last_message_at": conv.last_message_at}
+
+
 @router.post("/conversations/{conv_id}/read")
 def mark_read(conv_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     _need(db, user, "can_view")
@@ -158,6 +174,7 @@ def reply(conv_id: int, body: dict = Body(...), db: Session = Depends(get_db), u
         msg = wa.send_text(db, conv, str(body.get("text") or ""), user.id)
     except wa.SendError as exc:
         raise HTTPException(409, str(exc))
+    resolve_all_for_entity(db, module="whatsapp", entity_id=conv.id)  # someone answered: the bell alert is done
     if conv.assigned_to is None:
         conv.assigned_to = user.id  # whoever answers first owns the thread
     conv.unread_count = 0
@@ -170,6 +187,8 @@ def assign(conv_id: int, body: dict = Body(...), db: Session = Depends(get_db), 
     _need(db, user, "can_edit")
     conv = _load(db, conv_id)
     conv.assigned_to = user.id if body.get("to_me") else None
+    if body.get("to_me"):
+        resolve_all_for_entity(db, module="whatsapp", entity_id=conv.id)
     db.commit()
     return _conv_out(conv, db)
 
@@ -182,6 +201,8 @@ def set_status(conv_id: int, body: dict = Body(...), db: Session = Depends(get_d
     if value not in {"open", "needs_staff", "closed"}:
         raise HTTPException(422, "Status must be open, needs_staff or closed")
     conv.status = value
+    if value != "needs_staff":
+        resolve_all_for_entity(db, module="whatsapp", entity_id=conv.id)
     db.commit()
     return _conv_out(conv, db)
 
@@ -217,6 +238,7 @@ def resume_auto(conv_id: int, db: Session = Depends(get_db), user: User = Depend
     conv.pending_action = None
     if conv.status == "needs_staff":
         conv.status = "open"
+    resolve_all_for_entity(db, module="whatsapp", entity_id=conv.id)
     db.commit()
     return _conv_out(conv, db)
 

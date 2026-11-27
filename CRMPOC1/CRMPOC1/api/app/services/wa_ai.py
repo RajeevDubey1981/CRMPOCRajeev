@@ -27,6 +27,8 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.models.complaint import Complaint
+from app.models.role import Permission, Role
+from app.models.user import User
 from app.models.whatsapp import WaAiRun, WaConversation, WaMessage, WaNote, WaSetting
 from app.services import wa_knowledge, whatsapp_inbox as wa
 from app.services.sarvam_chat import SarvamChatError, chat_configured, chat_json
@@ -158,11 +160,37 @@ def _say(db: Session, conv: WaConversation, msg: WaMessage, text: str) -> bool:
         return False
 
 
+def staff_recipients(db: Session) -> list[User]:
+    """Everyone who may open the WhatsApp inbox: administrators plus any role ticked for the whatsapp module."""
+    from app.services.pending_action_service import get_operations_admin_users
+
+    roles = {r.lower() for r in db.scalars(select(Role.name).join(Permission, Permission.role_id == Role.id).where(Permission.module == "whatsapp", Permission.can_view.is_(True)))}
+    extra = list(db.scalars(select(User).where(User.is_active.is_(True), User.deleted_at.is_(None), func.lower(func.trim(User.role)).in_(roles)))) if roles else []
+    return list({u.id: u for u in [*get_operations_admin_users(db), *extra]}.values())
+
+
+def _alert_staff(db: Session, conv: WaConversation, reason: str) -> None:
+    """A chat that needs a person shows in the CRM notification bell until someone deals with it."""
+    try:
+        from app.services.pending_action_service import notify_users
+
+        notify_users(
+            db, staff_recipients(db), module="whatsapp", entity_id=conv.id, action_type="needs_staff",
+            title=f"WhatsApp chat needs you: {conv.contact_name or conv.wa_phone}", message=(reason or "A customer is waiting for a reply.")[:300],
+            action_label="Open chat", href=f"/whatsapp?conv={conv.id}", entity_status="needs_staff", occurred_at=_now(),
+        )
+        db.commit()
+    except Exception:  # noqa: BLE001  an alert problem must not stop the handoff itself
+        db.rollback()
+        logger.exception("could not alert staff about a WhatsApp handoff")
+
+
 def _handoff(db: Session, conv: WaConversation, msg: WaMessage, reason: str, text: str) -> None:
     conv.status = "needs_staff"
     conv.pending_action = None
     _note(db, conv, f"Automatic replies handed this chat to staff: {reason}")
     db.commit()
+    _alert_staff(db, conv, reason)
     # the handoff message is sent even though the chat is now "needs staff"; check only the basics
     if wa.window_open(conv) and not conv.opted_out:
         try:
@@ -223,7 +251,31 @@ def _register(db: Session, conv: WaConversation, pending: dict) -> str:
         return ""
     if not comp_no:
         return ""
+    _link_chat_to_complaint(db, conv, comp_no)
     return f"Thank you, {pending['name']}. Your request is registered. Your reference number is {comp_no}. Our team will contact you."
+
+
+def _link_chat_to_complaint(db: Session, conv: WaConversation, comp_no: str) -> None:
+    """Tie the chat and the complaint together: a note in the chat, and the customer's own words on the complaint."""
+    try:
+        _note(db, conv, f"Complaint {comp_no} was registered from this chat after the customer confirmed.")
+        said = [
+            m.body.strip().replace(chr(10), " ")[:200]
+            for m in db.scalars(
+                select(WaMessage)
+                .where(WaMessage.conversation_id == conv.id, WaMessage.direction == "in", WaMessage.msg_type == "text", WaMessage.body.is_not(None))
+                .order_by(desc(WaMessage.id)).limit(6)
+            )
+            if (m.body or "").strip()
+        ]
+        complaint = db.scalar(select(Complaint).where(Complaint.comp_no == comp_no))
+        if complaint is not None and said:
+            extra = "WhatsApp chat, customer wrote: " + " / ".join(reversed(said))
+            complaint.remark = ((complaint.remark + " | ") if complaint.remark else "") + extra[:900]
+        db.commit()
+    except Exception:  # noqa: BLE001  the complaint is already registered: never fail the reply over this
+        db.rollback()
+        logger.exception("could not link the chat to the complaint")
 
 
 def _pending(conv: WaConversation) -> dict | None:

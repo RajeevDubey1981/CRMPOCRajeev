@@ -25,5 +25,6 @@ export const whatsappApi = {
     return api.post("/api/whatsapp/knowledge-upload", f).then((r) => r.data);
   },
   kPreview: (question) => api.post("/api/whatsapp/knowledge-preview", { question }).then((r) => r.data),
+  forComplaint: (id) => api.get(`/api/whatsapp/for-complaint/${id}`).then((r) => r.data),
   addNote: (id, body) => api.post(`/api/whatsapp/conversations/${id}/notes`, { body }).then((r) => r.data),
 };

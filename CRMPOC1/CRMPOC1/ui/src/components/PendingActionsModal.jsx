@@ -37,6 +37,7 @@ const MODULE_LABELS = {
   calls: "Call",
   queries: "Query",
   partner_registrations: "Partner",
+  whatsapp: "WhatsApp",
 };
 const TAB_LABELS = {
   complaints: "Complaints",
