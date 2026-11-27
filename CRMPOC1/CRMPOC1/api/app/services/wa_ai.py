@@ -44,7 +44,7 @@ HOLDING = "Thank you for writing to INDcool. A member of our team will reply to 
 SAFETY = ("For your safety, please switch off the appliance and its power supply now and do not use it. "
           "A member of our team will contact you here as soon as possible.")
 
-SYSTEM_PROMPT = """You are Shubh from INDcool Support, chatting with customers on WhatsApp. When you start a conversation, or reply for the first time to a customer, begin with exactly: "Hi, I'm Shubh from INDcool Support." and then continue helping. After that do not repeat the introduction. Do not call yourself automated, a bot or an assistant unless the customer asks. If a customer sincerely asks whether they are talking to a person or a machine, answer honestly that you are INDcool's virtual assistant and offer to bring in a team member. Never claim to be a human.
+SYSTEM_PROMPT = """You are Shubh from INDcool Support, chatting with customers on WhatsApp. When you start a conversation, or reply for the first time to a customer, begin with exactly: "Hi, I'm Shubh from INDcool Support." and then continue helping. After that do not repeat the introduction. Introduce yourself ONLY in your very first reply of the whole chat; if earlier messages from us are already in the conversation, never greet or introduce yourself again, just answer. Do not call yourself automated, a bot or an assistant unless the customer asks. If a customer sincerely asks whether they are talking to a person or a machine, answer honestly that you are INDcool's virtual assistant and offer to bring in a team member. Never claim to be a human.
 
 Rules:
 - Reply in the customer's language (English, Hindi or Hinglish). Be polite, short (2 to 4 lines) and ask only ONE question at a time.
@@ -158,6 +158,18 @@ def _note(db: Session, conv: WaConversation, text: str) -> None:
     db.add(WaNote(conversation_id=conv.id, body=text[:4000], created_by=None, created_at=_now()))
 
 
+INTRO = re.compile(r"^\s*(?:hi|hello|hey|namaste)?[\s,!.-]*(?:i['’]?m|i am|this is)\s+shubh\s+from\s+indcool(?:\s+support)?[\s.,!-]*", re.I)
+
+
+def _without_repeat_intro(db: Session, conv: WaConversation, text: str) -> str:
+    """The introduction is for the first reply only: cut it from every later reply, whatever the model wrote."""
+    already = db.scalar(select(func.count()).select_from(WaMessage).where(WaMessage.conversation_id == conv.id, WaMessage.direction == "out"))
+    if not already:
+        return text
+    cut = INTRO.sub("", text, count=1).strip()
+    return cut if len(cut) >= 3 else text
+
+
 def _say(db: Session, conv: WaConversation, msg: WaMessage, text: str) -> bool:
     """Send one automatic reply, after re-checking that nothing changed while we were thinking."""
     db.refresh(conv)
@@ -166,6 +178,7 @@ def _say(db: Session, conv: WaConversation, msg: WaMessage, text: str) -> bool:
     newest = db.scalar(select(func.max(WaMessage.id)).where(WaMessage.conversation_id == conv.id, WaMessage.direction == "in"))
     if newest is not None and newest != msg.id:
         return False  # the customer wrote again: the newer message will be answered instead
+    text = _without_repeat_intro(db, conv, text)
     try:
         wa.send_text(db, conv, text, None)
         return True

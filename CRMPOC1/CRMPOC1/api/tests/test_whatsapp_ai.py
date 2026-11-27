@@ -314,6 +314,15 @@ class AutoReplyTests(unittest.TestCase):
         self.assertIn("Installation request", self.sent[-1])
         self.assertIn("installed on 01 Jun 2026", self.sent[-1])
 
+    def test_the_introduction_is_sent_once_and_cut_from_later_replies(self):
+        intro = "Hi, I'm Shubh from INDcool Support. "
+        with self.model(action="none", reply=intro + "Which city are you in?"):
+            self.run_msg(self.incoming("hello"))
+        self.assertTrue(self.sent[-1].startswith("Hi, I'm Shubh"))
+        with self.model(action="none", reply=intro + "Thanks. Which room size?"):
+            self.run_msg(self.incoming("Noida"))
+        self.assertEqual(self.sent[-1], "Thanks. Which room size?")
+
     def test_saying_no_registers_nothing(self):
         details = dict(action="register_complaint", name="Ravi Kumar", problem="AC is not cooling", email="ravi@example.com", query_type="Service", model="IDCACSBF18K3F 1.5 ton split", address="12 MG Road, Noida 201301", error_code="E6")
         with self.model(**details):
