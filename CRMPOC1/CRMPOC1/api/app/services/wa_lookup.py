@@ -49,14 +49,24 @@ def _order_is_mine(db: Session, order: Order, mobile: str) -> bool:
     return any(_last10(c) == mobile for c in contacts)
 
 
-def order_text(db: Session, mobile: str, order_no: str | None) -> str:
+def find_order(db: Session, order_no: str | None) -> Order | None:
     key = _squash(order_no)
-    if len(key) < 3:
-        return "Please share your order number and I will check it."
-    rows = db.scalars(select(Order).where(Order.deleted_at.is_(None), Order.order_no.is_not(None)).where(or_(Order.customer_contact.like("%" + mobile), Order.order_no.ilike("%" + (order_no or "").strip() + "%"))).order_by(desc(Order.id)).limit(50)).all()
-    order = next((o for o in rows if _squash(o.order_no) == key), None) or next((o for o in rows if key in _squash(o.order_no)), None)
-    if order is None or not _order_is_mine(db, order, mobile):
-        return NOT_FOUND
+    if len(key) < 5:
+        return None
+    rows = db.scalars(select(Order).where(Order.deleted_at.is_(None), Order.order_no.ilike("%" + (order_no or "").strip() + "%")).limit(20)).all()
+    return next((o for o in rows if _squash(o.order_no) == key), None) or next((o for o in rows if key in _squash(o.order_no)), None)
+
+
+def order_contacts(db: Session, order: Order) -> list[str]:
+    extra = db.scalars(select(OrderConsigneeAddress.contact).where(OrderConsigneeAddress.order_id == order.id)).all()
+    return [c for c in (_last10(order.customer_contact), *[_last10(x) for x in extra]) if len(c) >= 4]
+
+
+def order_last4_matches(db: Session, order: Order, text: str) -> bool:
+    return any(re.search(r"(?<!\d)" + c[-4:] + r"(?!\d)", text or "") for c in order_contacts(db, order))
+
+
+def order_summary(db: Session, order: Order) -> str:
     lines = [f"Order {order.order_no}, placed {_d(order.order_date)}: {order.status}."]
     if order.actual_delivery_date:
         lines.append(f"Delivered on {_d(order.actual_delivery_date)}.")
@@ -66,6 +76,15 @@ def order_text(db: Session, mobile: str, order_no: str | None) -> str:
     if order.lrn_no:
         lines.append(f"Dispatched{(' with ' + courier.courier_name) if courier else ''}, tracking (LR) number {order.lrn_no}.")
     return " ".join(lines) + " For anything more, I can bring in our team."
+
+
+def order_text(db: Session, mobile: str, order_no: str | None) -> str:
+    if len(_squash(order_no)) < 5:
+        return "Please share your order number and I will check it."
+    order = find_order(db, order_no)
+    if order is None or not _order_is_mine(db, order, mobile):
+        return NOT_FOUND
+    return order_summary(db, order)
 
 
 def _install_date(db: Session, item: OrderItem) -> date | None:

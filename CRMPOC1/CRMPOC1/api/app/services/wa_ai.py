@@ -378,7 +378,17 @@ def run_for_message(db: Session, msg_id: int, wait: float = 0) -> str:
     if verify:
         from app.services import wa_lookup
 
-        target = wa_lookup.find_complaint(db, verify["comp_no"])
+        if verify.get("entity") == "order":
+            order = wa_lookup.find_order(db, verify["comp_no"])
+            if order is not None and wa_lookup.order_last4_matches(db, order, text):
+                conv.pending_action = None
+                db.commit()
+                _note(db, conv, f"Order {order.order_no} shown after the customer gave the last 4 digits of its mobile")
+                _say(db, conv, msg, "Thank you, that matches. " + wa_lookup.order_summary(db, order))
+                return finish("replied", "check_order", "verified by last 4 digits")
+            target = None
+        else:
+            target = wa_lookup.find_complaint(db, verify["comp_no"])
         if target is not None and wa_lookup.last4_matches(target, text):
             conv.pending_action = None
             db.commit()
@@ -389,11 +399,11 @@ def run_for_message(db: Session, msg_id: int, wait: float = 0) -> str:
         if tries >= 2:
             conv.pending_action = None
             db.commit()
-            _handoff(db, conv, msg, f"customer could not verify complaint {verify['comp_no']}", "I could not match that, so I am bringing in a team member who will help you with this complaint.")
+            _handoff(db, conv, msg, f"customer could not verify {verify['comp_no']}", "I could not match that, so I am bringing in a team member who will help you with this complaint.")
             return finish("handoff", "track_complaint", "verification failed")
         conv.pending_action = json.dumps({**verify, "tries": tries})
         db.commit()
-        _say(db, conv, msg, "That does not match. Please type the last 4 digits of the mobile number registered on the complaint, or say TEAM and I will bring in a team member.")
+        _say(db, conv, msg, "That does not match. Please type the last 4 digits of the mobile number registered on it, or say TEAM and I will bring in a team member.")
         return finish("replied", "track_complaint", "verification retry")
 
     # a registration waiting for yes / no
@@ -435,6 +445,12 @@ def run_for_message(db: Session, msg_id: int, wait: float = 0) -> str:
 
         if action == "check_order":
             out = wa_lookup.order_text(db, _mobile(conv), _clean(obj.get("order_no"), 60))
+            other = wa_lookup.find_order(db, _clean(obj.get("order_no"), 60)) if out == wa_lookup.NOT_FOUND else None
+            if other is not None and wa_lookup.order_contacts(db, other):
+                conv.pending_action = json.dumps({"kind": "track_verify", "entity": "order", "comp_no": other.order_no, "tries": 0})
+                db.commit()
+                out = (f"I checked, and nothing is registered with this WhatsApp number ({_mobile(conv)}) for order {other.order_no}, because it is registered with a different mobile number. "
+                       "For your security, please type the last 4 digits of the mobile number registered on the order, and I will show you its status.")
         else:
             out = wa_lookup.warranty_text(db, _mobile(conv), _clean(obj.get("serial_no"), 60))
         _say(db, conv, msg, out)

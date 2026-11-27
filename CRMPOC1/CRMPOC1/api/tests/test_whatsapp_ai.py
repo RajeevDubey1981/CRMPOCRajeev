@@ -306,7 +306,7 @@ class AutoReplyTests(unittest.TestCase):
             self.assertNotIn(secret, out)
         with self.model(action="check_order", order_no="ORD-2002"):
             self.run_msg(self.incoming("status of ORD-2002"))
-        self.assertIn("could not find", self.sent[-1])
+        self.assertIn("nothing is registered with this WhatsApp number", self.sent[-1])
         self.assertNotIn("Dispatched", self.sent[-1])
 
     def test_warranty_is_worked_out_from_the_installation_date_for_the_own_number_only(self):
@@ -361,6 +361,18 @@ class AutoReplyTests(unittest.TestCase):
             self.run_msg(self.incoming(guess))
         self.assertEqual(self.conv_now().status, "needs_staff")
         self.assertNotIn("Pending", " ".join(self.sent))
+
+    def test_an_order_on_another_mobile_is_shown_only_after_the_last_4_digits_match(self):
+        self._order("9000012345", "GEMC-511687761988458")
+        with self.model(action="check_order", order_no="GEMC-511687761988458"):
+            self.run_msg(self.incoming("GEMC-511687761988458 tell me about this order status"))
+        self.assertIn("nothing is registered with this WhatsApp number", self.sent[-1])
+        self.assertNotIn("Dispatched", self.sent[-1])
+        with self.model() as chat:
+            self.run_msg(self.incoming("2345"))
+        chat.assert_not_called()
+        self.assertIn("Dispatched", self.sent[-1])
+        self.assertNotIn("Secret", self.sent[-1])
 
     def test_saying_no_registers_nothing(self):
         details = dict(action="register_complaint", name="Ravi Kumar", problem="AC is not cooling", email="ravi@example.com", query_type="Service", model="IDCACSBF18K3F 1.5 ton split", address="12 MG Road, Noida 201301", error_code="E6")
