@@ -256,6 +256,49 @@ class AutoReplyTests(unittest.TestCase):
         self.assertEqual(self.db.query(Complaint).count(), 0)
         self.assertIsNone(self.conv_now().pending_action)
 
+    # --- persona and auto-resume ---
+    def test_the_assistant_introduces_itself_as_shubh_from_indcool_support(self):
+        self.assertIn("Hi, I'm Shubh from INDcool Support.", wa_ai.SYSTEM_PROMPT)
+        self.assertIn("Never claim to be a human", wa_ai.SYSTEM_PROMPT)
+
+    def _staff_reply(self, hours_ago):
+        self.db.add(WaMessage(conversation_id=self.conv.id, direction="out", msg_type="text", body="staff", status="sent",
+                              sent_by=self.admin.id, created_at=datetime.now(timezone.utc) - timedelta(hours=hours_ago)))
+        c = self.conv_now()
+        c.assigned_to = self.admin.id
+        self.db.commit()
+
+    def test_a_chat_goes_back_to_automatic_replies_after_8_quiet_hours(self):
+        self._staff_reply(9)
+        with self.model(reply="Back with you"):
+            self.assertEqual(self.run_msg(self.incoming("hello again")), "replied")
+        c = self.conv_now()
+        self.assertIsNone(c.assigned_to)
+        self.assertEqual(self.sent[-1], "Back with you")
+
+    def test_a_chat_staff_answered_recently_stays_with_staff(self):
+        self._staff_reply(3)
+        with self.model() as chat:
+            self.assertEqual(self.run_msg(self.incoming("hello again")), "blocked")
+        chat.assert_not_called()
+        self.assertEqual(self.conv_now().assigned_to, self.admin.id)
+
+    def test_taking_a_chat_without_replying_is_never_given_back_by_the_clock(self):
+        c = self.conv_now()
+        c.assigned_to = self.admin.id
+        self.db.commit()
+        with self.model():
+            self.assertEqual(self.run_msg(self.incoming("hi")), "blocked")
+
+    def test_an_old_handoff_with_a_staff_reply_reopens_the_chat(self):
+        self._staff_reply(10)
+        c = self.conv_now()
+        c.status = "needs_staff"
+        self.db.commit()
+        with self.model(reply="Hello"):
+            self.run_msg(self.incoming("anyone there?"))
+        self.assertEqual(self.conv_now().status, "open")
+
     # --- wiring ---
     def test_a_new_incoming_message_is_handed_to_the_engine_once(self):
         body = {"entry": [{"changes": [{"field": "messages", "value": {

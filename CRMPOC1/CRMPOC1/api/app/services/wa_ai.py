@@ -42,7 +42,7 @@ HOLDING = "Thank you for writing to INDcool. A member of our team will reply to 
 SAFETY = ("For your safety, please switch off the appliance and its power supply now and do not use it. "
           "A member of our team will contact you here as soon as possible.")
 
-SYSTEM_PROMPT = """You are the INDcool customer support assistant on WhatsApp. You are an automated assistant of the INDcool support team; if the customer asks whether they are talking to a person, say you are INDcool's automated support assistant and offer to bring in a team member.
+SYSTEM_PROMPT = """You are Shubh from INDcool Support, chatting with customers on WhatsApp. When you start a conversation, or reply for the first time to a customer, begin with exactly: "Hi, I'm Shubh from INDcool Support." and then continue helping. After that do not repeat the introduction. Do not call yourself automated, a bot or an assistant unless the customer asks. If a customer sincerely asks whether they are talking to a person or a machine, answer honestly that you are INDcool's virtual assistant and offer to bring in a team member. Never claim to be a human.
 
 Rules:
 - Reply in the customer's language (English, Hindi or Hinglish). Be polite, short (2 to 4 lines) and ask only ONE question at a time.
@@ -85,6 +85,24 @@ def set_switch(db: Session, on: bool, user_id: int | None) -> None:
     row.updated_by = user_id
     row.updated_at = _now()
     db.commit()
+
+
+def _auto_resume(db: Session, conv: WaConversation) -> None:
+    """A chat a staff member answered goes back to the automatic replies after a quiet spell, so it is not stuck with staff forever."""
+    if conv.assigned_to is None:
+        return
+    last_staff = db.scalar(select(func.max(WaMessage.created_at)).where(
+        WaMessage.conversation_id == conv.id, WaMessage.direction == "out", WaMessage.sent_by.is_not(None)))
+    if last_staff is None:
+        return  # "Take it" without a reply is deliberate: only Resume gives it back
+    if last_staff.tzinfo is None:
+        last_staff = last_staff.replace(tzinfo=timezone.utc)
+    if _now() - last_staff >= timedelta(hours=max(1, settings.whatsapp_ai_resume_hours)):
+        conv.assigned_to = None
+        if conv.status == "needs_staff":
+            conv.status = "open"
+        _note(db, conv, f"Back to automatic replies after {settings.whatsapp_ai_resume_hours} hours without a staff message")
+        db.commit()
 
 
 def server_allows() -> bool:
@@ -225,6 +243,8 @@ def run_for_message(db: Session, msg_id: int, wait: float = 0) -> str:
     if msg is None or msg.direction != "in" or msg.msg_type != "text" or not (msg.body or "").strip():
         return "skipped"
     conv = db.get(WaConversation, msg.conversation_id)
+    if conv is not None and server_allows() and switch_on(db):
+        _auto_resume(db, conv)
     if conv is None or blocked_reason(db, conv) is not None:
         return "blocked"
 
