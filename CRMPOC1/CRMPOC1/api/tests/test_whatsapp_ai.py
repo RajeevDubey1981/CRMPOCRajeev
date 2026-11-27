@@ -268,16 +268,16 @@ class AutoReplyTests(unittest.TestCase):
         c.assigned_to = self.admin.id
         self.db.commit()
 
-    def test_a_chat_goes_back_to_automatic_replies_after_8_quiet_hours(self):
+    def test_a_chat_goes_back_to_automatic_replies_after_8_quiet_hours_when_that_is_switched_on(self):
         self._staff_reply(9)
-        with self.model(reply="Back with you"):
+        with mock.patch.object(settings, "whatsapp_ai_resume_hours", 8), self.model(reply="Back with you"):
             self.assertEqual(self.run_msg(self.incoming("hello again")), "replied")
         c = self.conv_now()
         self.assertIsNone(c.assigned_to)
         self.assertEqual(self.sent[-1], "Back with you")
 
-    def test_a_chat_staff_answered_recently_stays_with_staff(self):
-        self._staff_reply(3)
+    def test_by_default_a_chat_staff_answered_stays_with_staff_even_after_a_day(self):
+        self._staff_reply(30)
         with self.model() as chat:
             self.assertEqual(self.run_msg(self.incoming("hello again")), "blocked")
         chat.assert_not_called()
@@ -295,7 +295,7 @@ class AutoReplyTests(unittest.TestCase):
         c = self.conv_now()
         c.status = "needs_staff"
         self.db.commit()
-        with self.model(reply="Hello"):
+        with mock.patch.object(settings, "whatsapp_ai_resume_hours", 8), self.model(reply="Hello"):
             self.run_msg(self.incoming("anyone there?"))
         self.assertEqual(self.conv_now().status, "open")
 

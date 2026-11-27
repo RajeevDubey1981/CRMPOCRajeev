@@ -89,7 +89,7 @@ def set_switch(db: Session, on: bool, user_id: int | None) -> None:
 
 def _auto_resume(db: Session, conv: WaConversation) -> None:
     """A chat a staff member answered goes back to the automatic replies after a quiet spell, so it is not stuck with staff forever."""
-    if conv.assigned_to is None:
+    if conv.assigned_to is None or settings.whatsapp_ai_resume_hours <= 0:
         return
     last_staff = db.scalar(select(func.max(WaMessage.created_at)).where(
         WaMessage.conversation_id == conv.id, WaMessage.direction == "out", WaMessage.sent_by.is_not(None)))

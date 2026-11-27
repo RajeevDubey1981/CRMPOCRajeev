@@ -81,7 +81,7 @@ class Settings(BaseSettings):
     sarvam_chat_model: str = "sarvam-105b-conversations"
     sarvam_chat_url: str = "https://api.sarvam.ai/v1/chat/completions"
     whatsapp_ai_hourly_limit: int = 20  # automatic replies per chat per hour, then hand over to staff
-    whatsapp_ai_resume_hours: int = 8  # a chat a staff member replied to goes back to automatic replies after this many quiet hours
+    whatsapp_ai_resume_hours: int = 0  # a chat a staff member replied to goes back to automatic replies after this many quiet hours; 0 = never, only the Resume button gives it back
     wa_template_name: str = "otp_verification"
     wa_template_language: str = "en_US"
     wa_happy_code_template: str = "service_happy_code_otp"
