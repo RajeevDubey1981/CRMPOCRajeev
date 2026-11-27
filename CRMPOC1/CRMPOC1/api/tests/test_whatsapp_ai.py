@@ -224,7 +224,7 @@ class AutoReplyTests(unittest.TestCase):
 
     # --- registering ---
     def test_a_complaint_is_registered_only_after_the_customer_says_yes(self):
-        details = dict(action="register_complaint", name="Ravi Kumar", problem="AC is not cooling", email="ravi@example.com", query_type="Service")
+        details = dict(action="register_complaint", name="Ravi Kumar", problem="AC is not cooling", email="ravi@example.com", query_type="Service", model="IDCACSBF18K3F 1.5 ton split", address="12 MG Road, Noida 201301", error_code="E6")
         with self.model(**details):
             self.run_msg(self.incoming("please register my AC problem, email ravi@example.com"))
         self.assertIn("Reply YES", self.sent[-1])
@@ -241,8 +241,33 @@ class AutoReplyTests(unittest.TestCase):
         self.assertEqual(self.db.query(Call).count(), 0)  # a WhatsApp chat is not a voice call
         self.assertIsNone(self.conv_now().pending_action)
 
+    def test_a_service_request_without_model_or_pin_is_not_registered_yet(self):
+        details = dict(action="register_complaint", name="Ravi Kumar", problem="AC shows E6", email="ravi@example.com", query_type="Service", model=None, address="Noida", reply="What is your AC model and full address with PIN code?")
+        with self.model(**details):
+            self.run_msg(self.incoming("my AC shows E6"))
+        self.assertNotIn("Reply YES", self.sent[-1])
+        self.assertIsNone(self.conv_now().pending_action)
+
+    def test_the_registered_complaint_keeps_model_address_and_error_code(self):
+        details = dict(action="register_complaint", name="Ravi Kumar", problem="AC shows E6", email="ravi@example.com", query_type="Service", model="IDCACSBF18K3F", address="12 MG Road, Noida 201301", error_code="E6")
+        with self.model(**details):
+            self.run_msg(self.incoming("register it"))
+        self.assertIn("E6", self.sent[-1])
+        self.assertIn("201301", self.sent[-1])
+        with self.model():
+            self.run_msg(self.incoming("YES"))
+        self.db.expire_all()
+        c = self.db.query(Complaint).one()
+        self.assertIn("201301", c.customer_address or "")
+        self.assertIn("IDCACSBF18K3F", c.model_details or "")
+        self.assertIn("E6", c.remark or "")
+
+    def test_the_prompt_carries_the_support_agent_playbook(self):
+        for needle in ("Error codes", "Registering a service request", "Tracking", "Close politely"):
+            self.assertIn(needle, wa_ai.SYSTEM_PROMPT)
+
     def test_saying_no_registers_nothing(self):
-        details = dict(action="register_complaint", name="Ravi Kumar", problem="AC is not cooling", email="ravi@example.com", query_type="Service")
+        details = dict(action="register_complaint", name="Ravi Kumar", problem="AC is not cooling", email="ravi@example.com", query_type="Service", model="IDCACSBF18K3F 1.5 ton split", address="12 MG Road, Noida 201301", error_code="E6")
         with self.model(**details):
             self.run_msg(self.incoming("register it"))
         self.run_msg(self.incoming("No"))
@@ -350,7 +375,7 @@ class AutoReplyTests(unittest.TestCase):
         self.assertEqual(self._alerts(), [])
 
     def test_a_registered_complaint_carries_the_customers_words_and_the_chat_gets_a_note(self):
-        details = dict(action="register_complaint", name="Ravi Kumar", problem="AC is not cooling", email="ravi@example.com", query_type="Service")
+        details = dict(action="register_complaint", name="Ravi Kumar", problem="AC is not cooling", email="ravi@example.com", query_type="Service", model="IDCACSBF18K3F 1.5 ton split", address="12 MG Road, Noida 201301", error_code="E6")
         with self.model(**details):
             self.run_msg(self.incoming("my split AC is not cooling at all"))
         with self.model():
