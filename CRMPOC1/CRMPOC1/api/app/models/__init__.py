@@ -8,6 +8,7 @@ from app.models.complaint import Complaint, ComplaintStatusLog
 from app.models.installation import HistoricalInstallationCompletion, InstallationRequest
 from app.models.call import Call
 from app.models.email_confirmation import EmailConfirmation
+from app.models.web_order import WebOrder, WebOrderAddress, WebOrderEvent, WebOrderItem, WebOrderPayment
 from app.models.whatsapp import WaAiRun, WaConversation, WaKnowledge, WaMessage, WaNote, WaSetting, WaWebhookEvent
 from app.models.claim import Claim, ClaimPhoto
 from app.models.shortage_claim import ShortageClaim, ShortageClaimEvent, ShortageClaimItem, ShortageClaimPhoto

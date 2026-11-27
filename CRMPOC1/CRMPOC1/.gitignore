@@ -41,3 +41,4 @@ scripts/sms-config.env
 
 scripts/website-server.env
 scripts/whatsapp-config.env
+scripts/web-orders-sync.env

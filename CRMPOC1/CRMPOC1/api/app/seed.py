@@ -139,7 +139,7 @@ DEFAULT_ROLES = [
         "perms": {
             "complaints": ALL, "installations": ALL, "orders": ALL, "vendors": ALL,
             "items": ALL, "couriers": ALL, "manufacturers": ALL, "insurance": ALL, "calls": ALL, "claims": ALL,
-            "users": ALL, "roles": ALL, "dashboard": ALL, "services": ALL, "bids": ALL, "whatsapp": ALL,
+            "users": ALL, "roles": ALL, "dashboard": ALL, "services": ALL, "bids": ALL, "whatsapp": ALL, "web_orders": RO,
             "historical_installations": (True, False, True, False, False),
         },
     },

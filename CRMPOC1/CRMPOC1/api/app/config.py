@@ -69,6 +69,8 @@ class Settings(BaseSettings):
     bid_reminder_hour_ist: int = 9
     bid_team_email: str = ""  # comma separated; empty means every user ticked as bid manager
 
+    web_orders_ingest_key: str = ""  # shared secret the website uses to send its orders to /api/web-orders/ingest; empty = ingest is off
+
     whatsapp_enabled: bool = False
     wa_phone_number_id: str = ""
     wa_access_token: str = ""
