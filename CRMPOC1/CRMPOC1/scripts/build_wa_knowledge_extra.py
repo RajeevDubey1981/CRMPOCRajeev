@@ -63,7 +63,7 @@ def chunks(lines: list[str], title: str, header: str = "") -> list[str]:
 GENERAL = """# Extra knowledge (built from the files in the Sarvam knowledge bases)
 
 Source files: AC_Fault_Code_Reference_Unit.docx, INDcool_AC_Model_Directory.docx, INDcool_Full_Product_Directory.docx and the
-split AC user manual. Built by scripts/build_wa_knowledge_extra.py. The rate card documents are intentionally not included.
+split AC user manual. Built by scripts/build_wa_knowledge_extra.py.
 
 ## How to handle error codes and AC problems on WhatsApp
 
