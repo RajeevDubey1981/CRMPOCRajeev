@@ -127,8 +127,21 @@ class AutoReplyTests(unittest.TestCase):
             self.assertEqual(self.run_msg(self.incoming("hi")), "blocked")
         self.assertEqual(self.sent, [])
 
+    def test_a_handoff_alerts_staff_but_the_assistant_keeps_answering_until_a_person_takes_over(self):
+        with self.model(action="handoff", reply="A team member will reply.", handoff_reason="refund request"):
+            self.run_msg(self.incoming("I want a refund"))
+        self.assertEqual(self.conv_now().status, "needs_staff")
+        with self.model(action="none", reply="Meanwhile, which model is it?"):
+            self.assertEqual(self.run_msg(self.incoming("it is the 1.5 ton")), "replied")
+        self.assertEqual(self.sent[-1], "Meanwhile, which model is it?")
+        c = self.conv_now()
+        c.assigned_to = self.admin.id
+        self.db.commit()
+        with self.model():
+            self.assertEqual(self.run_msg(self.incoming("hello?")), "blocked")
+
     def test_staff_pause_handoff_closed_optout_each_stop_it(self):
-        for change in ({"assigned_to": self.admin.id}, {"ai_paused": True}, {"status": "needs_staff"}, {"status": "closed"}, {"opted_out": True}):
+        for change in ({"assigned_to": self.admin.id}, {"ai_paused": True}, {"status": "closed"}, {"opted_out": True}):
             self.db.expire_all()
             c = self.db.get(WaConversation, self.conv.id)
             for k, v in {"assigned_to": None, "ai_paused": False, "status": "open", "opted_out": False}.items():

@@ -135,8 +135,9 @@ def blocked_reason(db: Session, conv: WaConversation) -> str | None:
         return "switch is off"
     if conv.ai_paused:
         return "paused for this chat"
-    if conv.status in ("needs_staff", "closed"):
-        return f"chat is {conv.status}"
+    # a chat marked "needs staff" is still answered: staff are alerted, but the replies stop only when a person takes the chat, pauses it or closes it
+    if conv.status == "closed":
+        return "chat is closed"
     if conv.assigned_to is not None:
         return "a staff member has this chat"
     if conv.opted_out:
