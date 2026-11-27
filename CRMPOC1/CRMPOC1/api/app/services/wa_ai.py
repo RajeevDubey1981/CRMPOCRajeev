@@ -59,7 +59,8 @@ How a good support agent works (follow this):
 - Greet warmly once, understand what the customer needs, and move the chat forward in every reply. Acknowledge the problem in a few words ("Sorry about that") before helping; stay calm and friendly even if the customer is upset.
 - Error codes: when a customer mentions a code (E6, F1, P4, EE, L1 ...) or a symptom (not cooling, water leaking, noise, remote not working, blinking light), look it up in the knowledge and in ONE message explain what it means in simple words and give only the safe steps from the knowledge (switch off at the main power, wait 3 minutes, switch on; clean the filter; check remote batteries). Never ask them to open the unit or touch wiring or gas. Then ask whether it worked. If it did not, or they ask for a technician, offer to register a service request. If the knowledge has no such code, say so and offer a service request.
 - Registering a service request: collect, one question at a time, the name, the product model (or the product type if they do not know it), a short description of the problem (with the error code if any), the full address with PIN code or at least city and PIN, and their email (they must type it). The mobile number is already known from WhatsApp, never ask for it. Ask for anything missing before using "register_complaint". Do not promise a visit date, an engineer or a free repair: the service team decides warranty and schedules the visit.
-- Tracking: if the customer asks about a complaint or service request, use "track_complaint" at once, with the number if they gave one.
+- Tracking: if the customer asks about a complaint, service request or installation, use "track_complaint" at once, with the number if they gave one.
+- Orders and warranty: for an order or delivery question ask for the order number, then use "check_order". For a warranty question ask for the serial number on the label, then use "check_warranty". Never state order or warranty facts yourself: only what these actions return. If it cannot be found, offer a team member.
 - Installation requests: collect the same details plus the product and the purchase place or date, then use "register_complaint" with query_type "Installation".
 - Buying advice: ask room size, budget and need only AFTER listing matching models. Share the product page link. For bulk, dealer, CSD, export or a final quote use "handoff" with a short note of what they want.
 - Share the right link from the knowledge (service request, warranty, manuals, store locator) when it helps, one link per message.
@@ -67,14 +68,16 @@ How a good support agent works (follow this):
 - Use "handoff" for anger or complaints about our service, payments, refunds, replacement or warranty disputes, price quotes, bulk or dealer deals, anything urgent, or anything you are unsure about.
 
 You must answer with ONE JSON object only, no other text:
-{"reply": "<text to send>", "action": "none" | "track_complaint" | "register_complaint" | "handoff",
- "comp_no": "<complaint number the customer gave, else null>",
+{"reply": "<text to send>", "action": "none" | "track_complaint" | "check_order" | "check_warranty" | "register_complaint" | "handoff",
+ "comp_no": "<complaint number the customer gave, else null>", "order_no": null, "serial_no": null,
  "name": null, "problem": null, "email": null, "model": null, "address": null, "error_code": null, "query_type": "Service" | "Installation" | "Sales" | "Others" | null,
  "handoff_reason": null}
 
 Actions:
 - "none": just reply.
 - "track_complaint": the customer wants the status of a complaint or service request. Put the number they gave in comp_no if any. We will look it up for their own number and write the answer.
+- "check_order": the customer asks about an order, delivery or dispatch. Put the order number in order_no (ask for it if they have not given it). We look it up for their own number and write the answer.
+- "check_warranty": the customer asks whether a product is in warranty or when the warranty ends. Put the serial number from the product label in serial_no (ask for it if missing). We look it up for their own number and write the answer.
 - "register_complaint": the customer wants to register a service complaint, installation or sales enquiry. Fill name, problem, email, query_type, model, address (with PIN code) and error_code (if any) ONLY when the customer has told you all of them (a Sales enquiry may leave address and model empty); if anything is missing use action "none" and ask for the missing one (email must be typed by the customer). We will then ask them to confirm.
 - "handoff": a team member must take over. Put the reason in handoff_reason and a short polite holding message in reply."""
 
@@ -219,17 +222,9 @@ def _squash(v: str) -> str:
 
 
 def _track_text(db: Session, conv: WaConversation, comp_no: str | None) -> str:
-    rows = db.scalars(
-        select(Complaint).where(Complaint.customer_mobile == _mobile(conv), Complaint.deleted_at.is_(None)).order_by(desc(Complaint.id)).limit(10)
-    ).all()
-    if comp_no:
-        key = _squash(comp_no)
-        rows = [c for c in rows if _squash(c.comp_no) == key or _squash(c.comp_no).endswith(key)] if key else rows
-    if not rows:
-        return ("I could not find a request registered with this WhatsApp number. "
-                "Please tell me the complaint number, or I can bring in a team member.")
-    lines = [f"{c.comp_no} ({c.query_type}), registered {c.comp_date:%d %b %Y}: {c.status}" for c in rows[:3]]
-    return "Here is what I can see for this number:\n" + "\n".join(lines) + "\nOur team will update you here as it progresses."
+    from app.services import wa_lookup
+
+    return wa_lookup.complaint_text(db, _mobile(conv), comp_no)
 
 
 def _history(db: Session, conv: WaConversation, limit: int = 10) -> list[dict]:
@@ -381,6 +376,15 @@ def run_for_message(db: Session, msg_id: int, wait: float = 0) -> str:
 
     action = str(obj.get("action") or "none")
     reply = _clean(obj.get("reply"), 1000)
+    if action in ("check_order", "check_warranty"):
+        from app.services import wa_lookup
+
+        if action == "check_order":
+            out = wa_lookup.order_text(db, _mobile(conv), _clean(obj.get("order_no"), 60))
+        else:
+            out = wa_lookup.warranty_text(db, _mobile(conv), _clean(obj.get("serial_no"), 60))
+        _say(db, conv, msg, out)
+        return finish("replied", action, tokens=tokens)
     if action == "track_complaint":
         out = _track_text(db, conv, _clean(obj.get("comp_no"), 40) or None)
         _say(db, conv, msg, out)

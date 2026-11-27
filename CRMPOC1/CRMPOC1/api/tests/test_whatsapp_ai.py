@@ -266,6 +266,54 @@ class AutoReplyTests(unittest.TestCase):
         for needle in ("Error codes", "Registering a service request", "Tracking", "Close politely"):
             self.assertIn(needle, wa_ai.SYSTEM_PROMPT)
 
+    # --- orders, warranty, installation (read-only, own number only) ---
+    def _order(self, mobile, no, serial=None, years=(2, 5, 5)):
+        from app.models.installation import InstallationRequest
+        from app.models.order import Order, OrderItem
+
+        o = Order(order_no=no, order_date=date(2026, 5, 1), customer_contact=mobile, customer_name="Secret Name", customer_address="Secret Lane 5", status="Dispatched", expected_delivery_date=date(2026, 5, 9), lrn_no="LR12345", freight_amount=999)
+        self.db.add(o)
+        self.db.flush()
+        if serial:
+            it = OrderItem(order_id=o.id, serial_no=serial, machine_warranty_years=years[0], component_warranty_years=years[1], pcb_warranty_years=years[2])
+            self.db.add(it)
+            self.db.flush()
+            self.db.add(InstallationRequest(customer_name="N", contact_number=mobile, order_id=o.id, order_item_id=it.id, serial_no=serial, status="Completed", installation_date=datetime(2026, 6, 1, tzinfo=timezone.utc)))
+        self.db.commit()
+
+    def test_an_order_is_shown_only_to_its_own_number_and_without_money_or_address(self):
+        self._order("9891572565", "ORD-1001")
+        self._order("9000000000", "ORD-2002")
+        with self.model(action="check_order", order_no="ORD-1001"):
+            self.run_msg(self.incoming("where is my order ORD-1001"))
+        out = self.sent[-1]
+        self.assertIn("Dispatched", out)
+        self.assertIn("LR12345", out)
+        for secret in ("Secret", "999"):
+            self.assertNotIn(secret, out)
+        with self.model(action="check_order", order_no="ORD-2002"):
+            self.run_msg(self.incoming("status of ORD-2002"))
+        self.assertIn("could not find", self.sent[-1])
+        self.assertNotIn("Dispatched", self.sent[-1])
+
+    def test_warranty_is_worked_out_from_the_installation_date_for_the_own_number_only(self):
+        self._order("9891572565", "ORD-3003", serial="SN123456789")
+        self._order("9000000000", "ORD-4004", serial="SN999999999")
+        with self.model(action="check_warranty", serial_no="SN123456789"):
+            self.run_msg(self.incoming("warranty for SN123456789"))
+        self.assertIn("01 Jun 2028", self.sent[-1])
+        self.assertIn("01 Jun 2031", self.sent[-1])
+        with self.model(action="check_warranty", serial_no="SN999999999"):
+            self.run_msg(self.incoming("warranty for SN999999999"))
+        self.assertIn("could not find", self.sent[-1])
+
+    def test_tracking_also_shows_the_installation_request_of_this_number(self):
+        self._order("9891572565", "ORD-5005", serial="SN555555555")
+        with self.model(action="track_complaint", comp_no=None):
+            self.run_msg(self.incoming("installation status?"))
+        self.assertIn("Installation request", self.sent[-1])
+        self.assertIn("installed on 01 Jun 2026", self.sent[-1])
+
     def test_saying_no_registers_nothing(self):
         details = dict(action="register_complaint", name="Ravi Kumar", problem="AC is not cooling", email="ravi@example.com", query_type="Service", model="IDCACSBF18K3F 1.5 ton split", address="12 MG Road, Noida 201301", error_code="E6")
         with self.model(**details):
