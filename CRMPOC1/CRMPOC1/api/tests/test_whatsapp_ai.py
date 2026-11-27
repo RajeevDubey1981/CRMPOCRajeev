@@ -219,8 +219,8 @@ class AutoReplyTests(unittest.TestCase):
         self.assertNotIn("IDC_OTHERS_9", self.sent[-1])
         with self.model(action="track_complaint", comp_no="IDC_OTHERS_9"):
             self.run_msg(self.incoming("what about IDC_OTHERS_9"))
-        self.assertNotIn("IDC_OTHERS_9", self.sent[-1])
-        self.assertIn("could not find", self.sent[-1])
+        self.assertNotIn("Pending", self.sent[-1])  # no status of somebody else's complaint
+        self.assertIn("nothing is registered with this WhatsApp number", self.sent[-1])
 
     # --- registering ---
     def test_a_complaint_is_registered_only_after_the_customer_says_yes(self):
@@ -322,6 +322,32 @@ class AutoReplyTests(unittest.TestCase):
         with self.model(action="none", reply=intro + "Thanks. Which room size?"):
             self.run_msg(self.incoming("Noida"))
         self.assertEqual(self.sent[-1], "Thanks. Which room size?")
+
+    def test_a_complaint_on_another_mobile_is_shown_only_after_the_last_4_digits_match(self):
+        self._complaint("9000012345", "IDC_1795756476454")
+        with self.model(action="track_complaint", comp_no="IDC_1795756476454"):
+            self.run_msg(self.incoming("status of IDC_1795756476454"))
+        self.assertIn("nothing is registered with this WhatsApp number", self.sent[-1])
+        self.assertIn("last 4 digits", self.sent[-1])
+        self.assertNotIn("Pending", self.sent[-1])
+        with self.model() as chat:
+            self.run_msg(self.incoming("9999"))
+        chat.assert_not_called()
+        self.assertIn("does not match", self.sent[-1])
+        with self.model() as chat:
+            self.run_msg(self.incoming("it is 2345"))
+        chat.assert_not_called()
+        self.assertIn("Pending", self.sent[-1])
+        self.assertIsNone(self.conv_now().pending_action)
+
+    def test_two_wrong_guesses_hand_the_chat_to_staff(self):
+        self._complaint("9000012345", "IDC_1795756476454")
+        with self.model(action="track_complaint", comp_no="IDC_1795756476454"):
+            self.run_msg(self.incoming("status of IDC_1795756476454"))
+        for guess in ("1111", "2222"):
+            self.run_msg(self.incoming(guess))
+        self.assertEqual(self.conv_now().status, "needs_staff")
+        self.assertNotIn("Pending", " ".join(self.sent))
 
     def test_saying_no_registers_nothing(self):
         details = dict(action="register_complaint", name="Ravi Kumar", problem="AC is not cooling", email="ravi@example.com", query_type="Service", model="IDCACSBF18K3F 1.5 ton split", address="12 MG Road, Noida 201301", error_code="E6")

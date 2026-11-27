@@ -239,7 +239,14 @@ def _squash(v: str) -> str:
 def _track_text(db: Session, conv: WaConversation, comp_no: str | None) -> str:
     from app.services import wa_lookup
 
-    return wa_lookup.complaint_text(db, _mobile(conv), comp_no)
+    text = wa_lookup.complaint_text(db, _mobile(conv), comp_no)
+    if comp_no and text.startswith("I could not find"):
+        other = wa_lookup.find_complaint(db, comp_no)
+        if other is not None:  # it exists under another mobile: ask for proof before showing anything
+            conv.pending_action = json.dumps({"kind": "track_verify", "comp_no": other.comp_no, "tries": 0})
+            db.commit()
+            return (f"I checked, and nothing is registered with this WhatsApp number ({_mobile(conv)}). The complaint {other.comp_no} is registered with a different mobile number. " "For your security, please type the last 4 digits of the mobile number registered on it, and I will show you its status.")
+    return text
 
 
 def _history(db: Session, conv: WaConversation, limit: int = 10) -> list[dict]:
@@ -305,6 +312,14 @@ def _link_chat_to_complaint(db: Session, conv: WaConversation, comp_no: str) -> 
         logger.exception("could not link the chat to the complaint")
 
 
+def _pending_verify(conv: WaConversation) -> dict | None:
+    try:
+        p = json.loads(conv.pending_action) if conv.pending_action else None
+    except ValueError:
+        return None
+    return p if isinstance(p, dict) and p.get("kind") == "track_verify" else None
+
+
 def _pending(conv: WaConversation) -> dict | None:
     if not conv.pending_action:
         return None
@@ -356,6 +371,29 @@ def run_for_message(db: Session, msg_id: int, wait: float = 0) -> str:
     if HAZARD.search(text):
         _handoff(db, conv, msg, "possible electrical hazard", SAFETY)
         return finish("handoff", detail="hazard words")
+
+    # a status check waiting for the last 4 digits of the registered mobile
+    verify = _pending_verify(conv)
+    if verify:
+        from app.services import wa_lookup
+
+        target = wa_lookup.find_complaint(db, verify["comp_no"])
+        if target is not None and wa_lookup.last4_matches(target, text):
+            conv.pending_action = None
+            db.commit()
+            _note(db, conv, f"Status of {target.comp_no} shown after the customer gave the last 4 digits of its mobile")
+            _say(db, conv, msg, "Thank you, that matches. " + wa_lookup.complaint_line(db, target) + chr(10) + "Our team will update you as it progresses.")
+            return finish("replied", "track_complaint", "verified by last 4 digits")
+        tries = int(verify.get("tries", 0)) + 1
+        if tries >= 2:
+            conv.pending_action = None
+            db.commit()
+            _handoff(db, conv, msg, f"customer could not verify complaint {verify['comp_no']}", "I could not match that, so I am bringing in a team member who will help you with this complaint.")
+            return finish("handoff", "track_complaint", "verification failed")
+        conv.pending_action = json.dumps({**verify, "tries": tries})
+        db.commit()
+        _say(db, conv, msg, "That does not match. Please type the last 4 digits of the mobile number registered on the complaint, or say TEAM and I will bring in a team member.")
+        return finish("replied", "track_complaint", "verification retry")
 
     # a registration waiting for yes / no
     pending = _pending(conv)

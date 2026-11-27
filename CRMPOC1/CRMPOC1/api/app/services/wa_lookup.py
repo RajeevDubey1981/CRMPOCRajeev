@@ -110,6 +110,30 @@ def warranty_text(db: Session, mobile: str, serial: str | None) -> str:
     return head + " " + "; ".join(parts) + "." + tail + " The service team confirms the final warranty on a repair."
 
 
+def complaint_line(db: Session, c: Complaint) -> str:
+    line = f"{c.comp_no} ({c.query_type}), registered {_d(c.comp_date)}: {c.status}"
+    eng = _first_name(db, c.assigned_engineer)
+    if eng and c.status not in ("Closed", "Resolved", "Completed"):
+        line += f", engineer {eng} assigned"
+    if c.status_date:
+        line += f" (updated {_d(c.status_date)})"
+    return line
+
+
+def find_complaint(db: Session, comp_no: str | None) -> Complaint | None:
+    """A complaint by its number, whoever's mobile is on it. Only for the verification step: never show it without that check."""
+    key = _squash(comp_no)
+    if len(key) < 6:
+        return None
+    rows = db.scalars(select(Complaint).where(Complaint.deleted_at.is_(None), Complaint.comp_no.ilike("%" + (comp_no or "").strip() + "%")).limit(20)).all()
+    return next((c for c in rows if _squash(c.comp_no) == key), None)
+
+
+def last4_matches(c: Complaint, text: str) -> bool:
+    digits = re.sub(r"\D", "", c.customer_mobile or "")
+    return len(digits) >= 4 and re.search(r"(?<!\d)" + digits[-4:] + r"(?!\d)", text or "") is not None
+
+
 def complaint_text(db: Session, mobile: str, comp_no: str | None) -> str:
     rows = db.scalars(select(Complaint).where(Complaint.customer_mobile == mobile, Complaint.deleted_at.is_(None)).order_by(desc(Complaint.id)).limit(10)).all()
     if comp_no:
@@ -120,15 +144,7 @@ def complaint_text(db: Session, mobile: str, comp_no: str | None) -> str:
         installs = []
     if not rows and not installs:
         return "I could not find a request registered with this WhatsApp number. Please tell me the complaint number, or I can bring in a team member."
-    lines = []
-    for c in rows[:3]:
-        line = f"{c.comp_no} ({c.query_type}), registered {_d(c.comp_date)}: {c.status}"
-        eng = _first_name(db, c.assigned_engineer)
-        if eng and c.status not in ("Closed", "Resolved", "Completed"):
-            line += f", engineer {eng} assigned"
-        if c.status_date:
-            line += f" (updated {_d(c.status_date)})"
-        lines.append(line)
+    lines = [complaint_line(db, c) for c in rows[:3]]
     for i in installs:
         line = f"Installation request of {_d(i.request_date)}: {i.status}"
         if i.installation_date:
