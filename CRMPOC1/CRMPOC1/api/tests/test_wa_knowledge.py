@@ -99,3 +99,13 @@ class RateCardTests(unittest.TestCase):
         everything = " ".join(b for q in ("gas charging", "installation", "service charges", "visit charge", "fridge gas charging", "gst") for b in k.select_blocks(q)[1])
         for internal in ("Franchise", "ASC", "penalty", "payout", "Code of Conduct"):
             self.assertNotIn(internal, everything)
+
+
+class IceMachineTests(unittest.TestCase):
+    def test_ice_machine_questions_reach_the_catalogue(self):
+        from app.services import wa_knowledge as k
+
+        for q in ("do you have ice machine", "IDCIMM-130 specifications", "ice maker for my cafe"):
+            _, blocks = k.select_blocks(q)
+            self.assertTrue(blocks and "IDCIMM" in blocks[0], q)
+        self.assertIn("95 Kgs/Day", k.select_blocks("IDCIMM-210")[1][0])
