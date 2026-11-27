@@ -17,7 +17,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import deploy  # noqa: E402
 
 OUT = Path(__file__).resolve().parent / "web-orders-sync.env"
-CRM_URL = "https://indcoolappliances.com"
+CRM_URL = "https://indcoolapplainces.com"  # spelled this way on purpose: it is the real domain
 
 
 def main() -> int:
