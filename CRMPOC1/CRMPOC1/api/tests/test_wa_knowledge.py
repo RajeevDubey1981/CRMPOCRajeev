@@ -76,3 +76,12 @@ class ExtraKnowledgeTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class OffersTests(unittest.TestCase):
+    def test_questions_about_offers_reach_the_offers_entries(self):
+        from app.services import wa_knowledge as k
+
+        for q in ("any offer on AC", "EMI available?", "what is the free electricity scheme", "CSD canteen price"):
+            _, blocks = k.select_blocks(q)
+            self.assertTrue(blocks and blocks[0].startswith("[Offers and schemes]"), q)

@@ -23,6 +23,7 @@ from app.models.whatsapp import WaKnowledge
 DATA = Path(__file__).resolve().parent.parent / "data"
 KNOWLEDGE_FILE = DATA / "wa_knowledge.md"
 EXTRA_FILE = DATA / "wa_knowledge_extra.md"
+OFFERS_FILE = DATA / "wa_knowledge_offers.md"
 HEAD_LIMIT = 14000
 PRODUCT_LIMIT = 7000
 PER_PRODUCT = 2200
@@ -35,6 +36,9 @@ _STOP = {"the", "and", "for", "with", "you", "your", "are", "this", "that", "wha
          "tell", "about", "model"}
 # AC error codes are short (E6, F1, P4, EE ...): ordinary word matching would drop them
 _CODE = re.compile(r"\b(?:ee|e[0-9]|f[0-9]|p[0-9a-c]|ph|pc|l[1-4])\b")
+
+
+OFFER_WORDS = {"offer", "scheme", "emi", "discount", "cashback", "csd", "electricity", "canteen", "cod", "delivery", "payment"}
 
 
 def tokens(text: str) -> set[str]:
@@ -55,7 +59,7 @@ def parse_files() -> tuple[list[tuple[str, str]], list[tuple[str, str, str]]]:
     """([(title, text)] general sections, [(category, title, text)] searchable entries) from the two built-in files."""
     heads: list[tuple[str, str]] = []
     blocks: list[tuple[str, str, str]] = []
-    for f in (KNOWLEDGE_FILE, EXTRA_FILE):
+    for f in (KNOWLEDGE_FILE, EXTRA_FILE, OFFERS_FILE):
         if not f.is_file():
             continue
         text = f.read_text(encoding="utf-8")
@@ -132,7 +136,7 @@ def load(db: Session | None = None) -> tuple[str, list[tuple[str, set[str]]]]:
         found = _from_db(db)
         if found is not None:
             return found
-    key = ("files", tuple(f.stat().st_mtime for f in (KNOWLEDGE_FILE, EXTRA_FILE) if f.is_file()))
+    key = ("files", tuple(f.stat().st_mtime for f in (KNOWLEDGE_FILE, EXTRA_FILE, OFFERS_FILE) if f.is_file()))
     if _CACHE["sig"] != key:
         head, products = _from_files()
         _CACHE.update({"sig": key, "head": head, "products": products})
@@ -149,6 +153,8 @@ def select_blocks(query: str, db: Session | None = None) -> tuple[str, list[str]
             continue
         # model codes, sizes and error codes (words with digits) count more than ordinary words
         score = len(hit) + 3 * sum(1 for w in hit if re.search(r"\d", w) and len(w) >= 5)
+        if block.startswith("[Offers and schemes]") and hit & OFFER_WORDS:
+            score += 8  # a question about offers must reach the offers, not drown among product pages
         scored.append((score, block))
     scored.sort(key=lambda x: -x[0])
     chosen, used = [], 0
