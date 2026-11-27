@@ -11,5 +11,19 @@ export const whatsappApi = {
   aiPause: (id, paused) => api.post(`/api/whatsapp/conversations/${id}/ai-pause`, { paused }).then((r) => r.data),
   aiSwitch: (on) => api.post("/api/whatsapp/ai-switch", { on }).then((r) => r.data),
   resume: (id) => api.post(`/api/whatsapp/conversations/${id}/resume`).then((r) => r.data),
+  kList: () => api.get("/api/whatsapp/knowledge").then((r) => r.data),
+  kGet: (id) => api.get(`/api/whatsapp/knowledge/${id}`).then((r) => r.data),
+  kCreate: (body) => api.post("/api/whatsapp/knowledge", body).then((r) => r.data),
+  kUpdate: (id, body) => api.put(`/api/whatsapp/knowledge/${id}`, body).then((r) => r.data),
+  kDelete: (id) => api.delete(`/api/whatsapp/knowledge/${id}`).then((r) => r.data),
+  kImport: () => api.post("/api/whatsapp/knowledge-import").then((r) => r.data),
+  kUpload: (file, category, alwaysSend) => {
+    const f = new FormData();
+    f.append("file", file);
+    f.append("category", category || "");
+    f.append("always_send", alwaysSend ? "true" : "false");
+    return api.post("/api/whatsapp/knowledge-upload", f).then((r) => r.data);
+  },
+  kPreview: (question) => api.post("/api/whatsapp/knowledge-preview", { question }).then((r) => r.data),
   addNote: (id, body) => api.post(`/api/whatsapp/conversations/${id}/notes`, { body }).then((r) => r.data),
 };

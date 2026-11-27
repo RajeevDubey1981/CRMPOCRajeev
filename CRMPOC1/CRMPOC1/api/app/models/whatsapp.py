@@ -1,6 +1,7 @@
 from datetime import datetime
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy.dialects.mysql import LONGTEXT
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -92,3 +93,18 @@ class WaSetting(Base):
     value: Mapped[str | None] = mapped_column(String(500), nullable=True)
     updated_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class WaKnowledge(Base, TimestampMixin):
+    """One entry of what the WhatsApp assistant may say. Managed from the CRM, so changes need no deploy."""
+
+    __tablename__ = "wa_knowledge"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    category: Mapped[str] = mapped_column(String(100), default="", nullable=False)
+    body: Mapped[str] = mapped_column(Text().with_variant(LONGTEXT(), "mysql"), nullable=False)
+    always_send: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)  # general rules sent with every question; others are looked up
+    active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    source: Mapped[str] = mapped_column(String(20), default="typed", nullable=False)  # builtin | typed | upload
+    updated_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)

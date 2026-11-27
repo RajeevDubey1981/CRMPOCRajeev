@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, Response
+from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Query, Request, Response, UploadFile
 from fastapi.responses import PlainTextResponse
 from sqlalchemy import desc, func, or_, select
 from sqlalchemy.orm import Session
@@ -16,8 +16,8 @@ from app.deps import get_current_user
 from app.models.complaint import Complaint
 from app.models.service import ServiceRequest
 from app.models.user import User
-from app.models.whatsapp import WaAiRun, WaConversation, WaMessage, WaNote, WaWebhookEvent
-from app.services import wa_ai, whatsapp_inbox as wa
+from app.models.whatsapp import WaAiRun, WaConversation, WaKnowledge, WaMessage, WaNote, WaWebhookEvent
+from app.services import wa_ai, wa_knowledge, whatsapp_inbox as wa
 from app.services.permissions import can_act_on
 from app.services.role_access import is_system_admin
 from app.services.sarvam_chat import chat_configured
@@ -231,3 +231,120 @@ def add_note(conv_id: int, body: dict = Body(...), db: Session = Depends(get_db)
     db.add(WaNote(conversation_id=conv.id, body=text[:4000], created_by=user.id, created_at=datetime.now(timezone.utc)))
     db.commit()
     return {"ok": True}
+
+
+# ---------------- what the assistant knows (administrators only) ----------------
+def _admin(user: User) -> None:
+    if not is_system_admin(user):
+        raise HTTPException(403, "Only an administrator can change what the assistant knows")
+
+
+def _k_out(k: WaKnowledge, full: bool = True) -> dict:
+    d = {"id": k.id, "title": k.title, "category": k.category, "always_send": k.always_send, "active": k.active, "source": k.source,
+         "chars": len(k.body or ""), "updated_at": k.updated_at}
+    if full:
+        d["body"] = k.body
+    return d
+
+
+@router.get("/knowledge")
+def list_knowledge(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    _admin(user)
+    rows = db.scalars(select(WaKnowledge).order_by(WaKnowledge.always_send.desc(), WaKnowledge.category, WaKnowledge.title)).all()
+    return {"using": "database" if rows else "builtin files", "items": [_k_out(r, full=False) for r in rows]}
+
+
+@router.get("/knowledge/{kid}")
+def get_knowledge(kid: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    _admin(user)
+    k = db.get(WaKnowledge, kid)
+    if k is None:
+        raise HTTPException(404, "Entry not found")
+    return _k_out(k)
+
+
+def _clean_entry(body: dict) -> dict:
+    title = str(body.get("title") or "").strip()[:200]
+    text = str(body.get("body") or "").strip()
+    if not title or not text:
+        raise HTTPException(422, "An entry needs a title and some text")
+    if len(text) > 60000:
+        raise HTTPException(422, "That entry is too long (60,000 characters at most). Split it into several entries.")
+    return {"title": title, "body": text, "category": str(body.get("category") or "").strip()[:100],
+            "always_send": bool(body.get("always_send")), "active": body.get("active", True) is not False}
+
+
+@router.post("/knowledge")
+def create_knowledge(body: dict = Body(...), db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    _admin(user)
+    data = _clean_entry(body)
+    wa_knowledge.ensure_seeded(db, user.id)  # the first change keeps everything from the built-in files
+    k = WaKnowledge(**data, source="typed", updated_by=user.id)
+    db.add(k)
+    db.commit()
+    return _k_out(k)
+
+
+@router.put("/knowledge/{kid}")
+def update_knowledge(kid: int, body: dict = Body(...), db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    _admin(user)
+    k = db.get(WaKnowledge, kid)
+    if k is None:
+        raise HTTPException(404, "Entry not found")
+    for key, value in _clean_entry({**_k_out(k), **body}).items():
+        setattr(k, key, value)
+    k.updated_by = user.id
+    db.commit()
+    return _k_out(k)
+
+
+@router.delete("/knowledge/{kid}")
+def delete_knowledge(kid: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    _admin(user)
+    k = db.get(WaKnowledge, kid)
+    if k is None:
+        raise HTTPException(404, "Entry not found")
+    db.delete(k)
+    db.commit()
+    return {"ok": True}
+
+
+@router.post("/knowledge-import")
+def import_builtin_knowledge(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Copy the built-in knowledge files into the editor (only while it is empty)."""
+    _admin(user)
+    return {"created": wa_knowledge.import_builtin(db, user.id)}
+
+
+@router.post("/knowledge-upload")
+async def upload_knowledge(
+    file: UploadFile = File(...), category: str = Form(""), always_send: bool = Form(False),
+    db: Session = Depends(get_db), user: User = Depends(get_current_user),
+):
+    """A Word, Markdown or text file becomes one or more entries."""
+    _admin(user)
+    data = await file.read()
+    if len(data) > 3 * 1024 * 1024:
+        raise HTTPException(413, "That file is too big (3 MB at most)")
+    try:
+        text = wa_knowledge.read_upload(file.filename or "", data)
+        stem = (file.filename or "upload").rsplit(".", 1)[0][:150]
+        entries = wa_knowledge.split_into_entries(stem, text, (category or stem).strip()[:100])
+    except wa_knowledge.UploadError as exc:
+        raise HTTPException(422, str(exc))
+    if len(entries) > 300:
+        raise HTTPException(422, "That file would make more than 300 entries. Split it first.")
+    wa_knowledge.ensure_seeded(db, user.id)
+    for title, cat, text_body in entries:
+        db.add(WaKnowledge(title=title, category=cat, body=text_body, always_send=bool(always_send), active=True, source="upload", updated_by=user.id))
+    db.commit()
+    return {"created": len(entries)}
+
+
+@router.post("/knowledge-preview")
+def preview_knowledge(body: dict = Body(...), db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """What the assistant would be given for a customer question: the general rules plus the entries that match it."""
+    _admin(user)
+    head, chosen = wa_knowledge.select_blocks(str(body.get("question") or ""), db)
+    titles = [c.split("###", 1)[1].strip().splitlines()[0] if "###" in c else c[:80] for c in chosen]
+    return {"general_chars": len(head), "matched": titles, "total_chars": len(head) + sum(len(c) for c in chosen)}

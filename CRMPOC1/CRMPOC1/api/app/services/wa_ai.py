@@ -299,7 +299,7 @@ def run_for_message(db: Session, msg_id: int, wait: float = 0) -> str:
         # anything else: forget the summary and carry on normally
 
     recent = " ".join(m["content"] for m in _history(db, conv, 4) if m["role"] == "user")
-    messages = [{"role": "system", "content": SYSTEM_PROMPT + "\n\nKnowledge you may use:\n" + wa_knowledge.for_query(recent)}]
+    messages = [{"role": "system", "content": SYSTEM_PROMPT + "\n\nKnowledge you may use:\n" + wa_knowledge.for_query(recent, db)}]
     if conv.contact_name:
         messages.append({"role": "system", "content": f"The customer's WhatsApp profile name is: {_clean(conv.contact_name, 60)}"})
     messages += _history(db, conv)

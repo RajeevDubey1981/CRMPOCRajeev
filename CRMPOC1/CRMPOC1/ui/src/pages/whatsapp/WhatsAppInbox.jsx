@@ -138,6 +138,7 @@ export default function WhatsAppInbox() {
             <span className={`rounded-full px-2.5 py-1 ${status.ai_active ? "bg-emerald-100 text-emerald-800" : "bg-slate-100 text-slate-600"}`}>
               Automatic replies {status.ai_active ? "on" : status.ai_switch ? "waiting for the server" : "off"}
             </span>
+            {isAdmin && (<Link to="/whatsapp/knowledge" className="rounded-full border border-slate-300 px-2.5 py-1 text-slate-700 hover:bg-slate-50">Assistant knowledge</Link>)}
             {isAdmin && (
               <button
                 type="button"
