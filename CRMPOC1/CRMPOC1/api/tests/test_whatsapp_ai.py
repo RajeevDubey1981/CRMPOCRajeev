@@ -299,6 +299,23 @@ class AutoReplyTests(unittest.TestCase):
             self.run_msg(self.incoming("anyone there?"))
         self.assertEqual(self.conv_now().status, "open")
 
+    # --- breakage must never mean silence ---
+    def test_a_missing_knowledge_table_falls_back_to_the_files(self):
+        with mock.patch("app.services.wa_knowledge._from_db_unsafe", side_effect=RuntimeError("table is gone")):
+            from app.services import wa_knowledge
+            self.assertIn("1800 119 515", wa_knowledge.for_query("hello", self.db))
+
+    def test_an_unexpected_crash_hands_the_chat_to_staff_with_a_holding_message(self):
+        m = self.incoming("hello")
+        self.db.expire_all()
+        with mock.patch("app.services.wa_ai.chat_json", side_effect=RuntimeError("something odd")):
+            try:
+                wa_ai.run_for_message(self.db, m.id)
+            except RuntimeError:
+                wa_ai._recover(self.db, m.id)
+        self.assertEqual(self.conv_now().status, "needs_staff")
+        self.assertEqual(len(self.sent), 1)
+
     # --- wiring ---
     def test_a_new_incoming_message_is_handed_to_the_engine_once(self):
         body = {"entry": [{"changes": [{"field": "messages", "value": {

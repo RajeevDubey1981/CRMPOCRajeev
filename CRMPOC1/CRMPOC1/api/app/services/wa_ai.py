@@ -341,6 +341,22 @@ def run_for_message(db: Session, msg_id: int, wait: float = 0) -> str:
     return finish("replied", "none", tokens=tokens)
 
 
+def _recover(db: Session, msg_id: int) -> None:
+    """Something unexpected broke while answering: never leave the customer in silence. Hand the chat to staff."""
+    try:
+        db.rollback()
+        msg = db.get(WaMessage, msg_id)
+        conv = db.get(WaConversation, msg.conversation_id) if msg else None
+        if conv is None or conv.status == "needs_staff":
+            return
+        run = db.scalar(select(WaAiRun).where(WaAiRun.inbound_message_id == msg_id))
+        if run is not None and run.outcome is None:
+            run.outcome, run.detail = "error", "unexpected error: handed to staff"
+        _handoff(db, conv, msg, "the reply service had an unexpected error", HOLDING)
+    except Exception:  # noqa: BLE001
+        logger.exception("could not hand the chat to staff after an error")
+
+
 def schedule(conv_id: int, msg_id: int) -> None:
     """Answer in the background so the webhook can return to Meta at once."""
     if not server_allows():
@@ -354,6 +370,7 @@ def schedule(conv_id: int, msg_id: int) -> None:
             run_for_message(db, msg_id, wait=3)
         except Exception:  # noqa: BLE001
             logger.exception("automatic reply failed")
+            _recover(db, msg_id)
         finally:
             db.close()
 

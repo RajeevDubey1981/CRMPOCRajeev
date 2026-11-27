@@ -103,6 +103,14 @@ def _from_files() -> tuple[str, list[tuple[str, set[str]]]]:
 
 
 def _from_db(db: Session) -> tuple[str, list[tuple[str, set[str]]]] | None:
+    try:
+        return _from_db_unsafe(db)
+    except Exception:  # noqa: BLE001  the table is missing or the database hiccuped: fall back to the built-in files, never fail a reply
+        db.rollback()
+        return None
+
+
+def _from_db_unsafe(db: Session) -> tuple[str, list[tuple[str, set[str]]]] | None:
     sig = db.execute(select(func.count(), func.max(WaKnowledge.updated_at), func.sum(WaKnowledge.active))).one()
     if not sig[0]:
         return None
