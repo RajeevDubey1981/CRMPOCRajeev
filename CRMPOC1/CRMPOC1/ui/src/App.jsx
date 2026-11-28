@@ -63,6 +63,10 @@ import PartnerRegistrationPublic from "./pages/partners/PartnerRegistrationPubli
 import PartnerAgreementSign from "./pages/partners/PartnerAgreementSign.jsx";
 import LeadInterestForm from "./pages/public/LeadInterestForm.jsx";
 import EmailConfirm from "./pages/public/EmailConfirm.jsx";
+import WhatsAppInbox from "./pages/whatsapp/WhatsAppInbox.jsx";
+import WhatsAppKnowledge from "./pages/whatsapp/WhatsAppKnowledge.jsx";
+import WebOrders from "./pages/web-orders/WebOrders.jsx";
+import WebOrderDetail from "./pages/web-orders/WebOrderDetail.jsx";
 import BidsHome from "./pages/bids/BidsHome.jsx";
 import BidForm from "./pages/bids/BidForm.jsx";
 import BidDetail from "./pages/bids/BidDetail.jsx";
@@ -200,6 +204,10 @@ export default function App() {
         <Route index element={<DefaultLanding />} />
         <Route path="/dashboard" element={<DashboardRoute />} />
         <Route path="/vendor-dashboard" element={<VendorDashboard />} />
+        <Route path="/whatsapp" element={<PermissionRoute module="whatsapp"><WhatsAppInbox /></PermissionRoute>} />
+        <Route path="/whatsapp/knowledge" element={<PermissionRoute module="whatsapp"><WhatsAppKnowledge /></PermissionRoute>} />
+        <Route path="/web-orders" element={<PermissionRoute module="web_orders"><WebOrders /></PermissionRoute>} />
+        <Route path="/web-orders/:id" element={<PermissionRoute module="web_orders"><WebOrderDetail /></PermissionRoute>} />
         <Route path="/calls" element={<PermissionRoute module="calls"><CallList /></PermissionRoute>} />
         <Route path="/calls/new" element={<PermissionRoute module="calls" action="can_create"><CallCreate /></PermissionRoute>} />
         <Route path="/calls/pending-follow-ups" element={<PermissionRoute module="calls"><PendingFollowUps /></PermissionRoute>} />

@@ -24,6 +24,7 @@ import ComplaintEdit from "./ComplaintEdit.jsx";
 import InstallationEngineerSerialWorkflow from "../../components/installations/InstallationEngineerSerialWorkflow.jsx";
 import InstallationPostVerifyWorkflow from "../../components/installations/InstallationPostVerifyWorkflow.jsx";
 import { fmtIST } from "../../utils/time.js";
+import WhatsAppChatLink from "../../components/complaints/WhatsAppChatLink.jsx";
 
 function fmt(value) {
   return value ? fmtIST(value, "String") : "-";
@@ -927,6 +928,8 @@ export default function ComplaintDetail() {
           </ol>
         )}
       </section>
+
+      {!isCallcenter && <WhatsAppChatLink complaintId={id} />}
 
       {!isCallcenter && (
       <section className="rounded-lg bg-white p-6 shadow-sm">

@@ -3,6 +3,7 @@ import { hasPermission } from "../utils/permissions.js";
 import SalesDashboardBlock from "../components/SalesDashboardBlock.jsx";
 import DateRangeFilter, { DateRangeTag } from "../components/DateRangeFilter.jsx";
 import RegisteredCell from "../components/RegisteredCell.jsx";
+import ReturnedServicesAlert from "../components/ReturnedServicesAlert.jsx";
 import { useEffect, useMemo, useRef, useState } from "react";
 import PriorityBadge from "../components/complaints/PriorityBadge.jsx";
 import { BounceBadge } from "../components/EmailBounceNotice.jsx";
@@ -559,6 +560,7 @@ export default function Dashboard() {
   /* ── render ── */
   return (
     <div ref={dashboardRef} className="space-y-5">
+      {!isEngineer && <ReturnedServicesAlert />}
 
       {/* Page Header */}
       <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b border-slate-200 pb-3">

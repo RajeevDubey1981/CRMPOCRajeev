@@ -597,6 +597,9 @@ class ServiceListItem(BaseModel):
     created_at: datetime
     email_bounced: bool = False
     email_bounce_reason: str | None = None
+    returned_by_name: str | None = None
+    returned_reason: str | None = None
+    returned_at: datetime | None = None
 
 
 class ServiceListResponse(BaseModel):

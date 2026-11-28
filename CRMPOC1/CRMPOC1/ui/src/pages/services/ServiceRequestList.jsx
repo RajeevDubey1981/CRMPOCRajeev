@@ -38,7 +38,7 @@ export default function ServiceRequestList() {
   // below (it's an OR of two statuses, which a single-select can't represent), only applied to the query.
   const [filters, setFilters] = useState({
     search: "", status: searchParams.get("status") || "", status_in: searchParams.get("status_in") || "",
-    service_type: "", service_user: "", date_from: "", date_to: "",
+    service_type: "", service_user: searchParams.get("service_user") || "", date_from: "", date_to: "",
   });
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState(100);
@@ -65,6 +65,9 @@ export default function ServiceRequestList() {
     };
     if (!canFilterByServiceUser || !filters.service_user) {
       return base;
+    }
+    if (filters.service_user === "returned") {
+      return { ...base, returned: true };
     }
     if (filters.service_user === "unassigned") {
       return { ...base, service_user_unassigned: true };
@@ -132,6 +135,7 @@ export default function ServiceRequestList() {
           {canFilterByServiceUser && (
             <select value={filters.service_user} onChange={(e) => patch("service_user", e.target.value)} className="rounded-md border border-slate-300 px-3 py-2 text-sm">
               <option value="">All service users</option>
+              <option value="returned">Returned to manager</option>
               <option value="unassigned">Unassigned (no service user)</option>
               {serviceUsers.map((option) => (
                 <option key={option.id} value={option.id}>{option.name}</option>
@@ -214,7 +218,14 @@ export default function ServiceRequestList() {
                   <td className="px-4 py-3">{row.customer_mobile}</td>
                   <td className="px-4 py-3">{row.order_no || "—"}</td>
                   <td className="px-4 py-3">{row.serial_no || "—"}</td>
-                  <td className="px-4 py-3"><StatusBadge value={row.status} /></td>
+                  <td className="px-4 py-3"><StatusBadge value={row.status} />
+                    {row.returned_by_name && (
+                      <div className="mt-1 max-w-[220px] rounded border border-amber-300 bg-amber-50 px-2 py-1 text-xs text-amber-800" title={row.returned_reason || ""}>
+                        Returned by {row.returned_by_name}
+                        {row.returned_reason && <div className="truncate text-amber-700">{row.returned_reason}</div>}
+                      </div>
+                    )}
+                  </td>
                   {canFilterByServiceUser && (
                     <td className="px-4 py-3 text-slate-700">{row.assigned_service_user_name || "—"}</td>
                   )}

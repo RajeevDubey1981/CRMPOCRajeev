@@ -69,10 +69,21 @@ class Settings(BaseSettings):
     bid_reminder_hour_ist: int = 9
     bid_team_email: str = ""  # comma separated; empty means every user ticked as bid manager
 
+    web_orders_ingest_key: str = ""  # shared secret the website uses to send its orders to /api/web-orders/ingest; empty = ingest is off
+
     whatsapp_enabled: bool = False
     wa_phone_number_id: str = ""
     wa_access_token: str = ""
     wa_verify_token: str = ""
+    wa_app_secret: str = ""  # secret of the Meta app that owns the WhatsApp number (signs its webhooks)
+    whatsapp_api_version: str = "v21.0"
+    whatsapp_business_account_id: str = ""
+    whatsapp_ai_enabled: bool = False  # phase 2: stays off until approved
+    sarvam_chat_api_key: str = ""
+    sarvam_chat_model: str = "sarvam-105b-conversations"
+    sarvam_chat_url: str = "https://api.sarvam.ai/v1/chat/completions"
+    whatsapp_ai_hourly_limit: int = 20  # automatic replies per chat per hour, then hand over to staff
+    whatsapp_ai_resume_hours: int = 0  # a chat a staff member replied to goes back to automatic replies after this many quiet hours; 0 = never, only the Resume button gives it back
     wa_template_name: str = "otp_verification"
     wa_template_language: str = "en_US"
     wa_happy_code_template: str = "service_happy_code_otp"
