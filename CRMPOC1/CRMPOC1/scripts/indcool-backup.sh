@@ -74,8 +74,13 @@ find "$BACKUP_ROOT" -mindepth 1 -maxdepth 1 -type d \( -name 'predeploy-*' -o -n
   done
 
 log "3. uploading to $REMOTE/$STAMP"
-rclone copy "$FOLDER" "$REMOTE/$STAMP" --exclude api.env --checksum 2>&1 | grep -v NOTICE || true
-if ! rclone check "$FOLDER" "$REMOTE/$STAMP" --exclude api.env 2>&1 | grep -q ' 0 differences found'; then
+if ! rclone copy "$FOLDER" "$REMOTE/$STAMP" --exclude api.env --checksum; then
+  log "   FAILED: Drive upload failed. Old Drive backups were NOT deleted."
+  exit 1
+fi
+# Use rclone's exit status directly. Parsing output with grep -q can close the
+# pipe early and produce a false failure under pipefail. Keep diagnostics in the log.
+if ! rclone check "$FOLDER" "$REMOTE/$STAMP" --exclude api.env; then
   log "   FAILED: Drive copy does not match. Old Drive backups were NOT deleted."
   exit 1
 fi

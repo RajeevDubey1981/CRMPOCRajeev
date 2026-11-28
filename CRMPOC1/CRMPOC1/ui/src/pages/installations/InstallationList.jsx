@@ -2,7 +2,7 @@ import { roleKey as canonicalRoleKey } from "../../utils/roles.js";
 import { hasPermission } from "../../utils/permissions.js";
 import DateRangeFilter, { DateRangeTag } from "../../components/DateRangeFilter.jsx";
 import RegisteredCell from "../../components/RegisteredCell.jsx";
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 
 import Modal from "../../components/Modal.jsx";
@@ -108,6 +108,18 @@ export default function InstallationList() {
     service_user: "",
   });
   const [page, setPage] = useState(1);
+  const [searchInput, setSearchInput] = useState("");
+  const loadController = useRef(null);
+
+  useEffect(() => {
+    const search = searchInput.trim();
+    if (search === filters.search) return;
+    const timer = setTimeout(() => {
+      setFilters((prev) => ({ ...prev, search }));
+      setPage(1);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchInput, filters.search]);
   const [perPage, setPerPage] = useState(100);
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [cancelBusyId, setCancelBusyId] = useState(null);
@@ -132,14 +144,18 @@ export default function InstallationList() {
   }), [page, perPage, filters]);
 
   async function load() {
+    loadController.current?.abort();
+    const controller = new AbortController();
+    loadController.current = controller;
     setLoading(true);
     setErr("");
     try {
-      setData(await installationsApi.list(params));
+      const result = await installationsApi.list(params, controller.signal);
+      if (!controller.signal.aborted) setData(result);
     } catch (e) {
-      setErr(e.response?.data?.detail || "Failed to load installations");
+      if (!controller.signal.aborted) setErr(e.response?.data?.detail || "Failed to load installations");
     } finally {
-      setLoading(false);
+      if (!controller.signal.aborted) setLoading(false);
     }
   }
 
@@ -162,6 +178,7 @@ export default function InstallationList() {
 
   useEffect(() => {
     load();
+    return () => loadController.current?.abort();
   }, [params]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function applyFilter(patch) {
@@ -355,9 +372,10 @@ export default function InstallationList() {
         <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
           <input
             type="text"
-            placeholder="Search customer name / mobile / product"
-            value={filters.search}
-            onChange={(e) => applyFilter({ search: e.target.value })}
+            placeholder="Search customer / mobile / product / GeM ID"
+            aria-label="Search customer name, mobile, product or GeM ID"
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
             className="rounded-md border border-slate-300 px-3 py-2 text-sm"
           />
           <select

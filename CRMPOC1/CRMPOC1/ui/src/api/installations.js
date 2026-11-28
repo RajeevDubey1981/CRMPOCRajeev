@@ -1,7 +1,7 @@
 import { api } from "./client.js";
 
 export const installationsApi = {
-  list: (params) => api.get("/api/installations", { params }).then((r) => r.data),
+  list: (params, signal) => api.get("/api/installations", { params, signal }).then((r) => r.data),
   paymentHistory: (params) => api.get("/api/installations/payment-history", { params }).then((r) => r.data),
   // address and place (pincode, state, district): the customer's; with them the nearest engineers (same pin code, area, district, state) come first
   engineerAssignmentOptions: (address, place) => api.get("/api/installations/engineer-assignment-options", {

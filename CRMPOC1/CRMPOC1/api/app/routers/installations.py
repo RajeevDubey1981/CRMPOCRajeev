@@ -666,12 +666,19 @@ def list_installations(
         )
     if status_filter and status_filter in STATUSES:
         stmt = stmt.where(InstallationRequest.status == status_filter)
-    if search:
-        like = f"%{search.strip()}%"
+    if search and search.strip():
+        # Find matching orders once in SQL, covering both direct order links and
+        # older requests linked through an order item without duplicating rows.
+        term = search.strip().replace("/", "//").replace("%", "/%").replace("_", "/_")
+        like = f"%{term}%"
+        matching_orders = select(Order.id).where(Order.order_no.ilike(like, escape="/"))
+        matching_items = select(OrderItem.id).where(OrderItem.order_id.in_(matching_orders))
         stmt = stmt.where(
-            InstallationRequest.customer_name.ilike(like) |
-            InstallationRequest.contact_number.ilike(like) |
-            InstallationRequest.product_name.ilike(like)
+            InstallationRequest.customer_name.ilike(like, escape="/") |
+            InstallationRequest.contact_number.ilike(like, escape="/") |
+            InstallationRequest.product_name.ilike(like, escape="/") |
+            InstallationRequest.order_id.in_(matching_orders) |
+            InstallationRequest.order_item_id.in_(matching_items)
         )
     if date_from:
         stmt = stmt.where(InstallationRequest.request_date >= date_from)
